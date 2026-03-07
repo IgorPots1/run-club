@@ -83,7 +83,7 @@ export default function RegisterPage() {
           {loading ? '...' : 'Register'}
         </button>
         <p className="text-sm text-gray-600">
-          Already have an account? <Link href="/login" className="underline">Log in</Link>
+          Already have an account? <Link href="/login" className="underline">Login</Link>
         </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {success && <p className="text-sm">{success}</p>}

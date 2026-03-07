@@ -74,7 +74,7 @@ export default function LoginPage() {
           {loading ? '...' : 'Login'}
         </button>
         <p className="text-sm text-gray-600">
-          Don't have an account? <Link href="/register" className="underline">Sign up</Link>
+          Don't have an account? <Link href="/register" className="underline">Register</Link>
         </p>
         {message && <p className="text-sm">{message}</p>}
       </form>
