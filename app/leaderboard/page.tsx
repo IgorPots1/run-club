@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 
 type LeaderboardRow = {
-  email: string
+  user_id: string
+  displayName: string
   total_xp: number
   total_km: number
   runs_count: number
@@ -17,18 +18,22 @@ export default function LeaderboardPage() {
   useEffect(() => {
     async function load() {
       const { data: runs } = await supabase.from('runs').select('user_id, xp, distance_km')
-      const { data: profiles } = await supabase.from('profiles').select('id, email')
-      const emailById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.email]))
-      const byEmail: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
+      const { data: profiles } = await supabase.from('profiles').select('id, email, name')
+      const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+      const byUserId: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
       for (const run of runs ?? []) {
-        const email = emailById[run.user_id] ?? '—'
-        if (!byEmail[email]) byEmail[email] = { total_xp: 0, total_km: 0, runs_count: 0 }
-        byEmail[email].total_xp += run.xp
-        byEmail[email].total_km += run.distance_km
-        byEmail[email].runs_count += 1
+        const id = run.user_id
+        if (!byUserId[id]) byUserId[id] = { total_xp: 0, total_km: 0, runs_count: 0 }
+        byUserId[id].total_xp += run.xp
+        byUserId[id].total_km += run.distance_km
+        byUserId[id].runs_count += 1
       }
-      const list = Object.entries(byEmail)
-        .map(([email, d]) => ({ email, ...d }))
+      const list = Object.entries(byUserId)
+        .map(([user_id, d]) => {
+          const p = profileById[user_id]
+          const displayName = p?.name?.trim() || p?.email || '—'
+          return { user_id, displayName, ...d }
+        })
         .sort((a, b) => b.total_xp - a.total_xp)
       setRows(list)
       setLoading(false)
@@ -54,9 +59,9 @@ export default function LeaderboardPage() {
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={row.email} className="border-b">
+              <tr key={row.user_id} className="border-b">
                 <td className="border p-2">{i + 1}</td>
-                <td className="border p-2">{row.email}</td>
+                <td className="border p-2">{row.displayName}</td>
                 <td className="border p-2">{row.total_xp}</td>
                 <td className="border p-2">{row.total_km.toFixed(2)}</td>
                 <td className="border p-2">{row.runs_count}</td>
