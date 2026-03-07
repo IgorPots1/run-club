@@ -9,6 +9,7 @@ type Profile = {
   id: string
   email: string | null
   name: string | null
+  avatar_url: string | null
 }
 
 export default function ProfilePage() {
@@ -19,6 +20,7 @@ export default function ProfilePage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
@@ -36,7 +38,7 @@ export default function ProfilePage() {
     setEmail(user.email ?? '')
     supabase
       .from('profiles')
-      .select('id, email, name')
+      .select('id, email, name, avatar_url')
       .eq('id', user.id)
       .single()
       .then(({ data }) => {
@@ -66,12 +68,32 @@ export default function ProfilePage() {
     setSaving(false)
   }
 
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    setUploading(true)
+    const path = `${user.id}/avatar-${Date.now()}`
+    await supabase.storage.from('avatars').upload(path, file)
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+    await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id)
+    setProfile((prev) => (prev ? { ...prev, avatar_url: data.publicUrl } : null))
+    setUploading(false)
+    e.target.value = ''
+  }
+
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Loading...</main>
   if (!user) return null
 
   return (
     <main className="min-h-screen p-4">
       <h1 className="text-xl font-semibold mb-4">Profile</h1>
+      {profile?.avatar_url && (
+        <img src={profile.avatar_url} alt="Avatar" className="w-20 h-20 rounded-full object-cover mb-4" />
+      )}
+      <div className="mb-4">
+        <label className="block text-sm mb-1">Avatar</label>
+        <input type="file" accept="image/*" onChange={handleAvatarChange} disabled={uploading} className="block" />
+      </div>
       <form onSubmit={handleSave} className="mb-8 space-y-3 max-w-sm">
         <div>
           <label htmlFor="name" className="block text-sm mb-1">Name</label>
