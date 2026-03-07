@@ -34,7 +34,7 @@ export default function DashboardPage() {
       <nav className="flex flex-col gap-2 mb-4">
         <Link href="/profile" className="text-blue-600 underline">Profile</Link>
         <Link href="/leaderboard" className="text-blue-600 underline">Leaderboard</Link>
-        <Link href="/login" className="text-blue-600 underline">Login</Link>
+        <Link href="/runs" className="text-blue-600 underline">Runs</Link>
       </nav>
       <button onClick={handleLogout} className="border rounded px-3 py-2">
         Logout

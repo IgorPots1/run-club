@@ -13,12 +13,19 @@ export default function RegisterPage() {
     e.preventDefault()
     setMessage('')
     setLoading(true)
-    const { error } = await supabase.auth.signUp({ email, password })
-    setLoading(false)
+    const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) {
+      setLoading(false)
       setMessage(error.message)
       return
     }
+    if (data.user) {
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        email: data.user.email
+      })
+    }
+    setLoading(false)
     setMessage('Check your email to confirm registration')
   }
 
