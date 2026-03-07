@@ -56,7 +56,6 @@ export default function LeaderboardPage() {
               <th className="border p-2 text-left">Rank</th>
               <th className="border p-2 text-left">Avatar</th>
               <th className="border p-2 text-left">User</th>
-              <th className="border p-2 text-left">Level</th>
               <th className="border p-2 text-left">Total XP</th>
               <th className="border p-2 text-left">Total KM</th>
               <th className="border p-2 text-left">Runs</th>
@@ -75,8 +74,7 @@ export default function LeaderboardPage() {
                     </span>
                   )}
                 </td>
-                <td className="border p-2">{row.displayName}</td>
-                <td className="border p-2">{getLevelFromXP(row.total_xp).level}</td>
+                <td className="border p-2">{row.displayName} · Level {getLevelFromXP(row.total_xp).level}</td>
                 <td className="border p-2">{row.total_xp}</td>
                 <td className="border p-2">{row.total_km.toFixed(2)}</td>
                 <td className="border p-2">{row.runs_count}</td>

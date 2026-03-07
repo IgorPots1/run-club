@@ -124,6 +124,7 @@ export default function ProfilePage() {
         <h2 className="font-semibold mb-2">Stats</h2>
         <p>Level: {getLevelFromXP(totalXp).level}</p>
         <p>Total XP: {totalXp}</p>
+        <p>Next level XP: {getLevelFromXP(totalXp).nextLevelXP ?? 'Max level'}</p>
         <p>Total KM: {totalKm.toFixed(2)}</p>
         <p>Runs: {runsCount}</p>
       </div>
