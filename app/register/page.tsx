@@ -1,32 +1,49 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        router.push('/dashboard')
+        return
+      }
+      setCheckingUser(false)
+    })
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setMessage('')
+    setError('')
+    setSuccess('')
     setLoading(true)
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({ email, password })
     if (error) {
       setLoading(false)
-      setMessage(error.message)
+      setError(error.message)
       return
     }
-    if (data.user) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        email: data.user.email
-      })
-    }
     setLoading(false)
-    setMessage('Check your email to confirm registration')
+    setSuccess('Account created. Please check your email and confirm your address before logging in.')
+  }
+
+  if (checkingUser) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        Loading...
+      </main>
+    )
   }
 
   return (
@@ -58,7 +75,8 @@ export default function RegisterPage() {
         <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
           {loading ? '...' : 'Register'}
         </button>
-        {message && <p className="text-sm">{message}</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {success && <p className="text-sm">{success}</p>}
       </form>
     </main>
   )
