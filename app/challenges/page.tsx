@@ -1,107 +1,195 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
-import type { User } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 
 type Challenge = {
   id: string
   title: string
   description: string | null
-  target_type: 'km_week' | 'km_month' | 'runs'
-  target: number
+  goal_km: number | null
+  goal_runs: number | null
   xp_reward: number
 }
 
-function getWeekStart(d: Date): Date {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  const day = x.getDay()
-  const diff = x.getDate() - day + (day === 0 ? -6 : 1)
-  x.setDate(diff)
-  return x
+type ProgressItem = {
+  id: string
+  title: string
+  description: string | null
+  xp_reward: number
+  progress: number
+  goal: number
+  unit: string
+  completed: boolean
 }
 
-function getMonthStart(d: Date): Date {
-  const x = new Date(d)
-  x.setDate(1)
-  x.setHours(0, 0, 0, 0)
-  return x
+function getWeekStart(date: Date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = day === 0 ? 6 : day - 1
+  d.setDate(d.getDate() - diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function getMonthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
 }
 
 export default function ChallengesPage() {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [items, setItems] = useState<ProgressItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [challenges, setChallenges] = useState<Challenge[]>([])
-  const [totalKmWeek, setTotalKmWeek] = useState(0)
-  const [totalKmMonth, setTotalKmMonth] = useState(0)
-  const [totalRuns, setTotalRuns] = useState(0)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      if (!user) router.push('/login')
-    })
-  }, [router])
+    async function loadData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-  useEffect(() => {
-    if (!user) return
-    async function load() {
-      const { data: challengesData } = await supabase.from('challenges').select('*')
-      setChallenges((challengesData as Challenge[]) ?? [])
-      const { data: runs } = await supabase.from('runs').select('distance_km, created_at').eq('user_id', user.id)
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      const userId = user.id
+
+      const { data: challengesData } = await supabase
+        .from('challenges')
+        .select('*')
+
+      const { data: runsData } = await supabase
+        .from('runs')
+        .select('distance_km, created_at')
+        .eq('user_id', userId)
+
+      const challenges = (challengesData as Challenge[]) ?? []
+      const runs = runsData ?? []
+
       const now = new Date()
       const weekStart = getWeekStart(now).getTime()
       const monthStart = getMonthStart(now).getTime()
-      let kmWeek = 0
-      let kmMonth = 0
-      for (const r of runs ?? []) {
-        const t = new Date(r.created_at).getTime()
-        if (t >= weekStart) kmWeek += r.distance_km
-        if (t >= monthStart) kmMonth += r.distance_km
-      }
-      setTotalKmWeek(kmWeek)
-      setTotalKmMonth(kmMonth)
-      setTotalRuns(runs?.length ?? 0)
+
+      const totalRuns = runs.length
+
+      const totalKmThisWeek = runs.reduce((sum, run) => {
+        const runTime = new Date(run.created_at).getTime()
+        if (runTime >= weekStart) {
+          return sum + Number(run.distance_km || 0)
+        }
+        return sum
+      }, 0)
+
+      const totalKmThisMonth = runs.reduce((sum, run) => {
+        const runTime = new Date(run.created_at).getTime()
+        if (runTime >= monthStart) {
+          return sum + Number(run.distance_km || 0)
+        }
+        return sum
+      }, 0)
+
+      const mapped = challenges.map((challenge) => {
+        if (challenge.title === 'Weekly 30 km') {
+          const goal = challenge.goal_km ?? 30
+          return {
+            id: challenge.id,
+            title: challenge.title,
+            description: challenge.description,
+            xp_reward: challenge.xp_reward,
+            progress: totalKmThisWeek,
+            goal,
+            unit: 'km',
+            completed: totalKmThisWeek >= goal,
+          }
+        }
+
+        if (challenge.title === 'Monthly 100 km') {
+          const goal = challenge.goal_km ?? 100
+          return {
+            id: challenge.id,
+            title: challenge.title,
+            description: challenge.description,
+            xp_reward: challenge.xp_reward,
+            progress: totalKmThisMonth,
+            goal,
+            unit: 'km',
+            completed: totalKmThisMonth >= goal,
+          }
+        }
+
+        if (challenge.title === 'First 10 runs') {
+          const goal = challenge.goal_runs ?? 10
+          return {
+            id: challenge.id,
+            title: challenge.title,
+            description: challenge.description,
+            xp_reward: challenge.xp_reward,
+            progress: totalRuns,
+            goal,
+            unit: 'runs',
+            completed: totalRuns >= goal,
+          }
+        }
+
+        return {
+          id: challenge.id,
+          title: challenge.title,
+          description: challenge.description,
+          xp_reward: challenge.xp_reward,
+          progress: 0,
+          goal: challenge.goal_km ?? challenge.goal_runs ?? 1,
+          unit: challenge.goal_km ? 'km' : 'runs',
+          completed: false,
+        }
+      })
+
+      setItems(mapped)
       setLoading(false)
     }
-    load()
-  }, [user])
 
-  function getProgress(c: Challenge): { current: number; target: number; completed: boolean } {
-    const current =
-      c.target_type === 'km_week' ? totalKmWeek : c.target_type === 'km_month' ? totalKmMonth : totalRuns
-    return { current, target: c.target, completed: current >= c.target }
+    loadData()
+  }, [router])
+
+  if (loading) {
+    return (
+      <main className="mx-auto max-w-3xl p-6">
+        <h1 className="text-2xl font-bold">Challenges</h1>
+        <p className="mt-4">Loading...</p>
+      </main>
+    )
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Loading...</main>
-  if (!user) return null
-
   return (
-    <main className="min-h-screen p-4">
-      <h1 className="text-xl font-semibold mb-4">Challenges</h1>
-      <div className="space-y-4 max-w-lg">
-        {challenges.map((c) => {
-          const { current, target, completed } = getProgress(c)
-          return (
-            <div key={c.id} className="border rounded p-4">
-              <div className="flex justify-between items-start gap-2 mb-2">
-                <h2 className="font-medium">{c.title}</h2>
-                {completed && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Completed</span>}
+    <main className="mx-auto max-w-3xl p-6">
+      <h1 className="text-2xl font-bold">Challenges</h1>
+
+      <div className="mt-6 space-y-4">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-2xl border p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">{item.title}</h2>
+                {item.description ? (
+                  <p className="mt-1 text-sm text-gray-600">{item.description}</p>
+                ) : null}
               </div>
-              {c.description && <p className="text-sm text-gray-600 mb-2">{c.description}</p>}
-              <p className="text-sm">
-                Progress: {current} / {target}
-                {c.target_type === 'km_week' && ' km this week'}
-                {c.target_type === 'km_month' && ' km this month'}
-                {c.target_type === 'runs' && ' runs'}
-              </p>
-              <p className="text-sm font-medium mt-1">{c.xp_reward} XP reward</p>
+
+              <div className="text-right">
+                <p className="text-sm font-medium">{item.xp_reward} XP</p>
+                {item.completed ? (
+                  <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                    Completed
+                  </span>
+                ) : null}
+              </div>
             </div>
-          )
-        })}
+
+            <p className="mt-4 text-sm">
+              Progress: {item.progress} / {item.goal} {item.unit}
+            </p>
+          </div>
+        ))}
       </div>
     </main>
   )
