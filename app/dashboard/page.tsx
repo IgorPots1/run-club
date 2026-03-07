@@ -6,10 +6,19 @@ import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
+type RunItem = {
+  id: string
+  distance_km: number
+  xp: number
+  created_at: string
+  displayName: string
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [runs, setRuns] = useState<RunItem[]>([])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -18,6 +27,30 @@ export default function DashboardPage() {
       if (!user) router.push('/login')
     })
   }, [router])
+
+  useEffect(() => {
+    async function loadRuns() {
+      const { data: runs } = await supabase
+        .from('runs')
+        .select('id, user_id, distance_km, xp, created_at')
+        .order('created_at', { ascending: false })
+      const { data: profiles } = await supabase.from('profiles').select('id, name, email')
+      const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+      const items = (runs ?? []).map((run) => {
+        const profile = profileById[run.user_id]
+        return {
+          id: run.id,
+          distance_km: run.distance_km,
+          xp: run.xp,
+          created_at: run.created_at,
+          displayName: profile?.name?.trim() || profile?.email || '—'
+        }
+      })
+      setRuns(items)
+    }
+
+    loadRuns()
+  }, [])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -56,6 +89,29 @@ export default function DashboardPage() {
           <Link href="/challenges" className="border rounded p-4 sm:col-span-2">
             <h2 className="font-medium">Challenges</h2>
           </Link>
+        </div>
+
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold mb-3">Recent runs</h2>
+          <div className="space-y-3">
+            {runs.length === 0 ? (
+              <p className="text-sm text-gray-600">No runs yet</p>
+            ) : (
+              runs.map((run) => (
+                <div key={run.id} className="border rounded p-4">
+                  <p className="font-medium">{run.displayName}</p>
+                  <p className="text-sm mt-1">🏃 {run.distance_km} km</p>
+                  <p className="text-sm mt-1">+{run.xp} XP</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {new Date(run.created_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </main>
