@@ -25,18 +25,16 @@ export default function Navbar() {
   if (!user) return null
 
   return (
-    <header className="border-b px-6 py-3">
-      <div className="flex items-center justify-between">
-        <nav className="flex items-center gap-6">
+    <nav className="flex items-center justify-between border-b p-4">
+      <div className="flex gap-4">
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/runs">Runs</Link>
           <Link href="/leaderboard">Leaderboard</Link>
           <Link href="/challenges">Challenges</Link>
           <Link href="/feed">Feed</Link>
           <Link href="/profile">Profile</Link>
-        </nav>
-        <button onClick={handleLogout}>Logout</button>
       </div>
-    </header>
+      <button onClick={handleLogout}>Logout</button>
+    </nav>
   )
 }
