@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { getLevelFromXP } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Profile = {
@@ -121,6 +122,7 @@ export default function ProfilePage() {
       </form>
       <div className="border rounded p-4 max-w-sm">
         <h2 className="font-semibold mb-2">Stats</h2>
+        <p>Level: {getLevelFromXP(totalXp).level}</p>
         <p>Total XP: {totalXp}</p>
         <p>Total KM: {totalKm.toFixed(2)}</p>
         <p>Runs: {runsCount}</p>

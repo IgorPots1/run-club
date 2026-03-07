@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getLevelFromXP } from '../../lib/xp'
 
 type RunWithProfile = {
   run_id: string
@@ -11,6 +12,7 @@ type RunWithProfile = {
   created_at: string
   displayName: string
   avatar_url: string | null
+  totalXp: number
 }
 
 function timeAgo(dateStr: string): string {
@@ -36,10 +38,15 @@ export default function FeedPage() {
         .order('created_at', { ascending: false })
       const { data: profiles } = await supabase.from('profiles').select('id, name, email, avatar_url')
       const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+      const totalXpByUser: Record<string, number> = {}
+      for (const run of runs ?? []) {
+        totalXpByUser[run.user_id] = (totalXpByUser[run.user_id] ?? 0) + run.xp
+      }
       const list = (runs ?? []).map((run) => {
         const p = profileById[run.user_id]
         const displayName = p?.name?.trim() || p?.email || '—'
         const avatar_url = p?.avatar_url ?? null
+        const totalXp = totalXpByUser[run.user_id] ?? 0
         return {
           run_id: run.id,
           user_id: run.user_id,
@@ -47,7 +54,8 @@ export default function FeedPage() {
           xp: run.xp,
           created_at: run.created_at,
           displayName,
-          avatar_url
+          avatar_url,
+          totalXp
         }
       })
       setItems(list)
@@ -72,7 +80,7 @@ export default function FeedPage() {
               </span>
             )}
             <div className="min-w-0 flex-1">
-              <p className="font-medium">{item.displayName}</p>
+              <p className="font-medium">{item.displayName} · Level {getLevelFromXP(item.totalXp).level}</p>
               <p className="text-sm text-gray-600">
                 {item.distance_km} km · {item.xp} XP · {timeAgo(item.created_at)}
               </p>
