@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 
@@ -9,7 +10,18 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
+  const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        router.push('/dashboard')
+        return
+      }
+      setCheckingUser(false)
+    })
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -22,6 +34,14 @@ export default function LoginPage() {
       return
     }
     router.push('/dashboard')
+  }
+
+  if (checkingUser) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        Loading...
+      </main>
+    )
   }
 
   return (
@@ -53,6 +73,9 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
           {loading ? '...' : 'Login'}
         </button>
+        <p className="text-sm text-gray-600">
+          Don't have an account? <Link href="/register" className="underline">Sign up</Link>
+        </p>
         {message && <p className="text-sm">{message}</p>}
       </form>
     </main>

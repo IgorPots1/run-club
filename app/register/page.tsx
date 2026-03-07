@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
@@ -28,7 +29,13 @@ export default function RegisterPage() {
     setError('')
     setSuccess('')
     setLoading(true)
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`
+      }
+    })
     if (error) {
       setLoading(false)
       setError(error.message)
@@ -75,6 +82,9 @@ export default function RegisterPage() {
         <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
           {loading ? '...' : 'Register'}
         </button>
+        <p className="text-sm text-gray-600">
+          Already have an account? <Link href="/login" className="underline">Log in</Link>
+        </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {success && <p className="text-sm">{success}</p>}
       </form>
