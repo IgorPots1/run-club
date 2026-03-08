@@ -56,25 +56,15 @@ export default function DashboardPage() {
     loadRuns()
   }, [])
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   if (!user) return null
 
   return (
     <main className="min-h-screen">
       <div className="p-4">
-        <div className="flex items-start justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold mb-4">Главная</h1>
-            <p className="text-sm text-gray-600">{user.email}</p>
-          </div>
-          <button onClick={handleLogout} className="border rounded px-3 py-2">
-            Выйти
-          </button>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold mb-4">Главная</h1>
+          <p className="text-sm text-gray-600">{user.email}</p>
         </div>
 
         <div className="mb-4">
@@ -89,9 +79,6 @@ export default function DashboardPage() {
             {runs.length === 0 ? (
               <div className="mt-10 text-center text-gray-500">
                 <p>Пока нет тренировок</p>
-                <Link href="/runs" className="inline-block mt-4 px-4 py-2 rounded-lg border">
-                  Добавить первую тренировку
-                </Link>
               </div>
             ) : (
               runs.map((run) => (
