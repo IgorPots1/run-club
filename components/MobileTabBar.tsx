@@ -33,7 +33,7 @@ export default function MobileTabBar() {
     },
     {
       href: '/activity',
-      label: 'Актив.',
+      label: 'Актив',
       isActive: pathname === '/activity',
       icon: <TabIcon><Activity className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
@@ -60,19 +60,19 @@ export default function MobileTabBar() {
   return (
     <div className="fixed bottom-0 left-0 right-0 md:hidden">
       <nav
-        className="mx-auto grid max-w-xl grid-cols-5 border-t border-gray-200 bg-white/95 px-2 pt-2 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
+        className="mx-auto grid max-w-xl grid-cols-5 border-t border-gray-200 bg-white/95 px-2 pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
-            className={`mx-0.5 flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors ${
-              tab.isActive ? 'text-black' : 'text-gray-500'
+            className={`mx-0.5 flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 py-2 text-[11px] font-medium transition-colors ${
+              tab.isActive ? 'text-gray-900' : 'text-gray-500'
             }`}
           >
             {tab.icon}
-            <span>{tab.label}</span>
+            <span className={tab.isActive ? 'text-gray-900' : 'text-gray-500'}>{tab.label}</span>
           </Link>
         ))}
       </nav>

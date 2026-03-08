@@ -158,12 +158,12 @@ export default function ActivityPage() {
                             interval={mobileXAxisInterval}
                             minTickGap={12}
                             tickMargin={6}
-                            tick={{ fill: '#6b7280', fontSize: 11 }}
+                            tick={{ fill: '#9ca3af', fontSize: 11 }}
                           />
                           <YAxis
                             tickLine={false}
                             axisLine={false}
-                            tick={{ fill: '#6b7280', fontSize: 11 }}
+                            tick={{ fill: '#9ca3af', fontSize: 11 }}
                             width={26}
                           />
                           <Tooltip
