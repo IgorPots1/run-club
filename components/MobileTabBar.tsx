@@ -1,22 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import type { User } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
 
 export default function MobileTabBar() {
   const pathname = usePathname()
-  const [user, setUser] = useState<User | null>(null)
+  const hiddenRoutes = ['/', '/login', '/register']
+  const shouldHide =
+    hiddenRoutes.includes(pathname) || pathname.startsWith('/auth')
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-    })
-  }, [])
-
-  if (!user) return null
+  if (shouldHide) return null
 
   function getLinkClass(href: string) {
     const isClubRoute = href === '/club' && (pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard')
