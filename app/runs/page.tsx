@@ -24,6 +24,7 @@ export default function RunsPage() {
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10))
   const [distanceKm, setDistanceKm] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('')
+  const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -57,23 +58,32 @@ export default function RunsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!user) return
+    setError('')
     setSubmitting(true)
-    const runTitle = title.trim() || 'Run'
+    const runTitle = title.trim() || 'Тренировка'
     const d = Number(distanceKm)
     const dur = Number(durationMinutes)
     const xp = 20 + d * 5
-    await supabase.from('runs').insert({
+    const selectedDate = runDate || new Date().toISOString().slice(0, 10)
+    const createdAt = new Date(selectedDate || new Date().toISOString().slice(0, 10)).toISOString()
+    const { error } = await supabase.from('runs').insert({
       user_id: user.id,
       title: runTitle,
       distance_km: d,
       duration_minutes: dur,
-      created_at: runDate,
+      created_at: createdAt,
       xp
     })
+    if (error) {
+      setError(error.message)
+      setSubmitting(false)
+      return
+    }
     setTitle('')
     setRunDate(new Date().toISOString().slice(0, 10))
     setDistanceKm('')
     setDurationMinutes('')
+    setError('')
     await fetchRuns()
     setSubmitting(false)
   }
@@ -141,6 +151,7 @@ export default function RunsPage() {
         <button type="submit" disabled={submitting} className="border rounded px-3 py-2">
           {submitting ? '...' : 'Добавить тренировку'}
         </button>
+        {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
       <div>
         {runs.map((run) => (

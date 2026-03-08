@@ -62,22 +62,26 @@ export default function FeedPage() {
       <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Лента</h1>
       <div className="max-w-md">
-        {items.map((item) => (
-          <div key={item.run_id} className="border rounded-lg p-4 mb-3">
-            <p className="font-medium">{item.title}</p>
-            <p className="text-sm text-gray-600 mt-1">
-              {item.displayName} · Уровень {getLevelFromXP(item.totalXp).level}
-            </p>
-            <p className="text-sm mt-1">🏃 {item.distance_km} км</p>
-            <p className="text-sm mt-1">+{item.xp} XP</p>
-            <p className="text-sm text-gray-500 mt-1">
-              {new Date(item.created_at).toLocaleDateString('ru-RU', {
-                day: 'numeric',
-                month: 'long'
-              })}
-            </p>
-          </div>
-        ))}
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-600">Пока нет тренировок</p>
+        ) : (
+          items.map((item) => (
+            <div key={item.run_id} className="border rounded-lg p-4 mb-3">
+              <p className="font-medium">{item.title}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {item.displayName} · Уровень {getLevelFromXP(item.totalXp).level}
+              </p>
+              <p className="text-sm mt-1">🏃 {item.distance_km} км</p>
+              <p className="text-sm mt-1">+{item.xp} XP</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {new Date(item.created_at).toLocaleDateString('ru-RU', {
+                  day: 'numeric',
+                  month: 'long'
+                })}
+              </p>
+            </div>
+          ))
+        )}
       </div>
       </div>
     </main>

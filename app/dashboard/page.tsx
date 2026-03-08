@@ -8,10 +8,12 @@ import type { User } from '@supabase/supabase-js'
 
 type RunItem = {
   id: string
+  user_id: string
   title: string
   distance_km: number
   xp: number
   created_at: string
+  displayName: string
 }
 
 export default function DashboardPage() {
@@ -32,15 +34,20 @@ export default function DashboardPage() {
     async function loadRuns() {
       const { data: runs } = await supabase
         .from('runs')
-        .select('id, title, distance_km, xp, created_at')
+        .select('id, user_id, title, distance_km, xp, created_at')
         .order('created_at', { ascending: false })
+      const { data: profiles } = await supabase.from('profiles').select('id, name, email, avatar_url')
+      const profileById = Object.fromEntries((profiles ?? []).map((profile) => [profile.id, profile]))
       const items = (runs ?? []).map((run) => {
+        const profile = profileById[run.user_id]
         return {
           id: run.id,
-          title: run.title || 'Run',
+          user_id: run.user_id,
+          title: run.title || 'Тренировка',
           distance_km: run.distance_km,
           xp: run.xp,
-          created_at: run.created_at
+          created_at: run.created_at,
+          displayName: profile?.name?.trim() || profile?.email || '—'
         }
       })
       setRuns(items)
@@ -97,6 +104,7 @@ export default function DashboardPage() {
               runs.map((run) => (
                 <div key={run.id} className="border rounded-lg p-4 mb-3">
                   <p className="font-medium">{run.title}</p>
+                  <p className="text-sm text-gray-600 mt-1">{run.displayName}</p>
                   <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
                   <p className="text-sm mt-1">+{run.xp} XP</p>
                   <p className="text-sm text-gray-500 mt-1">

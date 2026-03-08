@@ -121,13 +121,30 @@ export default function ProfilePage() {
           {saving ? '...' : 'Сохранить'}
         </button>
       </form>
-      <div className="border rounded p-4 max-w-sm">
-        <h2 className="font-semibold mb-2">Статистика</h2>
-        <p>Уровень: {getLevelFromXP(totalXp).level}</p>
-        <p>Всего XP: {totalXp}</p>
-        <p>Следующий уровень XP: {getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</p>
-        <p>Всего км: {totalKm.toFixed(2)}</p>
-        <p>Тренировки: {runsCount}</p>
+      <div className="border rounded-lg p-4 max-w-sm">
+        <h2 className="font-semibold mb-3">Статистика</h2>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-500">Уровень</span>
+            <span className="font-semibold">{getLevelFromXP(totalXp).level}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-500">Всего XP</span>
+            <span className="font-semibold">{totalXp}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-500">Следующий уровень</span>
+            <span className="font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-500">Всего км</span>
+            <span className="font-semibold">{totalKm.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-500">Тренировки</span>
+            <span className="font-semibold">{runsCount}</span>
+          </div>
+        </div>
       </div>
       </div>
     </main>
