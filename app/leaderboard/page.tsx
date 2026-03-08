@@ -55,40 +55,78 @@ export default function LeaderboardPage() {
           <p>Рейтинг пока пуст</p>
         </div>
       ) : (
-        <div className="overflow-x-auto border rounded-xl p-4 shadow-sm bg-white mb-4">
-          <table className="w-full border-collapse border">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="border p-2 text-left">Место</th>
-                <th className="border p-2 text-left">Аватар</th>
-                <th className="border p-2 text-left">Участник</th>
-                <th className="border p-2 text-left">Всего XP</th>
-                <th className="border p-2 text-left">Всего км</th>
-                <th className="border p-2 text-left">Тренировки</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={row.user_id} className="border-b">
-                  <td className="border p-2">{i + 1}</td>
-                  <td className="border p-2">
-                    {row.avatar_url ? (
-                      <img src={row.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
-                    ) : (
-                      <span className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium inline-flex">
-                        {(row.displayName[0] ?? '?').toUpperCase()}
-                      </span>
-                    )}
-                  </td>
-                  <td className="border p-2">{row.displayName} · Уровень {getLevelFromXP(row.total_xp).level}</td>
-                  <td className="border p-2">{row.total_xp}</td>
-                  <td className="border p-2">{row.total_km.toFixed(2)}</td>
-                  <td className="border p-2">{row.runs_count}</td>
+        <>
+          <div className="md:hidden">
+            {rows.map((row, i) => (
+              <div key={row.user_id} className="border rounded-xl p-4 mb-3 bg-white shadow-sm">
+                <p className="mb-3 font-medium">{i + 1} место</p>
+                <div className="flex items-center gap-3 mb-4">
+                  {row.avatar_url ? (
+                    <img src={row.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
+                  ) : (
+                    <span className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium inline-flex">
+                      {(row.displayName[0] ?? '?').toUpperCase()}
+                    </span>
+                  )}
+                  <div>
+                    <p className="font-medium">{row.displayName}</p>
+                    <p className="text-sm text-gray-500">Уровень {getLevelFromXP(row.total_xp).level}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-xs text-gray-500">Всего XP</p>
+                    <p className="text-lg font-semibold">{row.total_xp}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Всего км</p>
+                    <p className="text-lg font-semibold">{row.total_km.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Тренировки</p>
+                    <p className="text-lg font-semibold">{row.runs_count}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto border rounded-xl p-4 shadow-sm bg-white mb-4">
+            <table className="w-full border-collapse border">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="border p-2 text-left">Место</th>
+                  <th className="border p-2 text-left">Аватар</th>
+                  <th className="border p-2 text-left">Участник</th>
+                  <th className="border p-2 text-left">Всего XP</th>
+                  <th className="border p-2 text-left">Всего км</th>
+                  <th className="border p-2 text-left">Тренировки</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={row.user_id} className="border-b">
+                    <td className="border p-2">{i + 1}</td>
+                    <td className="border p-2">
+                      {row.avatar_url ? (
+                        <img src={row.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <span className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium inline-flex">
+                          {(row.displayName[0] ?? '?').toUpperCase()}
+                        </span>
+                      )}
+                    </td>
+                    <td className="border p-2">{row.displayName} · Уровень {getLevelFromXP(row.total_xp).level}</td>
+                    <td className="border p-2">{row.total_xp}</td>
+                    <td className="border p-2">{row.total_km.toFixed(2)}</td>
+                    <td className="border p-2">{row.runs_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+        </>
       )}
       </div>
     </main>
