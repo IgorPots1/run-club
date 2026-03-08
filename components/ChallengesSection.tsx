@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { awardChallengeCompletion, loadCompletedChallengeIds } from '@/lib/user-challenges'
 
 type Challenge = {
   id: string
@@ -10,6 +11,7 @@ type Challenge = {
   description: string | null
   goal_km: number | null
   goal_runs: number | null
+  xp_reward?: number | null
 }
 
 type RunRecord = {
@@ -25,6 +27,7 @@ type ProgressMetric = {
 
 type ChallengeWithProgress = Challenge & {
   progressItems: ProgressMetric[]
+  isCompleted: boolean
 }
 
 type ChallengesSectionProps = {
@@ -55,6 +58,7 @@ function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): Challeng
   return {
     ...challenge,
     progressItems,
+    isCompleted: progressItems.some((item) => item.completed),
   }
 }
 
@@ -78,15 +82,17 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
       const [
         { data: challengesData, error: challengesError },
         { data: runsData, error: runsError },
+        completedChallengeIds,
       ] = await Promise.all([
         supabase
           .from('challenges')
-          .select('id, title, description, goal_km, goal_runs')
+          .select('*')
           .order('created_at', { ascending: true }),
         supabase
           .from('runs')
           .select('distance_km, created_at')
           .eq('user_id', user.id),
+        loadCompletedChallengeIds(user.id),
       ])
 
       if (challengesError || runsError) {
@@ -98,6 +104,18 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
       const challenges = (challengesData as Challenge[]) ?? []
       const runs = (runsData as RunRecord[]) ?? []
       const itemsWithProgress = challenges.map((challenge) => getChallengeProgress(challenge, runs))
+
+      const completedNow = itemsWithProgress.filter(
+        (challenge) => challenge.isCompleted && !completedChallengeIds.has(challenge.id)
+      )
+
+      if (completedNow.length > 0) {
+        await Promise.all(
+          completedNow.map((challenge) =>
+            awardChallengeCompletion(user.id, challenge.id, Number(challenge.xp_reward ?? 0))
+          )
+        )
+      }
 
       setItems(itemsWithProgress)
       setLoading(false)
@@ -126,6 +144,9 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                     <h2 className="text-lg font-semibold">{item.title}</h2>
                     {item.description ? (
                       <p className="mt-1 text-sm text-gray-600">{item.description}</p>
+                    ) : null}
+                    {item.xp_reward ? (
+                      <p className="mt-3 text-sm font-medium text-green-700">+{item.xp_reward} XP</p>
                     ) : null}
                     {item.progressItems.length > 0 ? (
                       <div className="mt-4 space-y-4">

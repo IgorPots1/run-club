@@ -2,9 +2,9 @@ create table if not exists public.challenges (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   description text,
-  start_date date not null,
-  end_date date not null,
-  status text not null default 'active' check (status in ('active', 'completed')),
+  goal_km int4,
+  goal_runs int4,
+  xp_reward int4 default 0,
   created_at timestamptz not null default timezone('utc', now())
 );
 

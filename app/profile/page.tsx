@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
@@ -53,9 +54,10 @@ export default function ProfilePage() {
       .from('runs')
       .select('xp, distance_km')
       .eq('user_id', user.id)
-      .then(({ data: runs }) => {
+      .then(async ({ data: runs }) => {
         if (!runs) return
-        setTotalXp(runs.reduce((s, r) => s + r.xp, 0))
+        const challengeXpByUser = await loadChallengeXpByUser()
+        setTotalXp(runs.reduce((s, r) => s + r.xp, 0) + (challengeXpByUser[user.id] ?? 0))
         setTotalKm(runs.reduce((s, r) => s + r.distance_km, 0))
         setRunsCount(runs.length)
       })

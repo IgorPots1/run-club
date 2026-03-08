@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '@/lib/xp'
 
 type LeaderboardRow = {
@@ -23,8 +24,11 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
 
   useEffect(() => {
     async function load() {
-      const { data: runs } = await supabase.from('runs').select('user_id, xp, distance_km')
-      const { data: profiles } = await supabase.from('profiles').select('id, email, name, avatar_url')
+      const [{ data: runs }, { data: profiles }, challengeXpByUser] = await Promise.all([
+        supabase.from('runs').select('user_id, xp, distance_km'),
+        supabase.from('profiles').select('id, email, name, avatar_url'),
+        loadChallengeXpByUser(),
+      ])
       const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
       const byUserId: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
 
@@ -34,6 +38,11 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         byUserId[id].total_xp += run.xp
         byUserId[id].total_km += run.distance_km
         byUserId[id].runs_count += 1
+      }
+
+      for (const [userId, xp] of Object.entries(challengeXpByUser)) {
+        if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
+        byUserId[userId].total_xp += xp
       }
 
       const list = Object.entries(byUserId)
