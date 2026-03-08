@@ -1,27 +1,14 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import RunLikeControl from '@/components/RunLikeControl'
+import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
 import { toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP } from '../../lib/xp'
-
-function formatRunDate(date: string) {
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-  })
-}
-
-function getInitials(label: string) {
-  const trimmed = label.trim()
-  return (trimmed[0] ?? '?').toUpperCase()
-}
 
 export default function FeedPage() {
   const router = useRouter()
@@ -131,47 +118,19 @@ export default function FeedPage() {
             </div>
           ) : (
             items.map((item) => (
-              <div key={item.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    {item.avatar_url ? (
-                      <Image
-                        src={item.avatar_url}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-600">
-                        {getInitials(item.displayName)}
-                      </span>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-gray-900">{item.displayName}</p>
-                      <p className="text-sm text-gray-500">Уровень {getLevelFromXP(item.totalXp).level}</p>
-                    </div>
-                  </div>
-                  <p className="shrink-0 text-sm text-gray-500">{formatRunDate(item.created_at)}</p>
-                </div>
-
-                <div className="mt-4">
-                  <p className="text-lg font-semibold text-gray-900">🏃 {item.title} - {item.distance_km} км</p>
-                </div>
-
-                <div className="mt-3">
-                  <p className="text-sm font-semibold text-amber-600">⚡ +{item.xp} XP</p>
-                </div>
-
-                <div className="mt-4">
-                  <RunLikeControl
-                    likesCount={item.likesCount}
-                    likedByMe={item.likedByMe}
-                    pending={pendingRunIds.includes(item.id)}
-                    onToggle={() => handleLikeToggle(item.id)}
-                  />
-                </div>
-              </div>
+              <WorkoutFeedCard
+                key={item.id}
+                rawTitle={item.title}
+                xp={item.xp}
+                createdAt={item.created_at}
+                displayName={item.displayName}
+                avatarUrl={item.avatar_url}
+                subtitle={`Уровень ${getLevelFromXP(item.totalXp).level}`}
+                likesCount={item.likesCount}
+                likedByMe={item.likedByMe}
+                pending={pendingRunIds.includes(item.id)}
+                onToggleLike={() => handleLikeToggle(item.id)}
+              />
             ))
           )}
         </div>

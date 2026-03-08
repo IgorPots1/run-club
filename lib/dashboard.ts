@@ -128,11 +128,12 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
 
   return ((runs as RunRow[] | null) ?? []).map((run) => {
     const profile = profileById[run.user_id]
+    const mappedTitle = run.title || 'Тренировка'
 
     return {
       id: run.id,
       user_id: run.user_id,
-      title: run.title || 'Тренировка',
+      title: mappedTitle,
       distance_km: Number(run.distance_km ?? 0),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
@@ -196,11 +197,12 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
 
   return ((runs as RunRow[] | null) ?? []).map((run) => {
     const profile = profileById[run.user_id]
+    const mappedTitle = run.title || 'Тренировка'
 
     return {
       id: run.id,
       user_id: run.user_id,
-      title: run.title || 'Тренировка',
+      title: mappedTitle,
       distance_km: Number(run.distance_km ?? 0),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,

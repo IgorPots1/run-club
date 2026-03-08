@@ -20,6 +20,25 @@ type Run = {
   likedByMe: boolean
 }
 
+function buildRunTitle(rawTitle: string, rawDistanceKm: string) {
+  const baseTitle = rawTitle.trim()
+  const distanceLabel = rawDistanceKm.trim()
+
+  if (baseTitle && distanceLabel) {
+    return `${baseTitle} - ${distanceLabel} км`
+  }
+
+  if (!baseTitle && distanceLabel) {
+    return `${distanceLabel} км`
+  }
+
+  if (baseTitle) {
+    return baseTitle
+  }
+
+  return 'Тренировка'
+}
+
 export default function RunsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -96,7 +115,7 @@ export default function RunsPage() {
     const currentUser = user
     setError('')
     setSubmitting(true)
-    const runTitle = title.trim() || 'Тренировка'
+    const runTitle = buildRunTitle(title, distanceKm)
     const d = Number(distanceKm)
     const dur = Number(durationMinutes)
     const xp = 50 + d * 10

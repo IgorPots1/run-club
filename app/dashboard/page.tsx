@@ -3,10 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import Image from 'next/image'
 import useSWR from 'swr'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
-import RunLikeControl from '@/components/RunLikeControl'
+import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { toggleRunLike } from '@/lib/run-likes'
@@ -27,18 +26,6 @@ function getLevelProgress(totalXp: number) {
     xpToNextLevel,
     progressPercent: Math.min((currentLevelXp / 200) * 100, 100),
   }
-}
-
-function formatRunDate(date: string) {
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-  })
-}
-
-function getInitials(label: string) {
-  const trimmed = label.trim()
-  return (trimmed[0] ?? '?').toUpperCase()
 }
 
 export default function DashboardPage() {
@@ -291,46 +278,18 @@ export default function DashboardPage() {
               </div>
             ) : (
               runs.map((run) => (
-                <div key={run.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      {run.avatar_url ? (
-                        <Image
-                          src={run.avatar_url}
-                          alt=""
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-600">
-                          {getInitials(run.displayName)}
-                        </span>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-gray-900">{run.displayName}</p>
-                      </div>
-                    </div>
-                    <p className="shrink-0 text-sm text-gray-500">{formatRunDate(run.created_at)}</p>
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="text-lg font-semibold text-gray-900">🏃 {run.title} - {run.distance_km} км</p>
-                  </div>
-
-                  <div className="mt-3">
-                    <p className="text-sm font-semibold text-amber-600">⚡ +{run.xp} XP</p>
-                  </div>
-
-                  <div className="mt-4">
-                    <RunLikeControl
-                      likesCount={run.likesCount}
-                      likedByMe={run.likedByMe}
-                      pending={pendingRunIds.includes(run.id)}
-                      onToggle={() => handleLikeToggle(run.id)}
-                    />
-                  </div>
-                </div>
+                <WorkoutFeedCard
+                  key={run.id}
+                  rawTitle={run.title}
+                  xp={run.xp}
+                  createdAt={run.created_at}
+                  displayName={run.displayName}
+                  avatarUrl={run.avatar_url}
+                  likesCount={run.likesCount}
+                  likedByMe={run.likedByMe}
+                  pending={pendingRunIds.includes(run.id)}
+                  onToggleLike={() => handleLikeToggle(run.id)}
+                />
               ))
             )}
           </div>
