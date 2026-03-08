@@ -28,6 +28,21 @@ type ProgressStats = {
   totalXp: number
 }
 
+function getLevelProgress(totalXp: number) {
+  const level = Math.floor(totalXp / 200) + 1
+  const nextLevelXp = level * 200
+  const currentLevelXp = totalXp - (level - 1) * 200
+  const xpToNextLevel = nextLevelXp - totalXp
+
+  return {
+    level,
+    nextLevelXp,
+    currentLevelXp,
+    xpToNextLevel,
+    progressPercent: Math.min((currentLevelXp / 200) * 100, 100),
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -186,6 +201,8 @@ export default function DashboardPage() {
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   if (!user) return null
 
+  const levelProgress = stats ? getLevelProgress(stats.totalXp) : null
+
   return (
     <main className="min-h-screen">
       <div className="p-4">
@@ -233,6 +250,19 @@ export default function DashboardPage() {
             <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>
               <p className="mt-3 text-sm text-gray-600">Все челленджи уже выполнены</p>
+            </div>
+          ) : null}
+          {levelProgress ? (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">🏆 Уровень {levelProgress.level}</p>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full bg-black"
+                  style={{ width: `${levelProgress.progressPercent}%` }}
+                />
+              </div>
+              <p className="mt-3 text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
+              <p className="mt-1 text-sm text-gray-600">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
             </div>
           ) : null}
           <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
