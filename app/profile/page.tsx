@@ -106,9 +106,9 @@ export default function ProfilePage() {
     setUploading(true)
 
     try {
-      const path = `${user.id}/avatar-${Date.now()}.png`
+      const path = `${user.id}/avatar-${Date.now()}.jpg`
       await supabase.storage.from('avatars').upload(path, blob, {
-        contentType: 'image/png',
+        contentType: 'image/jpeg',
       })
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)

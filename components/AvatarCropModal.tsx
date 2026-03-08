@@ -11,6 +11,8 @@ type AvatarCropModalProps = {
 }
 
 const OUTPUT_SIZE = 512
+const OUTPUT_TYPE = 'image/jpeg'
+const OUTPUT_QUALITY = 0.8
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -34,6 +36,10 @@ async function createCroppedAvatar(imageSrc: string, croppedAreaPixels: Area) {
   canvas.height = OUTPUT_SIZE
 
   context.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
   context.save()
   context.beginPath()
   context.arc(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, 0, Math.PI * 2)
@@ -60,7 +66,7 @@ async function createCroppedAvatar(imageSrc: string, croppedAreaPixels: Area) {
       }
 
       reject(new Error('Не удалось сохранить аватар'))
-    }, 'image/png')
+    }, OUTPUT_TYPE, OUTPUT_QUALITY)
   })
 }
 
