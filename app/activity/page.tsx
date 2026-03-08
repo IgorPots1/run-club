@@ -74,6 +74,8 @@ export default function ActivityPage() {
   )
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
+  const mobileXAxisInterval =
+    period === 'month' ? 4 : period === 'all' ? 2 : period === 'year' ? 0 : 0
 
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
@@ -84,12 +86,12 @@ export default function ActivityPage() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-7xl p-4 md:px-8 md:py-6">
-        <div className="mb-6 md:mb-8">
+        <div className="mb-5 md:mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Активность</h1>
           <p className="mt-1 text-sm text-gray-500">Твоя беговая статистика за выбранный период.</p>
         </div>
 
-        <div className="mb-6 flex gap-2 overflow-x-auto pb-1 md:mb-8 md:flex-wrap md:gap-2.5 md:overflow-visible">
+        <div className="mb-5 flex gap-2 overflow-x-auto pb-1 md:mb-8 md:flex-wrap md:gap-2.5 md:overflow-visible">
           {PERIOD_OPTIONS.map((option) => (
             <button
               key={option.id}
@@ -106,66 +108,69 @@ export default function ActivityPage() {
 
         {isLoading && !runs ? (
           <>
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-5">
               <div className="skeleton-line h-4 w-28" />
-              <div className="mt-4 skeleton-line h-10 w-40" />
-              <div className="mt-5 skeleton-line h-4 w-32" />
+              <div className="mt-3 skeleton-line h-9 w-36" />
+              <div className="mt-4 skeleton-line h-4 w-28" />
               <div className="mt-2 skeleton-line h-7 w-24" />
             </div>
-            <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+            <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-5">
               <div className="skeleton-line h-4 w-24" />
-              <div className="mt-4 skeleton-line h-56 w-full" />
+              <div className="mt-3 skeleton-line h-52 w-full md:h-56" />
             </div>
           </>
         ) : error ? (
-          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-5">
             <p className="text-sm text-red-600">Не удалось загрузить активность</p>
           </div>
         ) : runs && runs.length === 0 ? (
-          <div className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-black/5">
+          <div className="rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-black/5 md:p-6">
             <p className="text-sm text-gray-500">Пока нет тренировок для статистики</p>
           </div>
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-[320px_minmax(0,1fr)] md:items-start md:gap-5">
-              <div className="min-w-0 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 md:sticky md:top-6 md:p-5">
+              <div className="min-w-0 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:sticky md:top-6 md:p-5">
                 <p className="text-sm font-medium text-gray-500">Общая дистанция</p>
-                <p className="mt-2.5 text-4xl font-bold tracking-tight text-gray-900">{formatDistance(summary.totalDistance)} км</p>
-                <div className="mt-4 border-t pt-3.5">
+                <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 md:mt-2.5 md:text-4xl">
+                  {formatDistance(summary.totalDistance)} км
+                </p>
+                <div className="mt-3.5 border-t pt-3 md:mt-4 md:pt-3.5">
                   <p className="text-sm text-gray-500">Тренировки</p>
                   <p className="mt-1 text-2xl font-semibold text-gray-900">{summary.totalWorkouts}</p>
                 </div>
               </div>
 
-              <div className="min-w-0 overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 md:p-5">
+              <div className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-5">
                 <p className="text-sm font-medium text-gray-500">График дистанции</p>
                 {summary.chartData.every((item) => item.distance === 0) ? (
                   <div className="mt-6 text-center text-sm text-gray-500">Нет данных за выбранный период</div>
                 ) : (
-                  <div className="mt-3.5 h-[250px] w-full md:h-[300px]">
+                  <div className="mt-3 h-[220px] w-full md:mt-3.5 md:h-[300px]">
                     <div className="h-full w-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={summary.chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                        <BarChart data={summary.chartData} margin={{ top: 6, right: 2, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis
                             dataKey="label"
                             tickLine={false}
                             axisLine={false}
+                            interval={mobileXAxisInterval}
                             minTickGap={12}
-                            tickMargin={8}
-                            tick={{ fill: '#6b7280', fontSize: 12 }}
+                            tickMargin={6}
+                            tick={{ fill: '#6b7280', fontSize: 11 }}
                           />
                           <YAxis
                             tickLine={false}
                             axisLine={false}
-                            tick={{ fill: '#6b7280', fontSize: 12 }}
-                            width={28}
+                            tick={{ fill: '#6b7280', fontSize: 11 }}
+                            width={26}
                           />
                           <Tooltip
                             cursor={{ fill: '#f9fafb' }}
                             content={<ActivityChartTooltip />}
                           />
-                          <Bar dataKey="distance" fill="#111827" radius={[8, 8, 0, 0]} maxBarSize={24} />
+                          <Bar dataKey="distance" fill="#111827" radius={[8, 8, 0, 0]} maxBarSize={20} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
