@@ -8,6 +8,7 @@ import type { User } from '@supabase/supabase-js'
 type Run = {
   id: string
   user_id: string
+  title: string
   distance_km: number
   duration_minutes: number
   xp: number
@@ -19,6 +20,8 @@ export default function RunsPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<Run[]>([])
+  const [title, setTitle] = useState('')
+  const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10))
   const [distanceKm, setDistanceKm] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -55,15 +58,20 @@ export default function RunsPage() {
     e.preventDefault()
     if (!user) return
     setSubmitting(true)
+    const runTitle = title.trim() || 'Run'
     const d = Number(distanceKm)
     const dur = Number(durationMinutes)
     const xp = 20 + d * 5
     await supabase.from('runs').insert({
       user_id: user.id,
+      title: runTitle,
       distance_km: d,
       duration_minutes: dur,
+      created_at: runDate,
       xp
     })
+    setTitle('')
+    setRunDate(new Date().toISOString().slice(0, 10))
     setDistanceKm('')
     setDurationMinutes('')
     await fetchRuns()
@@ -82,6 +90,28 @@ export default function RunsPage() {
     <main className="min-h-screen p-4">
       <h1 className="text-xl font-semibold mb-4">Runs</h1>
       <form onSubmit={handleSubmit} className="mb-8 space-y-3 max-w-sm">
+        <div>
+          <label htmlFor="title" className="block text-sm mb-1">Run title</label>
+          <input
+            id="title"
+            type="text"
+            placeholder="Morning run"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full border rounded px-3 py-2"
+          />
+        </div>
+        <div>
+          <label htmlFor="run_date" className="block text-sm mb-1">Run date</label>
+          <input
+            id="run_date"
+            type="date"
+            value={runDate}
+            onChange={(e) => setRunDate(e.target.value)}
+            required
+            className="w-full border rounded px-3 py-2"
+          />
+        </div>
         <div>
           <label htmlFor="distance_km" className="block text-sm mb-1">Distance (km)</label>
           <input
@@ -115,6 +145,7 @@ export default function RunsPage() {
         {runs.map((run) => (
           <div key={run.id} className="border rounded p-3 flex justify-between items-center">
             <div>
+              <p className="font-medium">{run.title || 'Run'}</p>
               <p>{run.distance_km} km · {run.duration_minutes} min · {run.xp} xp</p>
               <p className="text-sm text-gray-600">{new Date(run.created_at).toLocaleDateString()}</p>
             </div>
