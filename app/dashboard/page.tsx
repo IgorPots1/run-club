@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import RunLikeControl from '@/components/RunLikeControl'
+import { getChallengeProgress, type Challenge, type ChallengeWithProgress, type RunRecord } from '@/lib/challenges'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
+import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -20,11 +22,20 @@ type RunItem = {
   likedByMe: boolean
 }
 
+type ProgressStats = {
+  totalKmThisMonth: number
+  runsCount: number
+  totalXp: number
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<RunItem[]>([])
+  const [stats, setStats] = useState<ProgressStats | null>(null)
+  const [activeChallenge, setActiveChallenge] = useState<ChallengeWithProgress | null>(null)
+  const [allChallengesCompleted, setAllChallengesCompleted] = useState(false)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [error, setError] = useState('')
 
@@ -40,12 +51,19 @@ export default function DashboardPage() {
     if (!user) return
     const currentUser = user
 
+    function getMonthStart(date: Date) {
+      return new Date(date.getFullYear(), date.getMonth(), 1)
+    }
+
     async function loadRuns() {
       try {
         const [
           { data: runs, error: runsError },
           { data: profiles, error: profilesError },
           { likesByRunId, likedRunIds },
+          { data: myRuns, error: myRunsError },
+          { data: challenges, error: challengesError },
+          challengeXpByUser,
         ] = await Promise.all([
           supabase
             .from('runs')
@@ -53,9 +71,19 @@ export default function DashboardPage() {
             .order('created_at', { ascending: false }),
           supabase.from('profiles').select('id, name, email, avatar_url'),
           loadRunLikesSummary(currentUser.id),
+          supabase
+            .from('runs')
+            .select('distance_km, xp, created_at')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('challenges')
+            .select('id, title, description, goal_km, goal_runs, xp_reward')
+            .order('created_at', { ascending: true }),
+          loadChallengeXpByUser(),
         ])
 
-        if (runsError || profilesError) {
+        if (runsError || profilesError || myRunsError || challengesError) {
           setError('Не удалось загрузить тренировки')
           return
         }
@@ -75,6 +103,31 @@ export default function DashboardPage() {
             likedByMe: likedRunIds.has(run.id),
           }
         })
+
+        const currentUserRuns = (myRuns as RunRecord[] | null) ?? []
+        const monthStart = getMonthStart(new Date()).getTime()
+        const totalKmThisMonth = currentUserRuns.reduce((sum, run) => {
+          const runTime = new Date(run.created_at).getTime()
+          return runTime >= monthStart ? sum + Number(run.distance_km ?? 0) : sum
+        }, 0)
+        const runsCount = currentUserRuns.length
+        const totalRunXp = ((myRuns as ({ xp: number | null } & RunRecord)[] | null) ?? []).reduce(
+          (sum, run) => sum + Number(run.xp ?? 0),
+          0
+        )
+
+        setStats({
+          totalKmThisMonth,
+          runsCount,
+          totalXp: totalRunXp + (challengeXpByUser[currentUser.id] ?? 0),
+        })
+
+        const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) =>
+          getChallengeProgress(challenge, currentUserRuns)
+        )
+        const firstActiveChallenge = challengeItems.find((challenge) => !challenge.isCompleted) ?? null
+        setActiveChallenge(firstActiveChallenge)
+        setAllChallengesCompleted(challengeItems.length > 0 && !firstActiveChallenge)
 
         setRuns(items)
       } catch {
@@ -148,6 +201,40 @@ export default function DashboardPage() {
           >
             ➕ Добавить тренировку
           </Link>
+          {stats ? (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">🏃 Твой прогресс</p>
+              <div className="mt-3 space-y-1">
+                <p className="text-xl font-semibold">{stats.totalKmThisMonth.toFixed(1)} км в этом месяце</p>
+                <p className="text-sm text-gray-600">{stats.runsCount} тренировок</p>
+                <p className="text-sm text-gray-600">+{stats.totalXp} XP</p>
+              </div>
+            </div>
+          ) : null}
+          {activeChallenge ? (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>
+              <h2 className="mt-3 text-lg font-semibold">{activeChallenge.title}</h2>
+              {activeChallenge.progressItems[0] ? (
+                <div className="mt-3">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full bg-black"
+                      style={{ width: `${activeChallenge.progressItems[0].percent}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-gray-600">Прогресс: {activeChallenge.progressItems[0].label}</p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-600">Прогресс появится после первой тренировки</p>
+              )}
+            </div>
+          ) : allChallengesCompleted ? (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>
+              <p className="mt-3 text-sm text-gray-600">Все челленджи уже выполнены</p>
+            </div>
+          ) : null}
           <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
           {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
           <div className="space-y-3">
