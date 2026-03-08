@@ -8,25 +8,24 @@ type Challenge = {
   id: string
   title: string
   description: string | null
-  start_date: string
-  end_date: string
-  status: 'active' | 'completed'
+  goal_km: number | null
+  goal_runs: number | null
 }
 
 type ChallengesSectionProps = {
   showTitle?: boolean
 }
 
-function formatDate(date: string) {
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
+function getGoalLabel(challenge: Challenge) {
+  if (challenge.goal_km != null) {
+    return `Цель: ${challenge.goal_km} км`
+  }
 
-function getStatusLabel(status: Challenge['status']) {
-  return status === 'completed' ? 'Завершен' : 'Активный'
+  if (challenge.goal_runs != null) {
+    return `Цель: ${challenge.goal_runs} тренировок`
+  }
+
+  return null
 }
 
 export default function ChallengesSection({ showTitle = true }: ChallengesSectionProps) {
@@ -48,8 +47,8 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
 
       const { data: challengesData, error } = await supabase
         .from('challenges')
-        .select('id, title, description, start_date, end_date, status')
-        .order('start_date', { ascending: true })
+        .select('id, title, description, goal_km, goal_runs')
+        .order('created_at', { ascending: true })
 
       if (error) {
         setError('Не удалось загрузить челленджи')
@@ -75,35 +74,19 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           <div className="space-y-3 mb-4">
             {items.length === 0 ? (
               <div className="mt-10 text-center text-gray-500">
-                <p>No challenges yet</p>
+                <p>Челленджей пока нет</p>
               </div>
             ) : (
               items.map((item) => (
                 <div key={item.id} className="rounded-xl border bg-white p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="text-lg font-semibold">{item.title}</h2>
-                      {item.description ? (
-                        <p className="mt-1 text-sm text-gray-600">{item.description}</p>
-                      ) : null}
-                    </div>
-
-                    <div className="text-right">
-                      <span
-                        className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
-                          item.status === 'completed'
-                            ? 'bg-gray-100 text-gray-700'
-                            : 'bg-green-100 text-green-700'
-                        }`}
-                      >
-                        {getStatusLabel(item.status)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-1 text-sm text-gray-600">
-                    <p>Старт: {formatDate(item.start_date)}</p>
-                    <p>Финиш: {formatDate(item.end_date)}</p>
+                  <div>
+                    <h2 className="text-lg font-semibold">{item.title}</h2>
+                    {item.description ? (
+                      <p className="mt-1 text-sm text-gray-600">{item.description}</p>
+                    ) : null}
+                    {getGoalLabel(item) ? (
+                      <p className="mt-4 text-sm text-gray-600">{getGoalLabel(item)}</p>
+                    ) : null}
                   </div>
                 </div>
               ))
