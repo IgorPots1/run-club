@@ -17,55 +17,41 @@ type RunRecord = {
   created_at: string
 }
 
+type ProgressMetric = {
+  label: string
+  percent: number
+}
+
 type ChallengeWithProgress = Challenge & {
-  progressLabel: string | null
-  progressPercent: number
+  progressItems: ProgressMetric[]
 }
 
 type ChallengesSectionProps = {
   showTitle?: boolean
 }
 
-function getGoalLabel(challenge: Challenge) {
-  if (challenge.goal_km != null) {
-    return `Цель: ${challenge.goal_km} км`
-  }
-
-  if (challenge.goal_runs != null) {
-    return `Цель: ${challenge.goal_runs} тренировок`
-  }
-
-  return null
-}
-
 function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): ChallengeWithProgress {
   const totalKm = runs.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0)
   const totalRuns = runs.length
+  const progressItems: ProgressMetric[] = []
 
-  if (challenge.goal_km != null) {
-    const progressPercent = challenge.goal_km > 0 ? Math.min((totalKm / challenge.goal_km) * 100, 100) : 0
-
-    return {
-      ...challenge,
-      progressLabel: `Прогресс: ${totalKm.toFixed(1)} / ${challenge.goal_km} км`,
-      progressPercent,
-    }
+  if (challenge.goal_km != null && challenge.goal_km > 0) {
+    progressItems.push({
+      label: `${totalKm.toFixed(1)} / ${challenge.goal_km} км`,
+      percent: Math.min((totalKm / challenge.goal_km) * 100, 100),
+    })
   }
 
-  if (challenge.goal_runs != null) {
-    const progressPercent = challenge.goal_runs > 0 ? Math.min((totalRuns / challenge.goal_runs) * 100, 100) : 0
-
-    return {
-      ...challenge,
-      progressLabel: `Прогресс: ${totalRuns} / ${challenge.goal_runs} тренировок`,
-      progressPercent,
-    }
+  if (challenge.goal_runs != null && challenge.goal_runs > 0) {
+    progressItems.push({
+      label: `${totalRuns} / ${challenge.goal_runs} тренировок`,
+      percent: Math.min((totalRuns / challenge.goal_runs) * 100, 100),
+    })
   }
 
   return {
     ...challenge,
-    progressLabel: null,
-    progressPercent: 0,
+    progressItems,
   }
 }
 
@@ -138,19 +124,20 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                     {item.description ? (
                       <p className="mt-1 text-sm text-gray-600">{item.description}</p>
                     ) : null}
-                    {getGoalLabel(item) ? (
-                      <p className="mt-4 text-sm text-gray-600">{getGoalLabel(item)}</p>
-                    ) : null}
-                    {item.progressLabel ? (
-                      <>
-                        <p className="mt-2 text-sm text-gray-600">{item.progressLabel}</p>
-                        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                          <div
-                            className="h-full rounded-full bg-black"
-                            style={{ width: `${item.progressPercent}%` }}
-                          />
-                        </div>
-                      </>
+                    {item.progressItems.length > 0 ? (
+                      <div className="mt-4 space-y-4">
+                        {item.progressItems.map((progressItem) => (
+                          <div key={progressItem.label}>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                              <div
+                                className="h-full rounded-full bg-black"
+                                style={{ width: `${progressItem.percent}%` }}
+                              />
+                            </div>
+                            <p className="mt-2 text-sm text-gray-600">Прогресс: {progressItem.label}</p>
+                          </div>
+                        ))}
+                      </div>
                     ) : null}
                   </div>
                 </div>
