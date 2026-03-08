@@ -1,5 +1,6 @@
 'use client'
 
+import { Activity, Dumbbell, Home, User, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -28,67 +29,31 @@ export default function MobileTabBar() {
       href: '/dashboard',
       label: 'Главная',
       isActive: pathname === '/dashboard',
-      icon: (
-        <TabIcon>
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M3 10.5 12 4l9 6.5" />
-            <path d="M5 9.5V20h14V9.5" />
-          </svg>
-        </TabIcon>
-      ),
+      icon: <TabIcon><Home className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
       href: '/activity',
       label: 'Актив.',
       isActive: pathname === '/activity',
-      icon: (
-        <TabIcon>
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M4 14h3l2.5-5 4 10 2.5-5H20" />
-          </svg>
-        </TabIcon>
-      ),
+      icon: <TabIcon><Activity className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
       href: '/runs',
       label: 'Трен.',
       isActive: pathname === '/runs',
-      icon: (
-        <TabIcon>
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M13 5.5 9.5 9l2 2 2.5-2.5L17 11l-2 2" />
-            <path d="M11 11 7 15M15 9l4 4" />
-          </svg>
-        </TabIcon>
-      ),
+      icon: <TabIcon><Dumbbell className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
       href: '/club',
       label: 'Клуб',
       isActive: isClubRoute,
-      icon: (
-        <TabIcon>
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <circle cx="9" cy="9" r="3" />
-            <circle cx="17" cy="10" r="2.5" />
-            <path d="M4.5 19a4.5 4.5 0 0 1 9 0" />
-            <path d="M14 18a3.5 3.5 0 0 1 6 0" />
-          </svg>
-        </TabIcon>
-      ),
+      icon: <TabIcon><Users className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
       href: '/profile',
       label: 'Профиль',
       isActive: pathname === '/profile',
-      icon: (
-        <TabIcon>
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <circle cx="12" cy="8" r="3.5" />
-            <path d="M5 19a7 7 0 0 1 14 0" />
-          </svg>
-        </TabIcon>
-      ),
+      icon: <TabIcon><User className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
   ]
 
@@ -102,8 +67,8 @@ export default function MobileTabBar() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`mx-0.5 flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors ${
-              tab.isActive ? 'bg-gray-100 text-black' : 'text-gray-500'
+            className={`mx-0.5 flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors ${
+              tab.isActive ? 'text-black' : 'text-gray-500'
             }`}
           >
             {tab.icon}

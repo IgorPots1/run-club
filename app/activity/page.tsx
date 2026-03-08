@@ -24,7 +24,7 @@ const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
 ]
 
 function formatDistance(value: number) {
-  return value.toFixed(1)
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
 type ActivityChartTooltipProps = {
