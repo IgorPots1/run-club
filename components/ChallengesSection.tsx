@@ -12,6 +12,16 @@ type Challenge = {
   goal_runs: number | null
 }
 
+type RunRecord = {
+  distance_km: number | null
+  created_at: string
+}
+
+type ChallengeWithProgress = Challenge & {
+  progressLabel: string | null
+  progressPercent: number
+}
+
 type ChallengesSectionProps = {
   showTitle?: boolean
 }
@@ -28,9 +38,40 @@ function getGoalLabel(challenge: Challenge) {
   return null
 }
 
+function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): ChallengeWithProgress {
+  const totalKm = runs.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0)
+  const totalRuns = runs.length
+
+  if (challenge.goal_km != null) {
+    const progressPercent = challenge.goal_km > 0 ? Math.min((totalKm / challenge.goal_km) * 100, 100) : 0
+
+    return {
+      ...challenge,
+      progressLabel: `Прогресс: ${totalKm.toFixed(1)} / ${challenge.goal_km} км`,
+      progressPercent,
+    }
+  }
+
+  if (challenge.goal_runs != null) {
+    const progressPercent = challenge.goal_runs > 0 ? Math.min((totalRuns / challenge.goal_runs) * 100, 100) : 0
+
+    return {
+      ...challenge,
+      progressLabel: `Прогресс: ${totalRuns} / ${challenge.goal_runs} тренировок`,
+      progressPercent,
+    }
+  }
+
+  return {
+    ...challenge,
+    progressLabel: null,
+    progressPercent: 0,
+  }
+}
+
 export default function ChallengesSection({ showTitle = true }: ChallengesSectionProps) {
   const router = useRouter()
-  const [items, setItems] = useState<Challenge[]>([])
+  const [items, setItems] = useState<ChallengeWithProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -45,18 +86,31 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
         return
       }
 
-      const { data: challengesData, error } = await supabase
-        .from('challenges')
-        .select('id, title, description, goal_km, goal_runs')
-        .order('created_at', { ascending: true })
+      const [
+        { data: challengesData, error: challengesError },
+        { data: runsData, error: runsError },
+      ] = await Promise.all([
+        supabase
+          .from('challenges')
+          .select('id, title, description, goal_km, goal_runs')
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('runs')
+          .select('distance_km, created_at')
+          .eq('user_id', user.id),
+      ])
 
-      if (error) {
+      if (challengesError || runsError) {
         setError('Не удалось загрузить челленджи')
         setLoading(false)
         return
       }
 
-      setItems((challengesData as Challenge[]) ?? [])
+      const challenges = (challengesData as Challenge[]) ?? []
+      const runs = (runsData as RunRecord[]) ?? []
+      const itemsWithProgress = challenges.map((challenge) => getChallengeProgress(challenge, runs))
+
+      setItems(itemsWithProgress)
       setLoading(false)
     }
 
@@ -86,6 +140,17 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                     ) : null}
                     {getGoalLabel(item) ? (
                       <p className="mt-4 text-sm text-gray-600">{getGoalLabel(item)}</p>
+                    ) : null}
+                    {item.progressLabel ? (
+                      <>
+                        <p className="mt-2 text-sm text-gray-600">{item.progressLabel}</p>
+                        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className="h-full rounded-full bg-black"
+                            style={{ width: `${item.progressPercent}%` }}
+                          />
+                        </div>
+                      </>
                     ) : null}
                   </div>
                 </div>
