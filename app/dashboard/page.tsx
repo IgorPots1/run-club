@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import RunLikeControl from '@/components/RunLikeControl'
-import { loadRunLikesSummary, toggleRunLike } from '@/lib/run-likes'
+import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -81,7 +81,14 @@ export default function DashboardPage() {
       }
     }
 
-    loadRuns()
+    void loadRuns()
+    const unsubscribe = subscribeToRunLikes(() => {
+      void loadRuns()
+    })
+
+    return () => {
+      unsubscribe()
+    }
   }, [user])
 
   async function handleLikeToggle(runId: string) {

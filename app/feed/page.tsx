@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import RunLikeControl from '@/components/RunLikeControl'
-import { loadRunLikesSummary, toggleRunLike } from '@/lib/run-likes'
+import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP } from '../../lib/xp'
 
@@ -91,7 +91,15 @@ export default function FeedPage() {
       }
       setLoading(false)
     }
-    load()
+
+    void load()
+    const unsubscribe = subscribeToRunLikes(() => {
+      void load()
+    })
+
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   async function handleLikeToggle(runId: string) {

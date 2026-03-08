@@ -36,3 +36,24 @@ export async function toggleRunLike(runId: string, currentUserId: string, likedB
     ? supabase.from('run_likes').delete().eq('run_id', runId).eq('user_id', currentUserId)
     : supabase.from('run_likes').insert({ run_id: runId, user_id: currentUserId })
 }
+
+export function subscribeToRunLikes(onChange: () => void) {
+  const channel = supabase
+    .channel(`run-likes-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'run_likes',
+      },
+      () => {
+        onChange()
+      }
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}

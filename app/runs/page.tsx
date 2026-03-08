@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import RunLikeControl from '@/components/RunLikeControl'
-import { loadRunLikesSummary, toggleRunLike } from '@/lib/run-likes'
+import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -79,7 +79,14 @@ export default function RunsPage() {
       await fetchRuns(user)
     }
 
-    loadRuns()
+    void loadRuns()
+    const unsubscribe = subscribeToRunLikes(() => {
+      void loadRuns()
+    })
+
+    return () => {
+      unsubscribe()
+    }
   }, [user])
 
   async function handleSubmit(e: React.FormEvent) {
