@@ -38,6 +38,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return
+    const currentUser = user
 
     async function loadRuns() {
       try {
@@ -51,7 +52,7 @@ export default function DashboardPage() {
             .select('id, user_id, title, distance_km, xp, created_at')
             .order('created_at', { ascending: false }),
           supabase.from('profiles').select('id, name, email, avatar_url'),
-          loadRunLikesSummary(user.id),
+          loadRunLikesSummary(currentUser.id),
         ])
 
         if (runsError || profilesError) {

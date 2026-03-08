@@ -74,9 +74,10 @@ export default function RunsPage() {
 
   useEffect(() => {
     if (!user) return
+    const currentUser = user
 
     async function loadRuns() {
-      await fetchRuns(user)
+      await fetchRuns(currentUser)
     }
 
     void loadRuns()
@@ -92,6 +93,7 @@ export default function RunsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!user) return
+    const currentUser = user
     setError('')
     setSubmitting(true)
     const runTitle = title.trim() || 'Тренировка'
@@ -118,7 +120,7 @@ export default function RunsPage() {
     setDistanceKm('')
     setDurationMinutes('')
     setError('')
-    await fetchRuns(user)
+    await fetchRuns(currentUser)
     setSubmitting(false)
   }
 
