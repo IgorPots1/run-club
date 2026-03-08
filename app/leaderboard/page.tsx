@@ -125,7 +125,6 @@ export default function LeaderboardPage() {
               </tbody>
             </table>
           </div>
-        </div>
         </>
       )}
       </div>
