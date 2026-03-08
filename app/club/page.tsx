@@ -22,7 +22,7 @@ export default function ClubPage() {
               activeTab === 'challenges' ? 'bg-white shadow-sm' : 'text-gray-600'
             }`}
           >
-            Challenges
+            Челленджи
           </button>
           <button
             type="button"
@@ -31,7 +31,7 @@ export default function ClubPage() {
               activeTab === 'leaderboard' ? 'bg-white shadow-sm' : 'text-gray-600'
             }`}
           >
-            Ranking
+            Рейтинг
           </button>
         </div>
       </div>
