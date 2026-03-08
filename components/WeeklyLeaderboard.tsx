@@ -25,11 +25,26 @@ export default function WeeklyLeaderboard({
       <p className="text-sm font-medium text-gray-500">🔥 Гонка недели</p>
 
       {loading ? (
-        <div className="mt-3 space-y-2">
-          <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
-          <div className="h-4 w-5/6 animate-pulse rounded bg-gray-100" />
-          <div className="h-4 w-4/6 animate-pulse rounded bg-gray-100" />
-        </div>
+        <>
+          <div className="mt-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="skeleton-line h-4 w-32" />
+              <div className="skeleton-line h-4 w-14" />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="skeleton-line h-4 w-28" />
+              <div className="skeleton-line h-4 w-14" />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="skeleton-line h-4 w-24" />
+              <div className="skeleton-line h-4 w-14" />
+            </div>
+          </div>
+          <div className="mt-4 border-t pt-3">
+            <div className="skeleton-line h-4 w-40" />
+            <div className="skeleton-line mt-2 h-4 w-32" />
+          </div>
+        </>
       ) : error ? (
         <p className="mt-3 text-sm text-gray-600">Не удалось загрузить рейтинг</p>
       ) : topRows.length === 0 ? (

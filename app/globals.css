@@ -29,3 +29,20 @@ html,
 body {
   min-height: 100%;
 }
+
+.skeleton-line {
+  border-radius: 9999px;
+  background: #f3f4f6;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
