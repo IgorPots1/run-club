@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import RunLikeControl from '@/components/RunLikeControl'
+import { loadRunLikesSummary, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP } from '../../lib/xp'
 
@@ -20,11 +22,6 @@ type RunWithProfile = {
   likedByMe: boolean
 }
 
-type RunLike = {
-  run_id: string
-  user_id: string
-}
-
 export default function FeedPage() {
   const router = useRouter()
   const [items, setItems] = useState<RunWithProfile[]>([])
@@ -35,64 +32,63 @@ export default function FeedPage() {
 
   useEffect(() => {
     async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
 
-      setCurrentUserId(user?.id ?? null)
+        setCurrentUserId(user?.id ?? null)
 
-      const [{ data: runs, error: runsError }, { data: profiles, error: profilesError }, { data: likes, error: likesError }] =
-        await Promise.all([
+        const [
+          { data: runs, error: runsError },
+          { data: profiles, error: profilesError },
+          { likesByRunId, likedRunIds },
+        ] = await Promise.all([
           supabase
             .from('runs')
             .select('id, user_id, title, distance_km, xp, created_at')
             .order('created_at', { ascending: false }),
           supabase.from('profiles').select('id, name, email, avatar_url'),
-          supabase.from('run_likes').select('run_id, user_id'),
+          loadRunLikesSummary(user?.id ?? null),
         ])
 
-      if (runsError || profilesError || likesError) {
+        if (runsError || profilesError) {
+          setError('Не удалось загрузить ленту')
+          setLoading(false)
+          return
+        }
+
+        const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+        const totalXpByUser: Record<string, number> = {}
+
+        for (const run of runs ?? []) {
+          totalXpByUser[run.user_id] = (totalXpByUser[run.user_id] ?? 0) + run.xp
+        }
+
+        const list = (runs ?? []).map((run) => {
+          const p = profileById[run.user_id]
+          const displayName = p?.name?.trim() || p?.email || '—'
+          const avatar_url = p?.avatar_url ?? null
+          const totalXp = totalXpByUser[run.user_id] ?? 0
+          return {
+            run_id: run.id,
+            user_id: run.user_id,
+            title: run.title || 'Тренировка',
+            distance_km: run.distance_km,
+            xp: run.xp,
+            created_at: run.created_at,
+            displayName,
+            avatar_url,
+            totalXp,
+            likesCount: likesByRunId[run.id] ?? 0,
+            likedByMe: likedRunIds.has(run.id),
+          }
+        })
+
+        setItems(list)
+      } catch {
         setError('Не удалось загрузить ленту')
-        setLoading(false)
-        return
       }
-
-      const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
-      const totalXpByUser: Record<string, number> = {}
-      const likesByRunId: Record<string, number> = {}
-      const likedRunIds = new Set<string>()
-
-      for (const run of runs ?? []) {
-        totalXpByUser[run.user_id] = (totalXpByUser[run.user_id] ?? 0) + run.xp
-      }
-
-      for (const like of (likes as RunLike[] | null) ?? []) {
-        likesByRunId[like.run_id] = (likesByRunId[like.run_id] ?? 0) + 1
-        if (like.user_id === user?.id) {
-          likedRunIds.add(like.run_id)
-        }
-      }
-
-      const list = (runs ?? []).map((run) => {
-        const p = profileById[run.user_id]
-        const displayName = p?.name?.trim() || p?.email || '—'
-        const avatar_url = p?.avatar_url ?? null
-        const totalXp = totalXpByUser[run.user_id] ?? 0
-        return {
-          run_id: run.id,
-          user_id: run.user_id,
-          title: run.title || 'Тренировка',
-          distance_km: run.distance_km,
-          xp: run.xp,
-          created_at: run.created_at,
-          displayName,
-          avatar_url,
-          totalXp,
-          likesCount: likesByRunId[run.id] ?? 0,
-          likedByMe: likedRunIds.has(run.id),
-        }
-      })
-      setItems(list)
       setLoading(false)
     }
     load()
@@ -126,9 +122,7 @@ export default function FeedPage() {
       )
     )
 
-    const { error: likeError } = wasLiked
-      ? await supabase.from('run_likes').delete().eq('run_id', runId).eq('user_id', currentUserId)
-      : await supabase.from('run_likes').insert({ run_id: runId, user_id: currentUserId })
+    const { error: likeError } = await toggleRunLike(runId, currentUserId, wasLiked)
 
     if (likeError) {
       setItems(previousItems)
@@ -168,23 +162,12 @@ export default function FeedPage() {
                   month: 'long'
                 })}
               </p>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-sm text-gray-500">Лайки: {item.likesCount}</p>
-                <button
-                  type="button"
-                  onClick={() => handleLikeToggle(item.run_id)}
-                  disabled={pendingRunIds.includes(item.run_id)}
-                  className={`rounded-lg border px-3 py-1.5 text-sm ${
-                    item.likedByMe ? 'border-black bg-black text-white' : 'border-gray-300'
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  {pendingRunIds.includes(item.run_id)
-                    ? '...'
-                    : item.likedByMe
-                      ? 'Убрать лайк'
-                      : 'Лайк'}
-                </button>
-              </div>
+              <RunLikeControl
+                likesCount={item.likesCount}
+                likedByMe={item.likedByMe}
+                pending={pendingRunIds.includes(item.run_id)}
+                onToggle={() => handleLikeToggle(item.run_id)}
+              />
             </div>
           ))
         )}

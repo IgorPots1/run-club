@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import RunLikeControl from '@/components/RunLikeControl'
+import { loadRunLikesSummary, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -14,6 +16,8 @@ type Run = {
   duration_minutes: number
   xp: number
   created_at: string
+  likesCount: number
+  likedByMe: boolean
 }
 
 export default function RunsPage() {
@@ -26,7 +30,9 @@ export default function RunsPage() {
   const [distanceKm, setDistanceKm] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('')
   const [error, setError] = useState('')
+  const [likesError, setLikesError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -36,25 +42,45 @@ export default function RunsPage() {
     })
   }, [router])
 
+  async function fetchRuns(currentUser: User) {
+    setLikesError('')
+
+    try {
+      const [{ data, error: runsError }, { likesByRunId, likedRunIds }] = await Promise.all([
+        supabase
+          .from('runs')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false }),
+        loadRunLikesSummary(currentUser.id),
+      ])
+
+      if (runsError) {
+        setLikesError('Не удалось загрузить лайки')
+        return
+      }
+
+      const items = (data ?? []).map((run) => ({
+        ...run,
+        likesCount: likesByRunId[run.id] ?? 0,
+        likedByMe: likedRunIds.has(run.id),
+      }))
+
+      setRuns(items)
+    } catch {
+      setLikesError('Не удалось загрузить лайки')
+    }
+  }
+
   useEffect(() => {
     if (!user) return
-    supabase
-      .from('runs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setRuns(data ?? []))
-  }, [user])
 
-  async function fetchRuns() {
-    if (!user) return
-    const { data } = await supabase
-      .from('runs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-    setRuns(data ?? [])
-  }
+    async function loadRuns() {
+      await fetchRuns(user)
+    }
+
+    loadRuns()
+  }, [user])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -85,13 +111,51 @@ export default function RunsPage() {
     setDistanceKm('')
     setDurationMinutes('')
     setError('')
-    await fetchRuns()
+    await fetchRuns(user)
     setSubmitting(false)
   }
 
   async function handleDelete(id: string) {
     await supabase.from('runs').delete().eq('id', id)
     setRuns((prev) => prev.filter((r) => r.id !== id))
+  }
+
+  async function handleLikeToggle(runId: string) {
+    if (!user) {
+      router.push('/login')
+      return
+    }
+
+    if (pendingRunIds.includes(runId)) return
+
+    const currentRun = runs.find((run) => run.id === runId)
+    if (!currentRun) return
+
+    const wasLiked = currentRun.likedByMe
+    const previousRuns = runs
+
+    setLikesError('')
+    setPendingRunIds((prev) => [...prev, runId])
+    setRuns((prev) =>
+      prev.map((run) =>
+        run.id === runId
+          ? {
+              ...run,
+              likedByMe: !wasLiked,
+              likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
+            }
+          : run
+      )
+    )
+
+    const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
+
+    if (likeError) {
+      setRuns(previousRuns)
+      setLikesError('Не удалось обновить лайк')
+    }
+
+    setPendingRunIds((prev) => prev.filter((id) => id !== runId))
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
@@ -154,6 +218,7 @@ export default function RunsPage() {
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
+      {likesError ? <p className="mb-4 text-sm text-red-600">{likesError}</p> : null}
       <div className="space-y-3 mb-4">
         {runs.length === 0 ? (
           <div className="mt-10 text-center text-gray-500">
@@ -166,18 +231,24 @@ export default function RunsPage() {
           runs.map((run) => (
             <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
               <div className="flex justify-between gap-4">
-                <div>
-                <p className="font-medium">{run.title || 'Тренировка'}</p>
-                <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
-                <p className="text-sm mt-1">+{run.xp} XP</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {new Date(run.created_at).toLocaleDateString('ru-RU', {
-                    day: 'numeric',
-                    month: 'long'
-                  })}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{run.title || 'Тренировка'}</p>
+                  <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
+                  <p className="text-sm mt-1">+{run.xp} XP</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {new Date(run.created_at).toLocaleDateString('ru-RU', {
+                      day: 'numeric',
+                      month: 'long'
+                    })}
+                  </p>
+                  <RunLikeControl
+                    likesCount={run.likesCount}
+                    likedByMe={run.likedByMe}
+                    pending={pendingRunIds.includes(run.id)}
+                    onToggle={() => handleLikeToggle(run.id)}
+                  />
                 </div>
-                <button onClick={() => handleDelete(run.id)} className="border rounded px-2 py-1 text-sm h-fit">
+                <button onClick={() => handleDelete(run.id)} className="shrink-0 border rounded px-2 py-1 text-sm h-fit">
                   Удалить
                 </button>
               </div>
