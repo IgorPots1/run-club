@@ -42,13 +42,13 @@ export default function RegisterPage() {
       return
     }
     setLoading(false)
-    setSuccess('Account created. Please check your email and confirm your address before logging in.')
+    setSuccess('Аккаунт создан. Проверьте почту и подтвердите адрес перед входом.')
   }
 
   if (checkingUser) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        Loading...
+        Загрузка...
       </main>
     )
   }
@@ -56,7 +56,7 @@ export default function RegisterPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
-        <h1 className="text-xl font-semibold">Register</h1>
+        <h1 className="text-xl font-semibold">Регистрация</h1>
         <div>
           <label htmlFor="email" className="block text-sm mb-1">Email</label>
           <input
@@ -69,7 +69,7 @@ export default function RegisterPage() {
           />
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm mb-1">Password</label>
+          <label htmlFor="password" className="block text-sm mb-1">Пароль</label>
           <input
             id="password"
             type="password"
@@ -80,10 +80,10 @@ export default function RegisterPage() {
           />
         </div>
         <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
-          {loading ? '...' : 'Register'}
+          {loading ? '...' : 'Зарегистрироваться'}
         </button>
         <p className="text-sm text-gray-600">
-          Already have an account? <Link href="/login" className="underline">Login</Link>
+          Уже есть аккаунт? <Link href="/login" className="underline">Войти</Link>
         </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {success && <p className="text-sm">{success}</p>}

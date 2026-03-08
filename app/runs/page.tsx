@@ -83,26 +83,27 @@ export default function RunsPage() {
     setRuns((prev) => prev.filter((r) => r.id !== id))
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Loading...</main>
+  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   if (!user) return null
 
   return (
-    <main className="min-h-screen p-4">
-      <h1 className="text-xl font-semibold mb-4">Runs</h1>
+    <main className="min-h-screen">
+      <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Тренировки</h1>
       <form onSubmit={handleSubmit} className="mb-8 space-y-3 max-w-sm">
         <div>
-          <label htmlFor="title" className="block text-sm mb-1">Run title</label>
+          <label htmlFor="title" className="block text-sm mb-1">Название тренировки</label>
           <input
             id="title"
             type="text"
-            placeholder="Morning run"
+            placeholder="Утренняя пробежка"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full border rounded px-3 py-2"
           />
         </div>
         <div>
-          <label htmlFor="run_date" className="block text-sm mb-1">Run date</label>
+          <label htmlFor="run_date" className="block text-sm mb-1">Дата тренировки</label>
           <input
             id="run_date"
             type="date"
@@ -113,7 +114,7 @@ export default function RunsPage() {
           />
         </div>
         <div>
-          <label htmlFor="distance_km" className="block text-sm mb-1">Distance (km)</label>
+          <label htmlFor="distance_km" className="block text-sm mb-1">Дистанция (км)</label>
           <input
             id="distance_km"
             type="number"
@@ -126,7 +127,7 @@ export default function RunsPage() {
           />
         </div>
         <div>
-          <label htmlFor="duration_minutes" className="block text-sm mb-1">Duration (min)</label>
+          <label htmlFor="duration_minutes" className="block text-sm mb-1">Время (мин)</label>
           <input
             id="duration_minutes"
             type="number"
@@ -138,22 +139,31 @@ export default function RunsPage() {
           />
         </div>
         <button type="submit" disabled={submitting} className="border rounded px-3 py-2">
-          {submitting ? '...' : 'Add run'}
+          {submitting ? '...' : 'Добавить тренировку'}
         </button>
       </form>
-      <div className="space-y-3">
+      <div>
         {runs.map((run) => (
-          <div key={run.id} className="border rounded p-3 flex justify-between items-center">
-            <div>
-              <p className="font-medium">{run.title || 'Run'}</p>
-              <p>{run.distance_km} km · {run.duration_minutes} min · {run.xp} xp</p>
-              <p className="text-sm text-gray-600">{new Date(run.created_at).toLocaleDateString()}</p>
+          <div key={run.id} className="border rounded-lg p-4 mb-3">
+            <div className="flex justify-between gap-4">
+              <div>
+              <p className="font-medium">{run.title || 'Тренировка'}</p>
+              <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
+              <p className="text-sm mt-1">+{run.xp} XP</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {new Date(run.created_at).toLocaleDateString('ru-RU', {
+                  day: 'numeric',
+                  month: 'long'
+                })}
+              </p>
+              </div>
+              <button onClick={() => handleDelete(run.id)} className="border rounded px-2 py-1 text-sm h-fit">
+                Удалить
+              </button>
             </div>
-            <button onClick={() => handleDelete(run.id)} className="border rounded px-2 py-1 text-sm">
-              Delete
-            </button>
           </div>
         ))}
+      </div>
       </div>
     </main>
   )

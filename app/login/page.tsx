@@ -39,7 +39,7 @@ export default function LoginPage() {
   if (checkingUser) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        Loading...
+        Загрузка...
       </main>
     )
   }
@@ -47,7 +47,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
-        <h1 className="text-xl font-semibold">Login</h1>
+        <h1 className="text-xl font-semibold">Войти</h1>
         <div>
           <label htmlFor="email" className="block text-sm mb-1">Email</label>
           <input
@@ -60,7 +60,7 @@ export default function LoginPage() {
           />
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm mb-1">Password</label>
+          <label htmlFor="password" className="block text-sm mb-1">Пароль</label>
           <input
             id="password"
             type="password"
@@ -71,10 +71,10 @@ export default function LoginPage() {
           />
         </div>
         <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
-          {loading ? '...' : 'Login'}
+          {loading ? '...' : 'Войти'}
         </button>
         <p className="text-sm text-gray-600">
-          Don't have an account? <Link href="/register" className="underline">Register</Link>
+          Нет аккаунта? <Link href="/register" className="underline">Регистрация</Link>
         </p>
         {message && <p className="text-sm">{message}</p>}
       </form>

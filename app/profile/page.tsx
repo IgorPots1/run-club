@@ -82,22 +82,23 @@ export default function ProfilePage() {
     e.target.value = ''
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Loading...</main>
+  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   if (!user) return null
 
   return (
-    <main className="min-h-screen p-4">
-      <h1 className="text-xl font-semibold mb-4">Profile</h1>
+    <main className="min-h-screen">
+      <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Профиль</h1>
       {profile?.avatar_url && (
-        <img src={profile.avatar_url} alt="Avatar" className="w-20 h-20 rounded-full object-cover mb-4" />
+        <img src={profile.avatar_url} alt="Аватар" className="w-20 h-20 rounded-full object-cover mb-4" />
       )}
       <div className="mb-4">
-        <label className="block text-sm mb-1">Avatar</label>
+        <label className="block text-sm mb-1">Аватар</label>
         <input type="file" accept="image/*" onChange={handleAvatarChange} disabled={uploading} className="block" />
       </div>
       <form onSubmit={handleSave} className="mb-8 space-y-3 max-w-sm">
         <div>
-          <label htmlFor="name" className="block text-sm mb-1">Name</label>
+          <label htmlFor="name" className="block text-sm mb-1">Имя</label>
           <input
             id="name"
             type="text"
@@ -117,16 +118,17 @@ export default function ProfilePage() {
           />
         </div>
         <button type="submit" disabled={saving} className="border rounded px-3 py-2">
-          {saving ? '...' : 'Save'}
+          {saving ? '...' : 'Сохранить'}
         </button>
       </form>
       <div className="border rounded p-4 max-w-sm">
-        <h2 className="font-semibold mb-2">Stats</h2>
-        <p>Level: {getLevelFromXP(totalXp).level}</p>
-        <p>Total XP: {totalXp}</p>
-        <p>Next level XP: {getLevelFromXP(totalXp).nextLevelXP ?? 'Max level'}</p>
-        <p>Total KM: {totalKm.toFixed(2)}</p>
-        <p>Runs: {runsCount}</p>
+        <h2 className="font-semibold mb-2">Статистика</h2>
+        <p>Уровень: {getLevelFromXP(totalXp).level}</p>
+        <p>Всего XP: {totalXp}</p>
+        <p>Следующий уровень XP: {getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</p>
+        <p>Всего км: {totalKm.toFixed(2)}</p>
+        <p>Тренировки: {runsCount}</p>
+      </div>
       </div>
     </main>
   )

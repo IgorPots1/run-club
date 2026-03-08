@@ -54,55 +54,55 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Loading...</main>
+  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   if (!user) return null
 
   return (
-    <main className="min-h-screen p-4">
-      <div className="max-w-3xl mx-auto">
+    <main className="min-h-screen">
+      <div className="p-4">
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-semibold">Dashboard</h1>
-            <p className="text-sm text-gray-600 mt-1">{user.email}</p>
+            <h1 className="text-2xl font-bold mb-4">Главная</h1>
+            <p className="text-sm text-gray-600">{user.email}</p>
           </div>
           <button onClick={handleLogout} className="border rounded px-3 py-2">
-            Logout
+            Выйти
           </button>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Link href="/runs" className="border rounded p-4">
-            <h2 className="font-medium">Runs</h2>
+            <h2 className="font-medium">Тренировки</h2>
           </Link>
           <Link href="/leaderboard" className="border rounded p-4">
-            <h2 className="font-medium">Leaderboard</h2>
+            <h2 className="font-medium">Рейтинг</h2>
           </Link>
           <Link href="/feed" className="border rounded p-4">
-            <h2 className="font-medium">Feed</h2>
+            <h2 className="font-medium">Лента</h2>
           </Link>
           <Link href="/profile" className="border rounded p-4">
-            <h2 className="font-medium">Profile</h2>
+            <h2 className="font-medium">Профиль</h2>
           </Link>
           <Link href="/challenges" className="border rounded p-4 sm:col-span-2">
-            <h2 className="font-medium">Challenges</h2>
+            <h2 className="font-medium">Челленджи</h2>
           </Link>
         </div>
 
         <div className="mt-6">
-          <h2 className="text-lg font-semibold mb-3">Recent runs</h2>
-          <div className="space-y-3">
+          <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
+          <div>
             {runs.length === 0 ? (
-              <p className="text-sm text-gray-600">No runs yet</p>
+              <p className="text-sm text-gray-600">Пока нет тренировок</p>
             ) : (
               runs.map((run) => (
-                <div key={run.id} className="border rounded p-4">
+                <div key={run.id} className="border rounded-lg p-4 mb-3">
                   <p className="font-medium">{run.title}</p>
-                  <p className="text-sm mt-1">🏃 {run.distance_km} km</p>
+                  <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
                   <p className="text-sm mt-1">+{run.xp} XP</p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {new Date(run.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric'
+                  <p className="text-sm text-gray-500 mt-1">
+                    {new Date(run.created_at).toLocaleDateString('ru-RU', {
+                      day: 'numeric',
+                      month: 'long'
                     })}
                   </p>
                 </div>

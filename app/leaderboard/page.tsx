@@ -44,21 +44,22 @@ export default function LeaderboardPage() {
     load()
   }, [])
 
-  if (loading) return <main className="min-h-screen p-4">Loading...</main>
+  if (loading) return <main className="min-h-screen p-4">Загрузка...</main>
 
   return (
-    <main className="min-h-screen p-4">
-      <h1 className="text-xl font-semibold mb-4">Leaderboard</h1>
+    <main className="min-h-screen">
+      <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Рейтинг</h1>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border">
           <thead>
             <tr className="border-b bg-gray-50">
-              <th className="border p-2 text-left">Rank</th>
-              <th className="border p-2 text-left">Avatar</th>
-              <th className="border p-2 text-left">User</th>
-              <th className="border p-2 text-left">Total XP</th>
-              <th className="border p-2 text-left">Total KM</th>
-              <th className="border p-2 text-left">Runs</th>
+              <th className="border p-2 text-left">Место</th>
+              <th className="border p-2 text-left">Аватар</th>
+              <th className="border p-2 text-left">Участник</th>
+              <th className="border p-2 text-left">Всего XP</th>
+              <th className="border p-2 text-left">Всего км</th>
+              <th className="border p-2 text-left">Тренировки</th>
             </tr>
           </thead>
           <tbody>
@@ -74,7 +75,7 @@ export default function LeaderboardPage() {
                     </span>
                   )}
                 </td>
-                <td className="border p-2">{row.displayName} · Level {getLevelFromXP(row.total_xp).level}</td>
+                <td className="border p-2">{row.displayName} · Уровень {getLevelFromXP(row.total_xp).level}</td>
                 <td className="border p-2">{row.total_xp}</td>
                 <td className="border p-2">{row.total_km.toFixed(2)}</td>
                 <td className="border p-2">{row.runs_count}</td>
@@ -82,6 +83,7 @@ export default function LeaderboardPage() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     </main>
   )

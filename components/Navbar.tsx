@@ -27,14 +27,14 @@ export default function Navbar() {
   return (
     <nav className="flex items-center justify-between border-b p-4">
       <div className="flex gap-4">
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/runs">Runs</Link>
-          <Link href="/leaderboard">Leaderboard</Link>
-          <Link href="/challenges">Challenges</Link>
-          <Link href="/feed">Feed</Link>
-          <Link href="/profile">Profile</Link>
+          <Link href="/dashboard">Главная</Link>
+          <Link href="/runs">Тренировки</Link>
+          <Link href="/leaderboard">Рейтинг</Link>
+          <Link href="/challenges">Челленджи</Link>
+          <Link href="/feed">Лента</Link>
+          <Link href="/profile">Профиль</Link>
       </div>
-      <button onClick={handleLogout}>Logout</button>
+      <button onClick={handleLogout}>Выйти</button>
     </nav>
   )
 }

@@ -24,6 +24,13 @@ type ProgressItem = {
   completed: boolean
 }
 
+function getChallengeTitle(title: string) {
+  if (title === 'Weekly 30 km') return '30 км за неделю'
+  if (title === 'Monthly 100 km') return '100 км за месяц'
+  if (title === 'First 10 runs') return 'Первые 10 тренировок'
+  return title
+}
+
 function getWeekStart(date: Date) {
   const d = new Date(date)
   const day = d.getDay()
@@ -153,23 +160,26 @@ export default function ChallengesPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl p-6">
-        <h1 className="text-2xl font-bold">Challenges</h1>
-        <p className="mt-4">Loading...</p>
+      <main className="min-h-screen">
+        <div className="p-4">
+          <h1 className="text-2xl font-bold mb-4">Челленджи</h1>
+          <p>Загрузка...</p>
+        </div>
       </main>
     )
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-bold">Challenges</h1>
+    <main className="min-h-screen">
+      <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Челленджи</h1>
 
-      <div className="mt-6 space-y-4">
+      <div className="space-y-4">
         {items.map((item) => (
           <div key={item.id} className="rounded-2xl border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold">{item.title}</h2>
+                <h2 className="text-lg font-semibold">{getChallengeTitle(item.title)}</h2>
                 {item.description ? (
                   <p className="mt-1 text-sm text-gray-600">{item.description}</p>
                 ) : null}
@@ -179,17 +189,18 @@ export default function ChallengesPage() {
                 <p className="text-sm font-medium">{item.xp_reward} XP</p>
                 {item.completed ? (
                   <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                    Completed
+                    Выполнено
                   </span>
                 ) : null}
               </div>
             </div>
 
             <p className="mt-4 text-sm">
-              Progress: {item.progress} / {item.goal} {item.unit}
+              Прогресс: {item.progress} / {item.goal} {item.unit === 'km' ? 'км' : 'тренировок'}
             </p>
           </div>
         ))}
+      </div>
       </div>
     </main>
   )
