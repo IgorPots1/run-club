@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import AvatarCropModal from '@/components/AvatarCropModal'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
@@ -24,6 +26,7 @@ export default function ProfilePage() {
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
@@ -79,15 +82,42 @@ export default function ProfilePage() {
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file || !user) return
-    setUploading(true)
-    const path = `${user.id}/avatar-${Date.now()}`
-    await supabase.storage.from('avatars').upload(path, file)
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id)
-    setProfile((prev) => (prev ? { ...prev, avatar_url: data.publicUrl } : null))
-    setUploading(false)
+    if (!file) return
+
+    if (cropImageSrc) {
+      URL.revokeObjectURL(cropImageSrc)
+    }
+
+    setCropImageSrc(URL.createObjectURL(file))
     e.target.value = ''
+  }
+
+  function closeCropModal() {
+    if (cropImageSrc) {
+      URL.revokeObjectURL(cropImageSrc)
+    }
+
+    setCropImageSrc(null)
+  }
+
+  async function handleAvatarCropped(blob: Blob) {
+    if (!user) return
+
+    setUploading(true)
+
+    try {
+      const path = `${user.id}/avatar-${Date.now()}.png`
+      await supabase.storage.from('avatars').upload(path, blob, {
+        contentType: 'image/png',
+      })
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+      await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id)
+      setProfile((prev) => (prev ? { ...prev, avatar_url: data.publicUrl } : null))
+      closeCropModal()
+    } finally {
+      setUploading(false)
+    }
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
@@ -99,7 +129,13 @@ export default function ProfilePage() {
       <h1 className="text-2xl font-bold mb-4">Профиль</h1>
       <div className="mb-6 flex flex-col items-center gap-4">
         {profile?.avatar_url ? (
-          <img src={profile.avatar_url} alt="Аватар" className="w-32 h-32 rounded-full object-cover" />
+          <Image
+            src={profile.avatar_url}
+            alt="Аватар"
+            width={128}
+            height={128}
+            className="h-32 w-32 rounded-full object-cover"
+          />
         ) : (
           <div className="w-32 h-32 rounded-full bg-gray-100 border flex items-center justify-center text-sm text-gray-500">
             Аватар
@@ -170,6 +206,14 @@ export default function ProfilePage() {
           <span className="font-semibold">{runsCount}</span>
         </div>
       </div>
+      {cropImageSrc ? (
+        <AvatarCropModal
+          imageSrc={cropImageSrc}
+          loading={uploading}
+          onCancel={closeCropModal}
+          onConfirm={handleAvatarCropped}
+        />
+      ) : null}
       </div>
     </main>
   )
