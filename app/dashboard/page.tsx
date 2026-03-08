@@ -8,6 +8,7 @@ import RunLikeControl from '@/components/RunLikeControl'
 import { getChallengeProgress, type Challenge, type ChallengeWithProgress, type RunRecord } from '@/lib/challenges'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
+import { loadWeeklyXpLeaderboard, type WeeklyXpRow } from '@/lib/weekly-xp'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -27,6 +28,11 @@ type ProgressStats = {
   totalKmThisMonth: number
   runsCount: number
   totalXp: number
+}
+
+type WeeklyRace = {
+  topRows: WeeklyXpRow[]
+  currentUserRow: WeeklyXpRow
 }
 
 function getLevelProgress(totalXp: number) {
@@ -53,6 +59,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<ProgressStats | null>(null)
   const [activeChallenge, setActiveChallenge] = useState<ChallengeWithProgress | null>(null)
   const [allChallengesCompleted, setAllChallengesCompleted] = useState(false)
+  const [weeklyRace, setWeeklyRace] = useState<WeeklyRace | null>(null)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [error, setError] = useState('')
 
@@ -82,6 +89,7 @@ export default function DashboardPage() {
           { data: challenges, error: challengesError },
           challengeXpByUser,
           likeXpByUser,
+          weeklyXpLeaderboard,
         ] = await Promise.all([
           supabase
             .from('runs')
@@ -100,6 +108,7 @@ export default function DashboardPage() {
             .order('created_at', { ascending: true }),
           loadChallengeXpByUser(),
           loadLikeXpByUser(),
+          loadWeeklyXpLeaderboard(currentUser.id),
         ])
 
         if (runsError || profilesError || myRunsError || challengesError) {
@@ -147,6 +156,7 @@ export default function DashboardPage() {
         const firstActiveChallenge = challengeItems.find((challenge) => !challenge.isCompleted) ?? null
         setActiveChallenge(firstActiveChallenge)
         setAllChallengesCompleted(challengeItems.length > 0 && !firstActiveChallenge)
+        setWeeklyRace(weeklyXpLeaderboard)
 
         setRuns(items)
       } catch {
@@ -276,6 +286,32 @@ export default function DashboardPage() {
               </div>
               <p className="mt-3 text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
               <p className="mt-1 text-sm text-gray-600">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
+            </div>
+          ) : null}
+          {weeklyRace ? (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">🔥 Гонка недели</p>
+              <div className="mt-3 space-y-2">
+                {weeklyRace.topRows.length === 0 ? (
+                  <p className="text-sm text-gray-600">Пока нет XP за последние 7 дней</p>
+                ) : (
+                  weeklyRace.topRows.map((row) => (
+                    <div key={row.user_id} className="flex items-center justify-between gap-3 text-sm">
+                      <p className="min-w-0 truncate">
+                        {row.rank}. {row.displayName}
+                      </p>
+                      <p className="shrink-0 font-medium">{row.totalXp} XP</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              {!weeklyRace.topRows.some((row) => row.user_id === user.id) ? (
+                <div className="mt-4 border-t pt-3">
+                  <p className="text-sm font-medium">
+                    Ты — {weeklyRace.currentUserRow.rank} место · {weeklyRace.currentUserRow.totalXp} XP
+                  </p>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
