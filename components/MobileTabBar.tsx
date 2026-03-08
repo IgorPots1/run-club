@@ -18,11 +18,12 @@ export default function MobileTabBar() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 md:hidden">
-      <nav className="max-w-xl mx-auto bg-white border-t flex justify-around py-3">
-        <Link href="/dashboard">Главная</Link>
-        <Link href="/runs">Тренировки</Link>
-        <Link href="/leaderboard">Рейтинг</Link>
-        <Link href="/profile">Профиль</Link>
+      <nav className="mx-auto grid max-w-xl grid-cols-5 border-t bg-white py-2 text-center text-xs">
+        <Link href="/dashboard" className="px-1 py-2">Главная</Link>
+        <Link href="/runs" className="px-1 py-2">Тренировки</Link>
+        <Link href="/leaderboard" className="px-1 py-2">Рейтинг</Link>
+        <Link href="/challenges" className="px-1 py-2">Челленджи</Link>
+        <Link href="/profile" className="px-1 py-2">Профиль</Link>
       </nav>
     </div>
   )
