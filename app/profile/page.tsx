@@ -89,12 +89,30 @@ export default function ProfilePage() {
     <main className="min-h-screen">
       <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Профиль</h1>
-      {profile?.avatar_url && (
-        <img src={profile.avatar_url} alt="Аватар" className="w-20 h-20 rounded-full object-cover mb-4" />
-      )}
-      <div className="mb-4">
-        <label className="block text-sm mb-1">Аватар</label>
-        <input type="file" accept="image/*" onChange={handleAvatarChange} disabled={uploading} className="block" />
+      <div className="mb-6 flex flex-col items-center gap-4">
+        {profile?.avatar_url ? (
+          <img src={profile.avatar_url} alt="Аватар" className="w-32 h-32 rounded-full object-cover" />
+        ) : (
+          <div className="w-32 h-32 rounded-full bg-gray-100 border flex items-center justify-center text-sm text-gray-500">
+            Аватар
+          </div>
+        )}
+        <label
+          htmlFor="avatar-upload"
+          className={`inline-flex cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
+            uploading ? 'pointer-events-none opacity-60' : ''
+          }`}
+        >
+          {uploading ? 'Загрузка...' : profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
+        </label>
+        <input
+          id="avatar-upload"
+          type="file"
+          accept="image/*"
+          onChange={handleAvatarChange}
+          disabled={uploading}
+          className="hidden"
+        />
       </div>
       <form onSubmit={handleSave} className="mb-8 space-y-3 max-w-sm">
         <div>
