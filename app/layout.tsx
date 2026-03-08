@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import MobileTabBar from "../components/MobileTabBar";
 import Navbar from "../components/Navbar";
 import "./globals.css";
 
@@ -27,10 +28,13 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-gray-50">
         <div
-          className={`mx-auto min-h-screen max-w-xl bg-white ${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`mx-auto min-h-screen max-w-xl bg-white pb-20 md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          <Navbar />
+          <div className="hidden md:block">
+            <Navbar />
+          </div>
           {children}
+          <MobileTabBar />
         </div>
       </body>
     </html>
