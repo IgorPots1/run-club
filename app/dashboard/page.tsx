@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import RunLikeControl from '@/components/RunLikeControl'
 import { getChallengeProgress, type Challenge, type ChallengeWithProgress, type RunRecord } from '@/lib/challenges'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
-import { loadWeeklyXpLeaderboard, type WeeklyXpRow } from '@/lib/weekly-xp'
+import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -28,11 +29,6 @@ type ProgressStats = {
   totalKmThisMonth: number
   runsCount: number
   totalXp: number
-}
-
-type WeeklyRace = {
-  topRows: WeeklyXpRow[]
-  currentUserRow: WeeklyXpRow
 }
 
 function getLevelProgress(totalXp: number) {
@@ -59,7 +55,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<ProgressStats | null>(null)
   const [activeChallenge, setActiveChallenge] = useState<ChallengeWithProgress | null>(null)
   const [allChallengesCompleted, setAllChallengesCompleted] = useState(false)
-  const [weeklyRace, setWeeklyRace] = useState<WeeklyRace | null>(null)
+  const [weeklyRace, setWeeklyRace] = useState<WeeklyXpLeaderboard | null>(null)
+  const [weeklyRaceError, setWeeklyRaceError] = useState('')
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [error, setError] = useState('')
 
@@ -81,6 +78,9 @@ export default function DashboardPage() {
 
     async function loadRuns() {
       try {
+        const weeklyRaceRequest = loadWeeklyXpLeaderboard(currentUser.id)
+          .then((data) => ({ data, error: '' }))
+          .catch(() => ({ data: null, error: 'Не удалось загрузить рейтинг' }))
         const [
           { data: runs, error: runsError },
           { data: profiles, error: profilesError },
@@ -108,7 +108,7 @@ export default function DashboardPage() {
             .order('created_at', { ascending: true }),
           loadChallengeXpByUser(),
           loadLikeXpByUser(),
-          loadWeeklyXpLeaderboard(currentUser.id),
+          weeklyRaceRequest,
         ])
 
         if (runsError || profilesError || myRunsError || challengesError) {
@@ -156,7 +156,8 @@ export default function DashboardPage() {
         const firstActiveChallenge = challengeItems.find((challenge) => !challenge.isCompleted) ?? null
         setActiveChallenge(firstActiveChallenge)
         setAllChallengesCompleted(challengeItems.length > 0 && !firstActiveChallenge)
-        setWeeklyRace(weeklyXpLeaderboard)
+        setWeeklyRace(weeklyXpLeaderboard.data)
+        setWeeklyRaceError(weeklyXpLeaderboard.error)
 
         setRuns(items)
       } catch {
@@ -288,32 +289,7 @@ export default function DashboardPage() {
               <p className="mt-1 text-sm text-gray-600">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
             </div>
           ) : null}
-          {weeklyRace ? (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-gray-500">🔥 Гонка недели</p>
-              <div className="mt-3 space-y-2">
-                {weeklyRace.topRows.length === 0 ? (
-                  <p className="text-sm text-gray-600">Пока нет XP за последние 7 дней</p>
-                ) : (
-                  weeklyRace.topRows.map((row) => (
-                    <div key={row.user_id} className="flex items-center justify-between gap-3 text-sm">
-                      <p className="min-w-0 truncate">
-                        {row.rank}. {row.displayName}
-                      </p>
-                      <p className="shrink-0 font-medium">{row.totalXp} XP</p>
-                    </div>
-                  ))
-                )}
-              </div>
-              {!weeklyRace.topRows.some((row) => row.user_id === user.id) ? (
-                <div className="mt-4 border-t pt-3">
-                  <p className="text-sm font-medium">
-                    Ты — {weeklyRace.currentUserRow.rank} место · {weeklyRace.currentUserRow.totalXp} XP
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          <WeeklyLeaderboard leaderboard={weeklyRace} currentUserId={user.id} error={weeklyRaceError} />
           <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
           {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
           <div className="space-y-3">

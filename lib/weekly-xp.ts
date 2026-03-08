@@ -33,7 +33,13 @@ export type WeeklyXpRow = {
   rank: number
 }
 
-export async function loadWeeklyXpLeaderboard(currentUserId: string) {
+export type WeeklyXpLeaderboard = {
+  topRows: WeeklyXpRow[]
+  currentUserRow: WeeklyXpRow | null
+  gapToNext: number | null
+}
+
+export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<WeeklyXpLeaderboard> {
   const [
     { data: profiles, error: profilesError },
     { data: runs, error: runsError },
@@ -88,17 +94,20 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string) {
       rank: index + 1,
     }))
 
+  const currentUserIndex = rows.findIndex((row) => row.user_id === currentUserId)
   const currentUserRow =
-    rows.find((row) => row.user_id === currentUserId) ??
+    (currentUserIndex >= 0 ? rows[currentUserIndex] : null) ??
     {
       user_id: currentUserId,
       displayName: profileById[currentUserId]?.name?.trim() || profileById[currentUserId]?.email || 'Ты',
       totalXp: 0,
       rank: rows.length + 1,
     }
+  const previousRow = currentUserIndex > 0 ? rows[currentUserIndex - 1] : null
 
   return {
     topRows: rows.slice(0, 5),
     currentUserRow,
+    gapToNext: previousRow ? Math.max(previousRow.totalXp - currentUserRow.totalXp, 0) : null,
   }
 }
