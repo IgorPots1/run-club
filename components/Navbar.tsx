@@ -28,6 +28,7 @@ export default function Navbar() {
     <nav className="flex items-center justify-between border-b p-4">
       <div className="flex gap-4">
           <Link href="/dashboard">Главная</Link>
+          <Link href="/activity">Активность</Link>
           <Link href="/runs">Тренировки</Link>
           <Link href="/leaderboard">Рейтинг</Link>
           <Link href="/challenges">Челленджи</Link>
