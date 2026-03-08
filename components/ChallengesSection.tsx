@@ -20,6 +20,7 @@ type RunRecord = {
 type ProgressMetric = {
   label: string
   percent: number
+  completed: boolean
 }
 
 type ChallengeWithProgress = Challenge & {
@@ -39,6 +40,7 @@ function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): Challeng
     progressItems.push({
       label: `${totalKm.toFixed(1)} / ${challenge.goal_km} км`,
       percent: Math.min((totalKm / challenge.goal_km) * 100, 100),
+      completed: totalKm >= challenge.goal_km,
     })
   }
 
@@ -46,6 +48,7 @@ function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): Challeng
     progressItems.push({
       label: `${totalRuns} / ${challenge.goal_runs} тренировок`,
       percent: Math.min((totalRuns / challenge.goal_runs) * 100, 100),
+      completed: totalRuns >= challenge.goal_runs,
     })
   }
 
@@ -128,6 +131,9 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                       <div className="mt-4 space-y-4">
                         {item.progressItems.map((progressItem) => (
                           <div key={progressItem.label}>
+                            {progressItem.completed ? (
+                              <p className="mb-2 text-sm font-medium text-green-700">✔ Выполнено</p>
+                            ) : null}
                             <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
                               <div
                                 className="h-full rounded-full bg-black"
