@@ -56,6 +56,7 @@ export default function DashboardPage() {
   const [activeChallenge, setActiveChallenge] = useState<ChallengeWithProgress | null>(null)
   const [allChallengesCompleted, setAllChallengesCompleted] = useState(false)
   const [weeklyRace, setWeeklyRace] = useState<WeeklyXpLeaderboard | null>(null)
+  const [weeklyRaceLoading, setWeeklyRaceLoading] = useState(true)
   const [weeklyRaceError, setWeeklyRaceError] = useState('')
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [error, setError] = useState('')
@@ -78,6 +79,7 @@ export default function DashboardPage() {
 
     async function loadRuns() {
       try {
+        setWeeklyRaceLoading(true)
         const weeklyRaceRequest = loadWeeklyXpLeaderboard(currentUser.id)
           .then((data) => ({ data, error: '' }))
           .catch(() => ({ data: null, error: 'Не удалось загрузить рейтинг' }))
@@ -158,9 +160,11 @@ export default function DashboardPage() {
         setAllChallengesCompleted(challengeItems.length > 0 && !firstActiveChallenge)
         setWeeklyRace(weeklyXpLeaderboard.data)
         setWeeklyRaceError(weeklyXpLeaderboard.error)
+        setWeeklyRaceLoading(false)
 
         setRuns(items)
       } catch {
+        setWeeklyRaceLoading(false)
         setError('Не удалось загрузить тренировки')
       }
     }
@@ -289,7 +293,12 @@ export default function DashboardPage() {
               <p className="mt-1 text-sm text-gray-600">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
             </div>
           ) : null}
-          <WeeklyLeaderboard leaderboard={weeklyRace} currentUserId={user.id} error={weeklyRaceError} />
+          <WeeklyLeaderboard
+            leaderboard={weeklyRace}
+            currentUserId={user.id}
+            loading={weeklyRaceLoading}
+            error={weeklyRaceError}
+          />
           <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
           {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
           <div className="space-y-3">

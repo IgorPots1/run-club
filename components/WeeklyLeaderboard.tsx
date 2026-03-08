@@ -5,10 +5,16 @@ import type { WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 type WeeklyLeaderboardProps = {
   leaderboard: WeeklyXpLeaderboard | null
   currentUserId: string
+  loading?: boolean
   error?: string
 }
 
-export default function WeeklyLeaderboard({ leaderboard, currentUserId, error = '' }: WeeklyLeaderboardProps) {
+export default function WeeklyLeaderboard({
+  leaderboard,
+  currentUserId,
+  loading = false,
+  error = '',
+}: WeeklyLeaderboardProps) {
   const topRows = Array.isArray(leaderboard?.topRows) ? leaderboard.topRows : []
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
@@ -18,7 +24,13 @@ export default function WeeklyLeaderboard({ leaderboard, currentUserId, error = 
     <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
       <p className="text-sm font-medium text-gray-500">🔥 Гонка недели</p>
 
-      {error ? (
+      {loading ? (
+        <div className="mt-3 space-y-2">
+          <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
+          <div className="h-4 w-5/6 animate-pulse rounded bg-gray-100" />
+          <div className="h-4 w-4/6 animate-pulse rounded bg-gray-100" />
+        </div>
+      ) : error ? (
         <p className="mt-3 text-sm text-gray-600">Не удалось загрузить рейтинг</p>
       ) : topRows.length === 0 ? (
         <p className="mt-3 text-sm text-gray-600">Нет данных</p>
@@ -35,7 +47,7 @@ export default function WeeklyLeaderboard({ leaderboard, currentUserId, error = 
         </div>
       )}
 
-      {!error && currentUserRow && !isCurrentUserInTop ? (
+      {!loading && !error && currentUserRow && !isCurrentUserInTop ? (
         <div className="mt-4 border-t pt-3">
           <p className="text-sm font-medium">
             Ты — {currentUserRow.rank} место · {currentUserRow.totalXp} XP
