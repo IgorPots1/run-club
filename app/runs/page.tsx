@@ -49,34 +49,77 @@ export default function RunsPage() {
   const [distanceKm, setDistanceKm] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('')
   const [error, setError] = useState('')
+  const [runsError, setRunsError] = useState('')
   const [likesError, setLikesError] = useState('')
+  const [authError, setAuthError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [loadingRuns, setLoadingRuns] = useState(false)
+  const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      setLoading(false)
-      if (!user) router.push('/login')
-    })
+    let isMounted = true
+
+    async function loadUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setAuthError('Не удалось проверить сессию')
+          return
+        }
+
+        setUser(data.user)
+
+        if (!data.user) {
+          router.push('/login')
+        }
+      } catch {
+        if (isMounted) {
+          setAuthError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [router])
 
   async function fetchRuns(currentUser: User) {
+    setLoadingRuns(true)
+    setRunsError('')
     setLikesError('')
 
     try {
-      const [{ data, error: runsError }, { likesByRunId, likedRunIds }] = await Promise.all([
-        supabase
-          .from('runs')
-          .select('*')
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false }),
-        loadRunLikesSummary(currentUser.id),
-      ])
+      const { data, error: runsLoadError } = await supabase
+        .from('runs')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
 
-      if (runsError) {
-        setLikesError('Не удалось загрузить лайки')
+      if (runsLoadError) {
+        setRunsError('Не удалось загрузить тренировки')
         return
+      }
+
+      let likesByRunId: Record<string, number> = {}
+      let likedRunIds = new Set<string>()
+
+      try {
+        const likesSummary = await loadRunLikesSummary(currentUser.id)
+        likesByRunId = likesSummary.likesByRunId
+        likedRunIds = likesSummary.likedRunIds
+      } catch {
+        setLikesError('Не удалось загрузить лайки')
       }
 
       const items = (data ?? []).map((run) => ({
@@ -87,7 +130,9 @@ export default function RunsPage() {
 
       setRuns(items)
     } catch {
-      setLikesError('Не удалось загрузить лайки')
+      setRunsError('Не удалось загрузить тренировки')
+    } finally {
+      setLoadingRuns(false)
     }
   }
 
@@ -111,41 +156,83 @@ export default function RunsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!user) return
+    if (!user || submitting) return
+
     const currentUser = user
-    setError('')
-    setSubmitting(true)
-    const runTitle = buildRunTitle(title, distanceKm)
+    const normalizedTitle = title.trim()
+    const selectedDate = runDate || new Date().toISOString().slice(0, 10)
     const d = Number(distanceKm)
     const dur = Number(durationMinutes)
-    const xp = 50 + d * 10
-    const selectedDate = runDate || new Date().toISOString().slice(0, 10)
-    const createdAt = new Date(selectedDate || new Date().toISOString().slice(0, 10)).toISOString()
-    const { error } = await supabase.from('runs').insert({
-      user_id: user.id,
-      title: runTitle,
-      distance_km: d,
-      duration_minutes: dur,
-      created_at: createdAt,
-      xp
-    })
-    if (error) {
-      setError(error.message)
-      setSubmitting(false)
+
+    if (!Number.isFinite(d) || d <= 0) {
+      setError('Укажите дистанцию больше 0 км')
       return
     }
-    setTitle('')
-    setRunDate(new Date().toISOString().slice(0, 10))
-    setDistanceKm('')
-    setDurationMinutes('')
+
+    if (!Number.isFinite(dur) || dur <= 0) {
+      setError('Укажите время больше 0 минут')
+      return
+    }
+
+    const createdAtDate = new Date(`${selectedDate}T12:00:00`)
+    if (Number.isNaN(createdAtDate.getTime())) {
+      setError('Укажите корректную дату тренировки')
+      return
+    }
+
     setError('')
-    await fetchRuns(currentUser)
-    setSubmitting(false)
+    setSubmitting(true)
+    const runTitle = buildRunTitle(normalizedTitle, distanceKm)
+    const xp = 50 + d * 10
+
+    try {
+      const { error } = await supabase.from('runs').insert({
+        user_id: user.id,
+        title: runTitle,
+        distance_km: d,
+        duration_minutes: dur,
+        created_at: createdAtDate.toISOString(),
+        xp
+      })
+
+      if (error) {
+        setError(error.message)
+        return
+      }
+
+      setTitle('')
+      setRunDate(new Date().toISOString().slice(0, 10))
+      setDistanceKm('')
+      setDurationMinutes('')
+      setError('')
+      await fetchRuns(currentUser)
+    } catch {
+      setError('Не удалось сохранить тренировку')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleDelete(id: string) {
-    await supabase.from('runs').delete().eq('id', id)
-    setRuns((prev) => prev.filter((r) => r.id !== id))
+    if (deletingRunIds.includes(id)) return
+
+    setError('')
+    setDeletingRunIds((prev) => [...prev, id])
+
+    try {
+      const { error } = await supabase.from('runs').delete().eq('id', id)
+
+      if (error) {
+        setError('Не удалось удалить тренировку')
+        return
+      }
+
+      setRuns((prev) => prev.filter((r) => r.id !== id))
+    } catch {
+      setError('Не удалось удалить тренировку')
+    } finally {
+      setDeletingRunIds((prev) => prev.filter((runId) => runId !== id))
+    }
   }
 
   async function handleLikeToggle(runId: string) {
@@ -164,30 +251,42 @@ export default function RunsPage() {
 
     setLikesError('')
     setPendingRunIds((prev) => [...prev, runId])
-    setRuns((prev) =>
-      prev.map((run) =>
-        run.id === runId
-          ? {
-              ...run,
-              likedByMe: !wasLiked,
-              likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
-            }
-          : run
+
+    try {
+      setRuns((prev) =>
+        prev.map((run) =>
+          run.id === runId
+            ? {
+                ...run,
+                likedByMe: !wasLiked,
+                likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
+              }
+            : run
+        )
       )
-    )
 
-    const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
+      const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
 
-    if (likeError) {
+      if (likeError) {
+        setRuns(previousRuns)
+        setLikesError('Не удалось обновить лайк')
+      }
+    } catch {
       setRuns(previousRuns)
       setLikesError('Не удалось обновить лайк')
+    } finally {
+      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
-
-    setPendingRunIds((prev) => prev.filter((id) => id !== runId))
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) return null
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen">
@@ -202,6 +301,7 @@ export default function RunsPage() {
             placeholder="Утренняя пробежка"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={submitting}
             className="w-full border rounded px-3 py-2"
           />
         </div>
@@ -213,6 +313,7 @@ export default function RunsPage() {
             value={runDate}
             onChange={(e) => setRunDate(e.target.value)}
             required
+            disabled={submitting}
             className="w-full border rounded px-3 py-2"
           />
         </div>
@@ -226,6 +327,7 @@ export default function RunsPage() {
             value={distanceKm}
             onChange={(e) => setDistanceKm(e.target.value)}
             required
+            disabled={submitting}
             className="w-full border rounded px-3 py-2"
           />
         </div>
@@ -238,6 +340,7 @@ export default function RunsPage() {
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(e.target.value)}
             required
+            disabled={submitting}
             className="w-full border rounded px-3 py-2"
           />
         </div>
@@ -246,14 +349,15 @@ export default function RunsPage() {
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
+      {runsError ? <p className="mb-4 text-sm text-red-600">{runsError}</p> : null}
       {likesError ? <p className="mb-4 text-sm text-red-600">{likesError}</p> : null}
       <div className="space-y-3 mb-4">
-        {runs.length === 0 ? (
+        {loadingRuns ? (
+          <p className="text-sm text-gray-500">Загрузка тренировок...</p>
+        ) : runs.length === 0 ? (
           <div className="mt-10 text-center text-gray-500">
             <p>Пока нет тренировок</p>
-            <Link href="/runs" className="inline-block mt-4 px-4 py-2 rounded-lg border">
-              Добавить тренировку
-            </Link>
+            <p className="mt-2 text-sm">Добавьте первую тренировку через форму выше</p>
           </div>
         ) : (
           runs.map((run) => (
@@ -277,7 +381,7 @@ export default function RunsPage() {
                   />
                 </div>
                 <button onClick={() => handleDelete(run.id)} className="shrink-0 border rounded px-2 py-1 text-sm h-fit">
-                  Удалить
+                  {deletingRunIds.includes(run.id) ? '...' : 'Удалить'}
                 </button>
               </div>
             </div>

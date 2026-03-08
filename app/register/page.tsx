@@ -13,36 +13,78 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        router.push('/dashboard')
-        return
+    let isMounted = true
+
+    async function checkUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setAuthError('Не удалось проверить сессию')
+          return
+        }
+
+        if (data.user) {
+          router.push('/dashboard')
+          return
+        }
+      } catch {
+        if (isMounted) {
+          setAuthError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingUser(false)
+        }
       }
-      setCheckingUser(false)
-    })
+    }
+
+    void checkUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (loading) return
+
+    const normalizedEmail = email.trim()
+    if (!normalizedEmail || !password) {
+      setError('Введите email и пароль')
+      return
+    }
+
     setError('')
     setSuccess('')
     setLoading(true)
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
+      })
+
+      if (error) {
+        setError(error.message)
+        return
       }
-    })
-    if (error) {
+
+      setSuccess('Аккаунт создан. Проверьте почту и подтвердите адрес перед входом.')
+    } catch {
+      setError('Не удалось создать аккаунт. Попробуйте еще раз.')
+    } finally {
       setLoading(false)
-      setError(error.message)
-      return
     }
-    setLoading(false)
-    setSuccess('Аккаунт создан. Проверьте почту и подтвердите адрес перед входом.')
   }
 
   if (checkingUser) {
@@ -57,6 +99,7 @@ export default function RegisterPage() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
         <h1 className="text-xl font-semibold">Регистрация</h1>
+        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
         <div>
           <label htmlFor="email" className="block text-sm mb-1">Email</label>
           <input
@@ -65,6 +108,7 @@ export default function RegisterPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={loading}
             className="w-full border rounded px-3 py-2"
           />
         </div>
@@ -76,6 +120,7 @@ export default function RegisterPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            disabled={loading}
             className="w-full border rounded px-3 py-2"
           />
         </div>

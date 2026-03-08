@@ -79,16 +79,24 @@ export default function AvatarCropModal({
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
+  const [error, setError] = useState('')
 
   const handleCropComplete = useCallback((_: Area, croppedPixels: Area) => {
+    setError('')
     setCroppedAreaPixels(croppedPixels)
   }, [])
 
   async function handleConfirm() {
     if (!croppedAreaPixels || loading) return
 
-    const blob = await createCroppedAvatar(imageSrc, croppedAreaPixels)
-    await onConfirm(blob)
+    setError('')
+
+    try {
+      const blob = await createCroppedAvatar(imageSrc, croppedAreaPixels)
+      await onConfirm(blob)
+    } catch {
+      setError('Не удалось подготовить аватар')
+    }
   }
 
   return (
@@ -119,6 +127,7 @@ export default function AvatarCropModal({
         </div>
 
         <div className="bg-black/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+          {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
           <label htmlFor="avatar-zoom" className="block text-sm text-white/80">
             Масштаб
           </label>

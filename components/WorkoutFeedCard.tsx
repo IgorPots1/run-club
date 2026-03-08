@@ -18,7 +18,13 @@ type WorkoutFeedCardProps = {
 }
 
 function formatRunDate(date: string) {
-  return new Date(date).toLocaleDateString('ru-RU', {
+  const parsedDate = new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'Дата неизвестна'
+  }
+
+  return parsedDate.toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'long',
   })
@@ -59,7 +65,8 @@ export default function WorkoutFeedCard({
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
-  const displayTitle = rawTitle ?? ''
+  const displayTitle = rawTitle?.trim() || 'Тренировка'
+  const displayUserName = displayName.trim() || 'Бегун'
 
   return (
     <div className="rounded-2xl bg-white px-4 py-3.5 shadow-sm shadow-black/5 ring-1 ring-black/5">
@@ -78,7 +85,7 @@ export default function WorkoutFeedCard({
             <AvatarFallback />
           )}
           <div className="min-w-0">
-            <p className="truncate font-semibold text-gray-900">{displayName}</p>
+            <p className="truncate font-semibold text-gray-900">{displayUserName}</p>
             {subtitle ? <p className="text-sm text-gray-500">{subtitle}</p> : null}
           </div>
         </div>

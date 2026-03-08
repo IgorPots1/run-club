@@ -22,50 +22,83 @@ type LeaderboardSectionProps = {
 export default function LeaderboardSection({ showTitle = true }: LeaderboardSectionProps) {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
+    let isMounted = true
+
     async function load() {
-      const [{ data: runs }, { data: profiles }, challengeXpByUser, likeXpByUser] = await Promise.all([
-        supabase.from('runs').select('user_id, xp, distance_km'),
-        supabase.from('profiles').select('id, email, name, avatar_url'),
-        loadChallengeXpByUser(),
-        loadLikeXpByUser(),
-      ])
-      const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
-      const byUserId: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
+      setError('')
 
-      for (const run of runs ?? []) {
-        const id = run.user_id
-        if (!byUserId[id]) byUserId[id] = { total_xp: 0, total_km: 0, runs_count: 0 }
-        byUserId[id].total_xp += run.xp
-        byUserId[id].total_km += run.distance_km
-        byUserId[id].runs_count += 1
+      try {
+        const [
+          { data: runs, error: runsError },
+          { data: profiles, error: profilesError },
+          challengeXpByUser,
+          likeXpByUser,
+        ] = await Promise.all([
+          supabase.from('runs').select('user_id, xp, distance_km'),
+          supabase.from('profiles').select('id, email, name, avatar_url'),
+          loadChallengeXpByUser(),
+          loadLikeXpByUser(),
+        ])
+
+        if (!isMounted) return
+
+        if (runsError || profilesError) {
+          setError('Не удалось загрузить рейтинг')
+          setRows([])
+          return
+        }
+
+        const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+        const byUserId: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
+
+        for (const run of runs ?? []) {
+          const id = run.user_id
+          if (!byUserId[id]) byUserId[id] = { total_xp: 0, total_km: 0, runs_count: 0 }
+          byUserId[id].total_xp += Number(run.xp ?? 0)
+          byUserId[id].total_km += Number(run.distance_km ?? 0)
+          byUserId[id].runs_count += 1
+        }
+
+        for (const [userId, xp] of Object.entries(challengeXpByUser)) {
+          if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
+          byUserId[userId].total_xp += xp
+        }
+
+        for (const [userId, xp] of Object.entries(likeXpByUser)) {
+          if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
+          byUserId[userId].total_xp += xp
+        }
+
+        const list = Object.entries(byUserId)
+          .map(([user_id, data]) => {
+            const profile = profileById[user_id]
+            const displayName = profile?.name?.trim() || profile?.email || '—'
+            const avatar_url = profile?.avatar_url ?? null
+            return { user_id, displayName, avatar_url, ...data }
+          })
+          .sort((a, b) => b.total_xp - a.total_xp)
+
+        setRows(list)
+      } catch {
+        if (isMounted) {
+          setError('Не удалось загрузить рейтинг')
+          setRows([])
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
       }
-
-      for (const [userId, xp] of Object.entries(challengeXpByUser)) {
-        if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
-        byUserId[userId].total_xp += xp
-      }
-
-      for (const [userId, xp] of Object.entries(likeXpByUser)) {
-        if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
-        byUserId[userId].total_xp += xp
-      }
-
-      const list = Object.entries(byUserId)
-        .map(([user_id, data]) => {
-          const profile = profileById[user_id]
-          const displayName = profile?.name?.trim() || profile?.email || '—'
-          const avatar_url = profile?.avatar_url ?? null
-          return { user_id, displayName, avatar_url, ...data }
-        })
-        .sort((a, b) => b.total_xp - a.total_xp)
-
-      setRows(list)
-      setLoading(false)
     }
 
     void load()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   if (loading) {
@@ -80,7 +113,9 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
   return (
     <div className="p-4">
       {showTitle ? <h1 className="mb-4 text-2xl font-bold">Рейтинг</h1> : null}
-      {rows.length === 0 ? (
+      {error ? (
+        <p className="text-sm text-red-600">{error}</p>
+      ) : rows.length === 0 ? (
         <div className="mt-10 text-center text-gray-500">
           <p>Рейтинг пока пуст</p>
         </div>
@@ -98,8 +133,8 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                       {(row.displayName[0] ?? '?').toUpperCase()}
                     </span>
                   )}
-                  <div>
-                    <p className="font-medium">{row.displayName}</p>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{row.displayName}</p>
                     <p className="text-sm text-gray-500">Уровень {getLevelFromXP(row.total_xp).level}</p>
                   </div>
                 </div>

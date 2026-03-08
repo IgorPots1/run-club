@@ -19,6 +19,10 @@ export default function WeeklyLeaderboard({
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const isCurrentUserInTop = topRows.some((row) => row.user_id === currentUserId)
+  const shouldShowCurrentUserRow =
+    Boolean(currentUserRow) &&
+    !isCurrentUserInTop &&
+    (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
 
   return (
     <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
@@ -46,9 +50,9 @@ export default function WeeklyLeaderboard({
           </div>
         </>
       ) : error ? (
-        <p className="mt-3 text-sm text-gray-600">Не удалось загрузить рейтинг</p>
+        <p className="mt-3 text-sm text-gray-600">{error}</p>
       ) : topRows.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-600">Нет данных</p>
+        <p className="mt-3 text-sm text-gray-600">Пока нет данных за последние 7 дней</p>
       ) : (
         <div className="mt-3 space-y-2">
           {topRows.map((row) => (
@@ -62,10 +66,10 @@ export default function WeeklyLeaderboard({
         </div>
       )}
 
-      {!loading && !error && currentUserRow && !isCurrentUserInTop ? (
+      {!loading && !error && shouldShowCurrentUserRow ? (
         <div className="mt-4 border-t pt-3">
           <p className="text-sm font-medium">
-            Ты — {currentUserRow.rank} место · {currentUserRow.totalXp} XP
+            Ты — {currentUserRow?.rank} место · {currentUserRow?.totalXp} XP
           </p>
           {gapToNext !== null && gapToNext > 0 ? (
             <p className="mt-1 text-sm text-gray-600">До следующего места: {gapToNext} XP</p>

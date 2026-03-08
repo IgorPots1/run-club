@@ -30,64 +30,182 @@ export default function ProfilePage() {
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
+  const [pageError, setPageError] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      setEmail(user?.email ?? '')
-      setLoading(false)
-      if (!user) router.push('/login')
-    })
+    let isMounted = true
+
+    async function loadUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setPageError('Не удалось проверить сессию')
+          return
+        }
+
+        setUser(data.user)
+        setEmail(data.user?.email ?? '')
+
+        if (!data.user) {
+          router.push('/login')
+        }
+      } catch {
+        if (isMounted) {
+          setPageError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [router])
 
   useEffect(() => {
     if (!user) return
-    supabase
-      .from('profiles')
-      .select('id, email, name, avatar_url')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setProfile(data)
-          setName(data.name ?? '')
-          setEmail(data.email ?? user?.email ?? '')
+    const currentUser = user
+    let isMounted = true
+
+    async function loadProfileData() {
+      setPageError('')
+
+      try {
+        const [
+          { data: profileData, error: profileError },
+          { data: runs, error: runsError },
+          challengeXpByUser,
+          likeXpByUser,
+        ] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('id, email, name, avatar_url')
+            .eq('id', currentUser.id)
+            .maybeSingle(),
+          supabase
+            .from('runs')
+            .select('xp, distance_km')
+            .eq('user_id', currentUser.id),
+          loadChallengeXpByUser(),
+          loadLikeXpByUser(),
+        ])
+
+        if (!isMounted) return
+
+        if (profileError || runsError) {
+          setPageError('Не удалось загрузить профиль')
         }
-      })
-    supabase
-      .from('runs')
-      .select('xp, distance_km')
-      .eq('user_id', user.id)
-      .then(async ({ data: runs }) => {
-        if (!runs) return
-        const challengeXpByUser = await loadChallengeXpByUser()
-        const likeXpByUser = await loadLikeXpByUser()
+
+        const nextProfile = profileData
+          ? {
+              id: profileData.id,
+              email: profileData.email ?? currentUser.email ?? '',
+              name: profileData.name ?? '',
+              avatar_url: profileData.avatar_url ?? null,
+            }
+          : {
+              id: currentUser.id,
+              email: currentUser.email ?? '',
+              name: '',
+              avatar_url: null,
+            }
+
+        const safeRuns = runs ?? []
+
+        setProfile(nextProfile)
+        setName(nextProfile.name ?? '')
+        setEmail(nextProfile.email ?? currentUser.email ?? '')
         setTotalXp(
-          runs.reduce((s, r) => s + r.xp, 0) +
-          (challengeXpByUser[user.id] ?? 0) +
-          (likeXpByUser[user.id] ?? 0)
+          safeRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0) +
+          (challengeXpByUser[currentUser.id] ?? 0) +
+          (likeXpByUser[currentUser.id] ?? 0)
         )
-        setTotalKm(runs.reduce((s, r) => s + r.distance_km, 0))
-        setRunsCount(runs.length)
-      })
+        setTotalKm(safeRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0))
+        setRunsCount(safeRuns.length)
+      } catch {
+        if (isMounted) {
+          setPageError('Не удалось загрузить профиль')
+        }
+      }
+    }
+
+    void loadProfileData()
+
+    return () => {
+      isMounted = false
+    }
   }, [user])
+
+  useEffect(() => {
+    return () => {
+      if (cropImageSrc) {
+        URL.revokeObjectURL(cropImageSrc)
+      }
+    }
+  }, [cropImageSrc])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!user) return
+    if (!user || saving) return
+
+    const nextName = name.trim()
+
     setSaving(true)
-    await supabase.from('profiles').update({ name }).eq('id', user.id)
-    setSaving(false)
+    setPageError('')
+    setSaveMessage('')
+
+    try {
+      const { error } = await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email ?? email,
+        name: nextName || null,
+        avatar_url: profile?.avatar_url ?? null,
+      })
+
+      if (error) {
+        setPageError('Не удалось сохранить профиль')
+        return
+      }
+
+      setProfile((prev) => ({
+        id: prev?.id ?? user.id,
+        email: prev?.email ?? user.email ?? email,
+        name: nextName || null,
+        avatar_url: prev?.avatar_url ?? null,
+      }))
+      setName(nextName)
+      setSaveMessage('Профиль сохранен')
+    } catch {
+      setPageError('Не удалось сохранить профиль')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (!file.type.startsWith('image/')) {
+      setPageError('Можно загрузить только изображение')
+      e.target.value = ''
+      return
+    }
+
     if (cropImageSrc) {
       URL.revokeObjectURL(cropImageSrc)
     }
 
+    setPageError('')
     setCropImageSrc(URL.createObjectURL(file))
     e.target.value = ''
   }
@@ -101,32 +219,63 @@ export default function ProfilePage() {
   }
 
   async function handleAvatarCropped(blob: Blob) {
-    if (!user) return
+    if (!user || uploading) return
 
     setUploading(true)
+    setPageError('')
+    const nextName = profile?.name ?? (name.trim() || null)
 
     try {
       const path = `${user.id}/avatar-${Date.now()}.jpg`
-      await supabase.storage.from('avatars').upload(path, blob, {
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, blob, {
         contentType: 'image/jpeg',
       })
 
+      if (uploadError) {
+        throw new Error('upload_failed')
+      }
+
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-      await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id)
-      setProfile((prev) => (prev ? { ...prev, avatar_url: data.publicUrl } : null))
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: user.id,
+        email: user.email ?? email,
+        name: nextName,
+        avatar_url: data.publicUrl,
+      })
+
+      if (profileError) {
+        throw new Error('profile_update_failed')
+      }
+
+      setProfile((prev) => ({
+        id: prev?.id ?? user.id,
+        email: prev?.email ?? user.email ?? email,
+        name: prev?.name ?? nextName,
+        avatar_url: data.publicUrl,
+      }))
       closeCropModal()
+    } catch {
+      setPageError('Не удалось обновить аватар')
     } finally {
       setUploading(false)
     }
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) return null
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        {pageError ? <p className="text-sm text-red-600">{pageError}</p> : null}
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen">
       <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Профиль</h1>
+      {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
+      {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
       <div className="mb-6 flex flex-col items-center gap-4">
         {profile?.avatar_url ? (
           <Image
@@ -166,6 +315,7 @@ export default function ProfilePage() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            disabled={saving}
             className="w-full border rounded px-3 py-2"
           />
         </div>

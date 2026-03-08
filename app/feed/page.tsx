@@ -16,12 +16,39 @@ export default function FeedPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id ?? null)
-      setLoading(false)
-    })
+    let isMounted = true
+
+    async function loadUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setAuthError('Не удалось проверить сессию')
+          return
+        }
+
+        setCurrentUserId(data.user?.id ?? null)
+      } catch {
+        if (isMounted) {
+          setAuthError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const feedKey = currentUserId !== null ? (['feed-runs', currentUserId] as const) : loading ? null : (['feed-runs', null] as const)
@@ -52,35 +79,44 @@ export default function FeedPage() {
 
     setActionError('')
     setPendingRunIds((prev) => [...prev, runId])
-    await mutate(
-      (currentItems: FeedRunItem[] = []) =>
-        currentItems.map((item) =>
-        item.id === runId
-          ? {
-              ...item,
-              likedByMe: !wasLiked,
-              likesCount: Math.max(0, item.likesCount + (wasLiked ? -1 : 1)),
-            }
-          : item
-        ),
-      false
-    )
 
-    const { error: likeError } = await toggleRunLike(runId, currentUserId, wasLiked)
+    try {
+      await mutate(
+        (currentItems: FeedRunItem[] = []) =>
+          currentItems.map((item) =>
+            item.id === runId
+              ? {
+                  ...item,
+                  likedByMe: !wasLiked,
+                  likesCount: Math.max(0, item.likesCount + (wasLiked ? -1 : 1)),
+                }
+              : item
+          ),
+        false
+      )
 
-    if (likeError) {
+      const { error: likeError } = await toggleRunLike(runId, currentUserId, wasLiked)
+
+      if (likeError) {
+        setActionError('Не удалось обновить лайк')
+        await mutate()
+        return
+      }
+
+      void mutate()
+    } catch {
       setActionError('Не удалось обновить лайк')
       await mutate()
-    } else {
-      void mutate()
+    } finally {
+      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
-
-    setPendingRunIds((prev) => prev.filter((id) => id !== runId))
   }
 
   if (loading) return <main className="min-h-screen p-4">Загрузка...</main>
 
-  const error = actionError || (feedError ? 'Не удалось загрузить ленту' : '')
+  const error = authError || actionError || (feedError ? 'Не удалось загрузить ленту' : '')
+  const emptyCtaHref = currentUserId ? '/runs' : '/login'
+  const emptyCtaLabel = currentUserId ? 'Добавить тренировку' : 'Войти'
 
   return (
     <main className="min-h-screen">
@@ -112,8 +148,8 @@ export default function FeedPage() {
           ) : !items || items.length === 0 ? (
             <div className="mt-10 text-center text-gray-500">
               <p>Пока нет тренировок</p>
-              <Link href="/runs" className="inline-block mt-4 px-4 py-2 rounded-lg border">
-                Добавить тренировку
+              <Link href={emptyCtaHref} className="inline-block mt-4 px-4 py-2 rounded-lg border">
+                {emptyCtaLabel}
               </Link>
             </div>
           ) : (

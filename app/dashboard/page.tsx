@@ -35,13 +35,43 @@ export default function DashboardPage() {
   const [showXpModal, setShowXpModal] = useState(false)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      setLoading(false)
-      if (!user) router.push('/login')
-    })
+    let isMounted = true
+
+    async function loadUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setAuthError('Не удалось проверить сессию')
+          return
+        }
+
+        setUser(data.user)
+
+        if (!data.user) {
+          router.push('/login')
+        }
+      } catch {
+        if (isMounted) {
+          setAuthError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [router])
 
   const swrBaseOptions = {
@@ -53,7 +83,10 @@ export default function DashboardPage() {
   const weeklyRaceKey = user ? (['weekly-race', user.id] as const) : null
   const profileKey = user ? (['dashboard-profile', user.id] as const) : null
 
-  const { data: profileSummary } = useSWR(
+  const {
+    data: profileSummary,
+    error: profileError,
+  } = useSWR(
     profileKey,
     ([, userId]: readonly [string, string]) => loadUserProfileSummary(userId),
     swrBaseOptions
@@ -61,6 +94,7 @@ export default function DashboardPage() {
 
   const {
     data: overview,
+    error: overviewError,
     isLoading: overviewLoading,
     mutate: mutateOverview,
   } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), swrBaseOptions)
@@ -100,36 +134,49 @@ export default function DashboardPage() {
 
     setActionError('')
     setPendingRunIds((prev) => [...prev, runId])
-    await mutateRuns(
-      (currentRuns = []) =>
-        currentRuns.map((run) =>
-        run.id === runId
-          ? {
-              ...run,
-              likedByMe: !wasLiked,
-              likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
-            }
-          : run
-        ),
-      false
-    )
 
-    const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
+    try {
+      await mutateRuns(
+        (currentRuns = []) =>
+          currentRuns.map((run) =>
+            run.id === runId
+              ? {
+                  ...run,
+                  likedByMe: !wasLiked,
+                  likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
+                }
+              : run
+          ),
+        false
+      )
 
-    if (likeError) {
-      setActionError('Не удалось обновить лайк')
-      await mutateRuns()
-    } else {
+      const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
+
+      if (likeError) {
+        setActionError('Не удалось обновить лайк')
+        await mutateRuns()
+        return
+      }
+
       void mutateRuns()
       void mutateWeeklyRace()
       void mutateOverview()
+    } catch {
+      setActionError('Не удалось обновить лайк')
+      await mutateRuns()
+    } finally {
+      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
-
-    setPendingRunIds((prev) => prev.filter((id) => id !== runId))
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) return null
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
+      </main>
+    )
+  }
 
   const stats = overview?.stats ?? null
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null
@@ -137,6 +184,8 @@ export default function DashboardPage() {
   const levelProgress = stats ? getLevelProgress(stats.totalXp) : null
   const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
   const profileName = profileSummary?.name || user.email?.split('@')[0] || 'бегун'
+  const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
+  const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
 
   return (
     <main className="min-h-screen">
@@ -148,6 +197,7 @@ export default function DashboardPage() {
             {user.email ? <p className="text-sm text-gray-500">{user.email}</p> : null}
           </div>
         </div>
+        {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
 
         <div className="mb-4">
           <Link
@@ -186,6 +236,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             </>
+          ) : overviewStateError ? (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm text-red-600">{overviewStateError}</p>
+            </div>
           ) : stats ? (
             <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-gray-500">🏃 Твой прогресс</p>
@@ -195,7 +249,12 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-600">+{stats.totalXp} XP</p>
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <p className="text-sm font-medium text-gray-500">🏃 Твой прогресс</p>
+              <p className="mt-3 text-sm text-gray-600">Данные появятся после первой тренировки</p>
+            </div>
+          )}
           {activeChallenge ? (
             <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>

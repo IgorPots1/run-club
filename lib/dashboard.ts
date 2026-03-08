@@ -55,6 +55,17 @@ export type UserProfileSummary = {
   email: string | null
 }
 
+async function safeLoadRunLikesSummary(currentUserId: string | null) {
+  try {
+    return await loadRunLikesSummary(currentUserId)
+  } catch {
+    return {
+      likesByRunId: {},
+      likedRunIds: new Set<string>(),
+    }
+  }
+}
+
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -117,7 +128,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       .select('id, user_id, title, distance_km, xp, created_at')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, name, email, avatar_url'),
-    loadRunLikesSummary(currentUserId),
+    safeLoadRunLikesSummary(currentUserId),
   ])
 
   if (runsError || profilesError) {
@@ -171,7 +182,7 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
       .select('id, user_id, title, distance_km, xp, created_at')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, name, email, avatar_url'),
-    loadRunLikesSummary(currentUserId),
+    safeLoadRunLikesSummary(currentUserId),
     loadChallengeXpByUser(),
     loadLikeXpByUser(),
   ])

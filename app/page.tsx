@@ -8,9 +8,16 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      router.push(user ? '/dashboard' : '/login')
-    })
+    async function redirectUser() {
+      try {
+        const { data } = await supabase.auth.getUser()
+        router.push(data.user ? '/dashboard' : '/login')
+      } catch {
+        router.push('/login')
+      }
+    }
+
+    void redirectUser()
   }, [router])
 
   return (

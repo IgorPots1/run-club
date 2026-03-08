@@ -12,28 +12,74 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        router.push('/dashboard')
-        return
+    let isMounted = true
+
+    async function checkUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setAuthError('Не удалось проверить сессию')
+          return
+        }
+
+        if (data.user) {
+          router.push('/dashboard')
+          return
+        }
+      } catch {
+        if (isMounted) {
+          setAuthError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingUser(false)
+        }
       }
-      setCheckingUser(false)
-    })
+    }
+
+    void checkUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setMessage('')
-    setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) {
-      setMessage(error.message)
+    if (loading) return
+
+    const normalizedEmail = email.trim()
+    if (!normalizedEmail || !password) {
+      setMessage('Введите email и пароль')
       return
     }
-    router.push('/dashboard')
+
+    setMessage('')
+    setLoading(true)
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      })
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      router.push('/dashboard')
+    } catch {
+      setMessage('Не удалось войти. Попробуйте еще раз.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (checkingUser) {
@@ -48,6 +94,7 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
         <h1 className="text-xl font-semibold">Войти</h1>
+        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
         <div>
           <label htmlFor="email" className="block text-sm mb-1">Email</label>
           <input
@@ -56,6 +103,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={loading}
             className="w-full border rounded px-3 py-2"
           />
         </div>
@@ -67,6 +115,7 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            disabled={loading}
             className="w-full border rounded px-3 py-2"
           />
         </div>
