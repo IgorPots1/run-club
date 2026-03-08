@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
@@ -30,6 +31,7 @@ export default function ProfilePage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user)
+      setEmail(user?.email ?? '')
       setLoading(false)
       if (!user) router.push('/login')
     })
@@ -37,7 +39,6 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return
-    setEmail(user.email ?? '')
     supabase
       .from('profiles')
       .select('id, email, name, avatar_url')
@@ -57,7 +58,12 @@ export default function ProfilePage() {
       .then(async ({ data: runs }) => {
         if (!runs) return
         const challengeXpByUser = await loadChallengeXpByUser()
-        setTotalXp(runs.reduce((s, r) => s + r.xp, 0) + (challengeXpByUser[user.id] ?? 0))
+        const likeXpByUser = await loadLikeXpByUser()
+        setTotalXp(
+          runs.reduce((s, r) => s + r.xp, 0) +
+          (challengeXpByUser[user.id] ?? 0) +
+          (likeXpByUser[user.id] ?? 0)
+        )
         setTotalKm(runs.reduce((s, r) => s + r.distance_km, 0))
         setRunsCount(runs.length)
       })

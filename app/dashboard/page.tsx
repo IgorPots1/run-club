@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { loadLikeXpByUser } from '@/lib/likes-xp'
 import RunLikeControl from '@/components/RunLikeControl'
 import { getChallengeProgress, type Challenge, type ChallengeWithProgress, type RunRecord } from '@/lib/challenges'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
@@ -47,6 +48,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showXpModal, setShowXpModal] = useState(false)
   const [runs, setRuns] = useState<RunItem[]>([])
   const [stats, setStats] = useState<ProgressStats | null>(null)
   const [activeChallenge, setActiveChallenge] = useState<ChallengeWithProgress | null>(null)
@@ -79,6 +81,7 @@ export default function DashboardPage() {
           { data: myRuns, error: myRunsError },
           { data: challenges, error: challengesError },
           challengeXpByUser,
+          likeXpByUser,
         ] = await Promise.all([
           supabase
             .from('runs')
@@ -96,6 +99,7 @@ export default function DashboardPage() {
             .select('id, title, description, goal_km, goal_runs, xp_reward')
             .order('created_at', { ascending: true }),
           loadChallengeXpByUser(),
+          loadLikeXpByUser(),
         ])
 
         if (runsError || profilesError || myRunsError || challengesError) {
@@ -134,7 +138,7 @@ export default function DashboardPage() {
         setStats({
           totalKmThisMonth,
           runsCount,
-          totalXp: totalRunXp + (challengeXpByUser[currentUser.id] ?? 0),
+          totalXp: totalRunXp + (challengeXpByUser[currentUser.id] ?? 0) + (likeXpByUser[currentUser.id] ?? 0),
         })
 
         const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) =>
@@ -252,9 +256,18 @@ export default function DashboardPage() {
               <p className="mt-3 text-sm text-gray-600">Все челленджи уже выполнены</p>
             </div>
           ) : null}
-          {levelProgress ? (
+          {stats && levelProgress ? (
             <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-gray-500">🏆 Уровень {levelProgress.level}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium text-gray-500">🏆 Уровень {levelProgress.level}</p>
+                <button
+                  type="button"
+                  onClick={() => setShowXpModal(true)}
+                  className="rounded-lg border px-3 py-1 text-xs text-gray-600"
+                >
+                  Как начисляется XP
+                </button>
+              </div>
               <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
                 <div
                   className="h-full rounded-full bg-black"
@@ -297,6 +310,28 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      {showXpModal ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold">Как начисляется XP</h2>
+              <button
+                type="button"
+                onClick={() => setShowXpModal(false)}
+                className="text-sm text-gray-500"
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="mt-4 space-y-3 text-sm text-gray-700">
+              <p>🏃 Завершённая тренировка — 50 XP</p>
+              <p>📏 1 км бега — 10 XP</p>
+              <p>❤️ Лайк за тренировку — 5 XP</p>
+              <p>🎯 Челлендж — XP зависит от награды челленджа</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

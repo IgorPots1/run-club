@@ -99,7 +99,7 @@ export default function RunsPage() {
     const runTitle = title.trim() || 'Тренировка'
     const d = Number(distanceKm)
     const dur = Number(durationMinutes)
-    const xp = 20 + d * 5
+    const xp = 50 + d * 10
     const selectedDate = runDate || new Date().toISOString().slice(0, 10)
     const createdAt = new Date(selectedDate || new Date().toISOString().slice(0, 10)).toISOString()
     const { error } = await supabase.from('runs').insert({

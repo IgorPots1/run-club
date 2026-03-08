@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { loadLikeXpByUser } from '@/lib/likes-xp'
 import RunLikeControl from '@/components/RunLikeControl'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
@@ -45,6 +46,7 @@ export default function FeedPage() {
           { data: profiles, error: profilesError },
           { likesByRunId, likedRunIds },
           challengeXpByUser,
+          likeXpByUser,
         ] = await Promise.all([
           supabase
             .from('runs')
@@ -53,6 +55,7 @@ export default function FeedPage() {
           supabase.from('profiles').select('id, name, email, avatar_url'),
           loadRunLikesSummary(user?.id ?? null),
           loadChallengeXpByUser(),
+          loadLikeXpByUser(),
         ])
 
         if (runsError || profilesError) {
@@ -69,6 +72,10 @@ export default function FeedPage() {
         }
 
         for (const [userId, xp] of Object.entries(challengeXpByUser)) {
+          totalXpByUser[userId] = (totalXpByUser[userId] ?? 0) + xp
+        }
+
+        for (const [userId, xp] of Object.entries(likeXpByUser)) {
           totalXpByUser[userId] = (totalXpByUser[userId] ?? 0) + xp
         }
 
