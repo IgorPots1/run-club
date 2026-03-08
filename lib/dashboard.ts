@@ -28,6 +28,7 @@ export type DashboardRunItem = {
   xp: number
   created_at: string
   displayName: string
+  avatar_url: string | null
   likesCount: number
   likedByMe: boolean
 }
@@ -47,6 +48,11 @@ export type DashboardOverview = {
   stats: DashboardProgressStats
   activeChallenge: ChallengeWithProgress | null
   allChallengesCompleted: boolean
+}
+
+export type UserProfileSummary = {
+  name: string | null
+  email: string | null
 }
 
 function getMonthStart(date: Date) {
@@ -110,7 +116,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       .from('runs')
       .select('id, user_id, title, distance_km, xp, created_at')
       .order('created_at', { ascending: false }),
-    supabase.from('profiles').select('id, name, email'),
+    supabase.from('profiles').select('id, name, email, avatar_url'),
     loadRunLikesSummary(currentUserId),
   ])
 
@@ -131,10 +137,24 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
       displayName: profile?.name?.trim() || profile?.email || '—',
+      avatar_url: profile?.avatar_url ?? null,
       likesCount: likesByRunId[run.id] ?? 0,
       likedByMe: likedRunIds.has(run.id),
     }
   })
+}
+
+export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
+  const { data, error } = await supabase.from('profiles').select('name, email').eq('id', userId).maybeSingle()
+
+  if (error) {
+    throw new Error('Не удалось загрузить профиль')
+  }
+
+  return {
+    name: data?.name?.trim() || null,
+    email: data?.email ?? null,
+  }
 }
 
 export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRunItem[]> {

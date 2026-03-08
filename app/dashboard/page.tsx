@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import useSWR from 'swr'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import RunLikeControl from '@/components/RunLikeControl'
-import { loadDashboardOverview, loadDashboardRuns } from '@/lib/dashboard'
+import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { toggleRunLike } from '@/lib/run-likes'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
@@ -26,6 +27,18 @@ function getLevelProgress(totalXp: number) {
     xpToNextLevel,
     progressPercent: Math.min((currentLevelXp / 200) * 100, 100),
   }
+}
+
+function formatRunDate(date: string) {
+  return new Date(date).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+function getInitials(label: string) {
+  const trimmed = label.trim()
+  return (trimmed[0] ?? '?').toUpperCase()
 }
 
 export default function DashboardPage() {
@@ -51,6 +64,13 @@ export default function DashboardPage() {
   const overviewKey = user ? (['dashboard-overview', user.id] as const) : null
   const runsKey = user ? (['dashboard-runs', user.id] as const) : null
   const weeklyRaceKey = user ? (['weekly-race', user.id] as const) : null
+  const profileKey = user ? (['dashboard-profile', user.id] as const) : null
+
+  const { data: profileSummary } = useSWR(
+    profileKey,
+    ([, userId]: readonly [string, string]) => loadUserProfileSummary(userId),
+    swrBaseOptions
+  )
 
   const {
     data: overview,
@@ -129,13 +149,17 @@ export default function DashboardPage() {
   const allChallengesCompleted = overview?.allChallengesCompleted ?? false
   const levelProgress = stats ? getLevelProgress(stats.totalXp) : null
   const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
+  const profileName = profileSummary?.name || user.email?.split('@')[0] || 'бегун'
 
   return (
     <main className="min-h-screen">
       <div className="p-4">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-4">Главная</h1>
-          <p className="text-sm text-gray-600">{user.email}</p>
+        <div className="mb-6 space-y-1">
+          <h1 className="text-2xl font-bold text-gray-900">Главная</h1>
+          <div className="space-y-0.5">
+            <p className="text-lg font-semibold text-gray-900">Привет, {profileName}</p>
+            {user.email ? <p className="text-sm text-gray-500">{user.email}</p> : null}
+          </div>
         </div>
 
         <div className="mb-4">
@@ -267,23 +291,45 @@ export default function DashboardPage() {
               </div>
             ) : (
               runs.map((run) => (
-                <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
-                  <p className="font-medium">{run.title}</p>
-                  <p className="text-sm text-gray-600 mt-1">{run.displayName}</p>
-                  <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
-                  <p className="text-sm mt-1">+{run.xp} XP</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {new Date(run.created_at).toLocaleDateString('ru-RU', {
-                      day: 'numeric',
-                      month: 'long'
-                    })}
-                  </p>
-                  <RunLikeControl
-                    likesCount={run.likesCount}
-                    likedByMe={run.likedByMe}
-                    pending={pendingRunIds.includes(run.id)}
-                    onToggle={() => handleLikeToggle(run.id)}
-                  />
+                <div key={run.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      {run.avatar_url ? (
+                        <Image
+                          src={run.avatar_url}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-600">
+                          {getInitials(run.displayName)}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-gray-900">{run.displayName}</p>
+                      </div>
+                    </div>
+                    <p className="shrink-0 text-sm text-gray-500">{formatRunDate(run.created_at)}</p>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-lg font-semibold text-gray-900">🏃 {run.title} - {run.distance_km} км</p>
+                  </div>
+
+                  <div className="mt-3">
+                    <p className="text-sm font-semibold text-amber-600">⚡ +{run.xp} XP</p>
+                  </div>
+
+                  <div className="mt-4">
+                    <RunLikeControl
+                      likesCount={run.likesCount}
+                      likedByMe={run.likedByMe}
+                      pending={pendingRunIds.includes(run.id)}
+                      onToggle={() => handleLikeToggle(run.id)}
+                    />
+                  </div>
                 </div>
               ))
             )}
