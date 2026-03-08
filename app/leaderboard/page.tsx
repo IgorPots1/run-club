@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
     <main className="min-h-screen">
       <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Рейтинг</h1>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto border rounded-xl p-4 shadow-sm bg-white mb-4">
         <table className="w-full border-collapse border">
           <thead>
             <tr className="border-b bg-gray-50">

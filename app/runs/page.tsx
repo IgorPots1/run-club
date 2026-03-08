@@ -153,9 +153,9 @@ export default function RunsPage() {
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
-      <div>
+      <div className="space-y-3 mb-4">
         {runs.map((run) => (
-          <div key={run.id} className="border rounded-lg p-4 mb-3">
+          <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
             <div className="flex justify-between gap-4">
               <div>
               <p className="font-medium">{run.title || 'Тренировка'}</p>

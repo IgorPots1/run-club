@@ -61,12 +61,12 @@ export default function FeedPage() {
     <main className="min-h-screen">
       <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Лента</h1>
-      <div className="max-w-md">
+      <div className="max-w-md space-y-3 mb-4">
         {items.length === 0 ? (
           <p className="text-sm text-gray-600">Пока нет тренировок</p>
         ) : (
           items.map((item) => (
-            <div key={item.run_id} className="border rounded-lg p-4 mb-3">
+            <div key={item.run_id} className="border rounded-xl p-4 shadow-sm bg-white">
               <p className="font-medium">{item.title}</p>
               <p className="text-sm text-gray-600 mt-1">
                 {item.displayName} · Уровень {getLevelFromXP(item.totalXp).level}

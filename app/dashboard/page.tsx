@@ -77,32 +77,32 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Link href="/runs" className="border rounded p-4">
+        <div className="grid gap-3 sm:grid-cols-2 mb-4">
+          <Link href="/runs" className="border rounded-xl p-4 shadow-sm bg-white">
             <h2 className="font-medium">Тренировки</h2>
           </Link>
-          <Link href="/leaderboard" className="border rounded p-4">
+          <Link href="/leaderboard" className="border rounded-xl p-4 shadow-sm bg-white">
             <h2 className="font-medium">Рейтинг</h2>
           </Link>
-          <Link href="/feed" className="border rounded p-4">
+          <Link href="/feed" className="border rounded-xl p-4 shadow-sm bg-white">
             <h2 className="font-medium">Лента</h2>
           </Link>
-          <Link href="/profile" className="border rounded p-4">
+          <Link href="/profile" className="border rounded-xl p-4 shadow-sm bg-white">
             <h2 className="font-medium">Профиль</h2>
           </Link>
-          <Link href="/challenges" className="border rounded p-4 sm:col-span-2">
+          <Link href="/challenges" className="border rounded-xl p-4 shadow-sm bg-white sm:col-span-2">
             <h2 className="font-medium">Челленджи</h2>
           </Link>
         </div>
 
-        <div className="mt-6">
+        <div className="mb-4">
           <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
-          <div>
+          <div className="space-y-3">
             {runs.length === 0 ? (
               <p className="text-sm text-gray-600">Пока нет тренировок</p>
             ) : (
               runs.map((run) => (
-                <div key={run.id} className="border rounded-lg p-4 mb-3">
+                <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
                   <p className="font-medium">{run.title}</p>
                   <p className="text-sm text-gray-600 mt-1">{run.displayName}</p>
                   <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
