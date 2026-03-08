@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
@@ -154,26 +155,35 @@ export default function RunsPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
       <div className="space-y-3 mb-4">
-        {runs.map((run) => (
-          <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
-            <div className="flex justify-between gap-4">
-              <div>
-              <p className="font-medium">{run.title || 'Тренировка'}</p>
-              <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
-              <p className="text-sm mt-1">+{run.xp} XP</p>
-              <p className="text-sm text-gray-500 mt-1">
-                {new Date(run.created_at).toLocaleDateString('ru-RU', {
-                  day: 'numeric',
-                  month: 'long'
-                })}
-              </p>
-              </div>
-              <button onClick={() => handleDelete(run.id)} className="border rounded px-2 py-1 text-sm h-fit">
-                Удалить
-              </button>
-            </div>
+        {runs.length === 0 ? (
+          <div className="mt-10 text-center text-gray-500">
+            <p>Пока нет тренировок</p>
+            <Link href="/runs" className="inline-block mt-4 px-4 py-2 rounded-lg border">
+              Добавить тренировку
+            </Link>
           </div>
-        ))}
+        ) : (
+          runs.map((run) => (
+            <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
+              <div className="flex justify-between gap-4">
+                <div>
+                <p className="font-medium">{run.title || 'Тренировка'}</p>
+                <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
+                <p className="text-sm mt-1">+{run.xp} XP</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {new Date(run.created_at).toLocaleDateString('ru-RU', {
+                    day: 'numeric',
+                    month: 'long'
+                  })}
+                </p>
+                </div>
+                <button onClick={() => handleDelete(run.id)} className="border rounded px-2 py-1 text-sm h-fit">
+                  Удалить
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
       </div>
     </main>

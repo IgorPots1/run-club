@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP } from '../../lib/xp'
@@ -63,7 +64,12 @@ export default function FeedPage() {
       <h1 className="text-2xl font-bold mb-4">Лента</h1>
       <div className="max-w-md space-y-3 mb-4">
         {items.length === 0 ? (
-          <p className="text-sm text-gray-600">Пока нет тренировок</p>
+          <div className="mt-10 text-center text-gray-500">
+            <p>Пока нет тренировок</p>
+            <Link href="/runs" className="inline-block mt-4 px-4 py-2 rounded-lg border">
+              Добавить тренировку
+            </Link>
+          </div>
         ) : (
           items.map((item) => (
             <div key={item.run_id} className="border rounded-xl p-4 shadow-sm bg-white">

@@ -175,31 +175,37 @@ export default function ChallengesPage() {
       <h1 className="text-2xl font-bold mb-4">Челленджи</h1>
 
       <div className="space-y-3 mb-4">
-        {items.map((item) => (
-          <div key={item.id} className="border rounded-xl p-4 shadow-sm bg-white">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold">{getChallengeTitle(item.title)}</h2>
-                {item.description ? (
-                  <p className="mt-1 text-sm text-gray-600">{item.description}</p>
-                ) : null}
-              </div>
-
-              <div className="text-right">
-                <p className="text-sm font-medium">{item.xp_reward} XP</p>
-                {item.completed ? (
-                  <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                    Выполнено
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <p className="mt-4 text-sm">
-              Прогресс: {item.progress} / {item.goal} {item.unit === 'km' ? 'км' : 'тренировок'}
-            </p>
+        {items.length === 0 ? (
+          <div className="mt-10 text-center text-gray-500">
+            <p>Челленджи скоро появятся</p>
           </div>
-        ))}
+        ) : (
+          items.map((item) => (
+            <div key={item.id} className="border rounded-xl p-4 shadow-sm bg-white">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">{getChallengeTitle(item.title)}</h2>
+                  {item.description ? (
+                    <p className="mt-1 text-sm text-gray-600">{item.description}</p>
+                  ) : null}
+                </div>
+
+                <div className="text-right">
+                  <p className="text-sm font-medium">{item.xp_reward} XP</p>
+                  {item.completed ? (
+                    <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                      Выполнено
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <p className="mt-4 text-sm">
+                Прогресс: {item.progress} / {item.goal} {item.unit === 'km' ? 'км' : 'тренировок'}
+              </p>
+            </div>
+          ))
+        )}
       </div>
       </div>
     </main>
