@@ -29,7 +29,10 @@ export default function MobileTabBar() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 md:hidden">
-      <nav className="mx-auto grid max-w-xl grid-cols-4 border-t bg-white text-center">
+      <nav
+        className="mx-auto grid max-w-xl grid-cols-4 border-t bg-white text-center shadow-[0_-1px_6px_rgba(0,0,0,0.04)]"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         <Link href="/dashboard" className={getLinkClass('/dashboard')}>Главная</Link>
         <Link href="/runs" className={getLinkClass('/runs')}>Тренировки</Link>
         <Link href="/club" className={getLinkClass('/club')}>Клуб</Link>
