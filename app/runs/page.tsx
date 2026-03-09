@@ -24,6 +24,58 @@ type Run = {
   likedByMe: boolean
 }
 
+function formatDurationMinutesLabel(totalMinutes: number) {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
+    return '0 мин'
+  }
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} мин`
+  }
+
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (minutes === 0) {
+    return `${hours} ч`
+  }
+
+  return `${hours} ч ${minutes} мин`
+}
+
+function formatDistanceKmLabel(distanceKm: number) {
+  return Number.isInteger(distanceKm) ? String(distanceKm) : distanceKm.toFixed(1)
+}
+
+function formatRunDateLabel(dateString: string) {
+  const runDate = new Date(dateString)
+
+  if (Number.isNaN(runDate.getTime())) {
+    return 'Дата неизвестна'
+  }
+
+  const today = new Date()
+  const yesterday = new Date()
+  yesterday.setDate(today.getDate() - 1)
+
+  const runDayKey = `${runDate.getFullYear()}-${runDate.getMonth()}-${runDate.getDate()}`
+  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`
+  const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`
+
+  if (runDayKey === todayKey) {
+    return 'Сегодня'
+  }
+
+  if (runDayKey === yesterdayKey) {
+    return 'Вчера'
+  }
+
+  return runDate.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
 function buildRunTitle(rawTitle: string, rawDistanceKm: string) {
   const baseTitle = rawTitle.trim()
   const distanceLabel = rawDistanceKm.trim()
@@ -487,13 +539,11 @@ export default function RunsPage() {
             <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-xl border p-4 shadow-sm">
               <div className="compact-run-card-layout flex flex-col gap-3 sm:flex-row sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="compact-run-card-title app-text-primary break-words font-medium">{run.title || 'Тренировка'}</p>
-                  <p className="compact-run-card-meta app-text-primary text-sm mt-1">🏃 {run.distance_km} км</p>
-                  <p className="compact-run-card-meta app-text-secondary text-sm mt-1">
-                    {new Date(run.created_at).toLocaleDateString('ru-RU', {
-                      day: 'numeric',
-                      month: 'long'
-                    })}
+                  <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
+                    {formatDistanceKmLabel(run.distance_km)} км • {formatDurationMinutesLabel(run.duration_minutes)}
+                  </p>
+                  <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">
+                    {formatRunDateLabel(run.created_at)}
                   </p>
                   <div className="compact-run-card-like">
                     <RunLikeControl

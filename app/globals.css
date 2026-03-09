@@ -204,14 +204,22 @@ textarea {
     line-height: 1.3;
   }
 
+  .compact-run-card-primary {
+    font-size: 0.975rem;
+  }
+
   .compact-run-card-meta {
     margin-top: 0.25rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
   }
 
+  .compact-run-card-secondary {
+    margin-top: 0.125rem;
+  }
+
   .compact-run-card-like {
-    margin-top: 0.5rem;
+    margin-top: 0.425rem;
   }
 
   .compact-run-card-like-row {
