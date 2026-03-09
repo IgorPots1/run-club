@@ -27,8 +27,8 @@ export default function RunLikeControl({
         disabled={pending}
         className={`min-h-10 shrink-0 rounded-full border px-3 py-2 text-xs font-medium leading-none transition-colors ${
           likedByMe
-            ? 'border-gray-200 bg-gray-100 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-50'
-            : 'app-button-secondary'
+            ? 'app-like-button-active'
+            : 'app-like-button-inactive'
         } disabled:cursor-not-allowed disabled:opacity-60`}
       >
         {pending ? '...' : likedByMe ? '♥ Убрать лайк' : '♡ Лайк'}

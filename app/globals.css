@@ -6,6 +6,7 @@
   --surface: #ffffff;
   --surface-muted: #f9fafb;
   --surface-subtle: #f3f4f6;
+  --surface-interactive: #f3f4f6;
   --border-color: #e5e7eb;
   --text-primary: #111827;
   --text-secondary: #4b5563;
@@ -17,6 +18,11 @@
   --chart-cursor: #f9fafb;
   --button-primary-bg: #111827;
   --button-primary-text: #ffffff;
+  --like-inactive: #6b7280;
+  --like-active: #e11d48;
+  --bottom-nav-bg: rgba(255, 255, 255, 0.95);
+  --bottom-nav-active: #111827;
+  --bottom-nav-inactive: #6b7280;
 }
 
 @theme inline {
@@ -28,22 +34,28 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b0d10;
-    --foreground: #f3f4f6;
-    --surface: #111827;
-    --surface-muted: #1f2937;
-    --surface-subtle: #0f172a;
-    --border-color: #374151;
-    --text-primary: #f9fafb;
-    --text-secondary: #d1d5db;
-    --text-muted: #9ca3af;
-    --accent-strong: #f9fafb;
-    --progress-track: #374151;
-    --chart-grid: #374151;
-    --chart-tick: #d1d5db;
-    --chart-cursor: #1f2937;
-    --button-primary-bg: #f9fafb;
-    --button-primary-text: #111827;
+    --background: #081423;
+    --foreground: #ffffff;
+    --surface: #0f1b2d;
+    --surface-muted: #16263f;
+    --surface-subtle: #16263f;
+    --surface-interactive: #16263f;
+    --border-color: rgba(255, 255, 255, 0.12);
+    --text-primary: #ffffff;
+    --text-secondary: #b7c3d7;
+    --text-muted: #8ea0b8;
+    --accent-strong: #ffffff;
+    --progress-track: rgba(255, 255, 255, 0.12);
+    --chart-grid: rgba(255, 255, 255, 0.12);
+    --chart-tick: #8ea0b8;
+    --chart-cursor: #16263f;
+    --button-primary-bg: #ffffff;
+    --button-primary-text: #081423;
+    --like-inactive: rgba(255, 255, 255, 0.3);
+    --like-active: #ff4d6d;
+    --bottom-nav-bg: #081423;
+    --bottom-nav-active: #ffffff;
+    --bottom-nav-inactive: #7f90a8;
   }
 }
 
@@ -66,11 +78,22 @@ body {
   overflow-x: hidden;
 }
 
+*,
+*::before,
+*::after {
+  border-color: var(--border-color);
+}
+
 input,
 button,
 select,
 textarea {
   font: inherit;
+}
+
+.app-shell {
+  background: var(--background);
+  color: var(--text-primary);
 }
 
 .app-card {
@@ -96,7 +119,7 @@ textarea {
 }
 
 .app-input {
-  background: var(--surface);
+  background: var(--surface-interactive);
   border-color: var(--border-color);
   color: var(--text-primary);
 }
@@ -110,7 +133,7 @@ textarea {
 }
 
 .app-input-readonly {
-  background: var(--surface-muted);
+  background: var(--surface-interactive);
 }
 
 .app-button-primary {
@@ -120,7 +143,7 @@ textarea {
 }
 
 .app-button-secondary {
-  background: var(--surface);
+  background: var(--surface-interactive);
   border-color: var(--border-color);
   color: var(--text-primary);
 }
@@ -136,6 +159,30 @@ textarea {
 
 .app-progress-track {
   background: var(--progress-track);
+}
+
+.app-like-button-inactive {
+  border-color: var(--like-inactive);
+  color: var(--like-inactive);
+}
+
+.app-like-button-active {
+  border-color: var(--like-active);
+  background: rgba(255, 77, 109, 0.12);
+  color: var(--like-active);
+}
+
+.app-bottom-nav {
+  background: var(--bottom-nav-bg);
+  border-color: var(--border-color);
+}
+
+.app-bottom-nav-active {
+  color: var(--bottom-nav-active);
+}
+
+.app-bottom-nav-inactive {
+  color: var(--bottom-nav-inactive);
 }
 
 .skeleton-line {
