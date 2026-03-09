@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
+import WheelPickerColumn from '@/components/WheelPickerColumn'
 import { ensureProfileExists } from '@/lib/profiles'
 import RunLikeControl from '@/components/RunLikeControl'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
@@ -41,6 +42,33 @@ function buildRunTitle(rawTitle: string, rawDistanceKm: string) {
   return 'Тренировка'
 }
 
+const DISTANCE_WHOLE_OPTIONS = Array.from({ length: 101 }, (_, index) => index)
+const DISTANCE_TENTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
+const DURATION_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
+const TIME_OPTIONS = Array.from({ length: 60 }, (_, index) => index)
+
+function formatTwoDigits(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDistanceLabel(wholeKm: number, tenthsKm: number) {
+  return `${wholeKm}.${tenthsKm}`
+}
+
+function formatDurationLabel(hours: number, minutes: number, seconds: number) {
+  return `${formatTwoDigits(hours)}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
+}
+
+function formatPaceLabel(totalSeconds: number, distanceKm: number) {
+  if (distanceKm <= 0 || totalSeconds <= 0) return ''
+
+  const paceSeconds = Math.round(totalSeconds / distanceKm)
+  const minutes = Math.floor(paceSeconds / 60)
+  const seconds = paceSeconds % 60
+
+  return `${minutes}:${formatTwoDigits(seconds)} / км`
+}
+
 export default function RunsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -48,8 +76,11 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([])
   const [title, setTitle] = useState('')
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10))
-  const [distanceKm, setDistanceKm] = useState('')
-  const [durationMinutes, setDurationMinutes] = useState('')
+  const [distanceWholeKm, setDistanceWholeKm] = useState(0)
+  const [distanceTenthsKm, setDistanceTenthsKm] = useState(0)
+  const [durationHours, setDurationHours] = useState(0)
+  const [durationClockMinutes, setDurationClockMinutes] = useState(0)
+  const [durationSeconds, setDurationSeconds] = useState(0)
   const [error, setError] = useState('')
   const [runsError, setRunsError] = useState('')
   const [likesError, setLikesError] = useState('')
@@ -57,6 +88,12 @@ export default function RunsPage() {
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
+  const selectedDistanceLabel = formatDistanceLabel(distanceWholeKm, distanceTenthsKm)
+  const selectedDistanceKm = Number(selectedDistanceLabel)
+  const selectedDurationLabel = formatDurationLabel(durationHours, durationClockMinutes, durationSeconds)
+  const selectedDurationSeconds = durationHours * 3600 + durationClockMinutes * 60 + durationSeconds
+  const selectedDurationMinutes = selectedDurationSeconds > 0 ? Math.max(1, Math.round(selectedDurationSeconds / 60)) : 0
+  const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
 
   useEffect(() => {
     let isMounted = true
@@ -156,16 +193,16 @@ export default function RunsPage() {
     const currentUser = user
     const normalizedTitle = title.trim()
     const selectedDate = runDate || new Date().toISOString().slice(0, 10)
-    const d = Number(distanceKm)
-    const dur = Number(durationMinutes)
+    const d = selectedDistanceKm
+    const dur = selectedDurationMinutes
 
     if (!Number.isFinite(d) || d <= 0) {
       setError('Укажите дистанцию больше 0 км')
       return
     }
 
-    if (!Number.isFinite(dur) || dur <= 0) {
-      setError('Укажите время больше 0 минут')
+    if (!Number.isFinite(dur) || dur <= 0 || selectedDurationSeconds <= 0) {
+      setError('Укажите время больше 0 секунд')
       return
     }
 
@@ -177,7 +214,7 @@ export default function RunsPage() {
 
     setError('')
     setSubmitting(true)
-    const runTitle = buildRunTitle(normalizedTitle, distanceKm)
+    const runTitle = buildRunTitle(normalizedTitle, selectedDistanceLabel)
     const xp = 50 + d * 10
 
     try {
@@ -197,8 +234,11 @@ export default function RunsPage() {
 
       setTitle('')
       setRunDate(new Date().toISOString().slice(0, 10))
-      setDistanceKm('')
-      setDurationMinutes('')
+      setDistanceWholeKm(0)
+      setDistanceTenthsKm(0)
+      setDurationHours(0)
+      setDurationClockMinutes(0)
+      setDurationSeconds(0)
       setError('')
       await fetchRuns(currentUser)
     } catch {
@@ -313,31 +353,63 @@ export default function RunsPage() {
           />
         </div>
         <div>
-          <label htmlFor="distance_km" className="block text-sm mb-1">Дистанция (км)</label>
-          <input
-            id="distance_km"
-            type="number"
-            step="0.01"
-            min="0"
-            value={distanceKm}
-            onChange={(e) => setDistanceKm(e.target.value)}
-            required
-            disabled={submitting}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
-          />
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label className="block text-sm">Дистанция (км)</label>
+            <p className="shrink-0 text-sm font-semibold text-gray-900">{selectedDistanceLabel} км</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <WheelPickerColumn
+              label="Км"
+              value={distanceWholeKm}
+              options={DISTANCE_WHOLE_OPTIONS}
+              onChange={setDistanceWholeKm}
+            />
+            <WheelPickerColumn
+              label="0.1 км"
+              value={distanceTenthsKm}
+              options={DISTANCE_TENTHS_OPTIONS}
+              onChange={setDistanceTenthsKm}
+            />
+          </div>
         </div>
         <div>
-          <label htmlFor="duration_minutes" className="block text-sm mb-1">Время (мин)</label>
-          <input
-            id="duration_minutes"
-            type="number"
-            min="0"
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(e.target.value)}
-            required
-            disabled={submitting}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
-          />
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label className="block text-sm">Время</label>
+            <p className="shrink-0 text-sm font-semibold text-gray-900">{selectedDurationLabel}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <WheelPickerColumn
+              label="Часы"
+              value={durationHours}
+              options={DURATION_HOUR_OPTIONS}
+              onChange={setDurationHours}
+              formatter={formatTwoDigits}
+            />
+            <WheelPickerColumn
+              label="Мин"
+              value={durationClockMinutes}
+              options={TIME_OPTIONS}
+              onChange={setDurationClockMinutes}
+              formatter={formatTwoDigits}
+            />
+            <WheelPickerColumn
+              label="Сек"
+              value={durationSeconds}
+              options={TIME_OPTIONS}
+              onChange={setDurationSeconds}
+              formatter={formatTwoDigits}
+            />
+          </div>
+        </div>
+        <div className="rounded-xl bg-gray-50 px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Предпросмотр</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <p className="font-medium text-gray-900">{selectedDistanceLabel} км</p>
+            <p className="font-medium text-gray-900">{selectedDurationLabel}</p>
+            <p className={pacePreview ? 'font-medium text-gray-900' : 'text-gray-500'}>
+              {pacePreview || 'Темп появится после выбора дистанции и времени'}
+            </p>
+          </div>
         </div>
         <button type="submit" disabled={submitting} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
           {submitting ? '...' : 'Добавить тренировку'}
