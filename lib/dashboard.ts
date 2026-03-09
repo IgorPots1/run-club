@@ -77,6 +77,12 @@ function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
 
+function getFeedWindowStartIso() {
+  const date = new Date()
+  date.setDate(date.getDate() - 30)
+  return date.toISOString()
+}
+
 function formatPace(distanceKm: number, durationMinutes: number | null) {
   if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null
   if (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) <= 0) return null
@@ -200,9 +206,11 @@ export async function loadFeedRuns(
   limit = 10
 ): Promise<FeedRunPage> {
   const end = start + limit - 1
+  const feedWindowStartIso = getFeedWindowStartIso()
   const { data: runs, error: runsError } = await supabase
     .from('runs')
     .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
+    .gte('created_at', feedWindowStartIso)
     .order('created_at', { ascending: false })
     .range(start, end)
 
