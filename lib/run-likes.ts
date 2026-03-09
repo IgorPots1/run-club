@@ -34,7 +34,13 @@ export async function loadRunLikesSummary(currentUserId: string | null): Promise
 export async function toggleRunLike(runId: string, currentUserId: string, likedByMe: boolean) {
   return likedByMe
     ? supabase.from('run_likes').delete().eq('run_id', runId).eq('user_id', currentUserId)
-    : supabase.from('run_likes').insert({ run_id: runId, user_id: currentUserId })
+    : supabase.from('run_likes').upsert(
+        { run_id: runId, user_id: currentUserId },
+        {
+          onConflict: 'run_id,user_id',
+          ignoreDuplicates: true,
+        }
+      )
 }
 
 export function subscribeToRunLikes(onChange: () => void) {

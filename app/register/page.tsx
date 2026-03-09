@@ -96,8 +96,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+    <main className="flex min-h-dvh items-start justify-center px-4 pb-8 pt-10 sm:min-h-screen sm:items-center sm:p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border bg-white p-4 shadow-sm sm:p-5">
         <h1 className="text-xl font-semibold">Регистрация</h1>
         {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
         <div>
@@ -109,7 +109,7 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={loading}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
@@ -121,13 +121,13 @@ export default function RegisterPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
-        <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
+        <button type="submit" disabled={loading} className="min-h-11 w-full rounded-lg bg-black px-4 py-2 text-white">
           {loading ? '...' : 'Зарегистрироваться'}
         </button>
-        <p className="text-sm text-gray-600">
+        <p className="break-words text-sm text-gray-600">
           Уже есть аккаунт? <Link href="/login" className="underline">Войти</Link>
         </p>
         {error && <p className="text-sm text-red-600">{error}</p>}

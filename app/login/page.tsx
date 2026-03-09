@@ -91,8 +91,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+    <main className="flex min-h-dvh items-start justify-center px-4 pb-8 pt-10 sm:min-h-screen sm:items-center sm:p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border bg-white p-4 shadow-sm sm:p-5">
         <h1 className="text-xl font-semibold">Войти</h1>
         {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
         <div>
@@ -104,7 +104,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={loading}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
@@ -116,13 +116,13 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
-        <button type="submit" disabled={loading} className="w-full bg-black text-white rounded py-2">
+        <button type="submit" disabled={loading} className="min-h-11 w-full rounded-lg bg-black px-4 py-2 text-white">
           {loading ? '...' : 'Войти'}
         </button>
-        <p className="text-sm text-gray-600">
+        <p className="break-words text-sm text-gray-600">
           Нет аккаунта? <Link href="/register" className="underline">Регистрация</Link>
         </p>
         {message && <p className="text-sm">{message}</p>}

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
+import { ensureProfileExists } from '@/lib/profiles'
 import { toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP } from '../../lib/xp'
@@ -33,6 +34,10 @@ export default function FeedPage() {
         }
 
         setCurrentUserId(data.user?.id ?? null)
+
+        if (data.user) {
+          void ensureProfileExists(data.user)
+        }
       } catch {
         if (isMounted) {
           setAuthError('Не удалось проверить сессию')
@@ -120,10 +125,10 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen">
-      <div className="p-4">
+      <div className="mx-auto max-w-xl p-4">
         <h1 className="text-2xl font-bold mb-4">Лента</h1>
         {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-        <div className="max-w-md space-y-3 mb-4">
+        <div className="space-y-3 pb-2">
           {feedLoading && !items ? (
             <>
               <div className="rounded-xl border bg-white p-4 shadow-sm">
@@ -148,7 +153,7 @@ export default function FeedPage() {
           ) : !items || items.length === 0 ? (
             <div className="mt-10 text-center text-gray-500">
               <p>Пока нет тренировок</p>
-              <Link href={emptyCtaHref} className="inline-block mt-4 px-4 py-2 rounded-lg border">
+              <Link href={emptyCtaHref} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
                 {emptyCtaLabel}
               </Link>
             </div>

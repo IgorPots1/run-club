@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import type { User } from '@supabase/supabase-js'
 import { buildActivitySummary, loadActivityRuns, type ActivityPeriod } from '@/lib/activity'
+import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
 const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
@@ -55,13 +56,47 @@ export default function ActivityPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      setLoadingUser(false)
-      if (!user) router.push('/login')
-    })
+    let isMounted = true
+
+    async function loadUser() {
+      try {
+        const { data, error } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (error) {
+          setAuthError('Не удалось проверить сессию')
+          return
+        }
+
+        setUser(data.user)
+
+        if (data.user) {
+          void ensureProfileExists(data.user)
+        }
+
+        if (!data.user) {
+          router.push('/login')
+        }
+      } catch {
+        if (isMounted) {
+          setAuthError('Не удалось проверить сессию')
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingUser(false)
+        }
+      }
+    }
+
+    void loadUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [router])
 
   const { data: runs, error, isLoading } = useSWR(
@@ -81,11 +116,17 @@ export default function ActivityPage() {
     return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   }
 
-  if (!user) return null
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen">
-      <div className="mx-auto max-w-7xl p-4 md:px-8 md:py-6">
+      <div className="mx-auto max-w-xl p-4 md:max-w-7xl md:px-8 md:py-6">
         <div className="mb-5 md:mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Активность</h1>
           <p className="mt-1 text-sm text-gray-500">Твоя беговая статистика за выбранный период.</p>
@@ -97,7 +138,7 @@ export default function ActivityPage() {
               key={option.id}
               type="button"
               onClick={() => setPeriod(option.id)}
-              className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium md:min-w-30 ${
+              className={`min-h-11 shrink-0 rounded-full border px-4 py-2 text-sm font-medium md:min-w-30 ${
                 period === option.id ? 'border-black bg-black text-white' : 'border-gray-200 bg-white text-gray-700'
               }`}
             >
@@ -132,7 +173,7 @@ export default function ActivityPage() {
             <div className="grid gap-4 md:grid-cols-[320px_minmax(0,1fr)] md:items-start md:gap-5">
               <div className="min-w-0 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:sticky md:top-6 md:p-5">
                 <p className="text-sm font-medium text-gray-500">Общая дистанция</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 md:mt-2.5 md:text-4xl">
+                <p className="mt-2 break-words text-3xl font-bold tracking-tight text-gray-900 md:mt-2.5 md:text-4xl">
                   {formatDistance(summary.totalDistance)} км
                 </p>
                 <div className="mt-3.5 border-t pt-3 md:mt-4 md:pt-3.5">

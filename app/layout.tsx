@@ -58,7 +58,7 @@ export default function RootLayout({
       <body className="bg-gray-50">
         <PwaRegister />
         <div
-          className={`mx-auto min-h-screen max-w-xl bg-white pb-[calc(5rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`mx-auto min-h-screen max-w-xl overflow-x-hidden bg-white pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           <div className="hidden md:block">
             <Navbar />

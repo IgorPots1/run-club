@@ -16,16 +16,16 @@ export default function RunLikeControl({
   const likesLabel = likesCount === 1 ? 'лайк' : likesCount >= 2 && likesCount <= 4 ? 'лайка' : 'лайков'
 
   return (
-    <div className="flex items-center justify-between gap-2.5">
-      <p className="flex items-center gap-1 text-xs text-gray-500">
+    <div className="flex flex-wrap items-center justify-between gap-2.5">
+      <p className="min-w-0 flex items-center gap-1 text-xs text-gray-500">
         <span className="text-[10px]">❤️</span>
-        <span>{likesCount} {likesLabel}</span>
+        <span className="truncate">{likesCount} {likesLabel}</span>
       </p>
       <button
         type="button"
         onClick={onToggle}
         disabled={pending}
-        className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+        className={`min-h-10 shrink-0 rounded-full border px-3 py-2 text-xs font-medium leading-none transition-colors ${
           likedByMe ? 'border-gray-200 bg-gray-100 text-gray-900' : 'border-gray-200 bg-white text-gray-700'
         } disabled:cursor-not-allowed disabled:opacity-60`}
       >

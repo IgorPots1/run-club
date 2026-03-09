@@ -30,6 +30,21 @@ body {
   min-height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+input,
+button,
+select,
+textarea {
+  font: inherit;
+}
+
 .skeleton-line {
   border-radius: 9999px;
   background: #f3f4f6;

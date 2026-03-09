@@ -8,6 +8,7 @@ import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
 import type { ChallengeWithProgress } from '@/lib/challenges'
+import { ensureProfileExists } from '@/lib/profiles'
 import { toggleRunLike } from '@/lib/run-likes'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { supabase } from '../../lib/supabase'
@@ -52,6 +53,10 @@ export default function DashboardPage() {
         }
 
         setUser(data.user)
+
+        if (data.user) {
+          void ensureProfileExists(data.user)
+        }
 
         if (!data.user) {
           router.push('/login')
@@ -189,12 +194,12 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen">
-      <div className="p-4">
+      <div className="mx-auto max-w-xl p-4">
         <div className="mb-6 space-y-1">
           <h1 className="text-2xl font-bold text-gray-900">Главная</h1>
-          <div className="space-y-0.5">
+          <div className="min-w-0 space-y-0.5">
             <p className="text-lg font-semibold text-gray-900">Привет, {profileName}</p>
-            {user.email ? <p className="text-sm text-gray-500">{user.email}</p> : null}
+            {user.email ? <p className="truncate text-sm text-gray-500">{user.email}</p> : null}
           </div>
         </div>
         {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
@@ -202,7 +207,7 @@ export default function DashboardPage() {
         <div className="mb-4">
           <Link
             href="/runs"
-            className="block mt-4 w-full rounded-xl bg-black text-white py-3 text-lg font-medium text-center mb-4"
+            className="mb-4 mt-4 block min-h-12 w-full rounded-xl bg-black px-4 py-3 text-center text-base font-medium text-white sm:text-lg"
           >
             ➕ Добавить тренировку
           </Link>
@@ -241,10 +246,10 @@ export default function DashboardPage() {
               <p className="text-sm text-red-600">{overviewStateError}</p>
             </div>
           ) : stats ? (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+            <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-gray-500">🏃 Твой прогресс</p>
               <div className="mt-3 space-y-1">
-                <p className="text-xl font-semibold">{stats.totalKmThisMonth.toFixed(1)} км в этом месяце</p>
+                <p className="text-lg font-semibold sm:text-xl">{stats.totalKmThisMonth.toFixed(1)} км в этом месяце</p>
                 <p className="text-sm text-gray-600">{stats.runsCount} тренировок</p>
                 <p className="text-sm text-gray-600">+{stats.totalXp} XP</p>
               </div>
@@ -256,9 +261,9 @@ export default function DashboardPage() {
             </div>
           )}
           {activeChallenge ? (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+            <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>
-              <h2 className="mt-3 text-lg font-semibold">{activeChallenge.title}</h2>
+              <h2 className="mt-3 break-words text-lg font-semibold">{activeChallenge.title}</h2>
               {activeChallenge.progressItems[0] ? (
                 <div className="mt-3">
                   <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
@@ -280,13 +285,13 @@ export default function DashboardPage() {
             </div>
           ) : null}
           {stats && levelProgress ? (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+            <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-medium text-gray-500">🏆 Уровень {levelProgress.level}</p>
                 <button
                   type="button"
                   onClick={() => setShowXpModal(true)}
-                  className="rounded-lg border px-3 py-1 text-xs text-gray-600"
+                  className="min-h-10 shrink-0 rounded-lg border px-3 py-2 text-xs text-gray-600"
                 >
                   Как начисляется XP
                 </button>
@@ -297,7 +302,7 @@ export default function DashboardPage() {
                   style={{ width: `${levelProgress.progressPercent}%` }}
                 />
               </div>
-              <p className="mt-3 text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
+              <p className="mt-3 break-words text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
               <p className="mt-1 text-sm text-gray-600">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
             </div>
           ) : null}

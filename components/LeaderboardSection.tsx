@@ -45,13 +45,13 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
 
         if (!isMounted) return
 
-        if (runsError || profilesError) {
+        if (runsError) {
           setError('Не удалось загрузить рейтинг')
           setRows([])
           return
         }
 
-        const profileById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+        const profileById = profilesError ? {} : Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
         const byUserId: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
 
         for (const run of runs ?? []) {
@@ -75,7 +75,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         const list = Object.entries(byUserId)
           .map(([user_id, data]) => {
             const profile = profileById[user_id]
-            const displayName = profile?.name?.trim() || profile?.email || '—'
+            const displayName = profile?.name?.trim() || profile?.email || 'Бегун'
             const avatar_url = profile?.avatar_url ?? null
             return { user_id, displayName, avatar_url, ...data }
           })
@@ -111,7 +111,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
   }
 
   return (
-    <div className="p-4">
+    <div className="mx-auto max-w-xl p-4 md:max-w-none">
       {showTitle ? <h1 className="mb-4 text-2xl font-bold">Рейтинг</h1> : null}
       {error ? (
         <p className="text-sm text-red-600">{error}</p>
@@ -123,7 +123,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         <>
           <div className="md:hidden">
             {rows.map((row, index) => (
-              <div key={row.user_id} className="mb-3 rounded-xl border bg-white p-4 shadow-sm">
+              <div key={row.user_id} className="mb-3 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
                 <p className="mb-3 font-medium">{index + 1} место</p>
                 <div className="mb-4 flex items-center gap-3">
                   {row.avatar_url ? (
@@ -138,18 +138,18 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                     <p className="text-sm text-gray-500">Уровень {getLevelFromXP(row.total_xp).level}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   <div>
                     <p className="text-xs text-gray-500">Всего XP</p>
-                    <p className="text-lg font-semibold">{row.total_xp}</p>
+                    <p className="break-words text-base font-semibold sm:text-lg">{row.total_xp}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Всего км</p>
-                    <p className="text-lg font-semibold">{row.total_km.toFixed(2)}</p>
+                    <p className="break-words text-base font-semibold sm:text-lg">{row.total_km.toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Тренировки</p>
-                    <p className="text-lg font-semibold">{row.runs_count}</p>
+                    <p className="break-words text-base font-semibold sm:text-lg">{row.runs_count}</p>
                   </div>
                 </div>
               </div>

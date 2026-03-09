@@ -34,5 +34,22 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login?error=auth_callback', url.origin))
   }
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (user) {
+    await supabase.from('profiles').upsert(
+      {
+        id: user.id,
+        email: user.email?.trim() || null,
+      },
+      {
+        onConflict: 'id',
+        ignoreDuplicates: false,
+      }
+    )
+  }
+
   return NextResponse.redirect(new URL('/dashboard', url.origin))
 }

@@ -25,7 +25,7 @@ export default function WeeklyLeaderboard({
     (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
 
   return (
-    <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+    <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
       <p className="text-sm font-medium text-gray-500">🔥 Гонка недели</p>
 
       {loading ? (
@@ -57,7 +57,7 @@ export default function WeeklyLeaderboard({
         <div className="mt-3 space-y-2">
           {topRows.map((row) => (
             <div key={row.user_id} className="flex items-center justify-between gap-3 text-sm">
-              <p className="min-w-0 truncate">
+              <p className="min-w-0 flex-1 truncate">
                 {row.rank}. {row.displayName}
               </p>
               <p className="shrink-0 font-medium">{row.totalXp} XP</p>

@@ -131,11 +131,13 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
     safeLoadRunLikesSummary(currentUserId),
   ])
 
-  if (runsError || profilesError) {
+  if (runsError) {
     throw new Error('Не удалось загрузить тренировки')
   }
 
-  const profileById = Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
+  const profileById = profilesError
+    ? {}
+    : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
 
   return ((runs as RunRow[] | null) ?? []).map((run) => {
     const profile = profileById[run.user_id]
@@ -148,7 +150,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       distance_km: Number(run.distance_km ?? 0),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
-      displayName: profile?.name?.trim() || profile?.email || '—',
+      displayName: profile?.name?.trim() || profile?.email || 'Бегун',
       avatar_url: profile?.avatar_url ?? null,
       likesCount: likesByRunId[run.id] ?? 0,
       likedByMe: likedRunIds.has(run.id),
@@ -160,7 +162,10 @@ export async function loadUserProfileSummary(userId: string): Promise<UserProfil
   const { data, error } = await supabase.from('profiles').select('name, email').eq('id', userId).maybeSingle()
 
   if (error) {
-    throw new Error('Не удалось загрузить профиль')
+    return {
+      name: null,
+      email: null,
+    }
   }
 
   return {
@@ -187,11 +192,13 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
     loadLikeXpByUser(),
   ])
 
-  if (runsError || profilesError) {
+  if (runsError) {
     throw new Error('Не удалось загрузить ленту')
   }
 
-  const profileById = Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
+  const profileById = profilesError
+    ? {}
+    : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
   const totalXpByUser: Record<string, number> = {}
 
   for (const run of (runs as RunRow[] | null) ?? []) {
@@ -217,7 +224,7 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
       distance_km: Number(run.distance_km ?? 0),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
-      displayName: profile?.name?.trim() || profile?.email || '—',
+      displayName: profile?.name?.trim() || profile?.email || 'Бегун',
       avatar_url: profile?.avatar_url ?? null,
       totalXp: totalXpByUser[run.user_id] ?? 0,
       likesCount: likesByRunId[run.id] ?? 0,

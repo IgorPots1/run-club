@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { ensureProfileExists } from '@/lib/profiles'
 import RunLikeControl from '@/components/RunLikeControl'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
@@ -72,6 +73,10 @@ export default function RunsPage() {
         }
 
         setUser(data.user)
+
+        if (data.user) {
+          void ensureProfileExists(data.user)
+        }
 
         if (!data.user) {
           router.push('/login')
@@ -290,9 +295,9 @@ export default function RunsPage() {
 
   return (
     <main className="min-h-screen">
-      <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Тренировки</h1>
-      <form onSubmit={handleSubmit} className="mb-8 space-y-3 max-w-sm">
+      <div className="mx-auto max-w-xl p-4">
+      <h1 className="mb-4 text-2xl font-bold">Тренировки</h1>
+      <form onSubmit={handleSubmit} className="mb-8 space-y-3 rounded-2xl border bg-white p-4 shadow-sm">
         <div>
           <label htmlFor="title" className="block text-sm mb-1">Название тренировки</label>
           <input
@@ -302,7 +307,7 @@ export default function RunsPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={submitting}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
@@ -314,7 +319,7 @@ export default function RunsPage() {
             onChange={(e) => setRunDate(e.target.value)}
             required
             disabled={submitting}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
@@ -328,7 +333,7 @@ export default function RunsPage() {
             onChange={(e) => setDistanceKm(e.target.value)}
             required
             disabled={submitting}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
@@ -341,10 +346,10 @@ export default function RunsPage() {
             onChange={(e) => setDurationMinutes(e.target.value)}
             required
             disabled={submitting}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
-        <button type="submit" disabled={submitting} className="border rounded px-3 py-2">
+        <button type="submit" disabled={submitting} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
           {submitting ? '...' : 'Добавить тренировку'}
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -361,10 +366,10 @@ export default function RunsPage() {
           </div>
         ) : (
           runs.map((run) => (
-            <div key={run.id} className="border rounded-xl p-4 shadow-sm bg-white">
-              <div className="flex justify-between gap-4">
+            <div key={run.id} className="overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{run.title || 'Тренировка'}</p>
+                  <p className="break-words font-medium">{run.title || 'Тренировка'}</p>
                   <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
                   <p className="text-sm mt-1">+{run.xp} XP</p>
                   <p className="text-sm text-gray-500 mt-1">
@@ -380,7 +385,10 @@ export default function RunsPage() {
                     onToggle={() => handleLikeToggle(run.id)}
                   />
                 </div>
-                <button onClick={() => handleDelete(run.id)} className="shrink-0 border rounded px-2 py-1 text-sm h-fit">
+                <button
+                  onClick={() => handleDelete(run.id)}
+                  className="min-h-11 w-full shrink-0 rounded-lg border px-3 py-2 text-sm sm:h-fit sm:w-auto"
+                >
                   {deletingRunIds.includes(run.id) ? '...' : 'Удалить'}
                 </button>
               </div>

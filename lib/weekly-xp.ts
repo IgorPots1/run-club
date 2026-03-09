@@ -52,12 +52,14 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
     supabase.from('user_challenges').select('user_id, xp_awarded, completed_at'),
   ])
 
-  if (profilesError || runsError || likesError || userChallengesError) {
+  if (runsError || likesError) {
     throw new Error('Не удалось загрузить недельный рейтинг')
   }
 
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
-  const profileById = Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
+  const profileById = profilesError
+    ? {}
+    : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
   const xpByUserId: Record<string, number> = {}
   const runOwnerById = Object.fromEntries(((runs as RunRow[] | null) ?? []).map((run) => [run.id, run.user_id]))
 
@@ -73,9 +75,11 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
     xpByUserId[ownerId] = (xpByUserId[ownerId] ?? 0) + XP_PER_LIKE
   }
 
-  for (const challenge of (userChallenges as UserChallengeRow[] | null) ?? []) {
-    if (new Date(challenge.completed_at).getTime() < cutoff) continue
-    xpByUserId[challenge.user_id] = (xpByUserId[challenge.user_id] ?? 0) + Number(challenge.xp_awarded ?? 0)
+  if (!userChallengesError) {
+    for (const challenge of (userChallenges as UserChallengeRow[] | null) ?? []) {
+      if (new Date(challenge.completed_at).getTime() < cutoff) continue
+      xpByUserId[challenge.user_id] = (xpByUserId[challenge.user_id] ?? 0) + Number(challenge.xp_awarded ?? 0)
+    }
   }
 
   const rows = Object.entries(xpByUserId)
@@ -83,7 +87,7 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
       const profile = profileById[user_id]
       return {
         user_id,
-        displayName: profile?.name?.trim() || profile?.email || '—',
+        displayName: profile?.name?.trim() || profile?.email || 'Бегун',
         totalXp,
         rank: 0,
       }

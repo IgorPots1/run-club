@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
+import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
@@ -49,6 +50,10 @@ export default function ProfilePage() {
 
         setUser(data.user)
         setEmail(data.user?.email ?? '')
+
+        if (data.user) {
+          void ensureProfileExists(data.user)
+        }
 
         if (!data.user) {
           router.push('/login')
@@ -272,8 +277,8 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen">
-      <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Профиль</h1>
+      <div className="mx-auto max-w-xl p-4">
+      <h1 className="mb-4 text-2xl font-bold">Профиль</h1>
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
       <div className="mb-6 flex flex-col items-center gap-4">
@@ -281,18 +286,18 @@ export default function ProfilePage() {
           <Image
             src={profile.avatar_url}
             alt="Аватар"
-            width={128}
-            height={128}
-            className="h-32 w-32 rounded-full object-cover"
+            width={112}
+            height={112}
+            className="h-28 w-28 rounded-full object-cover sm:h-32 sm:w-32"
           />
         ) : (
-          <div className="w-32 h-32 rounded-full bg-gray-100 border flex items-center justify-center text-sm text-gray-500">
+          <div className="flex h-28 w-28 items-center justify-center rounded-full border bg-gray-100 text-sm text-gray-500 sm:h-32 sm:w-32">
             Аватар
           </div>
         )}
         <label
           htmlFor="avatar-upload"
-          className={`inline-flex cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
+          className={`inline-flex min-h-11 w-full max-w-sm cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
             uploading ? 'pointer-events-none opacity-60' : ''
           }`}
         >
@@ -307,7 +312,7 @@ export default function ProfilePage() {
           className="hidden"
         />
       </div>
-      <form onSubmit={handleSave} className="mb-8 space-y-3 max-w-sm">
+      <form onSubmit={handleSave} className="mb-8 space-y-3 rounded-2xl border bg-white p-4 shadow-sm">
         <div>
           <label htmlFor="name" className="block text-sm mb-1">Имя</label>
           <input
@@ -316,7 +321,7 @@ export default function ProfilePage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={saving}
-            className="w-full border rounded px-3 py-2"
+            className="min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
@@ -326,34 +331,34 @@ export default function ProfilePage() {
             type="email"
             value={email}
             readOnly
-            className="w-full border rounded px-3 py-2 bg-gray-100"
+            className="min-h-11 w-full rounded-lg border bg-gray-100 px-3 py-2"
           />
         </div>
-        <button type="submit" disabled={saving} className="border rounded px-3 py-2">
+        <button type="submit" disabled={saving} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
           {saving ? '...' : 'Сохранить'}
         </button>
       </form>
-      <div className="border rounded-xl p-4 mt-6 max-w-sm">
+      <div className="mt-6 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="text-xl font-semibold mb-4">Статистика</h2>
-        <div className="flex justify-between items-center py-2 border-b">
-          <span className="text-gray-500">Уровень</span>
-          <span className="font-semibold">{getLevelFromXP(totalXp).level}</span>
+        <div className="flex items-center justify-between gap-4 border-b py-2">
+          <span className="min-w-0 text-gray-500">Уровень</span>
+          <span className="shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).level}</span>
         </div>
-        <div className="flex justify-between items-center py-2 border-b">
-          <span className="text-gray-500">Всего XP</span>
-          <span className="font-semibold">{totalXp}</span>
+        <div className="flex items-center justify-between gap-4 border-b py-2">
+          <span className="min-w-0 text-gray-500">Всего XP</span>
+          <span className="shrink-0 text-right font-semibold">{totalXp}</span>
         </div>
-        <div className="flex justify-between items-center py-2 border-b">
-          <span className="text-gray-500">Следующий уровень</span>
-          <span className="font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
+        <div className="flex items-center justify-between gap-4 border-b py-2">
+          <span className="min-w-0 text-gray-500">Следующий уровень</span>
+          <span className="shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
         </div>
-        <div className="flex justify-between items-center py-2 border-b">
-          <span className="text-gray-500">Всего км</span>
-          <span className="font-semibold">{totalKm.toFixed(2)}</span>
+        <div className="flex items-center justify-between gap-4 border-b py-2">
+          <span className="min-w-0 text-gray-500">Всего км</span>
+          <span className="shrink-0 text-right font-semibold">{totalKm.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between items-center py-2">
-          <span className="text-gray-500">Тренировки</span>
-          <span className="font-semibold">{runsCount}</span>
+        <div className="flex items-center justify-between gap-4 py-2">
+          <span className="min-w-0 text-gray-500">Тренировки</span>
+          <span className="shrink-0 text-right font-semibold">{runsCount}</span>
         </div>
       </div>
       {cropImageSrc ? (

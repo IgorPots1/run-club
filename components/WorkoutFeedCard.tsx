@@ -69,8 +69,8 @@ export default function WorkoutFeedCard({
   const displayUserName = displayName.trim() || 'Бегун'
 
   return (
-    <div className="rounded-2xl bg-white px-4 py-3.5 shadow-sm shadow-black/5 ring-1 ring-black/5">
-      <div className="flex items-center justify-between gap-2.5">
+    <div className="overflow-hidden rounded-2xl bg-white px-4 py-3.5 shadow-sm shadow-black/5 ring-1 ring-black/5">
+      <div className="flex items-start justify-between gap-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           {showAvatarImage && avatarSrc ? (
             <Image
@@ -86,10 +86,10 @@ export default function WorkoutFeedCard({
           )}
           <div className="min-w-0">
             <p className="truncate font-semibold text-gray-900">{displayUserName}</p>
-            {subtitle ? <p className="text-sm text-gray-500">{subtitle}</p> : null}
+            {subtitle ? <p className="truncate text-sm text-gray-500">{subtitle}</p> : null}
           </div>
         </div>
-        <p className="shrink-0 text-sm text-gray-500">{formatRunDate(createdAt)}</p>
+        <p className="max-w-[6.5rem] shrink-0 text-right text-xs text-gray-500 sm:max-w-none sm:text-sm">{formatRunDate(createdAt)}</p>
       </div>
 
       <div className="mt-2.5">
