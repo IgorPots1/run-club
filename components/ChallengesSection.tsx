@@ -30,7 +30,7 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
         const user = await getBootstrapUser()
 
         if (!user) {
-          router.push('/login')
+          router.replace('/login')
           return
         }
 

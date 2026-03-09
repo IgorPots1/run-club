@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -73,7 +74,7 @@ export default function ActivityPage() {
         }
 
         if (!nextUser) {
-          router.push('/login')
+          router.replace('/login')
         }
       } finally {
         if (isMounted) {
@@ -107,7 +108,11 @@ export default function ActivityPage() {
   }
 
   if (!user) {
-    return null
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Link href="/login" className="text-sm underline">Открыть вход</Link>
+      </main>
+    )
   }
 
   return (

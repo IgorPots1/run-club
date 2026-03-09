@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -51,7 +52,7 @@ export default function ProfilePage() {
         }
 
         if (!nextUser) {
-          router.push('/login')
+          router.replace('/login')
         }
       } finally {
         if (isMounted) {
@@ -258,7 +259,13 @@ export default function ProfilePage() {
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) return null
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Link href="/login" className="text-sm underline">Открыть вход</Link>
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen">

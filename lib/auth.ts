@@ -4,8 +4,10 @@ import { supabase } from './supabase'
 const SESSION_BOOTSTRAP_TIMEOUT_MS = 2500
 
 async function getSessionWithTimeout() {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
   const timeoutPromise = new Promise<{ data: { session: null }; error: null }>((resolve) => {
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       resolve({
         data: { session: null },
         error: null,
@@ -13,7 +15,13 @@ async function getSessionWithTimeout() {
     }, SESSION_BOOTSTRAP_TIMEOUT_MS)
   })
 
-  return Promise.race([supabase.auth.getSession(), timeoutPromise])
+  try {
+    return await Promise.race([supabase.auth.getSession(), timeoutPromise])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
 }
 
 export async function getBootstrapUser(): Promise<User | null> {

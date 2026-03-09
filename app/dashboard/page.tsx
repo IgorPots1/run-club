@@ -53,7 +53,7 @@ export default function DashboardPage() {
         }
 
         if (!nextUser) {
-          router.push('/login')
+          router.replace('/login')
         }
       } finally {
         if (isMounted) {
@@ -116,7 +116,7 @@ export default function DashboardPage() {
 
   async function handleLikeToggle(runId: string) {
     if (!user) {
-      router.push('/login')
+      router.replace('/login')
       return
     }
 
@@ -165,7 +165,13 @@ export default function DashboardPage() {
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) return null
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Link href="/login" className="text-sm underline">Открыть вход</Link>
+      </main>
+    )
+  }
 
   const stats = overview?.stats ?? null
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null

@@ -14,6 +14,7 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -25,7 +26,8 @@ export default function RegisterPage() {
         const user = await getBootstrapUser()
 
         if (user) {
-          router.push('/dashboard')
+          setRedirecting(true)
+          router.replace('/dashboard')
         }
       } finally {
         if (isMounted) {
@@ -81,6 +83,14 @@ export default function RegisterPage() {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         Загрузка...
+      </main>
+    )
+  }
+
+  if (redirecting) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <p className="text-sm text-gray-600">Переходим в приложение...</p>
       </main>
     )
   }

@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -24,7 +25,8 @@ export default function LoginPage() {
         const user = await getBootstrapUser()
 
         if (user) {
-          router.push('/dashboard')
+          setRedirecting(true)
+          router.replace('/dashboard')
         }
       } finally {
         if (isMounted) {
@@ -64,7 +66,8 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/dashboard')
+      setRedirecting(true)
+      router.replace('/dashboard')
     } catch {
       setMessage('Не удалось войти. Попробуйте еще раз.')
     } finally {
@@ -76,6 +79,14 @@ export default function LoginPage() {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         Загрузка...
+      </main>
+    )
+  }
+
+  if (redirecting) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <p className="text-sm text-gray-600">Переходим в приложение...</p>
       </main>
     )
   }

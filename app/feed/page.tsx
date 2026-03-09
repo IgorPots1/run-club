@@ -61,7 +61,7 @@ export default function FeedPage() {
 
   async function handleLikeToggle(runId: string) {
     if (!currentUserId) {
-      router.push('/login')
+      router.replace('/login')
       return
     }
 
