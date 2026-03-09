@@ -163,6 +163,7 @@ export default function FeedPage() {
                 likedByMe={item.likedByMe}
                 pending={pendingRunIds.includes(item.id)}
                 onToggleLike={() => handleLikeToggle(item.id)}
+                compactInlineLike
               />
             ))
           )}

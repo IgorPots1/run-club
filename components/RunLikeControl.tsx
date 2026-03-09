@@ -7,6 +7,7 @@ type RunLikeControlProps = {
   onToggle: () => void
   summaryPrefix?: string
   compactOnSmall?: boolean
+  variant?: 'default' | 'inline'
 }
 
 export default function RunLikeControl({
@@ -16,11 +17,34 @@ export default function RunLikeControl({
   onToggle,
   summaryPrefix,
   compactOnSmall = false,
+  variant = 'default',
 }: RunLikeControlProps) {
   const likesLabel = likesCount === 1 ? 'лайк' : likesCount >= 2 && likesCount <= 4 ? 'лайка' : 'лайков'
   const summaryLabel = summaryPrefix
     ? `${summaryPrefix} • ❤️ ${likesCount}`
     : `❤️ ${likesCount} ${likesLabel}`
+  const likeIcon = likedByMe ? '❤️' : '♡'
+
+  if (variant === 'inline') {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {summaryPrefix ? <p className="app-text-secondary min-w-0 truncate">{summaryPrefix}</p> : null}
+        {summaryPrefix ? <span className="app-text-secondary">•</span> : null}
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={pending}
+          aria-label={likedByMe ? 'Убрать лайк' : 'Поставить лайк'}
+          className={`inline-flex min-h-8 items-center gap-1 rounded-md px-0.5 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+            likedByMe ? 'text-rose-500' : 'app-text-secondary'
+          }`}
+        >
+          <span aria-hidden="true">{pending ? '…' : likeIcon}</span>
+          <span>{likesCount}</span>
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className={`flex flex-wrap items-center justify-between gap-2.5 ${compactOnSmall ? 'compact-run-card-like-row' : ''}`}>
