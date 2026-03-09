@@ -16,7 +16,7 @@ type RunRow = {
   user_id: string
   title: string | null
   distance_km: number | null
-  pace?: string | number | null
+  duration_minutes: number | null
   xp: number | null
   created_at: string
 }
@@ -70,6 +70,18 @@ async function safeLoadRunLikesSummary(currentUserId: string | null) {
 
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function formatPace(distanceKm: number, durationMinutes: number | null) {
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null
+  if (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) <= 0) return null
+
+  const totalSeconds = Math.round(Number(durationMinutes) * 60)
+  const paceSeconds = Math.round(totalSeconds / distanceKm)
+  const minutes = Math.floor(paceSeconds / 60)
+  const seconds = paceSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
 export async function loadDashboardOverview(userId: string): Promise<DashboardOverview> {
@@ -127,7 +139,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
   ] = await Promise.all([
     supabase
       .from('runs')
-      .select('id, user_id, title, distance_km, pace, xp, created_at')
+      .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, name, email, avatar_url'),
     safeLoadRunLikesSummary(currentUserId),
@@ -150,7 +162,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       user_id: run.user_id,
       title: mappedTitle,
       distance_km: Number(run.distance_km ?? 0),
-      pace: run.pace ?? null,
+      pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
       displayName: profile?.name?.trim() || profile?.email || 'Бегун',
@@ -187,7 +199,7 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
   ] = await Promise.all([
     supabase
       .from('runs')
-      .select('id, user_id, title, distance_km, pace, xp, created_at')
+      .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, name, email, avatar_url'),
     safeLoadRunLikesSummary(currentUserId),
@@ -225,7 +237,7 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
       user_id: run.user_id,
       title: mappedTitle,
       distance_km: Number(run.distance_km ?? 0),
-      pace: run.pace ?? null,
+      pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
       displayName: profile?.name?.trim() || profile?.email || 'Бегун',
