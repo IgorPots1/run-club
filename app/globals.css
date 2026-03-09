@@ -191,6 +191,49 @@ textarea {
   animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 
+@media (max-width: 389px) {
+  .compact-run-card {
+    padding: 0.75rem;
+  }
+
+  .compact-run-card-layout {
+    gap: 0.625rem;
+  }
+
+  .compact-run-card-title {
+    line-height: 1.3;
+  }
+
+  .compact-run-card-meta {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .compact-run-card-like {
+    margin-top: 0.5rem;
+  }
+
+  .compact-run-card-like-row {
+    gap: 0.5rem;
+  }
+
+  .compact-run-card-like-row .compact-run-card-like-summary {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .compact-run-card-like-row .compact-run-card-like-button {
+    min-height: 2.75rem;
+    padding: 0.625rem 0.875rem;
+  }
+
+  .compact-run-card-action {
+    min-height: 2.75rem;
+    padding: 0.625rem 0.875rem;
+  }
+}
+
 @keyframes skeleton-pulse {
   0%,
   100% {

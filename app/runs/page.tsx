@@ -484,28 +484,31 @@ export default function RunsPage() {
           </div>
         ) : (
           runs.map((run) => (
-            <div key={run.id} className="app-card overflow-hidden rounded-xl border p-4 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+            <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-xl border p-4 shadow-sm">
+              <div className="compact-run-card-layout flex flex-col gap-3 sm:flex-row sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="app-text-primary break-words font-medium">{run.title || 'Тренировка'}</p>
-                  <p className="app-text-primary text-sm mt-1">🏃 {run.distance_km} км</p>
-                  <p className="app-text-secondary text-sm mt-1">
+                  <p className="compact-run-card-title app-text-primary break-words font-medium">{run.title || 'Тренировка'}</p>
+                  <p className="compact-run-card-meta app-text-primary text-sm mt-1">🏃 {run.distance_km} км</p>
+                  <p className="compact-run-card-meta app-text-secondary text-sm mt-1">
                     {new Date(run.created_at).toLocaleDateString('ru-RU', {
                       day: 'numeric',
                       month: 'long'
                     })}
                   </p>
-                  <RunLikeControl
-                    likesCount={run.likesCount}
-                    likedByMe={run.likedByMe}
-                    pending={pendingRunIds.includes(run.id)}
-                    onToggle={() => handleLikeToggle(run.id)}
-                    summaryPrefix={`⚡ +${run.xp} XP`}
-                  />
+                  <div className="compact-run-card-like">
+                    <RunLikeControl
+                      likesCount={run.likesCount}
+                      likedByMe={run.likedByMe}
+                      pending={pendingRunIds.includes(run.id)}
+                      onToggle={() => handleLikeToggle(run.id)}
+                      summaryPrefix={`⚡ +${run.xp} XP`}
+                      compactOnSmall
+                    />
+                  </div>
                 </div>
                 <button
                   onClick={() => handleDelete(run.id)}
-                  className="app-button-secondary min-h-11 w-full shrink-0 rounded-lg border px-3 py-2 text-sm sm:h-fit sm:w-auto"
+                  className="compact-run-card-action app-button-secondary min-h-11 w-full shrink-0 rounded-lg border px-3 py-2 text-sm sm:h-fit sm:w-auto"
                 >
                   {deletingRunIds.includes(run.id) ? '...' : 'Удалить'}
                 </button>

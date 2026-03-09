@@ -6,6 +6,7 @@ type RunLikeControlProps = {
   pending: boolean
   onToggle: () => void
   summaryPrefix?: string
+  compactOnSmall?: boolean
 }
 
 export default function RunLikeControl({
@@ -14,6 +15,7 @@ export default function RunLikeControl({
   pending,
   onToggle,
   summaryPrefix,
+  compactOnSmall = false,
 }: RunLikeControlProps) {
   const likesLabel = likesCount === 1 ? 'лайк' : likesCount >= 2 && likesCount <= 4 ? 'лайка' : 'лайков'
   const summaryLabel = summaryPrefix
@@ -21,8 +23,8 @@ export default function RunLikeControl({
     : `❤️ ${likesCount} ${likesLabel}`
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5">
-      <p className="app-text-secondary min-w-0 flex items-center gap-1 text-xs">
+    <div className={`flex flex-wrap items-center justify-between gap-2.5 ${compactOnSmall ? 'compact-run-card-like-row' : ''}`}>
+      <p className={`app-text-secondary min-w-0 flex items-center gap-1 text-xs ${compactOnSmall ? 'compact-run-card-like-summary' : ''}`}>
         <span className="truncate">{summaryLabel}</span>
       </p>
       <button
@@ -33,7 +35,7 @@ export default function RunLikeControl({
           likedByMe
             ? 'app-like-button-active'
             : 'app-like-button-inactive'
-        } disabled:cursor-not-allowed disabled:opacity-60`}
+        } ${compactOnSmall ? 'compact-run-card-like-button' : ''} disabled:cursor-not-allowed disabled:opacity-60`}
       >
         {pending ? '...' : likedByMe ? '♥ Убрать лайк' : '♡ Лайк'}
       </button>
