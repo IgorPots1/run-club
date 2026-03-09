@@ -387,10 +387,10 @@ export default function RunsPage() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4">
-      <h1 className="mb-4 text-2xl font-bold">Тренировки</h1>
-      <form onSubmit={handleSubmit} className="mb-8 space-y-3 rounded-2xl border bg-white p-4 shadow-sm">
+      <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
+      <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
-          <label htmlFor="title" className="block text-sm mb-1">Название тренировки</label>
+          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки</label>
           <input
             id="title"
             type="text"
@@ -398,11 +398,11 @@ export default function RunsPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={submitting}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
-          <label htmlFor="run_date" className="block text-sm mb-1">Дата тренировки</label>
+          <label htmlFor="run_date" className="app-text-secondary block text-sm mb-1">Дата тренировки</label>
           <input
             id="run_date"
             type="date"
@@ -410,17 +410,17 @@ export default function RunsPage() {
             onChange={(e) => setRunDate(e.target.value)}
             required
             disabled={submitting}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm">Дистанция</label>
+          <label className="app-text-secondary mb-1 block text-sm">Дистанция</label>
           <button
             type="button"
             onClick={openDistancePicker}
-            className="flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+            className="app-button-secondary flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
           >
-            <span className="font-semibold text-gray-900">{compactDistanceLabel} км</span>
+            <span className="app-text-primary font-semibold">{compactDistanceLabel} км</span>
           </button>
           <div className="mt-2 flex flex-wrap gap-2">
             {QUICK_DISTANCE_CHIPS.map((chip) => {
@@ -432,7 +432,9 @@ export default function RunsPage() {
                   type="button"
                   onClick={() => applyQuickDistance(chip.wholeKm, chip.tenthsKm)}
                   className={`min-h-10 rounded-full border px-3 py-2 text-sm transition-colors ${
-                    isActive ? 'border-black bg-black text-white' : 'border-gray-200 bg-white text-gray-700'
+                    isActive
+                      ? 'app-button-primary'
+                      : 'app-button-secondary'
                   }`}
                 >
                   {chip.label}
@@ -442,30 +444,30 @@ export default function RunsPage() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-sm">Время</label>
+          <label className="app-text-secondary mb-1 block text-sm">Время</label>
           <button
             type="button"
             onClick={openDurationPicker}
-            className="flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+            className="app-button-secondary flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
           >
-            <span className="font-semibold text-gray-900">{compactDurationLabel}</span>
+            <span className="app-text-primary font-semibold">{compactDurationLabel}</span>
           </button>
         </div>
-        <div className="rounded-xl bg-gray-50 px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Предпросмотр</p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
+        <div className="app-surface-muted rounded-xl px-4 py-3">
+          <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Предпросмотр</p>
+          <div className="app-text-secondary mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <p>{compactDistanceLabel} км</p>
             <p>•</p>
             <p>{compactDurationLabel}</p>
             {showPacePreview ? (
               <>
                 <p>•</p>
-                <p className="font-medium text-gray-900">{pacePreview}</p>
+                <p className="app-text-primary font-medium">{pacePreview}</p>
               </>
             ) : null}
           </div>
         </div>
-        <button type="submit" disabled={submitting} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
+        <button type="submit" disabled={submitting} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
           {submitting ? '...' : 'Добавить тренировку'}
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -474,21 +476,21 @@ export default function RunsPage() {
       {likesError ? <p className="mb-4 text-sm text-red-600">{likesError}</p> : null}
       <div className="space-y-3 mb-4">
         {loadingRuns ? (
-          <p className="text-sm text-gray-500">Загрузка тренировок...</p>
+          <p className="app-text-secondary text-sm">Загрузка тренировок...</p>
         ) : runs.length === 0 ? (
-          <div className="mt-10 text-center text-gray-500">
+          <div className="app-text-secondary mt-10 text-center">
             <p>Пока нет тренировок</p>
             <p className="mt-2 text-sm">Добавьте первую тренировку через форму выше</p>
           </div>
         ) : (
           runs.map((run) => (
-            <div key={run.id} className="overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
+            <div key={run.id} className="app-card overflow-hidden rounded-xl border p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="break-words font-medium">{run.title || 'Тренировка'}</p>
-                  <p className="text-sm mt-1">🏃 {run.distance_km} км</p>
-                  <p className="text-sm mt-1">+{run.xp} XP</p>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="app-text-primary break-words font-medium">{run.title || 'Тренировка'}</p>
+                  <p className="app-text-primary text-sm mt-1">🏃 {run.distance_km} км</p>
+                  <p className="app-text-primary text-sm mt-1">+{run.xp} XP</p>
+                  <p className="app-text-secondary text-sm mt-1">
                     {new Date(run.created_at).toLocaleDateString('ru-RU', {
                       day: 'numeric',
                       month: 'long'
@@ -503,7 +505,7 @@ export default function RunsPage() {
                 </div>
                 <button
                   onClick={() => handleDelete(run.id)}
-                  className="min-h-11 w-full shrink-0 rounded-lg border px-3 py-2 text-sm sm:h-fit sm:w-auto"
+                  className="app-button-secondary min-h-11 w-full shrink-0 rounded-lg border px-3 py-2 text-sm sm:h-fit sm:w-auto"
                 >
                   {deletingRunIds.includes(run.id) ? '...' : 'Удалить'}
                 </button>

@@ -270,7 +270,7 @@ export default function ProfilePage() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4">
-      <h1 className="mb-4 text-2xl font-bold">Профиль</h1>
+      <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
       <div className="mb-6 flex flex-col items-center gap-4">
@@ -283,13 +283,13 @@ export default function ProfilePage() {
             className="h-28 w-28 rounded-full object-cover sm:h-32 sm:w-32"
           />
         ) : (
-          <div className="flex h-28 w-28 items-center justify-center rounded-full border bg-gray-100 text-sm text-gray-500 sm:h-32 sm:w-32">
+          <div className="app-card app-text-secondary flex h-28 w-28 items-center justify-center rounded-full border text-sm sm:h-32 sm:w-32">
             Аватар
           </div>
         )}
         <label
           htmlFor="avatar-upload"
-          className={`inline-flex min-h-11 w-full max-w-sm cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
+          className={`app-button-secondary inline-flex min-h-11 w-full max-w-sm cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
             uploading ? 'pointer-events-none opacity-60' : ''
           }`}
         >
@@ -304,53 +304,53 @@ export default function ProfilePage() {
           className="hidden"
         />
       </div>
-      <form onSubmit={handleSave} className="mb-8 space-y-3 rounded-2xl border bg-white p-4 shadow-sm">
+      <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
-          <label htmlFor="name" className="block text-sm mb-1">Имя</label>
+          <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
           <input
             id="name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={saving}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
-          <label htmlFor="email" className="block text-sm mb-1">Email</label>
+          <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email</label>
           <input
             id="email"
             type="email"
             value={email}
             readOnly
-            className="min-h-11 w-full rounded-lg border bg-gray-100 px-3 py-2"
+            className="app-input app-input-readonly min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
-        <button type="submit" disabled={saving} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
+        <button type="submit" disabled={saving} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
           {saving ? '...' : 'Сохранить'}
         </button>
       </form>
-      <div className="mt-6 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
-        <h2 className="text-xl font-semibold mb-4">Статистика</h2>
+      <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
+        <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
         <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="min-w-0 text-gray-500">Уровень</span>
-          <span className="shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).level}</span>
+          <span className="app-text-secondary min-w-0">Уровень</span>
+          <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).level}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="min-w-0 text-gray-500">Всего XP</span>
-          <span className="shrink-0 text-right font-semibold">{totalXp}</span>
+          <span className="app-text-secondary min-w-0">Всего XP</span>
+          <span className="app-text-primary shrink-0 text-right font-semibold">{totalXp}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="min-w-0 text-gray-500">Следующий уровень</span>
-          <span className="shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
+          <span className="app-text-secondary min-w-0">Следующий уровень</span>
+          <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="min-w-0 text-gray-500">Всего км</span>
-          <span className="shrink-0 text-right font-semibold">{totalKm.toFixed(2)}</span>
+          <span className="app-text-secondary min-w-0">Всего км</span>
+          <span className="app-text-primary shrink-0 text-right font-semibold">{totalKm.toFixed(2)}</span>
         </div>
         <div className="flex items-center justify-between gap-4 py-2">
-          <span className="min-w-0 text-gray-500">Тренировки</span>
-          <span className="shrink-0 text-right font-semibold">{runsCount}</span>
+          <span className="app-text-secondary min-w-0">Тренировки</span>
+          <span className="app-text-primary shrink-0 text-right font-semibold">{runsCount}</span>
         </div>
       </div>
       {cropImageSrc ? (

@@ -32,7 +32,7 @@ function formatRunDate(date: string) {
 
 function AvatarFallback() {
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
@@ -69,7 +69,7 @@ export default function WorkoutFeedCard({
   const displayUserName = displayName.trim() || 'Бегун'
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-white px-4 py-3.5 shadow-sm shadow-black/5 ring-1 ring-black/5">
+    <div className="app-card overflow-hidden rounded-2xl px-4 py-3.5 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10">
       <div className="flex items-start justify-between gap-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           {showAvatarImage && avatarSrc ? (
@@ -85,15 +85,15 @@ export default function WorkoutFeedCard({
             <AvatarFallback />
           )}
           <div className="min-w-0">
-            <p className="truncate font-semibold text-gray-900">{displayUserName}</p>
-            {subtitle ? <p className="truncate text-sm text-gray-500">{subtitle}</p> : null}
+            <p className="app-text-primary truncate font-semibold">{displayUserName}</p>
+            {subtitle ? <p className="app-text-secondary truncate text-sm">{subtitle}</p> : null}
           </div>
         </div>
-        <p className="max-w-[6.5rem] shrink-0 text-right text-xs text-gray-500 sm:max-w-none sm:text-sm">{formatRunDate(createdAt)}</p>
+        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">{formatRunDate(createdAt)}</p>
       </div>
 
       <div className="mt-2.5">
-        <p className="break-words whitespace-pre-wrap text-[15px] font-semibold leading-5 text-gray-900">
+        <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
       </div>

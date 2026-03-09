@@ -3,6 +3,20 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --surface: #ffffff;
+  --surface-muted: #f9fafb;
+  --surface-subtle: #f3f4f6;
+  --border-color: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --accent-strong: #111827;
+  --progress-track: #f3f4f6;
+  --chart-grid: #e5e7eb;
+  --chart-tick: #6b7280;
+  --chart-cursor: #f9fafb;
+  --button-primary-bg: #111827;
+  --button-primary-text: #ffffff;
 }
 
 @theme inline {
@@ -14,8 +28,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0b0d10;
+    --foreground: #f3f4f6;
+    --surface: #111827;
+    --surface-muted: #1f2937;
+    --surface-subtle: #0f172a;
+    --border-color: #374151;
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --text-muted: #9ca3af;
+    --accent-strong: #f9fafb;
+    --progress-track: #374151;
+    --chart-grid: #374151;
+    --chart-tick: #d1d5db;
+    --chart-cursor: #1f2937;
+    --button-primary-bg: #f9fafb;
+    --button-primary-text: #111827;
   }
 }
 
@@ -45,9 +73,74 @@ textarea {
   font: inherit;
 }
 
+.app-card {
+  background: var(--surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.app-surface-muted {
+  background: var(--surface-muted);
+}
+
+.app-text-primary {
+  color: var(--text-primary);
+}
+
+.app-text-secondary {
+  color: var(--text-secondary);
+}
+
+.app-text-muted {
+  color: var(--text-muted);
+}
+
+.app-input {
+  background: var(--surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.app-input::placeholder {
+  color: var(--text-muted);
+}
+
+.app-input:disabled {
+  color: var(--text-primary);
+}
+
+.app-input-readonly {
+  background: var(--surface-muted);
+}
+
+.app-button-primary {
+  background: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
+  color: var(--button-primary-text);
+}
+
+.app-button-secondary {
+  background: var(--surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.app-button-secondary:disabled,
+.app-button-primary:disabled {
+  opacity: 0.65;
+}
+
+.app-accent-bg {
+  background: var(--accent-strong);
+}
+
+.app-progress-track {
+  background: var(--progress-track);
+}
+
 .skeleton-line {
   border-radius: 9999px;
-  background: #f3f4f6;
+  background: var(--surface-subtle);
   animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 

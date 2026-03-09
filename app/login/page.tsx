@@ -86,17 +86,17 @@ export default function LoginPage() {
   if (redirecting) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        <p className="text-sm text-gray-600">Переходим в приложение...</p>
+        <p className="app-text-secondary text-sm">Переходим в приложение...</p>
       </main>
     )
   }
 
   return (
     <main className="flex min-h-dvh items-start justify-center px-4 pb-8 pt-10 sm:min-h-screen sm:items-center sm:p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border bg-white p-4 shadow-sm sm:p-5">
-        <h1 className="text-xl font-semibold">Войти</h1>
+      <form onSubmit={handleSubmit} className="app-card w-full max-w-sm space-y-4 rounded-2xl border p-4 shadow-sm sm:p-5">
+        <h1 className="app-text-primary text-xl font-semibold">Войти</h1>
         <div>
-          <label htmlFor="email" className="block text-sm mb-1">Email</label>
+          <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email</label>
           <input
             id="email"
             type="email"
@@ -104,11 +104,11 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={loading}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm mb-1">Пароль</label>
+          <label htmlFor="password" className="app-text-secondary block text-sm mb-1">Пароль</label>
           <input
             id="password"
             type="password"
@@ -116,13 +116,13 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
-            className="min-h-11 w-full rounded-lg border px-3 py-2"
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
-        <button type="submit" disabled={loading} className="min-h-11 w-full rounded-lg bg-black px-4 py-2 text-white">
+        <button type="submit" disabled={loading} className="app-button-primary min-h-11 w-full rounded-lg px-4 py-2">
           {loading ? '...' : 'Войти'}
         </button>
-        <p className="break-words text-sm text-gray-600">
+        <p className="app-text-secondary break-words text-sm">
           Нет аккаунта? <Link href="/register" className="underline">Регистрация</Link>
         </p>
         {message && <p className="text-sm">{message}</p>}

@@ -116,12 +116,12 @@ export default function FeedPage() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4">
-        <h1 className="text-2xl font-bold mb-4">Лента</h1>
+        <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
         {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
         <div className="space-y-3 pb-2">
           {feedLoading && !items ? (
             <>
-              <div className="rounded-xl border bg-white p-4 shadow-sm">
+              <div className="app-card rounded-xl border p-4 shadow-sm">
                 <div className="skeleton-line h-5 w-32" />
                 <div className="mt-2 skeleton-line h-4 w-36" />
                 <div className="mt-3 space-y-2">
@@ -130,7 +130,7 @@ export default function FeedPage() {
                   <div className="skeleton-line h-4 w-24" />
                 </div>
               </div>
-              <div className="rounded-xl border bg-white p-4 shadow-sm">
+              <div className="app-card rounded-xl border p-4 shadow-sm">
                 <div className="skeleton-line h-5 w-28" />
                 <div className="mt-2 skeleton-line h-4 w-40" />
                 <div className="mt-3 space-y-2">
@@ -141,9 +141,9 @@ export default function FeedPage() {
               </div>
             </>
           ) : !items || items.length === 0 ? (
-            <div className="mt-10 text-center text-gray-500">
+            <div className="app-text-secondary mt-10 text-center">
               <p>Пока нет тренировок</p>
-              <Link href={emptyCtaHref} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
+              <Link href={emptyCtaHref} className="app-button-secondary mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
                 {emptyCtaLabel}
               </Link>
             </div>

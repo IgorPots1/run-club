@@ -148,7 +148,7 @@ export default function AvatarCropModal({
               type="button"
               onClick={onCancel}
               disabled={loading}
-              className="flex-1 rounded-xl border border-white/20 bg-white/10 py-3 text-sm font-medium"
+              className="flex-1 rounded-xl border border-white/20 bg-white/10 py-3 text-sm font-medium text-white"
             >
               Отмена
             </button>

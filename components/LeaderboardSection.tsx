@@ -104,7 +104,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
   if (loading) {
     return (
       <div className="p-4">
-        {showTitle ? <h1 className="mb-4 text-2xl font-bold">Рейтинг</h1> : null}
+        {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Рейтинг</h1> : null}
         <p>Загрузка...</p>
       </div>
     )
@@ -112,54 +112,54 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
 
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
-      {showTitle ? <h1 className="mb-4 text-2xl font-bold">Рейтинг</h1> : null}
+      {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Рейтинг</h1> : null}
       {error ? (
         <p className="text-sm text-red-600">{error}</p>
       ) : rows.length === 0 ? (
-        <div className="mt-10 text-center text-gray-500">
+        <div className="app-text-secondary mt-10 text-center">
           <p>Рейтинг пока пуст</p>
         </div>
       ) : (
         <>
           <div className="md:hidden">
             {rows.map((row, index) => (
-              <div key={row.user_id} className="mb-3 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
-                <p className="mb-3 font-medium">{index + 1} место</p>
+              <div key={row.user_id} className="app-card mb-3 overflow-hidden rounded-xl border p-4 shadow-sm">
+                <p className="app-text-primary mb-3 font-medium">{index + 1} место</p>
                 <div className="mb-4 flex items-center gap-3">
                   {row.avatar_url ? (
                     <img src={row.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
                   ) : (
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-sm font-medium">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
                       {(row.displayName[0] ?? '?').toUpperCase()}
                     </span>
                   )}
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{row.displayName}</p>
-                    <p className="text-sm text-gray-500">Уровень {getLevelFromXP(row.total_xp).level}</p>
+                    <p className="app-text-primary truncate font-medium">{row.displayName}</p>
+                    <p className="app-text-secondary text-sm">Уровень {getLevelFromXP(row.total_xp).level}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   <div>
-                    <p className="text-xs text-gray-500">Всего XP</p>
-                    <p className="break-words text-base font-semibold sm:text-lg">{row.total_xp}</p>
+                    <p className="app-text-secondary text-xs">Всего XP</p>
+                    <p className="app-text-primary break-words text-base font-semibold sm:text-lg">{row.total_xp}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Всего км</p>
-                    <p className="break-words text-base font-semibold sm:text-lg">{row.total_km.toFixed(2)}</p>
+                    <p className="app-text-secondary text-xs">Всего км</p>
+                    <p className="app-text-primary break-words text-base font-semibold sm:text-lg">{row.total_km.toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Тренировки</p>
-                    <p className="break-words text-base font-semibold sm:text-lg">{row.runs_count}</p>
+                    <p className="app-text-secondary text-xs">Тренировки</p>
+                    <p className="app-text-primary break-words text-base font-semibold sm:text-lg">{row.runs_count}</p>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="mb-4 hidden overflow-x-auto rounded-xl border bg-white p-4 shadow-sm md:block">
+          <div className="app-card mb-4 hidden overflow-x-auto rounded-xl border p-4 shadow-sm md:block">
             <table className="w-full border-collapse border">
-              <thead>
-                <tr className="border-b bg-gray-50">
+              <thead className="app-text-primary">
+                <tr className="app-surface-muted border-b">
                   <th className="border p-2 text-left">Место</th>
                   <th className="border p-2 text-left">Аватар</th>
                   <th className="border p-2 text-left">Участник</th>
@@ -176,7 +176,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                       {row.avatar_url ? (
                         <img src={row.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
                       ) : (
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
                           {(row.displayName[0] ?? '?').toUpperCase()}
                         </span>
                       )}

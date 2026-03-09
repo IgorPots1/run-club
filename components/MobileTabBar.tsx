@@ -60,18 +60,18 @@ export default function MobileTabBar() {
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <nav
-        className="pointer-events-auto mx-auto grid max-w-xl grid-cols-5 border-t border-gray-200 bg-white/95 px-2 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
+        className="pointer-events-auto mx-auto grid max-w-xl grid-cols-5 border-t border-gray-200 bg-white/95 px-2 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur dark:border-gray-800 dark:bg-gray-950/95"
       >
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
             className={`mx-0.5 flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors ${
-              tab.isActive ? 'text-gray-900' : 'text-gray-500'
+              tab.isActive ? 'text-gray-900 dark:text-gray-50' : 'text-gray-500 dark:text-gray-300'
             }`}
           >
             {tab.icon}
-            <span className={`truncate ${tab.isActive ? 'text-gray-900' : 'text-gray-500'}`}>{tab.label}</span>
+            <span className={`truncate ${tab.isActive ? 'text-gray-900 dark:text-gray-50' : 'text-gray-500 dark:text-gray-300'}`}>{tab.label}</span>
           </Link>
         ))}
       </nav>

@@ -100,7 +100,7 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
 
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
-      {showTitle ? <h1 className="mb-4 text-2xl font-bold">Челленджи</h1> : null}
+      {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Челленджи</h1> : null}
       {loading ? (
         <p>Загрузка...</p>
       ) : (
@@ -108,16 +108,16 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
           <div className="space-y-3 mb-4">
             {items.length === 0 ? (
-              <div className="mt-10 text-center text-gray-500">
+              <div className="app-text-secondary mt-10 text-center">
                 <p>Челленджей пока нет</p>
               </div>
             ) : (
               items.map((item) => (
-                <div key={item.id} className="overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
+                <div key={item.id} className="app-card overflow-hidden rounded-xl border p-4 shadow-sm">
                   <div>
-                    <h2 className="break-words text-lg font-semibold">{item.title}</h2>
+                    <h2 className="app-text-primary break-words text-lg font-semibold">{item.title}</h2>
                     {item.description ? (
-                      <p className="mt-1 break-words text-sm text-gray-600">{item.description}</p>
+                      <p className="app-text-secondary mt-1 break-words text-sm">{item.description}</p>
                     ) : null}
                     {item.xp_reward ? (
                       <p className="mt-3 text-sm font-medium text-green-700">+{item.xp_reward} XP</p>
@@ -129,13 +129,13 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                             {progressItem.completed ? (
                               <p className="mb-2 text-sm font-medium text-green-700">✔ Выполнено</p>
                             ) : null}
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                            <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
                               <div
-                                className="h-full rounded-full bg-black"
+                                className="app-accent-bg h-full rounded-full"
                                 style={{ width: `${progressItem.percent}%` }}
                               />
                             </div>
-                            <p className="mt-2 break-words text-sm text-gray-600">Прогресс: {progressItem.label}</p>
+                            <p className="app-text-secondary mt-2 break-words text-sm">Прогресс: {progressItem.label}</p>
                           </div>
                         ))}
                       </div>

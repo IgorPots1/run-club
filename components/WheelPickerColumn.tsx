@@ -76,11 +76,11 @@ export default function WheelPickerColumn({
 
   return (
     <div className="min-w-0">
-      <p className="text-center text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <div className="relative mt-2 h-[236px] overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="pointer-events-none absolute inset-x-2 top-1/2 z-0 h-11 -translate-y-1/2 rounded-lg bg-gray-50 ring-1 ring-black/5" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-16 bg-gradient-to-b from-white via-white/85 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-16 bg-gradient-to-t from-white via-white/85 to-transparent" />
+      <p className="app-text-secondary text-center text-xs font-medium uppercase tracking-wide">{label}</p>
+      <div className="app-card relative mt-2 h-[236px] overflow-hidden rounded-xl border shadow-sm">
+        <div className="app-surface-muted pointer-events-none absolute inset-x-2 top-1/2 z-0 h-11 -translate-y-1/2 rounded-lg ring-1 ring-black/5 dark:ring-white/10" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-16 bg-gradient-to-b from-white via-white/85 to-transparent dark:from-gray-900 dark:via-gray-900/85" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-16 bg-gradient-to-t from-white via-white/85 to-transparent dark:from-gray-900 dark:via-gray-900/85" />
         <div
           ref={scrollRef}
           onScroll={handleScroll}
@@ -96,7 +96,7 @@ export default function WheelPickerColumn({
                 type="button"
                 onClick={() => handleSelect(option)}
                 className={`flex h-11 w-full snap-center items-center justify-center rounded-lg text-base transition-colors ${
-                  isActive ? 'font-semibold text-gray-900' : 'text-gray-500'
+                  isActive ? 'app-text-primary font-semibold' : 'app-text-secondary'
                 }`}
               >
                 {formatter(option)}

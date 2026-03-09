@@ -17,7 +17,7 @@ export default function RunLikeControl({
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2.5">
-      <p className="min-w-0 flex items-center gap-1 text-xs text-gray-500">
+      <p className="app-text-secondary min-w-0 flex items-center gap-1 text-xs">
         <span className="text-[10px]">❤️</span>
         <span className="truncate">{likesCount} {likesLabel}</span>
       </p>
@@ -26,7 +26,9 @@ export default function RunLikeControl({
         onClick={onToggle}
         disabled={pending}
         className={`min-h-10 shrink-0 rounded-full border px-3 py-2 text-xs font-medium leading-none transition-colors ${
-          likedByMe ? 'border-gray-200 bg-gray-100 text-gray-900' : 'border-gray-200 bg-white text-gray-700'
+          likedByMe
+            ? 'border-gray-200 bg-gray-100 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-50'
+            : 'app-button-secondary'
         } disabled:cursor-not-allowed disabled:opacity-60`}
       >
         {pending ? '...' : likedByMe ? '♥ Убрать лайк' : '♡ Лайк'}

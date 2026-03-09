@@ -188,8 +188,8 @@ export default function DashboardPage() {
         <div className="mb-6 space-y-1">
           <h1 className="text-2xl font-bold text-gray-900">Главная</h1>
           <div className="min-w-0 space-y-0.5">
-            <p className="text-lg font-semibold text-gray-900">Привет, {profileName}</p>
-            {user.email ? <p className="truncate text-sm text-gray-500">{user.email}</p> : null}
+            <p className="app-text-primary text-lg font-semibold">Привет, {profileName}</p>
+            {user.email ? <p className="app-text-secondary truncate text-sm">{user.email}</p> : null}
           </div>
         </div>
         {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
@@ -197,13 +197,13 @@ export default function DashboardPage() {
         <div className="mb-4">
           <Link
             href="/runs"
-            className="mb-4 mt-4 block min-h-12 w-full rounded-xl bg-black px-4 py-3 text-center text-base font-medium text-white sm:text-lg"
+            className="app-button-primary mb-4 mt-4 block min-h-12 w-full rounded-xl px-4 py-3 text-center text-base font-medium sm:text-lg"
           >
             ➕ Добавить тренировку
           </Link>
           {overviewLoading && !overview ? (
             <>
-              <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
                 <div className="skeleton-line h-4 w-28" />
                 <div className="mt-3 space-y-2">
                   <div className="skeleton-line h-6 w-40" />
@@ -211,7 +211,7 @@ export default function DashboardPage() {
                   <div className="skeleton-line h-4 w-20" />
                 </div>
               </div>
-              <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
                 <div className="skeleton-line h-4 w-32" />
                 <div className="mt-3 space-y-3">
                   <div className="skeleton-line h-6 w-44" />
@@ -219,7 +219,7 @@ export default function DashboardPage() {
                   <div className="skeleton-line h-4 w-36" />
                 </div>
               </div>
-              <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="skeleton-line h-4 w-24" />
                   <div className="skeleton-line h-8 w-28" />
@@ -232,68 +232,68 @@ export default function DashboardPage() {
               </div>
             </>
           ) : overviewStateError ? (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
               <p className="text-sm text-red-600">{overviewStateError}</p>
             </div>
           ) : stats ? (
-            <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-gray-500">🏃 Твой прогресс</p>
+            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm font-medium">🏃 Твой прогресс</p>
               <div className="mt-3 space-y-1">
-                <p className="text-lg font-semibold sm:text-xl">{stats.totalKmThisMonth.toFixed(1)} км в этом месяце</p>
-                <p className="text-sm text-gray-600">{stats.runsCount} тренировок</p>
-                <p className="text-sm text-gray-600">+{stats.totalXp} XP</p>
+                <p className="app-text-primary text-lg font-semibold sm:text-xl">{stats.totalKmThisMonth.toFixed(1)} км в этом месяце</p>
+                <p className="app-text-secondary text-sm">{stats.runsCount} тренировок</p>
+                <p className="app-text-secondary text-sm">+{stats.totalXp} XP</p>
               </div>
             </div>
           ) : (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-gray-500">🏃 Твой прогресс</p>
-              <p className="mt-3 text-sm text-gray-600">Данные появятся после первой тренировки</p>
+            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm font-medium">🏃 Твой прогресс</p>
+              <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </div>
           )}
           {activeChallenge ? (
-            <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>
-              <h2 className="mt-3 break-words text-lg font-semibold">{activeChallenge.title}</h2>
+            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm font-medium">🎯 Активный челлендж</p>
+              <h2 className="app-text-primary mt-3 break-words text-lg font-semibold">{activeChallenge.title}</h2>
               {activeChallenge.progressItems[0] ? (
                 <div className="mt-3">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
                     <div
-                      className="h-full rounded-full bg-black"
+                      className="app-accent-bg h-full rounded-full"
                       style={{ width: `${activeChallenge.progressItems[0].percent}%` }}
                     />
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">Прогресс: {activeChallenge.progressItems[0].label}</p>
+                  <p className="app-text-secondary mt-2 text-sm">Прогресс: {activeChallenge.progressItems[0].label}</p>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-gray-600">Прогресс появится после первой тренировки</p>
+                <p className="app-text-secondary mt-2 text-sm">Прогресс появится после первой тренировки</p>
               )}
             </div>
           ) : allChallengesCompleted ? (
-            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-gray-500">🎯 Активный челлендж</p>
-              <p className="mt-3 text-sm text-gray-600">Все челленджи уже выполнены</p>
+            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm font-medium">🎯 Активный челлендж</p>
+              <p className="app-text-secondary mt-3 text-sm">Все челленджи уже выполнены</p>
             </div>
           ) : null}
           {stats && levelProgress ? (
-            <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
+            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium text-gray-500">🏆 Уровень {levelProgress.level}</p>
+                <p className="app-text-secondary text-sm font-medium">🏆 Уровень {levelProgress.level}</p>
                 <button
                   type="button"
                   onClick={() => setShowXpModal(true)}
-                  className="min-h-10 shrink-0 rounded-lg border px-3 py-2 text-xs text-gray-600"
+                  className="app-button-secondary min-h-10 shrink-0 rounded-lg border px-3 py-2 text-xs"
                 >
                   Как начисляется XP
                 </button>
               </div>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+              <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
                 <div
-                  className="h-full rounded-full bg-black"
+                  className="app-accent-bg h-full rounded-full"
                   style={{ width: `${levelProgress.progressPercent}%` }}
                 />
               </div>
-              <p className="mt-3 break-words text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
-              <p className="mt-1 text-sm text-gray-600">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
+              <p className="app-text-primary mt-3 break-words text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
+              <p className="app-text-secondary mt-1 text-sm">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
             </div>
           ) : null}
           <WeeklyLeaderboard
@@ -302,12 +302,12 @@ export default function DashboardPage() {
             loading={weeklyRaceLoading}
             error={weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
           />
-          <h2 className="text-lg font-semibold mb-3">Последние тренировки</h2>
+          <h2 className="app-text-primary text-lg font-semibold mb-3">Последние тренировки</h2>
           {activityError ? <p className="mb-3 text-sm text-red-600">{activityError}</p> : null}
           <div className="space-y-3">
             {runsLoading && !runs ? (
               <>
-                <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="app-card rounded-xl border p-4 shadow-sm">
                   <div className="skeleton-line h-5 w-32" />
                   <div className="mt-2 skeleton-line h-4 w-24" />
                   <div className="mt-3 space-y-2">
@@ -316,7 +316,7 @@ export default function DashboardPage() {
                     <div className="skeleton-line h-4 w-24" />
                   </div>
                 </div>
-                <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="app-card rounded-xl border p-4 shadow-sm">
                   <div className="skeleton-line h-5 w-36" />
                   <div className="mt-2 skeleton-line h-4 w-28" />
                   <div className="mt-3 space-y-2">
@@ -327,7 +327,7 @@ export default function DashboardPage() {
                 </div>
               </>
             ) : !runs || runs.length === 0 ? (
-              <div className="mt-10 text-center text-gray-500">
+              <div className="app-text-secondary mt-10 text-center">
                 <p>Пока нет тренировок</p>
               </div>
             ) : (
@@ -351,18 +351,18 @@ export default function DashboardPage() {
       </div>
       {showXpModal ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+          <div className="app-card w-full max-w-sm rounded-2xl p-5 shadow-xl">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-semibold">Как начисляется XP</h2>
+              <h2 className="app-text-primary text-lg font-semibold">Как начисляется XP</h2>
               <button
                 type="button"
                 onClick={() => setShowXpModal(false)}
-                className="text-sm text-gray-500"
+                className="app-text-secondary text-sm"
               >
                 Закрыть
               </button>
             </div>
-            <div className="mt-4 space-y-3 text-sm text-gray-700">
+            <div className="app-text-secondary mt-4 space-y-3 text-sm">
               <p>🏃 Завершённая тренировка — 50 XP</p>
               <p>📏 1 км бега — 10 XP</p>
               <p>❤️ Лайк за тренировку — 5 XP</p>

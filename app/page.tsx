@@ -33,7 +33,7 @@ export default function Home() {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-sm text-gray-600">Переходим...</p>
+          <p className="app-text-secondary text-sm">Переходим...</p>
           <Link href={targetPath} className="mt-3 inline-block text-sm underline">
             Открыть страницу
           </Link>

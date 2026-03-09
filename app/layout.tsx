@@ -55,10 +55,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
-      <body className="bg-gray-50">
+      <body className="min-h-screen">
         <PwaRegister />
         <div
-          className={`mx-auto min-h-screen max-w-xl overflow-x-hidden bg-white pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`app-card mx-auto min-h-screen max-w-xl overflow-x-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           <div className="hidden md:block">
             <Navbar />

@@ -25,8 +25,8 @@ export default function WeeklyLeaderboard({
     (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
 
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
-      <p className="text-sm font-medium text-gray-500">🔥 Гонка недели</p>
+    <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+      <p className="app-text-secondary text-sm font-medium">🔥 Гонка недели</p>
 
       {loading ? (
         <>
@@ -50,17 +50,17 @@ export default function WeeklyLeaderboard({
           </div>
         </>
       ) : error ? (
-        <p className="mt-3 text-sm text-gray-600">{error}</p>
+        <p className="app-text-secondary mt-3 text-sm">{error}</p>
       ) : topRows.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-600">Пока нет данных за последние 7 дней</p>
+        <p className="app-text-secondary mt-3 text-sm">Пока нет данных за последние 7 дней</p>
       ) : (
         <div className="mt-3 space-y-2">
           {topRows.map((row) => (
             <div key={row.user_id} className="flex items-center justify-between gap-3 text-sm">
-              <p className="min-w-0 flex-1 truncate">
+              <p className="app-text-primary min-w-0 flex-1 truncate">
                 {row.rank}. {row.displayName}
               </p>
-              <p className="shrink-0 font-medium">{row.totalXp} XP</p>
+              <p className="app-text-primary shrink-0 font-medium">{row.totalXp} XP</p>
             </div>
           ))}
         </div>
@@ -68,11 +68,11 @@ export default function WeeklyLeaderboard({
 
       {!loading && !error && shouldShowCurrentUserRow ? (
         <div className="mt-4 border-t pt-3">
-          <p className="text-sm font-medium">
+          <p className="app-text-primary text-sm font-medium">
             Ты — {currentUserRow?.rank} место · {currentUserRow?.totalXp} XP
           </p>
           {gapToNext !== null && gapToNext > 0 ? (
-            <p className="mt-1 text-sm text-gray-600">До следующего места: {gapToNext} XP</p>
+            <p className="app-text-secondary mt-1 text-sm">До следующего места: {gapToNext} XP</p>
           ) : null}
         </div>
       ) : null}

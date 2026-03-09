@@ -12,14 +12,14 @@ export default function ClubPage() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4 md:max-w-none">
-        <h1 className="mb-4 text-2xl font-bold">Клуб</h1>
+        <h1 className="app-text-primary mb-4 text-2xl font-bold">Клуб</h1>
 
-        <div className="mb-4 grid grid-cols-2 rounded-xl bg-gray-100 p-1">
+        <div className="app-surface-muted mb-4 grid grid-cols-2 rounded-xl p-1">
           <button
             type="button"
             onClick={() => setActiveTab('challenges')}
             className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-              activeTab === 'challenges' ? 'bg-white shadow-sm' : 'text-gray-600'
+              activeTab === 'challenges' ? 'app-card shadow-sm' : 'app-text-secondary'
             }`}
           >
             Челленджи
@@ -28,7 +28,7 @@ export default function ClubPage() {
             type="button"
             onClick={() => setActiveTab('leaderboard')}
             className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-              activeTab === 'leaderboard' ? 'bg-white shadow-sm' : 'text-gray-600'
+              activeTab === 'leaderboard' ? 'app-card shadow-sm' : 'app-text-secondary'
             }`}
           >
             Рейтинг
