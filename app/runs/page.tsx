@@ -43,6 +43,13 @@ function formatDistanceKmLabel(distanceKm: number) {
   return Number.isInteger(distanceKm) ? String(distanceKm) : distanceKm.toFixed(1)
 }
 
+function formatRunPaceFromMinutes(distanceKm: number, durationMinutes: number) {
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return ''
+  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return ''
+
+  return formatPaceLabel(Math.round(durationMinutes * 60), distanceKm)
+}
+
 function formatRunDateLabel(dateString: string) {
   const runDate = new Date(dateString)
 
@@ -461,10 +468,13 @@ export default function RunsPage() {
         ) : (
           runs.map((run) => (
             <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-xl border p-4 shadow-sm">
-              <div className="compact-run-card-layout flex flex-col gap-3 sm:flex-row sm:justify-between">
+              <div className="compact-run-card-layout flex flex-col gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
                     {formatDistanceKmLabel(run.distance_km)} км • {formatDurationMinutesLabel(run.duration_minutes)}
+                    {formatRunPaceFromMinutes(run.distance_km, run.duration_minutes)
+                      ? ` • ${formatRunPaceFromMinutes(run.distance_km, run.duration_minutes)}`
+                      : ''}
                   </p>
                   <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">
                     {formatRunDateLabel(run.created_at)}
@@ -475,9 +485,10 @@ export default function RunsPage() {
                 </div>
                 <button
                   onClick={() => handleDelete(run.id)}
-                  className="compact-run-card-action app-button-secondary min-h-11 w-full shrink-0 rounded-lg border px-3 py-2 text-sm sm:h-fit sm:w-auto"
+                  className="compact-run-card-action app-text-secondary inline-flex min-h-10 w-full items-center justify-center gap-1 self-start rounded-lg px-2 py-2 text-xs sm:min-h-9 sm:w-auto"
                 >
-                  {deletingRunIds.includes(run.id) ? '...' : 'Удалить'}
+                  <span aria-hidden="true">🗑</span>
+                  <span>{deletingRunIds.includes(run.id) ? '...' : 'Удалить'}</span>
                 </button>
               </div>
             </div>
