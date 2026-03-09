@@ -7,8 +7,6 @@ import { getBootstrapUser } from '@/lib/auth'
 import WheelPickerColumn from '@/components/WheelPickerColumn'
 import WheelPickerSheet from '@/components/WheelPickerSheet'
 import { ensureProfileExists } from '@/lib/profiles'
-import RunLikeControl from '@/components/RunLikeControl'
-import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -20,8 +18,6 @@ type Run = {
   duration_minutes: number
   xp: number
   created_at: string
-  likesCount: number
-  likedByMe: boolean
 }
 
 function formatDurationMinutesLabel(totalMinutes: number) {
@@ -168,11 +164,9 @@ export default function RunsPage() {
   const [draftDurationSeconds, setDraftDurationSeconds] = useState(0)
   const [error, setError] = useState('')
   const [runsError, setRunsError] = useState('')
-  const [likesError, setLikesError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
-  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const selectedDistanceLabel = formatDistanceLabel(distanceWholeKm, distanceTenthsKm)
   const compactDistanceLabel = formatCompactDistanceLabel(distanceWholeKm, distanceTenthsKm)
   const selectedDistanceKm = Number(selectedDistanceLabel)
@@ -237,7 +231,6 @@ export default function RunsPage() {
   async function fetchRuns(currentUser: User) {
     setLoadingRuns(true)
     setRunsError('')
-    setLikesError('')
 
     try {
       const { data, error: runsLoadError } = await supabase
@@ -251,24 +244,7 @@ export default function RunsPage() {
         return
       }
 
-      let likesByRunId: Record<string, number> = {}
-      let likedRunIds = new Set<string>()
-
-      try {
-        const likesSummary = await loadRunLikesSummary(currentUser.id)
-        likesByRunId = likesSummary.likesByRunId
-        likedRunIds = likesSummary.likedRunIds
-      } catch {
-        setLikesError('Не удалось загрузить лайки')
-      }
-
-      const items = (data ?? []).map((run) => ({
-        ...run,
-        likesCount: likesByRunId[run.id] ?? 0,
-        likedByMe: likedRunIds.has(run.id),
-      }))
-
-      setRuns(items)
+      setRuns((data as Run[] | null) ?? [])
     } catch {
       setRunsError('Не удалось загрузить тренировки')
     } finally {
@@ -285,13 +261,6 @@ export default function RunsPage() {
     }
 
     void loadRuns()
-    const unsubscribe = subscribeToRunLikes(() => {
-      void loadRuns()
-    })
-
-    return () => {
-      unsubscribe()
-    }
   }, [user])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -380,50 +349,6 @@ export default function RunsPage() {
       setError('Не удалось удалить тренировку')
     } finally {
       setDeletingRunIds((prev) => prev.filter((runId) => runId !== id))
-    }
-  }
-
-  async function handleLikeToggle(runId: string) {
-    if (!user) {
-      router.replace('/login')
-      return
-    }
-
-    if (pendingRunIds.includes(runId)) return
-
-    const currentRun = runs.find((run) => run.id === runId)
-    if (!currentRun) return
-
-    const wasLiked = currentRun.likedByMe
-    const previousRuns = runs
-
-    setLikesError('')
-    setPendingRunIds((prev) => [...prev, runId])
-
-    try {
-      setRuns((prev) =>
-        prev.map((run) =>
-          run.id === runId
-            ? {
-                ...run,
-                likedByMe: !wasLiked,
-                likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
-              }
-            : run
-        )
-      )
-
-      const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
-
-      if (likeError) {
-        setRuns(previousRuns)
-        setLikesError('Не удалось обновить лайк')
-      }
-    } catch {
-      setRuns(previousRuns)
-      setLikesError('Не удалось обновить лайк')
-    } finally {
-      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
   }
 
@@ -525,7 +450,6 @@ export default function RunsPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
       {runsError ? <p className="mb-4 text-sm text-red-600">{runsError}</p> : null}
-      {likesError ? <p className="mb-4 text-sm text-red-600">{likesError}</p> : null}
       <div className="space-y-3 mb-4">
         {loadingRuns ? (
           <p className="app-text-secondary text-sm">Загрузка тренировок...</p>
@@ -546,14 +470,7 @@ export default function RunsPage() {
                     {formatRunDateLabel(run.created_at)}
                   </p>
                   <div className="compact-run-card-like">
-                    <RunLikeControl
-                      likesCount={run.likesCount}
-                      likedByMe={run.likedByMe}
-                      pending={pendingRunIds.includes(run.id)}
-                      onToggle={() => handleLikeToggle(run.id)}
-                      summaryPrefix={`⚡ +${run.xp} XP`}
-                      compactOnSmall
-                    />
+                    <p className="app-text-secondary text-sm">⚡ +{run.xp} XP</p>
                   </div>
                 </div>
                 <button
