@@ -174,10 +174,9 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-xl p-4">
         <div className="mb-6 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
-          <div className="min-w-0 space-y-0.5">
+          <div className="min-w-0 space-y-1">
             <p className="app-text-primary text-lg font-semibold">Привет, {profileName}</p>
-            <p className="app-text-secondary text-sm">Level {greetingLevel}</p>
-            {user.email ? <p className="app-text-secondary truncate text-sm">{user.email}</p> : null}
+            <p className="app-text-secondary text-sm">Уровень {greetingLevel}</p>
           </div>
         </div>
         {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}

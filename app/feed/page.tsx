@@ -328,7 +328,7 @@ export default function FeedPage() {
                 createdAt={item.created_at}
                 displayName={item.displayName}
                 avatarUrl={item.avatar_url}
-                subtitle={`Level ${getLevelFromXP(item.totalXp).level}`}
+                subtitle={`Уровень ${getLevelFromXP(item.totalXp).level}`}
                 likesCount={item.likesCount}
                 likedByMe={item.likedByMe}
                 pending={pendingRunIds.includes(item.id)}

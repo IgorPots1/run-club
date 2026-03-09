@@ -308,8 +308,8 @@ export default function ProfilePage() {
         />
         <div className="space-y-1 text-center">
           <p className="app-text-primary text-xl font-semibold">{profileDisplayName}</p>
-          <p className="app-text-secondary text-sm">Level {currentLevel}</p>
-          {email ? <p className="app-text-secondary text-sm">{email}</p> : null}
+          <p className="app-text-secondary text-sm">Уровень {currentLevel}</p>
+          {email ? <p className="app-text-muted text-sm">{email}</p> : null}
         </div>
       </div>
       <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
