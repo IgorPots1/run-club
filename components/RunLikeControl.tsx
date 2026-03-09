@@ -27,20 +27,20 @@ export default function RunLikeControl({
 
   if (variant === 'inline') {
     return (
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-        {summaryPrefix ? <p className="app-text-secondary min-w-0 truncate">{summaryPrefix}</p> : null}
-        {summaryPrefix ? <span className="app-text-secondary">•</span> : null}
+      <div className="app-inline-like-row text-xs">
+        {summaryPrefix ? <p className="app-inline-like-summary truncate">{summaryPrefix}</p> : null}
+        {summaryPrefix ? <span className="app-inline-like-separator">•</span> : null}
         <button
           type="button"
           onClick={onToggle}
           disabled={pending}
           aria-label={likedByMe ? 'Убрать лайк' : 'Поставить лайк'}
-          className={`inline-flex min-h-8 items-center gap-1 rounded-md px-0.5 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-            likedByMe ? 'text-rose-500' : 'app-text-secondary'
+          className={`app-inline-like-button ${
+            likedByMe ? 'app-inline-like-button-active' : 'app-inline-like-button-inactive'
           }`}
         >
-          <span aria-hidden="true">{pending ? '…' : likeIcon}</span>
-          <span>{likesCount}</span>
+          <span aria-hidden="true" className="app-inline-like-button-icon">{pending ? '…' : likeIcon}</span>
+          <span className="app-inline-like-button-count">{likesCount}</span>
         </button>
       </div>
     )
