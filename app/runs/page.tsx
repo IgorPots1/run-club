@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import WheelPickerColumn from '@/components/WheelPickerColumn'
+import WheelPickerSheet from '@/components/WheelPickerSheet'
 import { ensureProfileExists } from '@/lib/profiles'
 import RunLikeControl from '@/components/RunLikeControl'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
@@ -46,6 +47,12 @@ const DISTANCE_WHOLE_OPTIONS = Array.from({ length: 101 }, (_, index) => index)
 const DISTANCE_TENTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
 const DURATION_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
 const TIME_OPTIONS = Array.from({ length: 60 }, (_, index) => index)
+const QUICK_DISTANCE_CHIPS = [
+  { label: '3 км', wholeKm: 3, tenthsKm: 0 },
+  { label: '5 км', wholeKm: 5, tenthsKm: 0 },
+  { label: '10 км', wholeKm: 10, tenthsKm: 0 },
+  { label: '21.1 км', wholeKm: 21, tenthsKm: 1 },
+]
 
 function formatTwoDigits(value: number) {
   return String(value).padStart(2, '0')
@@ -69,6 +76,13 @@ function formatPaceLabel(totalSeconds: number, distanceKm: number) {
   return `${minutes}:${formatTwoDigits(seconds)} / км`
 }
 
+function shouldShowPace(totalSeconds: number, distanceKm: number) {
+  if (distanceKm < 0.5 || totalSeconds < 60) return false
+
+  const paceSeconds = totalSeconds / distanceKm
+  return paceSeconds >= 150 && paceSeconds <= 900
+}
+
 export default function RunsPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -81,6 +95,13 @@ export default function RunsPage() {
   const [durationHours, setDurationHours] = useState(0)
   const [durationClockMinutes, setDurationClockMinutes] = useState(0)
   const [durationSeconds, setDurationSeconds] = useState(0)
+  const [distancePickerOpen, setDistancePickerOpen] = useState(false)
+  const [durationPickerOpen, setDurationPickerOpen] = useState(false)
+  const [draftDistanceWholeKm, setDraftDistanceWholeKm] = useState(0)
+  const [draftDistanceTenthsKm, setDraftDistanceTenthsKm] = useState(0)
+  const [draftDurationHours, setDraftDurationHours] = useState(0)
+  const [draftDurationClockMinutes, setDraftDurationClockMinutes] = useState(0)
+  const [draftDurationSeconds, setDraftDurationSeconds] = useState(0)
   const [error, setError] = useState('')
   const [runsError, setRunsError] = useState('')
   const [likesError, setLikesError] = useState('')
@@ -94,6 +115,25 @@ export default function RunsPage() {
   const selectedDurationSeconds = durationHours * 3600 + durationClockMinutes * 60 + durationSeconds
   const selectedDurationMinutes = selectedDurationSeconds > 0 ? Math.max(1, Math.round(selectedDurationSeconds / 60)) : 0
   const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
+  const showPacePreview = shouldShowPace(selectedDurationSeconds, selectedDistanceKm)
+
+  function openDistancePicker() {
+    setDraftDistanceWholeKm(distanceWholeKm)
+    setDraftDistanceTenthsKm(distanceTenthsKm)
+    setDistancePickerOpen(true)
+  }
+
+  function openDurationPicker() {
+    setDraftDurationHours(durationHours)
+    setDraftDurationClockMinutes(durationClockMinutes)
+    setDraftDurationSeconds(durationSeconds)
+    setDurationPickerOpen(true)
+  }
+
+  function applyQuickDistance(wholeKm: number, tenthsKm: number) {
+    setDistanceWholeKm(wholeKm)
+    setDistanceTenthsKm(tenthsKm)
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -239,6 +279,11 @@ export default function RunsPage() {
       setDurationHours(0)
       setDurationClockMinutes(0)
       setDurationSeconds(0)
+      setDraftDistanceWholeKm(0)
+      setDraftDistanceTenthsKm(0)
+      setDraftDurationHours(0)
+      setDraftDurationClockMinutes(0)
+      setDraftDurationSeconds(0)
       setError('')
       await fetchRuns(currentUser)
     } catch {
@@ -353,62 +398,51 @@ export default function RunsPage() {
           />
         </div>
         <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <label className="block text-sm">Дистанция (км)</label>
-            <p className="shrink-0 text-sm font-semibold text-gray-900">{selectedDistanceLabel} км</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <WheelPickerColumn
-              label="Км"
-              value={distanceWholeKm}
-              options={DISTANCE_WHOLE_OPTIONS}
-              onChange={setDistanceWholeKm}
-            />
-            <WheelPickerColumn
-              label="0.1 км"
-              value={distanceTenthsKm}
-              options={DISTANCE_TENTHS_OPTIONS}
-              onChange={setDistanceTenthsKm}
-            />
+          <label className="mb-1 block text-sm">Дистанция</label>
+          <button
+            type="button"
+            onClick={openDistancePicker}
+            className="flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+          >
+            <span className="text-gray-500">Выбери дистанцию</span>
+            <span className="font-semibold text-gray-900">{selectedDistanceLabel} км</span>
+          </button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {QUICK_DISTANCE_CHIPS.map((chip) => {
+              const isActive = distanceWholeKm === chip.wholeKm && distanceTenthsKm === chip.tenthsKm
+
+              return (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => applyQuickDistance(chip.wholeKm, chip.tenthsKm)}
+                  className={`min-h-10 rounded-full border px-3 py-2 text-sm transition-colors ${
+                    isActive ? 'border-black bg-black text-white' : 'border-gray-200 bg-white text-gray-700'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              )
+            })}
           </div>
         </div>
         <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <label className="block text-sm">Время</label>
-            <p className="shrink-0 text-sm font-semibold text-gray-900">{selectedDurationLabel}</p>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <WheelPickerColumn
-              label="Часы"
-              value={durationHours}
-              options={DURATION_HOUR_OPTIONS}
-              onChange={setDurationHours}
-              formatter={formatTwoDigits}
-            />
-            <WheelPickerColumn
-              label="Мин"
-              value={durationClockMinutes}
-              options={TIME_OPTIONS}
-              onChange={setDurationClockMinutes}
-              formatter={formatTwoDigits}
-            />
-            <WheelPickerColumn
-              label="Сек"
-              value={durationSeconds}
-              options={TIME_OPTIONS}
-              onChange={setDurationSeconds}
-              formatter={formatTwoDigits}
-            />
-          </div>
+          <label className="mb-1 block text-sm">Время</label>
+          <button
+            type="button"
+            onClick={openDurationPicker}
+            className="flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+          >
+            <span className="text-gray-500">Выбери время</span>
+            <span className="font-semibold text-gray-900">{selectedDurationLabel}</span>
+          </button>
         </div>
         <div className="rounded-xl bg-gray-50 px-4 py-3">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Предпросмотр</p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <p className="font-medium text-gray-900">{selectedDistanceLabel} км</p>
-            <p className="font-medium text-gray-900">{selectedDurationLabel}</p>
-            <p className={pacePreview ? 'font-medium text-gray-900' : 'text-gray-500'}>
-              {pacePreview || 'Темп появится после выбора дистанции и времени'}
-            </p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
+            <p>{selectedDistanceLabel} км</p>
+            <p>{selectedDurationLabel}</p>
+            {showPacePreview ? <p className="font-medium text-gray-900">Темп: {pacePreview}</p> : null}
           </div>
         </div>
         <button type="submit" disabled={submitting} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
@@ -459,6 +493,66 @@ export default function RunsPage() {
         )}
       </div>
       </div>
+      <WheelPickerSheet
+        title="Distance"
+        open={distancePickerOpen}
+        onCancel={() => setDistancePickerOpen(false)}
+        onDone={() => {
+          setDistanceWholeKm(draftDistanceWholeKm)
+          setDistanceTenthsKm(draftDistanceTenthsKm)
+          setDistancePickerOpen(false)
+        }}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <WheelPickerColumn
+            label="Км"
+            value={draftDistanceWholeKm}
+            options={DISTANCE_WHOLE_OPTIONS}
+            onChange={setDraftDistanceWholeKm}
+          />
+          <WheelPickerColumn
+            label="0.1 км"
+            value={draftDistanceTenthsKm}
+            options={DISTANCE_TENTHS_OPTIONS}
+            onChange={setDraftDistanceTenthsKm}
+          />
+        </div>
+      </WheelPickerSheet>
+      <WheelPickerSheet
+        title="Duration"
+        open={durationPickerOpen}
+        onCancel={() => setDurationPickerOpen(false)}
+        onDone={() => {
+          setDurationHours(draftDurationHours)
+          setDurationClockMinutes(draftDurationClockMinutes)
+          setDurationSeconds(draftDurationSeconds)
+          setDurationPickerOpen(false)
+        }}
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <WheelPickerColumn
+            label="Часы"
+            value={draftDurationHours}
+            options={DURATION_HOUR_OPTIONS}
+            onChange={setDraftDurationHours}
+            formatter={formatTwoDigits}
+          />
+          <WheelPickerColumn
+            label="Мин"
+            value={draftDurationClockMinutes}
+            options={TIME_OPTIONS}
+            onChange={setDraftDurationClockMinutes}
+            formatter={formatTwoDigits}
+          />
+          <WheelPickerColumn
+            label="Сек"
+            value={draftDurationSeconds}
+            options={TIME_OPTIONS}
+            onChange={setDraftDurationSeconds}
+            formatter={formatTwoDigits}
+          />
+        </div>
+      </WheelPickerSheet>
     </main>
   )
 }

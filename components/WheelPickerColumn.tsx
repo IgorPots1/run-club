@@ -11,8 +11,6 @@ type WheelPickerColumnProps = {
 }
 
 const ITEM_HEIGHT = 44
-const PICKER_HEIGHT = 220
-const PICKER_PADDING = (PICKER_HEIGHT - ITEM_HEIGHT) / 2
 
 export default function WheelPickerColumn({
   label,
