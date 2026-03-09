@@ -152,6 +152,8 @@ export default function FeedPage() {
               <WorkoutFeedCard
                 key={item.id}
                 rawTitle={item.title}
+                distanceKm={item.distance_km}
+                pace={item.pace}
                 xp={item.xp}
                 createdAt={item.created_at}
                 displayName={item.displayName}

@@ -16,6 +16,7 @@ type RunRow = {
   user_id: string
   title: string | null
   distance_km: number | null
+  pace?: string | number | null
   xp: number | null
   created_at: string
 }
@@ -25,6 +26,7 @@ export type DashboardRunItem = {
   user_id: string
   title: string
   distance_km: number
+  pace: string | number | null
   xp: number
   created_at: string
   displayName: string
@@ -125,7 +127,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
   ] = await Promise.all([
     supabase
       .from('runs')
-      .select('id, user_id, title, distance_km, xp, created_at')
+      .select('id, user_id, title, distance_km, pace, xp, created_at')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, name, email, avatar_url'),
     safeLoadRunLikesSummary(currentUserId),
@@ -148,6 +150,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       user_id: run.user_id,
       title: mappedTitle,
       distance_km: Number(run.distance_km ?? 0),
+      pace: run.pace ?? null,
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
       displayName: profile?.name?.trim() || profile?.email || 'Бегун',
@@ -184,7 +187,7 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
   ] = await Promise.all([
     supabase
       .from('runs')
-      .select('id, user_id, title, distance_km, xp, created_at')
+      .select('id, user_id, title, distance_km, pace, xp, created_at')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, name, email, avatar_url'),
     safeLoadRunLikesSummary(currentUserId),
@@ -222,6 +225,7 @@ export async function loadFeedRuns(currentUserId: string | null): Promise<FeedRu
       user_id: run.user_id,
       title: mappedTitle,
       distance_km: Number(run.distance_km ?? 0),
+      pace: run.pace ?? null,
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
       displayName: profile?.name?.trim() || profile?.email || 'Бегун',

@@ -6,6 +6,8 @@ import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
   rawTitle: string | null
+  distanceKm?: number | null
+  pace?: string | number | null
   xp: number
   createdAt: string
   displayName: string
@@ -50,8 +52,44 @@ function AvatarFallback() {
   )
 }
 
+function formatDistanceLabel(distanceKm: number) {
+  return Number.isInteger(distanceKm) ? String(distanceKm) : distanceKm.toFixed(1)
+}
+
+function normalizePaceLabel(pace: string | number | null | undefined) {
+  if (pace == null) return ''
+
+  const paceLabel = String(pace).trim()
+  if (!paceLabel) return ''
+
+  return paceLabel.endsWith('/км') ? paceLabel.slice(0, -3) : paceLabel
+}
+
+function buildDisplayTitle(rawTitle: string | null, distanceKm?: number | null, pace?: string | number | null) {
+  const baseTitle = rawTitle?.trim() || 'Тренировка'
+  const paceLabel = normalizePaceLabel(pace)
+
+  if (!paceLabel) {
+    return baseTitle
+  }
+
+  if (typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0) {
+    const distanceLabel = `${formatDistanceLabel(distanceKm)} км`
+
+    if (baseTitle.includes(distanceLabel)) {
+      return `${baseTitle} • ${paceLabel}/км`
+    }
+
+    return `${baseTitle} - ${distanceLabel} • ${paceLabel}/км`
+  }
+
+  return `${baseTitle} • ${paceLabel}/км`
+}
+
 export default function WorkoutFeedCard({
   rawTitle,
+  distanceKm,
+  pace,
   xp,
   createdAt,
   displayName,
@@ -65,7 +103,7 @@ export default function WorkoutFeedCard({
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
-  const displayTitle = rawTitle?.trim() || 'Тренировка'
+  const displayTitle = buildDisplayTitle(rawTitle, distanceKm, pace)
   const displayUserName = displayName.trim() || 'Бегун'
 
   return (
