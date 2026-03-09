@@ -181,28 +181,32 @@ export default function ActivityPage() {
                   <div className="mt-3 h-[220px] w-full md:mt-3.5 md:h-[300px]">
                     <div className="h-full w-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={summary.chartData} margin={{ top: 6, right: 2, left: 0, bottom: 0 }}>
+                        <BarChart
+                          data={summary.chartData}
+                          margin={{ top: 4, right: 0, left: -8, bottom: 0 }}
+                          barCategoryGap="18%"
+                        >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                           <XAxis
                             dataKey="label"
                             tickLine={false}
                             axisLine={false}
                             interval={mobileXAxisInterval}
-                            minTickGap={12}
-                            tickMargin={6}
-                            tick={{ fill: 'var(--chart-tick)', fontSize: 11 }}
+                            minTickGap={10}
+                            tickMargin={8}
+                            tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
                           />
                           <YAxis
                             tickLine={false}
                             axisLine={false}
-                            tick={{ fill: 'var(--chart-tick)', fontSize: 11 }}
-                            width={26}
+                            tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                            width={24}
                           />
                           <Tooltip
                             cursor={{ fill: 'var(--chart-cursor)' }}
                             content={<ActivityChartTooltip />}
                           />
-                          <Bar dataKey="distance" fill="var(--accent-strong)" radius={[8, 8, 0, 0]} maxBarSize={20} />
+                          <Bar dataKey="distance" fill="var(--accent-strong)" radius={[8, 8, 0, 0]} maxBarSize={28} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>

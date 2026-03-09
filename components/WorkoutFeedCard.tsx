@@ -98,16 +98,13 @@ export default function WorkoutFeedCard({
         </p>
       </div>
 
-      <div className="mt-2">
-        <p className="text-sm font-medium text-amber-500/90">⚡ +{xp} XP</p>
-      </div>
-
-      <div className="mt-2.5">
+      <div className="mt-3">
         <RunLikeControl
           likesCount={likesCount}
           likedByMe={likedByMe}
           pending={pending}
           onToggle={onToggleLike}
+          summaryPrefix={`⚡ +${xp} XP`}
         />
       </div>
     </div>

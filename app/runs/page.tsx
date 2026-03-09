@@ -75,7 +75,7 @@ function formatCompactDurationLabel(hours: number, minutes: number, seconds: num
     return `${formatTwoDigits(hours)}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
   }
 
-  return `${minutes}:${formatTwoDigits(seconds)}`
+  return `${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
 }
 
 function formatPaceLabel(totalSeconds: number, distanceKm: number) {
@@ -489,7 +489,6 @@ export default function RunsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="app-text-primary break-words font-medium">{run.title || 'Тренировка'}</p>
                   <p className="app-text-primary text-sm mt-1">🏃 {run.distance_km} км</p>
-                  <p className="app-text-primary text-sm mt-1">+{run.xp} XP</p>
                   <p className="app-text-secondary text-sm mt-1">
                     {new Date(run.created_at).toLocaleDateString('ru-RU', {
                       day: 'numeric',
@@ -501,6 +500,7 @@ export default function RunsPage() {
                     likedByMe={run.likedByMe}
                     pending={pendingRunIds.includes(run.id)}
                     onToggle={() => handleLikeToggle(run.id)}
+                    summaryPrefix={`⚡ +${run.xp} XP`}
                   />
                 </div>
                 <button

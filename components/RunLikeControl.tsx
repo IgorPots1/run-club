@@ -5,6 +5,7 @@ type RunLikeControlProps = {
   likedByMe: boolean
   pending: boolean
   onToggle: () => void
+  summaryPrefix?: string
 }
 
 export default function RunLikeControl({
@@ -12,14 +13,17 @@ export default function RunLikeControl({
   likedByMe,
   pending,
   onToggle,
+  summaryPrefix,
 }: RunLikeControlProps) {
   const likesLabel = likesCount === 1 ? 'лайк' : likesCount >= 2 && likesCount <= 4 ? 'лайка' : 'лайков'
+  const summaryLabel = summaryPrefix
+    ? `${summaryPrefix} • ❤️ ${likesCount}`
+    : `❤️ ${likesCount} ${likesLabel}`
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2.5">
       <p className="app-text-secondary min-w-0 flex items-center gap-1 text-xs">
-        <span className="text-[10px]">❤️</span>
-        <span className="truncate">{likesCount} {likesLabel}</span>
+        <span className="truncate">{summaryLabel}</span>
       </p>
       <button
         type="button"

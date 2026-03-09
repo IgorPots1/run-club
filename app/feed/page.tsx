@@ -118,7 +118,7 @@ export default function FeedPage() {
       <div className="mx-auto max-w-xl p-4">
         <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
         {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-        <div className="space-y-3 pb-2">
+        <div className="space-y-4 pb-2">
           {feedLoading && !items ? (
             <>
               <div className="app-card rounded-xl border p-4 shadow-sm">
@@ -156,7 +156,7 @@ export default function FeedPage() {
                 createdAt={item.created_at}
                 displayName={item.displayName}
                 avatarUrl={item.avatar_url}
-                subtitle={`Уровень ${getLevelFromXP(item.totalXp).level}`}
+                subtitle={`Level ${getLevelFromXP(item.totalXp).level}`}
                 likesCount={item.likesCount}
                 likedByMe={item.likedByMe}
                 pending={pendingRunIds.includes(item.id)}

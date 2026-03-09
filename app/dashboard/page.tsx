@@ -12,23 +12,9 @@ import type { ChallengeWithProgress } from '@/lib/challenges'
 import { ensureProfileExists } from '@/lib/profiles'
 import { toggleRunLike } from '@/lib/run-likes'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
+import { getLevelProgressFromXP } from '@/lib/xp'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
-
-function getLevelProgress(totalXp: number) {
-  const level = Math.floor(totalXp / 200) + 1
-  const nextLevelXp = level * 200
-  const currentLevelXp = totalXp - (level - 1) * 200
-  const xpToNextLevel = nextLevelXp - totalXp
-
-  return {
-    level,
-    nextLevelXp,
-    currentLevelXp,
-    xpToNextLevel,
-    progressPercent: Math.min((currentLevelXp / 200) * 100, 100),
-  }
-}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -176,7 +162,8 @@ export default function DashboardPage() {
   const stats = overview?.stats ?? null
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null
   const allChallengesCompleted = overview?.allChallengesCompleted ?? false
-  const levelProgress = stats ? getLevelProgress(stats.totalXp) : null
+  const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
+  const greetingLevel = levelProgress?.level ?? 1
   const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
   const profileName = profileSummary?.name || user.email?.split('@')[0] || 'бегун'
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
@@ -186,9 +173,10 @@ export default function DashboardPage() {
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4">
         <div className="mb-6 space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">Главная</h1>
+          <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
           <div className="min-w-0 space-y-0.5">
             <p className="app-text-primary text-lg font-semibold">Привет, {profileName}</p>
+            <p className="app-text-secondary text-sm">Level {greetingLevel}</p>
             {user.email ? <p className="app-text-secondary truncate text-sm">{user.email}</p> : null}
           </div>
         </div>
@@ -197,9 +185,9 @@ export default function DashboardPage() {
         <div className="mb-4">
           <Link
             href="/runs"
-            className="app-button-primary mb-4 mt-4 block min-h-12 w-full rounded-xl px-4 py-3 text-center text-base font-medium sm:text-lg"
+            className="app-button-primary mb-4 mt-4 block min-h-12 w-full rounded-xl px-4 py-3 text-center text-base font-semibold shadow-sm shadow-black/15 ring-1 ring-black/5 sm:text-lg dark:ring-white/10"
           >
-            ➕ Добавить тренировку
+            + Добавить тренировку
           </Link>
           {overviewLoading && !overview ? (
             <>
@@ -292,8 +280,14 @@ export default function DashboardPage() {
                   style={{ width: `${levelProgress.progressPercent}%` }}
                 />
               </div>
-              <p className="app-text-primary mt-3 break-words text-lg font-semibold">{stats.totalXp} / {levelProgress.nextLevelXp} XP</p>
-              <p className="app-text-secondary mt-1 text-sm">До следующего уровня: {levelProgress.xpToNextLevel} XP</p>
+              <p className="app-text-primary mt-3 break-words text-lg font-semibold">
+                {stats.totalXp} / {levelProgress.nextLevelXP ?? 'Максимум'} XP
+              </p>
+              <p className="app-text-secondary mt-1 text-sm">
+                {levelProgress.nextLevelXP === null
+                  ? 'Максимальный уровень достигнут'
+                  : `До следующего уровня: ${levelProgress.xpToNextLevel} XP`}
+              </p>
             </div>
           ) : null}
           <WeeklyLeaderboard

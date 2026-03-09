@@ -23,6 +23,10 @@ export type ChallengeWithProgress = Challenge & {
   isCompleted: boolean
 }
 
+function formatProgressValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
 export function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): ChallengeWithProgress {
   const totalKm = runs.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0)
   const totalRuns = runs.length
@@ -30,7 +34,7 @@ export function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): C
 
   if (challenge.goal_km != null && challenge.goal_km > 0) {
     progressItems.push({
-      label: `${totalKm.toFixed(1)} / ${challenge.goal_km} км`,
+      label: `${formatProgressValue(totalKm)} / ${formatProgressValue(challenge.goal_km)} км`,
       percent: Math.min((totalKm / challenge.goal_km) * 100, 100),
       completed: totalKm >= challenge.goal_km,
     })

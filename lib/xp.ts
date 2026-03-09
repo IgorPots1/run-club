@@ -11,3 +11,35 @@ export function getLevelFromXP(totalXP: number): { level: number; nextLevelXP: n
   const nextLevelXP = level < 10 ? XP_BY_LEVEL[level] : null
   return { level, nextLevelXP }
 }
+
+export function getLevelProgressFromXP(totalXP: number): {
+  level: number
+  nextLevelXP: number | null
+  currentLevelXp: number
+  xpToNextLevel: number
+  progressPercent: number
+} {
+  const { level, nextLevelXP } = getLevelFromXP(totalXP)
+  const currentLevelThreshold = XP_BY_LEVEL[level - 1] ?? 0
+
+  if (nextLevelXP === null) {
+    return {
+      level,
+      nextLevelXP: null,
+      currentLevelXp: totalXP - currentLevelThreshold,
+      xpToNextLevel: 0,
+      progressPercent: 100,
+    }
+  }
+
+  const xpIntoLevel = totalXP - currentLevelThreshold
+  const xpNeededForLevel = nextLevelXP - currentLevelThreshold
+
+  return {
+    level,
+    nextLevelXP,
+    currentLevelXp: xpIntoLevel,
+    xpToNextLevel: Math.max(nextLevelXP - totalXP, 0),
+    progressPercent: Math.min((xpIntoLevel / xpNeededForLevel) * 100, 100),
+  }
+}
