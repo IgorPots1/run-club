@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -39,28 +40,18 @@ export default function ProfilePage() {
 
     async function loadUser() {
       try {
-        const { data, error } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (error) {
-          setPageError('Не удалось проверить сессию')
-          return
+        const nextUser = await getBootstrapUser()
+        setUser(nextUser)
+        setEmail(nextUser?.email ?? '')
+
+        if (nextUser) {
+          void ensureProfileExists(nextUser)
         }
 
-        setUser(data.user)
-        setEmail(data.user?.email ?? '')
-
-        if (data.user) {
-          void ensureProfileExists(data.user)
-        }
-
-        if (!data.user) {
+        if (!nextUser) {
           router.push('/login')
-        }
-      } catch {
-        if (isMounted) {
-          setPageError('Не удалось проверить сессию')
         }
       } finally {
         if (isMounted) {
@@ -267,13 +258,7 @@ export default function ProfilePage() {
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        {pageError ? <p className="text-sm text-red-600">{pageError}</p> : null}
-      </main>
-    )
-  }
+  if (!user) return null
 
   return (
     <main className="min-h-screen">

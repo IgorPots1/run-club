@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { getBootstrapUser } from '@/lib/auth'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 import { awardChallengeCompletion, loadCompletedChallengeIds } from '@/lib/user-challenges'
@@ -24,17 +25,9 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
       setError('')
 
       try {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (authError) {
-          setError('Не удалось проверить сессию')
-          return
-        }
+        const user = await getBootstrapUser()
 
         if (!user) {
           router.push('/login')

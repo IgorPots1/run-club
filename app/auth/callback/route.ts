@@ -51,5 +51,5 @@ export async function GET(request: Request) {
     )
   }
 
-  return NextResponse.redirect(new URL('/dashboard', url.origin))
+  return NextResponse.redirect(new URL('/login', url.origin))
 }

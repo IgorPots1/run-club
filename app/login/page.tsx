@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { getBootstrapUser } from '@/lib/auth'
 import { supabase } from '../../lib/supabase'
 
 export default function LoginPage() {
@@ -12,29 +13,18 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     let isMounted = true
 
     async function checkUser() {
       try {
-        const { data, error } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (error) {
-          setAuthError('Не удалось проверить сессию')
-          return
-        }
+        const user = await getBootstrapUser()
 
-        if (data.user) {
+        if (user) {
           router.push('/dashboard')
-          return
-        }
-      } catch {
-        if (isMounted) {
-          setAuthError('Не удалось проверить сессию')
         }
       } finally {
         if (isMounted) {
@@ -94,7 +84,6 @@ export default function LoginPage() {
     <main className="flex min-h-dvh items-start justify-center px-4 pb-8 pt-10 sm:min-h-screen sm:items-center sm:p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border bg-white p-4 shadow-sm sm:p-5">
         <h1 className="text-xl font-semibold">Войти</h1>
-        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
         <div>
           <label htmlFor="email" className="block text-sm mb-1">Email</label>
           <input

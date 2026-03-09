@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
+import { getBootstrapUser } from '@/lib/auth'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
@@ -36,34 +37,23 @@ export default function DashboardPage() {
   const [showXpModal, setShowXpModal] = useState(false)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
-  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     let isMounted = true
 
     async function loadUser() {
       try {
-        const { data, error } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (error) {
-          setAuthError('Не удалось проверить сессию')
-          return
+        const nextUser = await getBootstrapUser()
+        setUser(nextUser)
+
+        if (nextUser) {
+          void ensureProfileExists(nextUser)
         }
 
-        setUser(data.user)
-
-        if (data.user) {
-          void ensureProfileExists(data.user)
-        }
-
-        if (!data.user) {
+        if (!nextUser) {
           router.push('/login')
-        }
-      } catch {
-        if (isMounted) {
-          setAuthError('Не удалось проверить сессию')
         }
       } finally {
         if (isMounted) {
@@ -175,13 +165,7 @@ export default function DashboardPage() {
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
-      </main>
-    )
-  }
+  if (!user) return null
 
   const stats = overview?.stats ?? null
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null

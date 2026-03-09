@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import { getBootstrapUser } from '@/lib/auth'
 import {
   Bar,
   BarChart,
@@ -56,34 +57,23 @@ export default function ActivityPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
-  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     let isMounted = true
 
     async function loadUser() {
       try {
-        const { data, error } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (error) {
-          setAuthError('Не удалось проверить сессию')
-          return
+        const nextUser = await getBootstrapUser()
+        setUser(nextUser)
+
+        if (nextUser) {
+          void ensureProfileExists(nextUser)
         }
 
-        setUser(data.user)
-
-        if (data.user) {
-          void ensureProfileExists(data.user)
-        }
-
-        if (!data.user) {
+        if (!nextUser) {
           router.push('/login')
-        }
-      } catch {
-        if (isMounted) {
-          setAuthError('Не удалось проверить сессию')
         }
       } finally {
         if (isMounted) {
@@ -117,11 +107,7 @@ export default function ActivityPage() {
   }
 
   if (!user) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
-      </main>
-    )
+    return null
   }
 
   return (

@@ -2,19 +2,15 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../lib/supabase'
+import { getBootstrapUser } from '@/lib/auth'
 
 export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
     async function redirectUser() {
-      try {
-        const { data } = await supabase.auth.getUser()
-        router.push(data.user ? '/dashboard' : '/login')
-      } catch {
-        router.push('/login')
-      }
+      const user = await getBootstrapUser()
+      router.push(user ? '/dashboard' : '/login')
     }
 
     void redirectUser()

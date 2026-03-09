@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
+import { getBootstrapUser } from '@/lib/auth'
 import { supabase } from '../lib/supabase'
 
 export default function Navbar() {
@@ -11,8 +12,8 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
+    void getBootstrapUser().then((nextUser) => {
+      setUser(nextUser)
     })
   }, [])
 

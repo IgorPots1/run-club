@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { getBootstrapUser } from '@/lib/auth'
 import { ensureProfileExists } from '@/lib/profiles'
 import RunLikeControl from '@/components/RunLikeControl'
 import { loadRunLikesSummary, subscribeToRunLikes, toggleRunLike } from '@/lib/run-likes'
@@ -52,7 +53,6 @@ export default function RunsPage() {
   const [error, setError] = useState('')
   const [runsError, setRunsError] = useState('')
   const [likesError, setLikesError] = useState('')
-  const [authError, setAuthError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
@@ -63,27 +63,17 @@ export default function RunsPage() {
 
     async function loadUser() {
       try {
-        const { data, error } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (error) {
-          setAuthError('Не удалось проверить сессию')
-          return
+        const nextUser = await getBootstrapUser()
+        setUser(nextUser)
+
+        if (nextUser) {
+          void ensureProfileExists(nextUser)
         }
 
-        setUser(data.user)
-
-        if (data.user) {
-          void ensureProfileExists(data.user)
-        }
-
-        if (!data.user) {
+        if (!nextUser) {
           router.push('/login')
-        }
-      } catch {
-        if (isMounted) {
-          setAuthError('Не удалось проверить сессию')
         }
       } finally {
         if (isMounted) {
@@ -285,13 +275,7 @@ export default function RunsPage() {
   }
 
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
-      </main>
-    )
-  }
+  if (!user) return null
 
   return (
     <main className="min-h-screen">

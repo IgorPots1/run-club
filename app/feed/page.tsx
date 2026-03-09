@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import { getBootstrapUser } from '@/lib/auth'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -17,30 +18,19 @@ export default function FeedPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
-  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     let isMounted = true
 
     async function loadUser() {
       try {
-        const { data, error } = await supabase.auth.getUser()
-
         if (!isMounted) return
 
-        if (error) {
-          setAuthError('Не удалось проверить сессию')
-          return
-        }
+        const user = await getBootstrapUser()
+        setCurrentUserId(user?.id ?? null)
 
-        setCurrentUserId(data.user?.id ?? null)
-
-        if (data.user) {
-          void ensureProfileExists(data.user)
-        }
-      } catch {
-        if (isMounted) {
-          setAuthError('Не удалось проверить сессию')
+        if (user) {
+          void ensureProfileExists(user)
         }
       } finally {
         if (isMounted) {
@@ -119,7 +109,7 @@ export default function FeedPage() {
 
   if (loading) return <main className="min-h-screen p-4">Загрузка...</main>
 
-  const error = authError || actionError || (feedError ? 'Не удалось загрузить ленту' : '')
+  const error = actionError || (feedError ? 'Не удалось загрузить ленту' : '')
   const emptyCtaHref = currentUserId ? '/runs' : '/login'
   const emptyCtaLabel = currentUserId ? 'Добавить тренировку' : 'Войти'
 
