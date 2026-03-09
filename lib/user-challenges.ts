@@ -22,6 +22,29 @@ export async function loadChallengeXpByUser() {
   return xpByUserId
 }
 
+export async function loadChallengeXpByUserIds(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {}
+  }
+
+  const { data, error } = await supabase
+    .from('user_challenges')
+    .select('user_id, challenge_id, xp_awarded')
+    .in('user_id', userIds)
+
+  if (error) {
+    return {}
+  }
+
+  const xpByUserId: Record<string, number> = {}
+
+  for (const item of (data as UserChallengeRow[] | null) ?? []) {
+    xpByUserId[item.user_id] = (xpByUserId[item.user_id] ?? 0) + Number(item.xp_awarded ?? 0)
+  }
+
+  return xpByUserId
+}
+
 export async function loadCompletedChallengeIds(userId: string) {
   const { data, error } = await supabase
     .from('user_challenges')
