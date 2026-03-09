@@ -48,10 +48,10 @@ const DISTANCE_TENTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
 const DURATION_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
 const TIME_OPTIONS = Array.from({ length: 60 }, (_, index) => index)
 const QUICK_DISTANCE_CHIPS = [
-  { label: '3 км', wholeKm: 3, tenthsKm: 0 },
   { label: '5 км', wholeKm: 5, tenthsKm: 0 },
   { label: '10 км', wholeKm: 10, tenthsKm: 0 },
-  { label: '21.1 км', wholeKm: 21, tenthsKm: 1 },
+  { label: '15 км', wholeKm: 15, tenthsKm: 0 },
+  { label: '20 км', wholeKm: 20, tenthsKm: 0 },
 ]
 
 function formatTwoDigits(value: number) {
@@ -62,8 +62,20 @@ function formatDistanceLabel(wholeKm: number, tenthsKm: number) {
   return `${wholeKm}.${tenthsKm}`
 }
 
+function formatCompactDistanceLabel(wholeKm: number, tenthsKm: number) {
+  return tenthsKm === 0 ? `${wholeKm}` : `${wholeKm}.${tenthsKm}`
+}
+
 function formatDurationLabel(hours: number, minutes: number, seconds: number) {
   return `${formatTwoDigits(hours)}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
+}
+
+function formatCompactDurationLabel(hours: number, minutes: number, seconds: number) {
+  if (hours > 0) {
+    return `${formatTwoDigits(hours)}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
+  }
+
+  return `${minutes}:${formatTwoDigits(seconds)}`
 }
 
 function formatPaceLabel(totalSeconds: number, distanceKm: number) {
@@ -73,14 +85,14 @@ function formatPaceLabel(totalSeconds: number, distanceKm: number) {
   const minutes = Math.floor(paceSeconds / 60)
   const seconds = paceSeconds % 60
 
-  return `${minutes}:${formatTwoDigits(seconds)} / км`
+  return `${minutes}:${formatTwoDigits(seconds)}/км`
 }
 
 function shouldShowPace(totalSeconds: number, distanceKm: number) {
-  if (distanceKm < 0.5 || totalSeconds < 60) return false
+  if (distanceKm < 0.5 || totalSeconds <= 0) return false
 
   const paceSeconds = totalSeconds / distanceKm
-  return paceSeconds >= 150 && paceSeconds <= 900
+  return paceSeconds <= 1200
 }
 
 export default function RunsPage() {
@@ -110,8 +122,10 @@ export default function RunsPage() {
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const selectedDistanceLabel = formatDistanceLabel(distanceWholeKm, distanceTenthsKm)
+  const compactDistanceLabel = formatCompactDistanceLabel(distanceWholeKm, distanceTenthsKm)
   const selectedDistanceKm = Number(selectedDistanceLabel)
   const selectedDurationLabel = formatDurationLabel(durationHours, durationClockMinutes, durationSeconds)
+  const compactDurationLabel = formatCompactDurationLabel(durationHours, durationClockMinutes, durationSeconds)
   const selectedDurationSeconds = durationHours * 3600 + durationClockMinutes * 60 + durationSeconds
   const selectedDurationMinutes = selectedDurationSeconds > 0 ? Math.max(1, Math.round(selectedDurationSeconds / 60)) : 0
   const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
@@ -133,6 +147,8 @@ export default function RunsPage() {
   function applyQuickDistance(wholeKm: number, tenthsKm: number) {
     setDistanceWholeKm(wholeKm)
     setDistanceTenthsKm(tenthsKm)
+    setDraftDistanceWholeKm(wholeKm)
+    setDraftDistanceTenthsKm(tenthsKm)
   }
 
   useEffect(() => {
@@ -404,8 +420,7 @@ export default function RunsPage() {
             onClick={openDistancePicker}
             className="flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
           >
-            <span className="text-gray-500">Выбери дистанцию</span>
-            <span className="font-semibold text-gray-900">{selectedDistanceLabel} км</span>
+            <span className="font-semibold text-gray-900">{compactDistanceLabel} км</span>
           </button>
           <div className="mt-2 flex flex-wrap gap-2">
             {QUICK_DISTANCE_CHIPS.map((chip) => {
@@ -433,16 +448,21 @@ export default function RunsPage() {
             onClick={openDurationPicker}
             className="flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
           >
-            <span className="text-gray-500">Выбери время</span>
-            <span className="font-semibold text-gray-900">{selectedDurationLabel}</span>
+            <span className="font-semibold text-gray-900">{compactDurationLabel}</span>
           </button>
         </div>
         <div className="rounded-xl bg-gray-50 px-4 py-3">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Предпросмотр</p>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
-            <p>{selectedDistanceLabel} км</p>
-            <p>{selectedDurationLabel}</p>
-            {showPacePreview ? <p className="font-medium text-gray-900">Темп: {pacePreview}</p> : null}
+            <p>{compactDistanceLabel} км</p>
+            <p>•</p>
+            <p>{compactDurationLabel}</p>
+            {showPacePreview ? (
+              <>
+                <p>•</p>
+                <p className="font-medium text-gray-900">{pacePreview}</p>
+              </>
+            ) : null}
           </div>
         </div>
         <button type="submit" disabled={submitting} className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
@@ -494,7 +514,7 @@ export default function RunsPage() {
       </div>
       </div>
       <WheelPickerSheet
-        title="Distance"
+        title="Дистанция"
         open={distancePickerOpen}
         onCancel={() => setDistancePickerOpen(false)}
         onDone={() => {
@@ -505,13 +525,13 @@ export default function RunsPage() {
       >
         <div className="grid grid-cols-2 gap-3">
           <WheelPickerColumn
-            label="Км"
+            label="КМ"
             value={draftDistanceWholeKm}
             options={DISTANCE_WHOLE_OPTIONS}
             onChange={setDraftDistanceWholeKm}
           />
           <WheelPickerColumn
-            label="0.1 км"
+            label="0.1 КМ"
             value={draftDistanceTenthsKm}
             options={DISTANCE_TENTHS_OPTIONS}
             onChange={setDraftDistanceTenthsKm}
@@ -519,7 +539,7 @@ export default function RunsPage() {
         </div>
       </WheelPickerSheet>
       <WheelPickerSheet
-        title="Duration"
+        title="Время"
         open={durationPickerOpen}
         onCancel={() => setDurationPickerOpen(false)}
         onDone={() => {
@@ -531,21 +551,21 @@ export default function RunsPage() {
       >
         <div className="grid grid-cols-3 gap-2">
           <WheelPickerColumn
-            label="Часы"
+            label="ЧАСЫ"
             value={draftDurationHours}
             options={DURATION_HOUR_OPTIONS}
             onChange={setDraftDurationHours}
             formatter={formatTwoDigits}
           />
           <WheelPickerColumn
-            label="Мин"
+            label="МИН"
             value={draftDurationClockMinutes}
             options={TIME_OPTIONS}
             onChange={setDraftDurationClockMinutes}
             formatter={formatTwoDigits}
           />
           <WheelPickerColumn
-            label="Сек"
+            label="СЕК"
             value={draftDurationSeconds}
             options={TIME_OPTIONS}
             onChange={setDraftDurationSeconds}

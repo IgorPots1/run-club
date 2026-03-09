@@ -11,6 +11,8 @@ type WheelPickerColumnProps = {
 }
 
 const ITEM_HEIGHT = 44
+const PICKER_HEIGHT = 236
+const PICKER_PADDING = (PICKER_HEIGHT - ITEM_HEIGHT) / 2
 
 export default function WheelPickerColumn({
   label,
@@ -75,12 +77,15 @@ export default function WheelPickerColumn({
   return (
     <div className="min-w-0">
       <p className="text-center text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <div className="relative mt-2 h-[220px] overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="pointer-events-none absolute inset-x-2 top-1/2 z-10 h-11 -translate-y-1/2 rounded-lg bg-gray-50 ring-1 ring-black/5" />
+      <div className="relative mt-2 h-[236px] overflow-hidden rounded-xl border bg-white shadow-sm">
+        <div className="pointer-events-none absolute inset-x-2 top-1/2 z-0 h-11 -translate-y-1/2 rounded-lg bg-gray-50 ring-1 ring-black/5" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-16 bg-gradient-to-b from-white via-white/85 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-16 bg-gradient-to-t from-white via-white/85 to-transparent" />
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="h-full snap-y snap-mandatory overflow-y-auto overscroll-contain px-2 py-[88px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="relative z-10 h-full snap-y snap-mandatory overflow-y-auto overscroll-contain px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{ paddingTop: PICKER_PADDING, paddingBottom: PICKER_PADDING }}
         >
           {options.map((option) => {
             const isActive = option === value
@@ -91,7 +96,7 @@ export default function WheelPickerColumn({
                 type="button"
                 onClick={() => handleSelect(option)}
                 className={`flex h-11 w-full snap-center items-center justify-center rounded-lg text-base transition-colors ${
-                  isActive ? 'font-semibold text-gray-900' : 'text-gray-400'
+                  isActive ? 'font-semibold text-gray-900' : 'text-gray-500'
                 }`}
               >
                 {formatter(option)}

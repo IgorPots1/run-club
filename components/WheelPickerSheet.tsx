@@ -32,7 +32,7 @@ export default function WheelPickerSheet({
             onClick={onCancel}
             className="min-h-11 rounded-lg px-3 py-2 text-sm text-gray-500"
           >
-            Cancel
+            Отмена
           </button>
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
           <button
@@ -40,7 +40,7 @@ export default function WheelPickerSheet({
             onClick={onDone}
             className="min-h-11 rounded-lg px-3 py-2 text-sm font-medium text-gray-900"
           >
-            Done
+            Готово
           </button>
         </div>
         <div className="mt-4">{children}</div>
