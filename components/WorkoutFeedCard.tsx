@@ -17,7 +17,6 @@ type WorkoutFeedCardProps = {
   pending: boolean
   onToggleLike: () => void
   subtitle?: string | null
-  compactInlineLike?: boolean
 }
 
 function formatRunDate(date: string) {
@@ -100,7 +99,6 @@ export default function WorkoutFeedCard({
   pending,
   onToggleLike,
   subtitle,
-  compactInlineLike = false,
 }: WorkoutFeedCardProps) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
@@ -145,7 +143,7 @@ export default function WorkoutFeedCard({
           pending={pending}
           onToggle={onToggleLike}
           summaryPrefix={`⚡ +${xp} XP`}
-          variant={compactInlineLike ? 'inline' : 'default'}
+          variant="inline"
         />
       </div>
     </div>
