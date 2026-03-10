@@ -25,6 +25,7 @@ export default function DashboardPage() {
   const [showXpModal, setShowXpModal] = useState(false)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
+  const [xpProgressWidth, setXpProgressWidth] = useState(0)
 
   useEffect(() => {
     let isMounted = true
@@ -171,6 +172,21 @@ export default function DashboardPage() {
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
   const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
 
+  useEffect(() => {
+    if (!levelProgress) {
+      setXpProgressWidth(0)
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setXpProgressWidth(levelProgress.progressPercent)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [levelProgress?.progressPercent])
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4">
@@ -298,8 +314,8 @@ export default function DashboardPage() {
               </div>
               <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
                 <div
-                  className="app-accent-bg h-full rounded-full"
-                  style={{ width: `${levelProgress.progressPercent}%` }}
+                  className="app-accent-bg h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none"
+                  style={{ width: `${xpProgressWidth}%` }}
                 />
               </div>
               <p className="app-text-primary mt-3 break-words text-lg font-semibold">
