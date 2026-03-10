@@ -18,7 +18,6 @@ import type { User } from '@supabase/supabase-js'
 import { buildActivitySummary, loadActivityRuns, type ActivityPeriod } from '@/lib/activity'
 import { formatDistanceKm } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
-import { supabase } from '@/lib/supabase'
 
 const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
   { id: 'week', label: 'Неделя' },
@@ -59,6 +58,7 @@ export default function ActivityPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
+  const [isVerySmallScreen, setIsVerySmallScreen] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -91,6 +91,19 @@ export default function ActivityPage() {
     }
   }, [router])
 
+  useEffect(() => {
+    function updateViewportState() {
+      setIsVerySmallScreen(window.innerWidth < 390)
+    }
+
+    updateViewportState()
+    window.addEventListener('resize', updateViewportState)
+
+    return () => {
+      window.removeEventListener('resize', updateViewportState)
+    }
+  }, [])
+
   const { data: runs, error, isLoading } = useSWR(
     user ? (['activity-runs', user.id] as const) : null,
     ([, userId]: readonly [string, string]) => loadActivityRuns(userId),
@@ -102,7 +115,8 @@ export default function ActivityPage() {
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
   const mobileXAxisInterval =
-    period === 'month' ? 4 : period === 'all' ? 2 : period === 'year' ? 0 : 0
+    period === 'month' ? 4 : period === 'all' ? 2 : period === 'year' ? (isVerySmallScreen ? 1 : 0) : 0
+  const chartTickFontSize = isVerySmallScreen ? 11 : 12
 
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
@@ -193,14 +207,14 @@ export default function ActivityPage() {
                             tickLine={false}
                             axisLine={false}
                             interval={mobileXAxisInterval}
-                            minTickGap={10}
+                            minTickGap={isVerySmallScreen ? 16 : 10}
                             tickMargin={8}
-                            tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                            tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
                           />
                           <YAxis
                             tickLine={false}
                             axisLine={false}
-                            tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                            tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
                             width={24}
                           />
                           <Tooltip

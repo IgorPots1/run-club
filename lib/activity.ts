@@ -50,12 +50,14 @@ function addMonths(date: Date, months: number) {
   return new Date(date.getFullYear(), date.getMonth() + months, 1)
 }
 
+const RUSSIAN_MONTH_LABELS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'] as const
+
 function formatMonthLabel(date: Date) {
-  return new Intl.DateTimeFormat('ru-RU', { month: 'short' }).format(date)
+  return RUSSIAN_MONTH_LABELS[date.getMonth()] ?? ''
 }
 
 function formatMonthYearLabel(date: Date) {
-  return new Intl.DateTimeFormat('ru-RU', { month: 'short', year: '2-digit' }).format(date)
+  return `${formatMonthLabel(date)} ${String(date.getFullYear()).slice(-2)}`
 }
 
 function formatWeekdayLabel(date: Date) {
