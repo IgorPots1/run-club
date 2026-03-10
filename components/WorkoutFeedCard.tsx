@@ -131,21 +131,21 @@ export default function WorkoutFeedCard({
   )
 
   return (
-    <div className="app-card overflow-hidden rounded-2xl px-4 py-3.5 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10">
-      <div className="flex items-start justify-between gap-2.5">
+    <div className="app-card overflow-hidden rounded-2xl px-4 py-4 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10">
+      <div className="flex items-start justify-between gap-3">
         {profileHref ? (
-          <Link href={profileHref} className="flex min-w-0 items-center gap-2.5">
+          <Link href={profileHref} className="flex min-w-0 items-center gap-3">
             {profileIdentity}
           </Link>
         ) : (
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-3">
             {profileIdentity}
           </div>
         )}
         <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">{formatRunDate(createdAt)}</p>
       </div>
 
-      <div className="mt-2.5">
+      <div className="mt-3">
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>

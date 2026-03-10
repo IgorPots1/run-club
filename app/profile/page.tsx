@@ -512,7 +512,7 @@ export default function ProfilePage() {
             </div>
             <div className="skeleton-line h-11 w-28" />
           </div>
-          <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
+          <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
             <div className="skeleton-line h-6 w-28" />
             <div className="mt-4 space-y-3">
               <div className="skeleton-line h-6 w-full" />
@@ -627,7 +627,7 @@ export default function ProfilePage() {
               {changingPassword ? 'Обновляем пароль...' : 'Изменить пароль'}
             </button>
           </form>
-          <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
+          <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
             <div className="flex items-center justify-between gap-4 border-b py-2">
               <span className="app-text-secondary min-w-0">Уровень</span>

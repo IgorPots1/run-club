@@ -29,7 +29,7 @@ const challengeKindLabel: Record<ChallengeKind, string> = {
 
 function ChallengeCard({ item, completed }: { item: ChallengeWithProgress; completed: boolean }) {
   return (
-    <div className="app-card overflow-hidden rounded-xl border p-4 shadow-sm">
+    <div className="app-card overflow-hidden rounded-2xl border p-4 shadow-sm">
       <div>
         <div className="flex items-start justify-between gap-3">
           <h3 className="app-text-primary break-words text-lg font-semibold">{item.title}</h3>
@@ -179,12 +179,12 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
               <p className="mt-2 text-sm">Загляните позже за новыми целями.</p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <section>
                 <h2 className="app-text-primary mb-3 text-lg font-semibold">Активные</h2>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {activeItems.length === 0 ? (
-                    <div className="app-card rounded-xl border p-4 shadow-sm">
+                    <div className="app-card rounded-2xl border p-4 shadow-sm">
                       <p className="app-text-secondary text-sm">Все активные челленджи уже закрыты.</p>
                       <p className="app-text-secondary mt-2 text-sm">Скоро появятся новые цели.</p>
                     </div>
@@ -198,9 +198,9 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
 
               <section>
                 <h2 className="app-text-primary mb-3 text-lg font-semibold">Достижения</h2>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {achievementItems.length === 0 ? (
-                    <div className="app-card rounded-xl border p-4 shadow-sm">
+                    <div className="app-card rounded-2xl border p-4 shadow-sm">
                       <p className="app-text-secondary text-sm">Достижений пока нет.</p>
                       <p className="app-text-secondary mt-2 text-sm">Выполняйте челленджи и собирайте коллекцию.</p>
                     </div>

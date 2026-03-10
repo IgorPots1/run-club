@@ -126,7 +126,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         <>
           <div className="md:hidden">
             {rows.map((row, index) => (
-              <div key={row.user_id} className="app-card mb-3 overflow-hidden rounded-xl border p-4 shadow-sm">
+              <div key={row.user_id} className="app-card mb-4 overflow-hidden rounded-2xl border p-4 shadow-sm">
                 <p className="app-text-primary mb-3 font-medium">{index + 1} место</p>
                 <div className="mb-4 flex items-center gap-3">
                   {row.avatar_url ? (

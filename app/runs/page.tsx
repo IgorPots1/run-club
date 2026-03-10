@@ -534,7 +534,7 @@ export default function RunsPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
       {runsError ? <p className="mb-4 text-sm text-red-600">{runsError}</p> : null}
-      <div className="mb-4 space-y-3">
+      <div className="mb-4 space-y-4">
         {loadingRuns ? (
           <p className="app-text-secondary text-sm">Загрузка тренировок...</p>
         ) : runs.length === 0 ? (
@@ -544,7 +544,7 @@ export default function RunsPage() {
           </div>
         ) : (
           runs.map((run) => (
-            <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-xl border p-4 shadow-sm">
+            <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-2xl border p-4 shadow-sm">
               <div className="compact-run-card-layout flex flex-col gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
