@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { getBootstrapUser } from '@/lib/auth'
+import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
@@ -188,23 +189,12 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-xl p-4">
         <div className="mb-6 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
-          <div className="min-w-0 space-y-1">
-            {profileHeaderLoading ? (
-              <div className="space-y-2">
-                <div className="skeleton-line h-6 w-40" />
-                <div className="skeleton-line h-4 w-20" />
-              </div>
-            ) : (
-              <>
-                <p className="app-text-primary text-lg font-semibold">Привет, {profileName}</p>
-                {levelHeaderLoading ? (
-                  <div className="skeleton-line h-4 w-20" />
-                ) : (
-                  <p className="app-text-secondary text-sm">Уровень {levelProgress?.level ?? 1}</p>
-                )}
-              </>
-            )}
-          </div>
+          <UserIdentitySummary
+            loadingIdentity={profileHeaderLoading}
+            loadingLevel={levelHeaderLoading}
+            displayName={`Привет, ${profileName}`}
+            levelLabel={`Уровень ${levelProgress?.level ?? 1}`}
+          />
         </div>
         {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
 

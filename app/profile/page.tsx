@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
+import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists, getProfileDisplayName, upsertProfile } from '@/lib/profiles'
@@ -36,6 +37,7 @@ export default function ProfilePage() {
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
+  const [profileDataLoading, setProfileDataLoading] = useState(true)
   const [pageError, setPageError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
 
@@ -78,6 +80,7 @@ export default function ProfilePage() {
 
     async function loadProfileData() {
       setPageError('')
+      setProfileDataLoading(true)
 
       try {
         const profileFallback = {
@@ -153,6 +156,10 @@ export default function ProfilePage() {
       } catch {
         if (isMounted) {
           setPageError('Не удалось загрузить профиль')
+        }
+      } finally {
+        if (isMounted) {
+          setProfileDataLoading(false)
         }
       }
     }
@@ -345,6 +352,8 @@ export default function ProfilePage() {
     'Бегун'
   )
   const currentLevel = getLevelFromXP(totalXp).level
+  const profileIdentityLoading = profileDataLoading && !pageError
+  const profileLevelLoading = profileDataLoading && !pageError
 
   return (
     <main className="min-h-screen">
@@ -382,72 +391,107 @@ export default function ProfilePage() {
           disabled={uploading}
           className="hidden"
         />
-        <div className="space-y-1 text-center">
-          <p className="app-text-primary text-xl font-semibold">{profileDisplayName}</p>
-          <p className="app-text-secondary text-sm">Уровень {currentLevel}</p>
-          {email ? <p className="app-text-muted text-sm">{email}</p> : null}
-        </div>
+        <UserIdentitySummary
+          loadingIdentity={profileIdentityLoading}
+          loadingLevel={profileLevelLoading}
+          displayName={profileDisplayName}
+          levelLabel={`Уровень ${currentLevel}`}
+          email={profileIdentityLoading ? null : email}
+          className="w-full text-center"
+        />
       </div>
-      <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
-        <div>
-          <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
-          <input
-            id="name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={saving}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          />
-        </div>
-        <div>
-          <label htmlFor="nickname" className="app-text-secondary block text-sm mb-1">Никнейм</label>
-          <input
-            id="nickname"
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            disabled={saving}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          />
-        </div>
-        <div>
-          <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            readOnly
-            className="app-input app-input-readonly min-h-11 w-full rounded-lg border px-3 py-2"
-          />
-        </div>
-        <button type="submit" disabled={saving} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
-          {saving ? '...' : 'Сохранить'}
-        </button>
-      </form>
-      <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
-        <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
-        <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="app-text-secondary min-w-0">Уровень</span>
-          <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).level}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="app-text-secondary min-w-0">Всего XP</span>
-          <span className="app-text-primary shrink-0 text-right font-semibold">{totalXp}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="app-text-secondary min-w-0">Следующий уровень</span>
-          <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 border-b py-2">
-          <span className="app-text-secondary min-w-0">Всего км</span>
-          <span className="app-text-primary shrink-0 text-right font-semibold">{formatDistanceKm(totalKm)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 py-2">
-          <span className="app-text-secondary min-w-0">Тренировки</span>
-          <span className="app-text-primary shrink-0 text-right font-semibold">{runsCount}</span>
-        </div>
-      </div>
+      {profileDataLoading ? (
+        <>
+          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <div>
+              <div className="skeleton-line h-4 w-16" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div>
+              <div className="skeleton-line h-4 w-20" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div>
+              <div className="skeleton-line h-4 w-16" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div className="skeleton-line h-11 w-28" />
+          </div>
+          <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
+            <div className="skeleton-line h-6 w-28" />
+            <div className="mt-4 space-y-3">
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <div>
+              <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={saving}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="nickname" className="app-text-secondary block text-sm mb-1">Никнейм</label>
+              <input
+                id="nickname"
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                disabled={saving}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                readOnly
+                className="app-input app-input-readonly min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
+            <button type="submit" disabled={saving} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
+              {saving ? '...' : 'Сохранить'}
+            </button>
+          </form>
+          <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
+            <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
+            <div className="flex items-center justify-between gap-4 border-b py-2">
+              <span className="app-text-secondary min-w-0">Уровень</span>
+              <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).level}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 border-b py-2">
+              <span className="app-text-secondary min-w-0">Всего XP</span>
+              <span className="app-text-primary shrink-0 text-right font-semibold">{totalXp}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 border-b py-2">
+              <span className="app-text-secondary min-w-0">Следующий уровень</span>
+              <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 border-b py-2">
+              <span className="app-text-secondary min-w-0">Всего км</span>
+              <span className="app-text-primary shrink-0 text-right font-semibold">{formatDistanceKm(totalKm)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2">
+              <span className="app-text-secondary min-w-0">Тренировки</span>
+              <span className="app-text-primary shrink-0 text-right font-semibold">{runsCount}</span>
+            </div>
+          </div>
+        </>
+      )}
       {cropImageSrc ? (
         <AvatarCropModal
           imageSrc={cropImageSrc}
