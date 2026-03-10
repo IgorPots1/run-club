@@ -29,26 +29,6 @@ type ProfileFormState = {
   nickname: string
 }
 
-function debugAvatarLog(payload: {
-  runId: string
-  hypothesisId: string
-  location: string
-  message: string
-  data: Record<string, unknown>
-}) {
-  fetch('/api/debug-log', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      sessionId: 'f33647',
-      ...payload,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-}
-
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -74,9 +54,6 @@ export default function ProfilePage() {
   const [saveMessage, setSaveMessage] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
-  const avatarPickerAttemptRef = useRef(0)
-  const pendingAvatarPickerRef = useRef(false)
-  const avatarPickerChangedRef = useRef(false)
 
   useEffect(() => {
     let isMounted = true
@@ -220,34 +197,6 @@ export default function ProfilePage() {
     }
   }, [cropImageSrc])
 
-  useEffect(() => {
-    function handleWindowFocus() {
-      if (!pendingAvatarPickerRef.current) return
-
-      // #region agent log
-      debugAvatarLog({
-        runId: 'avatar-cancel-debug',
-        hypothesisId: 'H1,H3,H5',
-        location: 'app/profile/page.tsx:235',
-        message: 'window focused after avatar picker attempt',
-        data: {
-          attemptId: avatarPickerAttemptRef.current,
-          changed: avatarPickerChangedRef.current,
-          hasRef: Boolean(avatarInputRef.current),
-          disabled: Boolean(avatarInputRef.current?.disabled),
-          valueLength: avatarInputRef.current?.value.length ?? null,
-        },
-      })
-      // #endregion
-    }
-
-    window.addEventListener('focus', handleWindowFocus)
-
-    return () => {
-      window.removeEventListener('focus', handleWindowFocus)
-    }
-  }, [])
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!user || saving || profileDataLoading || !initialProfileForm) return
@@ -383,23 +332,6 @@ export default function ProfilePage() {
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    avatarPickerChangedRef.current = true
-
-    // #region agent log
-    debugAvatarLog({
-      runId: 'avatar-cancel-debug',
-      hypothesisId: 'H2,H4',
-      location: 'app/profile/page.tsx:379',
-      message: 'avatar input change fired',
-      data: {
-        attemptId: avatarPickerAttemptRef.current,
-        hasFile: Boolean(file),
-        inputValueLengthBeforeReset: e.target.value.length,
-        fileType: file?.type ?? null,
-      },
-    })
-    // #endregion
-
     if (!file) return
 
     if (!file.type.startsWith('image/')) {
@@ -415,66 +347,13 @@ export default function ProfilePage() {
     setPageError('')
     setCropImageSrc(URL.createObjectURL(file))
     e.target.value = ''
-    pendingAvatarPickerRef.current = false
-
-    // #region agent log
-    debugAvatarLog({
-      runId: 'avatar-cancel-debug',
-      hypothesisId: 'H2,H4',
-      location: 'app/profile/page.tsx:407',
-      message: 'avatar input reset after handled change',
-      data: {
-        attemptId: avatarPickerAttemptRef.current,
-        inputValueLengthAfterReset: e.target.value.length,
-      },
-    })
-    // #endregion
   }
 
-  function openAvatarPicker() {
-    if (uploading) return
+  function prepareAvatarInput() {
     if (!avatarInputRef.current) return
-
-    avatarPickerAttemptRef.current += 1
-    pendingAvatarPickerRef.current = true
-    avatarPickerChangedRef.current = false
-
-    // #region agent log
-    debugAvatarLog({
-      runId: 'avatar-cancel-debug',
-      hypothesisId: 'H1,H2,H3,H5',
-      location: 'app/profile/page.tsx:421',
-      message: 'avatar picker open attempt',
-      data: {
-        attemptId: avatarPickerAttemptRef.current,
-        hasRef: Boolean(avatarInputRef.current),
-        disabledBeforeEnable: Boolean(avatarInputRef.current.disabled),
-        valueLengthBeforeReset: avatarInputRef.current.value.length,
-        activeElementTag: typeof document !== 'undefined' ? document.activeElement?.tagName ?? null : null,
-      },
-    })
-    // #endregion
 
     avatarInputRef.current.disabled = false
     avatarInputRef.current.value = ''
-    avatarInputRef.current.click()
-  }
-
-  function handleAvatarInputClick() {
-    // #region agent log
-    debugAvatarLog({
-      runId: 'avatar-cancel-debug',
-      hypothesisId: 'H2,H3',
-      location: 'app/profile/page.tsx:441',
-      message: 'hidden avatar input received click',
-      data: {
-        attemptId: avatarPickerAttemptRef.current,
-        hasRef: Boolean(avatarInputRef.current),
-        disabled: Boolean(avatarInputRef.current?.disabled),
-        valueLength: avatarInputRef.current?.value.length ?? null,
-      },
-    })
-    // #endregion
   }
 
   function closeCropModal() {
@@ -564,15 +443,12 @@ export default function ProfilePage() {
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
       <div className="mb-6 flex flex-col items-center gap-4">
-        <button
-          type="button"
-          onClick={openAvatarPicker}
-          className={`group relative -m-2 inline-flex h-32 w-32 cursor-pointer touch-manipulation items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
-            uploading ? 'pointer-events-none opacity-60' : ''
+        <div
+          className={`group relative -m-2 inline-flex h-32 w-32 items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
+            uploading ? 'opacity-60' : ''
           }`}
-          aria-label={profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
         >
-          <span className="pointer-events-none relative inline-flex h-28 w-28 items-center justify-center rounded-full sm:h-32 sm:w-32">
+          <span className="relative inline-flex h-28 w-28 items-center justify-center rounded-full sm:h-32 sm:w-32">
             {profile?.avatar_url ? (
               <Image
                 src={profile.avatar_url}
@@ -588,26 +464,18 @@ export default function ProfilePage() {
             )}
             <span className="absolute inset-0 rounded-full ring-0 transition-all group-hover:ring-2 group-hover:ring-black/10 group-active:ring-2 group-active:ring-black/15 dark:group-hover:ring-white/15 dark:group-active:ring-white/20" />
           </span>
-        </button>
-        <button
-          type="button"
-          onClick={openAvatarPicker}
-          className={`app-button-secondary inline-flex min-h-11 w-full max-w-sm cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
-            uploading ? 'pointer-events-none opacity-60' : ''
-          }`}
-        >
-          {uploading ? 'Загрузка...' : profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
-        </button>
-        <input
-          ref={avatarInputRef}
-          id="avatar-upload"
-          type="file"
-          accept="image/*"
-          onClick={handleAvatarInputClick}
-          onChange={handleAvatarChange}
-          disabled={uploading}
-          className="hidden"
-        />
+          <input
+            ref={avatarInputRef}
+            id="avatar-upload"
+            type="file"
+            accept="image/*"
+            onClickCapture={prepareAvatarInput}
+            onChange={handleAvatarChange}
+            disabled={uploading}
+            aria-label={profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
+            className="absolute inset-0 cursor-pointer rounded-full opacity-0"
+          />
+        </div>
         <UserIdentitySummary
           loadingIdentity={profileIdentityLoading}
           loadingLevel={profileLevelLoading}
