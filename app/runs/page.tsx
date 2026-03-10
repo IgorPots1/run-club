@@ -319,6 +319,7 @@ export default function RunsPage() {
         .select('*')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
 
       if (runsLoadError) {
         setRunsError('Не удалось загрузить тренировки')

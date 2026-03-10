@@ -153,7 +153,8 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
     supabase
       .from('runs')
       .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false }),
     supabase.from('profiles').select('*'),
     safeLoadRunLikesSummary(currentUserId),
   ])
@@ -216,6 +217,7 @@ export async function loadFeedRuns(
     .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
     .gte('created_at', feedWindowStartIso)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .range(start, end)
 
   if (runsError) {
