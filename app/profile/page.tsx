@@ -351,7 +351,10 @@ export default function ProfilePage() {
 
   function openAvatarPicker() {
     if (uploading) return
-    avatarInputRef.current?.click()
+    if (!avatarInputRef.current) return
+
+    avatarInputRef.current.value = ''
+    avatarInputRef.current.click()
   }
 
   function closeCropModal() {
