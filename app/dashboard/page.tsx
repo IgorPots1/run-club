@@ -1,6 +1,6 @@
 'use client'
 
-import { Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
+import { Activity, Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -186,7 +186,7 @@ export default function DashboardPage() {
         <div className="mb-4">
           <Link
             href="/runs"
-            className="app-button-primary mb-4 mt-4 block min-h-12 w-full rounded-xl px-4 py-3 text-center text-base font-semibold shadow-sm shadow-black/15 ring-1 ring-black/5 sm:text-lg dark:ring-white/10"
+            className="app-button-primary mb-4 mt-4 block min-h-13 w-full rounded-xl px-4 py-3.5 text-center text-base font-semibold shadow-sm shadow-black/15 ring-1 ring-black/5 sm:text-lg dark:ring-white/10"
           >
             + Добавить тренировку
           </Link>
@@ -227,7 +227,7 @@ export default function DashboardPage() {
           ) : stats ? (
             <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <Activity className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 <span>Твой прогресс</span>
               </p>
               <div className="mt-3 space-y-2">
@@ -245,7 +245,7 @@ export default function DashboardPage() {
           ) : (
             <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <Activity className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 <span>Твой прогресс</span>
               </p>
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
