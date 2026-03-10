@@ -25,7 +25,6 @@ export default function DashboardPage() {
   const [showXpModal, setShowXpModal] = useState(false)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
-  const [xpProgressWidth, setXpProgressWidth] = useState(0)
 
   useEffect(() => {
     let isMounted = true
@@ -171,21 +170,10 @@ export default function DashboardPage() {
   const profileName = profileSummary?.name || user.email?.split('@')[0] || 'бегун'
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
   const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
-
-  useEffect(() => {
-    if (!levelProgress) {
-      setXpProgressWidth(0)
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      setXpProgressWidth(levelProgress.progressPercent)
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [levelProgress?.progressPercent])
+  const rawXpProgressPercent = levelProgress?.progressPercent
+  const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
+    ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
+    : 0
 
   return (
     <main className="min-h-screen">
@@ -314,8 +302,8 @@ export default function DashboardPage() {
               </div>
               <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
                 <div
-                  className="app-accent-bg h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none"
-                  style={{ width: `${xpProgressWidth}%` }}
+                  className="app-accent-bg h-full rounded-full"
+                  style={{ width: `${xpProgressPercent}%` }}
                 />
               </div>
               <p className="app-text-primary mt-3 break-words text-lg font-semibold">
