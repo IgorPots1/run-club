@@ -1,5 +1,6 @@
 'use client'
 
+import { Flame } from 'lucide-react'
 import type { WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 
 type WeeklyLeaderboardProps = {
@@ -26,7 +27,10 @@ export default function WeeklyLeaderboard({
 
   return (
     <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
-      <p className="app-text-secondary text-sm font-medium">🔥 Гонка недели</p>
+      <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+        <Flame className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+        <span>Гонка недели</span>
+      </p>
 
       {loading ? (
         <>

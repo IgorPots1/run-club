@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useState } from 'react'
+import { formatDistanceKm } from '@/lib/format'
 import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
@@ -55,7 +56,7 @@ function AvatarFallback() {
 }
 
 function formatDistanceLabel(distanceKm: number) {
-  return Number.isInteger(distanceKm) ? String(distanceKm) : distanceKm.toFixed(1)
+  return formatDistanceKm(distanceKm)
 }
 
 function normalizePaceLabel(pace: string | number | null | undefined) {
@@ -68,7 +69,7 @@ function normalizePaceLabel(pace: string | number | null | undefined) {
 }
 
 function buildDisplayTitle(rawTitle: string | null, distanceKm?: number | null, pace?: string | number | null) {
-  const baseTitle = rawTitle?.trim() || 'Тренировка'
+  const baseTitle = (rawTitle?.trim() || 'Тренировка').replace(/(\d+)\.0(\s*км\b)/g, '$1$2')
   const paceLabel = normalizePaceLabel(pace)
 
   if (!paceLabel) {

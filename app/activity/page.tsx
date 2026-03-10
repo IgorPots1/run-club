@@ -16,6 +16,7 @@ import {
 } from 'recharts'
 import type { User } from '@supabase/supabase-js'
 import { buildActivitySummary, loadActivityRuns, type ActivityPeriod } from '@/lib/activity'
+import { formatDistanceKm } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
@@ -27,7 +28,7 @@ const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
 ]
 
 function formatDistance(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return formatDistanceKm(value)
 }
 
 type ActivityChartTooltipProps = {

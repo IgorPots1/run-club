@@ -1,5 +1,6 @@
 'use client'
 
+import { Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -8,6 +9,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
+import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { ensureProfileExists } from '@/lib/profiles'
 import { toggleRunLike } from '@/lib/run-likes'
@@ -224,22 +226,31 @@ export default function DashboardPage() {
             </div>
           ) : stats ? (
             <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
-              <p className="app-text-secondary text-sm font-medium">🏃 Твой прогресс</p>
+              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Твой прогресс</span>
+              </p>
               <div className="mt-3 space-y-1">
-                <p className="app-text-primary text-lg font-semibold sm:text-xl">{stats.totalKmThisMonth.toFixed(1)} км в этом месяце</p>
+                <p className="app-text-primary text-lg font-semibold sm:text-xl">{formatDistanceKm(stats.totalKmThisMonth)} км в этом месяце</p>
                 <p className="app-text-secondary text-sm">{stats.runsCount} тренировок</p>
                 <p className="app-text-secondary text-sm">+{stats.totalXp} XP</p>
               </div>
             </div>
           ) : (
             <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
-              <p className="app-text-secondary text-sm font-medium">🏃 Твой прогресс</p>
+              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Твой прогресс</span>
+              </p>
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </div>
           )}
           {activeChallenge ? (
             <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
-              <p className="app-text-secondary text-sm font-medium">🎯 Активный челлендж</p>
+              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Активный челлендж</span>
+              </p>
               <h2 className="app-text-primary mt-3 break-words text-lg font-semibold">{activeChallenge.title}</h2>
               {activeChallenge.progressItems[0] ? (
                 <div className="mt-3">
@@ -257,14 +268,20 @@ export default function DashboardPage() {
             </div>
           ) : allChallengesCompleted ? (
             <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
-              <p className="app-text-secondary text-sm font-medium">🎯 Активный челлендж</p>
+              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Активный челлендж</span>
+              </p>
               <p className="app-text-secondary mt-3 text-sm">Все челленджи уже выполнены</p>
             </div>
           ) : null}
           {stats && levelProgress ? (
             <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
-                <p className="app-text-secondary text-sm font-medium">🏆 Уровень {levelProgress.level}</p>
+                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                  <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                  <span>Уровень {levelProgress.level}</span>
+                </p>
                 <button
                   type="button"
                   onClick={() => setShowXpModal(true)}
@@ -358,10 +375,22 @@ export default function DashboardPage() {
               </button>
             </div>
             <div className="app-text-secondary mt-4 space-y-3 text-sm">
-              <p>🏃 Завершённая тренировка — 50 XP</p>
-              <p>📏 1 км бега — 10 XP</p>
-              <p>❤️ Лайк за тренировку — 5 XP</p>
-              <p>🎯 Челлендж — XP зависит от награды челленджа</p>
+              <p className="flex items-center gap-2">
+                <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Завершённая тренировка — 50 XP</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <Route className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>1 км бега — 10 XP</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <Heart className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Лайк за тренировку — 5 XP</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Челлендж — XP зависит от награды челленджа</span>
+              </p>
             </div>
           </div>
         </div>

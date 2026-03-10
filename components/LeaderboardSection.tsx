@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { supabase } from '@/lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
@@ -145,7 +146,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                   </div>
                   <div>
                     <p className="app-text-secondary text-xs">Всего км</p>
-                    <p className="app-text-primary break-words text-base font-semibold sm:text-lg">{row.total_km.toFixed(2)}</p>
+                    <p className="app-text-primary break-words text-base font-semibold sm:text-lg">{formatDistanceKm(row.total_km)}</p>
                   </div>
                   <div>
                     <p className="app-text-secondary text-xs">Тренировки</p>
@@ -183,7 +184,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                     </td>
                     <td className="border p-2">{row.displayName} · Уровень {getLevelFromXP(row.total_xp).level}</td>
                     <td className="border p-2">{row.total_xp}</td>
-                    <td className="border p-2">{row.total_km.toFixed(2)}</td>
+                    <td className="border p-2">{formatDistanceKm(row.total_km)}</td>
                     <td className="border p-2">{row.runs_count}</td>
                   </tr>
                 ))}

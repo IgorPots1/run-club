@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
+import { formatDistanceKm } from '@/lib/format'
 import WheelPickerColumn from '@/components/WheelPickerColumn'
 import WheelPickerSheet from '@/components/WheelPickerSheet'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -40,7 +41,7 @@ function formatDurationMinutesLabel(totalMinutes: number) {
 }
 
 function formatDistanceKmLabel(distanceKm: number) {
-  return Number.isInteger(distanceKm) ? String(distanceKm) : distanceKm.toFixed(1)
+  return formatDistanceKm(distanceKm)
 }
 
 function formatRunPaceFromMinutes(distanceKm: number, durationMinutes: number) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Dumbbell, Home, User, Users } from 'lucide-react'
+import { Activity, Footprints, Home, User, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -41,7 +41,7 @@ export default function MobileTabBar() {
       href: '/runs',
       label: 'Трен.',
       isActive: pathname === '/runs',
-      icon: <TabIcon><Dumbbell className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
+      icon: <TabIcon><Footprints className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
       href: '/club',

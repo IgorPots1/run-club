@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
+import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
@@ -354,7 +355,7 @@ export default function ProfilePage() {
         </div>
         <div className="flex items-center justify-between gap-4 border-b py-2">
           <span className="app-text-secondary min-w-0">Всего км</span>
-          <span className="app-text-primary shrink-0 text-right font-semibold">{totalKm.toFixed(2)}</span>
+          <span className="app-text-primary shrink-0 text-right font-semibold">{formatDistanceKm(totalKm)}</span>
         </div>
         <div className="flex items-center justify-between gap-4 py-2">
           <span className="app-text-secondary min-w-0">Тренировки</span>
