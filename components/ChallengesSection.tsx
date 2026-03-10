@@ -183,7 +183,7 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           ) : (
             <div className="space-y-6">
               <section>
-                <h2 className="app-text-primary mb-3 text-lg font-semibold">Active</h2>
+                <h2 className="app-text-primary mb-3 text-lg font-semibold">Активные</h2>
                 <div className="space-y-3">
                   {activeItems.length === 0 ? (
                     <div className="app-card rounded-xl border p-4 shadow-sm">
@@ -198,7 +198,7 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
               </section>
 
               <section>
-                <h2 className="app-text-primary mb-3 text-lg font-semibold">Achievements</h2>
+                <h2 className="app-text-primary mb-3 text-lg font-semibold">Достижения</h2>
                 <div className="space-y-3">
                   {achievementItems.length === 0 ? (
                     <div className="app-card rounded-xl border p-4 shadow-sm">
