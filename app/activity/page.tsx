@@ -210,6 +210,7 @@ export default function ActivityPage() {
                           data={summary.chartData}
                           margin={{ top: 4, right: 0, left: -8, bottom: 0 }}
                           barCategoryGap="18%"
+                          accessibilityLayer={false}
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                           <XAxis
@@ -228,7 +229,8 @@ export default function ActivityPage() {
                             width={24}
                           />
                           <Tooltip
-                            cursor={{ fill: 'var(--chart-cursor)' }}
+                            shared={false}
+                            cursor={false}
                             content={<ActivityChartTooltip />}
                           />
                           <Bar dataKey="distance" fill="var(--accent-strong)" radius={[8, 8, 0, 0]} maxBarSize={28} />
