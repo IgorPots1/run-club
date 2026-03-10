@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
@@ -53,6 +53,7 @@ export default function ProfilePage() {
   const [pageError, setPageError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -348,6 +349,11 @@ export default function ProfilePage() {
     e.target.value = ''
   }
 
+  function openAvatarPicker() {
+    if (uploading) return
+    avatarInputRef.current?.click()
+  }
+
   function closeCropModal() {
     if (cropImageSrc) {
       URL.revokeObjectURL(cropImageSrc)
@@ -435,37 +441,42 @@ export default function ProfilePage() {
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
       <div className="mb-6 flex flex-col items-center gap-4">
-        <label
-          htmlFor="avatar-upload"
-          className={`group relative block cursor-pointer rounded-full transition-transform active:scale-[0.98] ${
+        <button
+          type="button"
+          onClick={openAvatarPicker}
+          className={`group relative -m-2 inline-flex h-32 w-32 touch-manipulation items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
             uploading ? 'pointer-events-none opacity-60' : ''
           }`}
           aria-label={profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
         >
-          {profile?.avatar_url ? (
-            <Image
-              src={profile.avatar_url}
-              alt="Аватар"
-              width={112}
-              height={112}
-              className="h-28 w-28 rounded-full object-cover transition-opacity group-hover:opacity-95 sm:h-32 sm:w-32"
-            />
-          ) : (
-            <div className="app-card app-text-secondary flex h-28 w-28 items-center justify-center rounded-full border text-sm transition-colors group-hover:bg-black/5 sm:h-32 sm:w-32 dark:group-hover:bg-white/5">
-              Аватар
-            </div>
-          )}
-          <div className="pointer-events-none absolute inset-0 rounded-full ring-0 transition-all group-hover:ring-2 group-hover:ring-black/10 group-active:ring-2 group-active:ring-black/15 dark:group-hover:ring-white/15 dark:group-active:ring-white/20" />
-        </label>
-        <label
-          htmlFor="avatar-upload"
+          <span className="pointer-events-none relative inline-flex h-28 w-28 items-center justify-center rounded-full sm:h-32 sm:w-32">
+            {profile?.avatar_url ? (
+              <Image
+                src={profile.avatar_url}
+                alt="Аватар"
+                width={112}
+                height={112}
+                className="h-28 w-28 rounded-full object-cover transition-opacity group-hover:opacity-95 sm:h-32 sm:w-32"
+              />
+            ) : (
+              <span className="app-card app-text-secondary flex h-28 w-28 items-center justify-center rounded-full border text-sm transition-colors group-hover:bg-black/5 sm:h-32 sm:w-32 dark:group-hover:bg-white/5">
+                Аватар
+              </span>
+            )}
+            <span className="absolute inset-0 rounded-full ring-0 transition-all group-hover:ring-2 group-hover:ring-black/10 group-active:ring-2 group-active:ring-black/15 dark:group-hover:ring-white/15 dark:group-active:ring-white/20" />
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={openAvatarPicker}
           className={`app-button-secondary inline-flex min-h-11 w-full max-w-sm cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
             uploading ? 'pointer-events-none opacity-60' : ''
           }`}
         >
           {uploading ? 'Загрузка...' : profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
-        </label>
+        </button>
         <input
+          ref={avatarInputRef}
           id="avatar-upload"
           type="file"
           accept="image/*"
