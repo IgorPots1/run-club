@@ -444,7 +444,7 @@ export default function ProfilePage() {
         <button
           type="button"
           onClick={openAvatarPicker}
-          className={`group relative -m-2 inline-flex h-32 w-32 touch-manipulation items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
+          className={`group relative -m-2 inline-flex h-32 w-32 cursor-pointer touch-manipulation items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
             uploading ? 'pointer-events-none opacity-60' : ''
           }`}
           aria-label={profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
