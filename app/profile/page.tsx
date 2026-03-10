@@ -572,7 +572,6 @@ export default function ProfilePage() {
           <form onSubmit={handlePasswordChange} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
             <div>
               <h2 className="app-text-primary text-lg font-semibold">Смена пароля</h2>
-              <p className="app-text-secondary mt-1 text-sm">Email остается логином. Текущий пароль не показывается.</p>
             </div>
             {passwordMessage ? <p className="text-sm text-green-700">{passwordMessage}</p> : null}
             <div>
