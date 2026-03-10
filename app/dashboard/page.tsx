@@ -68,6 +68,7 @@ export default function DashboardPage() {
   const {
     data: profileSummary,
     error: profileError,
+    isLoading: profileLoading,
   } = useSWR(
     profileKey,
     ([, userId]: readonly [string, string]) => loadUserProfileSummary(userId),
@@ -164,7 +165,6 @@ export default function DashboardPage() {
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null
   const allChallengesCompleted = overview?.allChallengesCompleted ?? false
   const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
-  const greetingLevel = levelProgress?.level ?? 1
   const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
   const profileName = getProfileDisplayName(
     {
@@ -176,6 +176,8 @@ export default function DashboardPage() {
   )
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
   const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
+  const profileHeaderLoading = profileLoading && !profileSummary && !profileError
+  const levelHeaderLoading = overviewLoading && !overview && !overviewError
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -187,8 +189,21 @@ export default function DashboardPage() {
         <div className="mb-6 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
           <div className="min-w-0 space-y-1">
-            <p className="app-text-primary text-lg font-semibold">Привет, {profileName}</p>
-            <p className="app-text-secondary text-sm">Уровень {greetingLevel}</p>
+            {profileHeaderLoading ? (
+              <div className="space-y-2">
+                <div className="skeleton-line h-6 w-40" />
+                <div className="skeleton-line h-4 w-20" />
+              </div>
+            ) : (
+              <>
+                <p className="app-text-primary text-lg font-semibold">Привет, {profileName}</p>
+                {levelHeaderLoading ? (
+                  <div className="skeleton-line h-4 w-20" />
+                ) : (
+                  <p className="app-text-secondary text-sm">Уровень {levelProgress?.level ?? 1}</p>
+                )}
+              </>
+            )}
           </div>
         </div>
         {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
