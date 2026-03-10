@@ -15,6 +15,15 @@ export function getProfileDisplayName(profile: ProfileIdentity | null | undefine
   return name || nickname || email || fallback
 }
 
+function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    Boolean(error.message?.includes('profiles.nickname')) ||
+    Boolean(error.message?.includes("'nickname' column of 'profiles'"))
+  )
+}
+
 function normalizeProfileValue(value: string | null | undefined) {
   const normalized = value?.trim()
   return normalized ? normalized : null
@@ -27,13 +36,29 @@ export async function upsertProfile(input: {
   nickname?: string | null
   avatar_url?: string | null
 }) {
+  const payload = {
+    id: input.id,
+    email: normalizeProfileValue(input.email),
+    name: normalizeProfileValue(input.name),
+    nickname: normalizeProfileValue(input.nickname),
+    avatar_url: input.avatar_url ?? null,
+  }
+
+  const result = await supabase.from('profiles').upsert(payload, {
+    onConflict: 'id',
+    ignoreDuplicates: false,
+  })
+
+  if (!result.error || !isMissingNicknameColumnError(result.error)) {
+    return result
+  }
+
   return supabase.from('profiles').upsert(
     {
-      id: input.id,
-      email: normalizeProfileValue(input.email),
-      name: normalizeProfileValue(input.name),
-      nickname: normalizeProfileValue(input.nickname),
-      avatar_url: input.avatar_url ?? null,
+      id: payload.id,
+      email: payload.email,
+      name: payload.name,
+      avatar_url: payload.avatar_url,
     },
     {
       onConflict: 'id',
@@ -44,17 +69,17 @@ export async function upsertProfile(input: {
 
 export async function ensureProfileExists(user: User) {
   const email = normalizeProfileValue(user.email)
-  const metadata = user.user_metadata as { name?: string | null; nickname?: string | null } | undefined
 
   if (!user.id) {
     return
   }
 
-  const { error } = await upsertProfile({
+  const { error } = await supabase.from('profiles').upsert({
     id: user.id,
     email,
-    name: metadata?.name ?? null,
-    nickname: metadata?.nickname ?? null,
+  }, {
+    onConflict: 'id',
+    ignoreDuplicates: false,
   })
 
   if (error) {

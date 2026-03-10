@@ -80,6 +80,22 @@ export default function ProfilePage() {
       setPageError('')
 
       try {
+        const profileFallback = {
+          id: currentUser.id,
+          email: currentUser.email ?? '',
+          name: '',
+          nickname: '',
+          avatar_url: null,
+        }
+
+        try {
+          await ensureProfileExists(currentUser)
+        } catch {
+          if (isMounted) {
+            setPageError('Не удалось загрузить профиль')
+          }
+        }
+
         const [
           { data: profileData, error: profileError },
           { data: runs, error: runsError },
@@ -88,7 +104,7 @@ export default function ProfilePage() {
         ] = await Promise.all([
           supabase
             .from('profiles')
-            .select('id, email, name, nickname, avatar_url')
+            .select('*')
             .eq('id', currentUser.id)
             .maybeSingle(),
           supabase
@@ -100,6 +116,12 @@ export default function ProfilePage() {
         ])
 
         if (!isMounted) return
+
+        console.log('[profile] load', {
+          authUserId: currentUser.id,
+          profileData,
+          profileError,
+        })
 
         if (profileError || runsError) {
           setPageError('Не удалось загрузить профиль')
@@ -113,13 +135,7 @@ export default function ProfilePage() {
               nickname: profileData.nickname ?? '',
               avatar_url: profileData.avatar_url ?? null,
             }
-          : {
-              id: currentUser.id,
-              email: currentUser.email ?? '',
-              name: '',
-              nickname: '',
-              avatar_url: null,
-            }
+          : profileFallback
 
         const safeRuns = runs ?? []
 
@@ -168,12 +184,24 @@ export default function ProfilePage() {
     setSaveMessage('')
 
     try {
-      const { error } = await upsertProfile({
+      const payload = {
         id: user.id,
         email: user.email ?? email,
         name: nextName || null,
         nickname: nextNickname || null,
         avatar_url: profile?.avatar_url ?? null,
+      }
+
+      console.log('[profile] save start', {
+        authUserId: user.id,
+        payload,
+      })
+
+      const { error } = await upsertProfile(payload)
+
+      console.log('[profile] save upsert result', {
+        authUserId: user.id,
+        error,
       })
 
       if (error) {
@@ -181,15 +209,43 @@ export default function ProfilePage() {
         return
       }
 
-      setProfile((prev) => ({
-        id: prev?.id ?? user.id,
-        email: prev?.email ?? user.email ?? email,
-        name: nextName || null,
-        nickname: nextNickname || null,
-        avatar_url: prev?.avatar_url ?? null,
-      }))
-      setName(nextName)
-      setNickname(nextNickname)
+      const { data: freshProfile, error: freshProfileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      console.log('[profile] save reload result', {
+        authUserId: user.id,
+        freshProfile,
+        freshProfileError,
+      })
+
+      if (freshProfileError) {
+        setPageError('Не удалось сохранить профиль')
+        return
+      }
+
+      const nextProfile = freshProfile
+        ? {
+            id: freshProfile.id,
+            email: freshProfile.email ?? user.email ?? email,
+            name: freshProfile.name ?? '',
+            nickname: freshProfile.nickname ?? '',
+            avatar_url: freshProfile.avatar_url ?? null,
+          }
+        : {
+            id: user.id,
+            email: user.email ?? email,
+            name: nextName,
+            nickname: nextNickname,
+            avatar_url: profile?.avatar_url ?? null,
+          }
+
+      setProfile(nextProfile)
+      setName(nextProfile.name ?? '')
+      setNickname(nextProfile.nickname ?? '')
+      setEmail(nextProfile.email ?? user.email ?? '')
       setSaveMessage('Профиль сохранен')
     } catch {
       setPageError('Не удалось сохранить профиль')

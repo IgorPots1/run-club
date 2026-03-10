@@ -15,7 +15,6 @@ import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
 import { toggleRunLike } from '@/lib/run-likes'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP } from '@/lib/xp'
-import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 export default function DashboardPage() {

@@ -40,19 +40,31 @@ export async function GET(request: Request) {
 
   if (user) {
     const metadata = user.user_metadata as { name?: string | null; nickname?: string | null } | undefined
+    const payload = {
+      id: user.id,
+      email: user.email?.trim() || null,
+      name: metadata?.name?.trim() || null,
+      nickname: metadata?.nickname?.trim() || null,
+    }
 
-    await supabase.from('profiles').upsert(
-      {
-        id: user.id,
-        email: user.email?.trim() || null,
-        name: metadata?.name?.trim() || null,
-        nickname: metadata?.nickname?.trim() || null,
-      },
-      {
-        onConflict: 'id',
-        ignoreDuplicates: false,
-      }
-    )
+    const result = await supabase.from('profiles').upsert(payload, {
+      onConflict: 'id',
+      ignoreDuplicates: false,
+    })
+
+    if (result.error?.code === '42703' || result.error?.code === 'PGRST204') {
+      await supabase.from('profiles').upsert(
+        {
+          id: payload.id,
+          email: payload.email,
+          name: payload.name,
+        },
+        {
+          onConflict: 'id',
+          ignoreDuplicates: false,
+        }
+      )
+    }
   }
 
   return NextResponse.redirect(new URL('/login', url.origin))

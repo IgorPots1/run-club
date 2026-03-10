@@ -154,7 +154,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       .from('runs')
       .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
       .order('created_at', { ascending: false }),
-    supabase.from('profiles').select('id, name, nickname, email, avatar_url'),
+    supabase.from('profiles').select('*'),
     safeLoadRunLikesSummary(currentUserId),
   ])
 
@@ -187,7 +187,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
 }
 
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
-  const { data, error } = await supabase.from('profiles').select('name, nickname, email').eq('id', userId).maybeSingle()
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
 
   if (error) {
     return {
@@ -234,7 +234,7 @@ export async function loadFeedRuns(
     likeXpByUser,
   ] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profiles').select('id, name, nickname, email, avatar_url').in('id', userIds)
+      ? supabase.from('profiles').select('*').in('id', userIds)
       : Promise.resolve({ data: [], error: null }),
     userIds.length > 0
       ? supabase.from('runs').select('user_id, xp').in('user_id', userIds)

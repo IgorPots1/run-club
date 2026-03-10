@@ -40,7 +40,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
           likeXpByUser,
         ] = await Promise.all([
           supabase.from('runs').select('user_id, xp, distance_km'),
-          supabase.from('profiles').select('id, email, name, nickname, avatar_url'),
+          supabase.from('profiles').select('*'),
           loadChallengeXpByUser(),
           loadLikeXpByUser(),
         ])

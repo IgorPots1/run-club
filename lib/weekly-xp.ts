@@ -48,7 +48,7 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
     { data: likes, error: likesError },
     { data: userChallenges, error: userChallengesError },
   ] = await Promise.all([
-    supabase.from('profiles').select('id, name, nickname, email'),
+    supabase.from('profiles').select('*'),
     supabase.from('runs').select('id, user_id, xp, created_at'),
     supabase.from('run_likes').select('run_id, created_at'),
     supabase.from('user_challenges').select('user_id, xp_awarded, completed_at'),
