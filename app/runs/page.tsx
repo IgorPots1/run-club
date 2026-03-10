@@ -1,5 +1,6 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -488,7 +489,7 @@ export default function RunsPage() {
                   onClick={() => handleDelete(run.id)}
                   className="compact-run-card-action app-text-secondary inline-flex min-h-10 w-full items-center justify-center gap-1 self-start rounded-lg px-2 py-2 text-xs sm:min-h-9 sm:w-auto"
                 >
-                  <span aria-hidden="true">🗑</span>
+                  <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
                   <span>{deletingRunIds.includes(run.id) ? '...' : 'Удалить'}</span>
                 </button>
               </div>

@@ -1,5 +1,6 @@
 'use client'
 
+import { CheckCircle2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
@@ -127,7 +128,10 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                         {item.progressItems.map((progressItem) => (
                           <div key={progressItem.label}>
                             {progressItem.completed ? (
-                              <p className="mb-2 text-sm font-medium text-green-700">✔ Выполнено</p>
+                              <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium text-green-700">
+                                <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                                <span>Выполнено</span>
+                              </p>
                             ) : null}
                             <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
                               <div
