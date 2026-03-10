@@ -1,3 +1,4 @@
+import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
 const XP_PER_LIKE = 5
@@ -5,6 +6,7 @@ const XP_PER_LIKE = 5
 type ProfileRow = {
   id: string
   name: string | null
+  nickname?: string | null
   email: string | null
 }
 
@@ -46,7 +48,7 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
     { data: likes, error: likesError },
     { data: userChallenges, error: userChallengesError },
   ] = await Promise.all([
-    supabase.from('profiles').select('id, name, email'),
+    supabase.from('profiles').select('id, name, nickname, email'),
     supabase.from('runs').select('id, user_id, xp, created_at'),
     supabase.from('run_likes').select('run_id, created_at'),
     supabase.from('user_challenges').select('user_id, xp_awarded, completed_at'),
@@ -87,7 +89,7 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
       const profile = profileById[user_id]
       return {
         user_id,
-        displayName: profile?.name?.trim() || profile?.email || 'Бегун',
+        displayName: getProfileDisplayName(profile, 'Бегун'),
         totalXp,
         rank: 0,
       }
@@ -103,7 +105,7 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
     (currentUserIndex >= 0 ? rows[currentUserIndex] : null) ??
     {
       user_id: currentUserId,
-      displayName: profileById[currentUserId]?.name?.trim() || profileById[currentUserId]?.email || 'Ты',
+      displayName: getProfileDisplayName(profileById[currentUserId], 'Ты'),
       totalXp: 0,
       rank: rows.length + 1,
     }

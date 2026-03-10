@@ -11,7 +11,7 @@ import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
-import { ensureProfileExists } from '@/lib/profiles'
+import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
 import { toggleRunLike } from '@/lib/run-likes'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP } from '@/lib/xp'
@@ -167,7 +167,14 @@ export default function DashboardPage() {
   const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
   const greetingLevel = levelProgress?.level ?? 1
   const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
-  const profileName = profileSummary?.name || user.email?.split('@')[0] || 'бегун'
+  const profileName = getProfileDisplayName(
+    {
+      name: profileSummary?.name ?? null,
+      nickname: profileSummary?.nickname ?? null,
+      email: user.email ?? null,
+    },
+    'Бегун'
+  )
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
   const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
   const rawXpProgressPercent = levelProgress?.progressPercent

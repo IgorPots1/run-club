@@ -1,15 +1,30 @@
 'use client'
 
+import { Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
+import { upsertProfile } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
+
+function getAuthErrorMessage(message: string) {
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes('user already registered')) return 'Пользователь с таким email уже существует'
+  if (normalized.includes('password should be at least')) return 'Пароль должен быть не короче 6 символов'
+  if (normalized.includes('invalid email')) return 'Введите корректный email'
+
+  return 'Не удалось создать аккаунт. Попробуйте еще раз.'
+}
 
 export default function RegisterPage() {
   const router = useRouter()
+  const [name, setName] = useState('')
+  const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
@@ -47,9 +62,31 @@ export default function RegisterPage() {
     e.preventDefault()
     if (loading) return
 
+    const normalizedName = name.trim()
+    const normalizedNickname = nickname.trim()
     const normalizedEmail = email.trim()
-    if (!normalizedEmail || !password) {
-      setError('Введите email и пароль')
+    if (!normalizedName) {
+      setError('Введите имя')
+      return
+    }
+
+    if (!normalizedNickname) {
+      setError('Введите никнейм')
+      return
+    }
+
+    if (!normalizedEmail) {
+      setError('Введите email')
+      return
+    }
+
+    if (!password) {
+      setError('Введите пароль')
+      return
+    }
+
+    if (password.length < 6) {
+      setError('Пароль должен быть не короче 6 символов')
       return
     }
 
@@ -58,20 +95,46 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
+          data: {
+            name: normalizedName,
+            nickname: normalizedNickname,
+          },
+        },
       })
 
       if (error) {
-        setError(error.message)
+        setError(getAuthErrorMessage(error.message))
         return
       }
 
-      setSuccess('Аккаунт создан. Проверьте почту и подтвердите адрес перед входом.')
+      if (!data.user?.id) {
+        setError('Не удалось создать профиль')
+        return
+      }
+
+      const { error: profileError } = await upsertProfile({
+        id: data.user.id,
+        email: data.user.email ?? normalizedEmail,
+        name: normalizedName,
+        nickname: normalizedNickname,
+      })
+
+      if (profileError) {
+        setError('Аккаунт создан, но профиль не сохранился')
+        return
+      }
+
+      if (data.session) {
+        setRedirecting(true)
+        router.replace('/dashboard')
+        return
+      }
+
+      setSuccess('Аккаунт создан. Теперь войдите в приложение.')
     } catch {
       setError('Не удалось создать аккаунт. Попробуйте еще раз.')
     } finally {
@@ -100,6 +163,30 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit} className="app-card w-full max-w-sm space-y-4 rounded-2xl border p-4 shadow-sm sm:p-5">
         <h1 className="app-text-primary text-xl font-semibold">Регистрация</h1>
         <div>
+          <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
+          <input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            disabled={loading}
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+          />
+        </div>
+        <div>
+          <label htmlFor="nickname" className="app-text-secondary block text-sm mb-1">Никнейм</label>
+          <input
+            id="nickname"
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            required
+            disabled={loading}
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+          />
+        </div>
+        <div>
           <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email</label>
           <input
             id="email"
@@ -113,15 +200,25 @@ export default function RegisterPage() {
         </div>
         <div>
           <label htmlFor="password" className="app-text-secondary block text-sm mb-1">Пароль</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          />
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              className="app-input min-h-11 w-full rounded-lg border px-3 py-2 pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="app-text-secondary absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center"
+              aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
         <button type="submit" disabled={loading} className="app-button-primary min-h-11 w-full rounded-lg px-4 py-2">
           {loading ? '...' : 'Зарегистрироваться'}

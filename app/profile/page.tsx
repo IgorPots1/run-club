@@ -8,7 +8,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
-import { ensureProfileExists } from '@/lib/profiles'
+import { ensureProfileExists, getProfileDisplayName, upsertProfile } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
@@ -18,6 +18,7 @@ type Profile = {
   id: string
   email: string | null
   name: string | null
+  nickname: string | null
   avatar_url: string | null
 }
 
@@ -27,6 +28,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [name, setName] = useState('')
+  const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -86,7 +88,7 @@ export default function ProfilePage() {
         ] = await Promise.all([
           supabase
             .from('profiles')
-            .select('id, email, name, avatar_url')
+            .select('id, email, name, nickname, avatar_url')
             .eq('id', currentUser.id)
             .maybeSingle(),
           supabase
@@ -108,12 +110,14 @@ export default function ProfilePage() {
               id: profileData.id,
               email: profileData.email ?? currentUser.email ?? '',
               name: profileData.name ?? '',
+              nickname: profileData.nickname ?? '',
               avatar_url: profileData.avatar_url ?? null,
             }
           : {
               id: currentUser.id,
               email: currentUser.email ?? '',
               name: '',
+              nickname: '',
               avatar_url: null,
             }
 
@@ -121,6 +125,7 @@ export default function ProfilePage() {
 
         setProfile(nextProfile)
         setName(nextProfile.name ?? '')
+        setNickname(nextProfile.nickname ?? '')
         setEmail(nextProfile.email ?? currentUser.email ?? '')
         setTotalXp(
           safeRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0) +
@@ -156,16 +161,18 @@ export default function ProfilePage() {
     if (!user || saving) return
 
     const nextName = name.trim()
+    const nextNickname = nickname.trim()
 
     setSaving(true)
     setPageError('')
     setSaveMessage('')
 
     try {
-      const { error } = await supabase.from('profiles').upsert({
+      const { error } = await upsertProfile({
         id: user.id,
         email: user.email ?? email,
         name: nextName || null,
+        nickname: nextNickname || null,
         avatar_url: profile?.avatar_url ?? null,
       })
 
@@ -178,9 +185,11 @@ export default function ProfilePage() {
         id: prev?.id ?? user.id,
         email: prev?.email ?? user.email ?? email,
         name: nextName || null,
+        nickname: nextNickname || null,
         avatar_url: prev?.avatar_url ?? null,
       }))
       setName(nextName)
+      setNickname(nextNickname)
       setSaveMessage('Профиль сохранен')
     } catch {
       setPageError('Не удалось сохранить профиль')
@@ -222,6 +231,7 @@ export default function ProfilePage() {
     setUploading(true)
     setPageError('')
     const nextName = profile?.name ?? (name.trim() || null)
+    const nextNickname = profile?.nickname ?? (nickname.trim() || null)
 
     try {
       const path = `${user.id}/avatar-${Date.now()}.jpg`
@@ -234,10 +244,11 @@ export default function ProfilePage() {
       }
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-      const { error: profileError } = await supabase.from('profiles').upsert({
+      const { error: profileError } = await upsertProfile({
         id: user.id,
         email: user.email ?? email,
         name: nextName,
+        nickname: nextNickname,
         avatar_url: data.publicUrl,
       })
 
@@ -249,6 +260,7 @@ export default function ProfilePage() {
         id: prev?.id ?? user.id,
         email: prev?.email ?? user.email ?? email,
         name: prev?.name ?? nextName,
+        nickname: prev?.nickname ?? nextNickname,
         avatar_url: data.publicUrl,
       }))
       closeCropModal()
@@ -268,7 +280,14 @@ export default function ProfilePage() {
     )
   }
 
-  const profileDisplayName = profile?.name?.trim() || user.email?.split('@')[0] || 'Бегун'
+  const profileDisplayName = getProfileDisplayName(
+    {
+      name: profile?.name ?? null,
+      nickname: profile?.nickname ?? null,
+      email: user.email ?? email ?? null,
+    },
+    'Бегун'
+  )
   const currentLevel = getLevelFromXP(totalXp).level
 
   return (
@@ -321,6 +340,17 @@ export default function ProfilePage() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            disabled={saving}
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+          />
+        </div>
+        <div>
+          <label htmlFor="nickname" className="app-text-secondary block text-sm mb-1">Никнейм</label>
+          <input
+            id="nickname"
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
             disabled={saving}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />

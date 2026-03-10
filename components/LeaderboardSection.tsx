@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
+import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '@/lib/xp'
@@ -39,7 +40,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
           likeXpByUser,
         ] = await Promise.all([
           supabase.from('runs').select('user_id, xp, distance_km'),
-          supabase.from('profiles').select('id, email, name, avatar_url'),
+          supabase.from('profiles').select('id, email, name, nickname, avatar_url'),
           loadChallengeXpByUser(),
           loadLikeXpByUser(),
         ])
@@ -76,7 +77,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         const list = Object.entries(byUserId)
           .map(([user_id, data]) => {
             const profile = profileById[user_id]
-            const displayName = profile?.name?.trim() || profile?.email || 'Бегун'
+            const displayName = getProfileDisplayName(profile, 'Бегун')
             const avatar_url = profile?.avatar_url ?? null
             return { user_id, displayName, avatar_url, ...data }
           })

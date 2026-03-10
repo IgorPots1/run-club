@@ -1,15 +1,27 @@
 'use client'
 
+import { Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { supabase } from '../../lib/supabase'
 
+function getAuthErrorMessage(message: string) {
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes('invalid login credentials')) return 'Неверный email или пароль'
+  if (normalized.includes('email not confirmed')) return 'Подтвердите email перед входом'
+  if (normalized.includes('invalid email')) return 'Введите корректный email'
+
+  return 'Не удалось войти. Попробуйте еще раз.'
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -62,7 +74,7 @@ export default function LoginPage() {
       })
 
       if (error) {
-        setMessage(error.message)
+        setMessage(getAuthErrorMessage(error.message))
         return
       }
 
@@ -109,15 +121,25 @@ export default function LoginPage() {
         </div>
         <div>
           <label htmlFor="password" className="app-text-secondary block text-sm mb-1">Пароль</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          />
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              className="app-input min-h-11 w-full rounded-lg border px-3 py-2 pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="app-text-secondary absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center"
+              aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
         <button type="submit" disabled={loading} className="app-button-primary min-h-11 w-full rounded-lg px-4 py-2">
           {loading ? '...' : 'Войти'}

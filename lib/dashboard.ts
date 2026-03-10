@@ -1,5 +1,6 @@
 import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
 import { loadLikeXpByUser, loadLikeXpByUserIds } from './likes-xp'
+import { getProfileDisplayName } from './profiles'
 import { loadRunLikesSummary, loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
 import { loadChallengeXpByUser, loadChallengeXpByUserIds } from './user-challenges'
@@ -7,6 +8,7 @@ import { loadChallengeXpByUser, loadChallengeXpByUserIds } from './user-challeng
 type ProfileRow = {
   id: string
   name: string | null
+  nickname?: string | null
   email: string | null
   avatar_url?: string | null
 }
@@ -59,6 +61,7 @@ export type DashboardOverview = {
 
 export type UserProfileSummary = {
   name: string | null
+  nickname: string | null
   email: string | null
 }
 
@@ -151,7 +154,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       .from('runs')
       .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
       .order('created_at', { ascending: false }),
-    supabase.from('profiles').select('id, name, email, avatar_url'),
+    supabase.from('profiles').select('id, name, nickname, email, avatar_url'),
     safeLoadRunLikesSummary(currentUserId),
   ])
 
@@ -175,7 +178,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
       xp: Number(run.xp ?? 0),
       created_at: run.created_at,
-      displayName: profile?.name?.trim() || profile?.email || 'Бегун',
+      displayName: getProfileDisplayName(profile, 'Бегун'),
       avatar_url: profile?.avatar_url ?? null,
       likesCount: likesByRunId[run.id] ?? 0,
       likedByMe: likedRunIds.has(run.id),
@@ -184,17 +187,19 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
 }
 
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
-  const { data, error } = await supabase.from('profiles').select('name, email').eq('id', userId).maybeSingle()
+  const { data, error } = await supabase.from('profiles').select('name, nickname, email').eq('id', userId).maybeSingle()
 
   if (error) {
     return {
       name: null,
+      nickname: null,
       email: null,
     }
   }
 
   return {
     name: data?.name?.trim() || null,
+    nickname: data?.nickname?.trim() || null,
     email: data?.email ?? null,
   }
 }
@@ -229,7 +234,7 @@ export async function loadFeedRuns(
     likeXpByUser,
   ] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profiles').select('id, name, email, avatar_url').in('id', userIds)
+      ? supabase.from('profiles').select('id, name, nickname, email, avatar_url').in('id', userIds)
       : Promise.resolve({ data: [], error: null }),
     userIds.length > 0
       ? supabase.from('runs').select('user_id, xp').in('user_id', userIds)
@@ -272,7 +277,7 @@ export async function loadFeedRuns(
         pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
         xp: Number(run.xp ?? 0),
         created_at: run.created_at,
-        displayName: profile?.name?.trim() || profile?.email || 'Бегун',
+        displayName: getProfileDisplayName(profile, 'Бегун'),
         avatar_url: profile?.avatar_url ?? null,
         totalXp: totalXpByUser[run.user_id] ?? 0,
         likesCount: likesSummary.likesByRunId[run.id] ?? 0,

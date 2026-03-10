@@ -39,10 +39,14 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser()
 
   if (user) {
+    const metadata = user.user_metadata as { name?: string | null; nickname?: string | null } | undefined
+
     await supabase.from('profiles').upsert(
       {
         id: user.id,
         email: user.email?.trim() || null,
+        name: metadata?.name?.trim() || null,
+        nickname: metadata?.nickname?.trim() || null,
       },
       {
         onConflict: 'id',
