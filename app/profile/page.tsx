@@ -435,6 +435,13 @@ export default function ProfilePage() {
     nickname.trim() !== initialProfileForm.nickname.trim()
   )
   const isSaveDisabled = profileDataLoading || saving || !hasProfileChanges
+  const trimmedNewPassword = newPassword.trim()
+  const trimmedConfirmPassword = confirmPassword.trim()
+  const isPasswordFormValid =
+    trimmedNewPassword.length >= 6 &&
+    trimmedConfirmPassword.length >= 6 &&
+    trimmedNewPassword === trimmedConfirmPassword
+  const isChangePasswordDisabled = changingPassword || !isPasswordFormValid
 
   return (
     <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
@@ -445,8 +452,9 @@ export default function ProfilePage() {
       <div className="mb-6 flex flex-col items-center gap-4">
         <div
           className={`group relative -m-2 inline-flex h-32 w-32 items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
-            uploading ? 'opacity-60' : ''
+            uploading ? 'pointer-events-none opacity-60' : ''
           }`}
+          aria-busy={uploading}
         >
           <span className="relative inline-flex h-28 w-28 items-center justify-center rounded-full sm:h-32 sm:w-32">
             {profile?.avatar_url ? (
@@ -476,6 +484,9 @@ export default function ProfilePage() {
             className="absolute inset-0 cursor-pointer rounded-full opacity-0"
           />
         </div>
+        <p className="app-text-secondary text-sm">
+          {uploading ? 'Загружаем аватар...' : 'Нажмите на аватар, чтобы изменить фото'}
+        </p>
         <UserIdentitySummary
           loadingIdentity={profileIdentityLoading}
           loadingLevel={profileLevelLoading}
@@ -558,7 +569,7 @@ export default function ProfilePage() {
               disabled={isSaveDisabled}
               className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              {saving ? '...' : 'Сохранить'}
+              {saving ? 'Сохраняем...' : 'Сохранить'}
             </button>
           </form>
           <form onSubmit={handlePasswordChange} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
@@ -610,10 +621,10 @@ export default function ProfilePage() {
             </div>
             <button
               type="submit"
-              disabled={changingPassword}
-              className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
+              disabled={isChangePasswordDisabled}
+              className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              {changingPassword ? '...' : 'Изменить пароль'}
+              {changingPassword ? 'Обновляем пароль...' : 'Изменить пароль'}
             </button>
           </form>
           <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">

@@ -224,6 +224,13 @@ export default function RunsPage() {
   const maxSelectableDay = draftRunYear === todayParts.year && draftRunMonth === todayParts.month
     ? todayParts.day
     : getDaysInMonth(draftRunYear, draftRunMonth)
+  const isWorkoutFormValid =
+    Number.isFinite(selectedDistanceKm) &&
+    selectedDistanceKm > 0 &&
+    Number.isFinite(selectedDurationMinutes) &&
+    selectedDurationMinutes > 0 &&
+    selectedDurationSeconds > 0 &&
+    !isFutureRunDate(selectedDate)
 
   function openRunDatePicker() {
     const nextDateParts = parseDateParts(selectedDate)
@@ -519,10 +526,10 @@ export default function RunsPage() {
         </div>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !isWorkoutFormValid}
           className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
-          {submitting ? '...' : 'Добавить тренировку'}
+          {submitting ? 'Сохраняем тренировку...' : 'Добавить тренировку'}
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
@@ -554,11 +561,13 @@ export default function RunsPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => handleDelete(run.id)}
-                  className="compact-run-card-action app-text-secondary inline-flex min-h-10 w-full items-center justify-center gap-1 self-start rounded-lg px-2 py-2 text-xs sm:min-h-9 sm:w-auto"
+                  disabled={deletingRunIds.includes(run.id)}
+                  className="compact-run-card-action app-text-secondary inline-flex min-h-10 w-full items-center justify-center gap-1 self-start rounded-lg px-2 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-9 sm:w-auto"
                 >
                   <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
-                  <span>{deletingRunIds.includes(run.id) ? '...' : 'Удалить'}</span>
+                  <span>{deletingRunIds.includes(run.id) ? 'Удаляем...' : 'Удалить'}</span>
                 </button>
               </div>
             </div>
