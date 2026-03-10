@@ -428,8 +428,6 @@ export default function ProfilePage() {
     'Бегун'
   )
   const currentLevel = getLevelFromXP(totalXp).level
-  const profileIdentityLoading = profileDataLoading && !pageError
-  const profileLevelLoading = profileDataLoading && !pageError
   const hasProfileChanges = initialProfileForm !== null && (
     name.trim() !== initialProfileForm.name.trim() ||
     nickname.trim() !== initialProfileForm.nickname.trim()
@@ -442,6 +440,61 @@ export default function ProfilePage() {
     trimmedConfirmPassword.length >= 6 &&
     trimmedNewPassword === trimmedConfirmPassword
   const isChangePasswordDisabled = changingPassword || !isPasswordFormValid
+
+  if (profileDataLoading) {
+    return (
+      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="mx-auto max-w-xl p-4">
+          <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
+          <div className="mb-6 flex flex-col items-center gap-4">
+            <div className="skeleton-line h-28 w-28 rounded-full sm:h-32 sm:w-32" />
+            <div className="skeleton-line h-4 w-40" />
+            <div className="w-full max-w-sm space-y-2 text-center">
+              <div className="mx-auto skeleton-line h-6 w-40" />
+              <div className="mx-auto skeleton-line h-4 w-20" />
+            </div>
+          </div>
+          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <div>
+              <div className="skeleton-line h-4 w-16" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div>
+              <div className="skeleton-line h-4 w-28" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div>
+              <div className="skeleton-line h-4 w-24" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div className="skeleton-line h-11 w-full sm:w-28" />
+          </div>
+          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <div className="skeleton-line h-6 w-36" />
+            <div>
+              <div className="skeleton-line h-4 w-28" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div>
+              <div className="skeleton-line h-4 w-36" />
+              <div className="mt-2 skeleton-line h-11 w-full" />
+            </div>
+            <div className="skeleton-line h-11 w-full sm:w-40" />
+          </div>
+          <div className="app-card overflow-hidden rounded-2xl border p-4 shadow-sm">
+            <div className="skeleton-line h-6 w-28" />
+            <div className="mt-4 space-y-3">
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+              <div className="skeleton-line h-6 w-full" />
+            </div>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
@@ -488,43 +541,14 @@ export default function ProfilePage() {
           {uploading ? 'Загружаем аватар...' : 'Нажмите на аватар, чтобы изменить фото'}
         </p>
         <UserIdentitySummary
-          loadingIdentity={profileIdentityLoading}
-          loadingLevel={profileLevelLoading}
+          loadingIdentity={false}
+          loadingLevel={false}
           displayName={profileDisplayName}
           levelLabel={`Уровень ${currentLevel}`}
           className="w-full text-center"
         />
       </div>
-      {profileDataLoading ? (
-        <>
-          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
-            <div>
-              <div className="skeleton-line h-4 w-16" />
-              <div className="mt-2 skeleton-line h-11 w-full" />
-            </div>
-            <div>
-              <div className="skeleton-line h-4 w-20" />
-              <div className="mt-2 skeleton-line h-11 w-full" />
-            </div>
-            <div>
-              <div className="skeleton-line h-4 w-16" />
-              <div className="mt-2 skeleton-line h-11 w-full" />
-            </div>
-            <div className="skeleton-line h-11 w-28" />
-          </div>
-          <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
-            <div className="skeleton-line h-6 w-28" />
-            <div className="mt-4 space-y-3">
-              <div className="skeleton-line h-6 w-full" />
-              <div className="skeleton-line h-6 w-full" />
-              <div className="skeleton-line h-6 w-full" />
-              <div className="skeleton-line h-6 w-full" />
-              <div className="skeleton-line h-6 w-full" />
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
+      <>
           <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
             <div>
               <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
@@ -650,8 +674,7 @@ export default function ProfilePage() {
               <span className="app-text-primary shrink-0 text-right font-semibold">{runsCount}</span>
             </div>
           </div>
-        </>
-      )}
+      </>
       {cropImageSrc ? (
         <AvatarCropModal
           imageSrc={cropImageSrc}
