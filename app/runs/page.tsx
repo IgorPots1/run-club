@@ -100,6 +100,16 @@ function buildRunTitle(rawTitle: string, rawDistanceKm: string) {
   return 'Тренировка'
 }
 
+function getTodayDateValue() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function isFutureRunDate(dateValue: string) {
+  if (!dateValue) return false
+
+  return dateValue > getTodayDateValue()
+}
+
 const DISTANCE_WHOLE_OPTIONS = Array.from({ length: 101 }, (_, index) => index)
 const DISTANCE_TENTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
 const DURATION_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
@@ -121,10 +131,6 @@ function formatDistanceLabel(wholeKm: number, tenthsKm: number) {
 
 function formatCompactDistanceLabel(wholeKm: number, tenthsKm: number) {
   return tenthsKm === 0 ? `${wholeKm}` : `${wholeKm}.${tenthsKm}`
-}
-
-function formatDurationLabel(hours: number, minutes: number, seconds: number) {
-  return `${formatTwoDigits(hours)}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
 }
 
 function formatCompactDurationLabel(hours: number, minutes: number, seconds: number) {
@@ -158,7 +164,7 @@ export default function RunsPage() {
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<Run[]>([])
   const [title, setTitle] = useState('')
-  const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10))
+  const [runDate, setRunDate] = useState(getTodayDateValue())
   const [distanceWholeKm, setDistanceWholeKm] = useState(0)
   const [distanceTenthsKm, setDistanceTenthsKm] = useState(0)
   const [durationHours, setDurationHours] = useState(0)
@@ -179,12 +185,13 @@ export default function RunsPage() {
   const selectedDistanceLabel = formatDistanceLabel(distanceWholeKm, distanceTenthsKm)
   const compactDistanceLabel = formatCompactDistanceLabel(distanceWholeKm, distanceTenthsKm)
   const selectedDistanceKm = Number(selectedDistanceLabel)
-  const selectedDurationLabel = formatDurationLabel(durationHours, durationClockMinutes, durationSeconds)
   const compactDurationLabel = formatCompactDurationLabel(durationHours, durationClockMinutes, durationSeconds)
   const selectedDurationSeconds = durationHours * 3600 + durationClockMinutes * 60 + durationSeconds
   const selectedDurationMinutes = selectedDurationSeconds > 0 ? Math.max(1, Math.round(selectedDurationSeconds / 60)) : 0
   const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
   const showPacePreview = shouldShowPace(selectedDurationSeconds, selectedDistanceKm)
+  const selectedDate = runDate || getTodayDateValue()
+  const hasFutureRunDate = isFutureRunDate(selectedDate)
 
   function openDistancePicker() {
     setDraftDistanceWholeKm(distanceWholeKm)
@@ -278,7 +285,6 @@ export default function RunsPage() {
 
     const currentUser = user
     const normalizedTitle = title.trim()
-    const selectedDate = runDate || new Date().toISOString().slice(0, 10)
     const d = selectedDistanceKm
     const dur = selectedDurationMinutes
 
@@ -295,6 +301,11 @@ export default function RunsPage() {
     const createdAtDate = new Date(`${selectedDate}T12:00:00`)
     if (Number.isNaN(createdAtDate.getTime())) {
       setError('Укажите корректную дату тренировки')
+      return
+    }
+
+    if (isFutureRunDate(selectedDate)) {
+      setError('Нельзя добавить тренировку в будущем')
       return
     }
 
@@ -319,7 +330,7 @@ export default function RunsPage() {
       }
 
       setTitle('')
-      setRunDate(new Date().toISOString().slice(0, 10))
+      setRunDate(getTodayDateValue())
       setDistanceWholeKm(0)
       setDistanceTenthsKm(0)
       setDurationHours(0)
@@ -394,10 +405,14 @@ export default function RunsPage() {
             type="date"
             value={runDate}
             onChange={(e) => setRunDate(e.target.value)}
+            max={getTodayDateValue()}
             required
             disabled={submitting}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
+          {hasFutureRunDate ? (
+            <p className="mt-1 text-sm text-red-600">Нельзя добавить тренировку в будущем</p>
+          ) : null}
         </div>
         <div>
           <label className="app-text-secondary mb-1 block text-sm">Дистанция</label>
@@ -453,7 +468,11 @@ export default function RunsPage() {
             ) : null}
           </div>
         </div>
-        <button type="submit" disabled={submitting} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
+        <button
+          type="submit"
+          disabled={submitting || hasFutureRunDate}
+          className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        >
           {submitting ? '...' : 'Добавить тренировку'}
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
