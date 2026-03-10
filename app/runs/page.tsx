@@ -81,23 +81,10 @@ function formatRunDateLabel(dateString: string) {
   })
 }
 
-function buildRunTitle(rawTitle: string, rawDistanceKm: string) {
+function buildRunTitle(rawTitle: string) {
   const baseTitle = rawTitle.trim()
-  const distanceLabel = rawDistanceKm.trim()
-
-  if (baseTitle && distanceLabel) {
-    return `${baseTitle} - ${distanceLabel} км`
-  }
-
-  if (!baseTitle && distanceLabel) {
-    return `${distanceLabel} км`
-  }
-
-  if (baseTitle) {
-    return baseTitle
-  }
-
-  return 'Тренировка'
+  if (baseTitle) return baseTitle
+  return 'Пробежка'
 }
 
 function getTodayDateValue() {
@@ -377,7 +364,7 @@ export default function RunsPage() {
 
     setError('')
     setSubmitting(true)
-    const runTitle = buildRunTitle(normalizedTitle, selectedDistanceLabel)
+    const runTitle = buildRunTitle(normalizedTitle)
     const xp = 50 + d * 10
 
     try {
@@ -453,11 +440,11 @@ export default function RunsPage() {
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
       <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
-          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки</label>
+          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки (необязательно)</label>
           <input
             id="title"
             type="text"
-            placeholder="Утренняя пробежка"
+            placeholder="Например: Интервалы или парк"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={submitting}
