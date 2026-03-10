@@ -115,7 +115,13 @@ export default function ActivityPage() {
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
   const mobileXAxisInterval =
-    period === 'month' ? 4 : period === 'all' ? 2 : period === 'year' ? (isVerySmallScreen ? 1 : 0) : 0
+    period === 'month'
+      ? 4
+      : period === 'all'
+        ? (isVerySmallScreen && summary.chartData.length > 4 ? 1 : 0)
+        : period === 'year'
+          ? (isVerySmallScreen ? 1 : 0)
+          : 0
   const chartTickFontSize = isVerySmallScreen ? 11 : 12
 
   if (loadingUser) {

@@ -110,6 +110,39 @@ function isFutureRunDate(dateValue: string) {
   return dateValue > getTodayDateValue()
 }
 
+function parseDateParts(dateValue: string) {
+  const [yearString, monthString, dayString] = dateValue.split('-')
+
+  return {
+    year: Number(yearString),
+    month: Number(monthString),
+    day: Number(dayString),
+  }
+}
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate()
+}
+
+function buildDateValue(year: number, month: number, day: number) {
+  return `${year}-${formatTwoDigits(month)}-${formatTwoDigits(day)}`
+}
+
+function formatRunDatePickerLabel(dateValue: string) {
+  const { year, month, day } = parseDateParts(dateValue)
+  const date = new Date(year, month - 1, day)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Выбрать дату'
+  }
+
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 const DISTANCE_WHOLE_OPTIONS = Array.from({ length: 101 }, (_, index) => index)
 const DISTANCE_TENTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
 const DURATION_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
@@ -170,13 +203,18 @@ export default function RunsPage() {
   const [durationHours, setDurationHours] = useState(0)
   const [durationClockMinutes, setDurationClockMinutes] = useState(0)
   const [durationSeconds, setDurationSeconds] = useState(0)
+  const todayParts = parseDateParts(getTodayDateValue())
   const [distancePickerOpen, setDistancePickerOpen] = useState(false)
   const [durationPickerOpen, setDurationPickerOpen] = useState(false)
+  const [runDatePickerOpen, setRunDatePickerOpen] = useState(false)
   const [draftDistanceWholeKm, setDraftDistanceWholeKm] = useState(0)
   const [draftDistanceTenthsKm, setDraftDistanceTenthsKm] = useState(0)
   const [draftDurationHours, setDraftDurationHours] = useState(0)
   const [draftDurationClockMinutes, setDraftDurationClockMinutes] = useState(0)
   const [draftDurationSeconds, setDraftDurationSeconds] = useState(0)
+  const [draftRunYear, setDraftRunYear] = useState(todayParts.year)
+  const [draftRunMonth, setDraftRunMonth] = useState(todayParts.month)
+  const [draftRunDay, setDraftRunDay] = useState(todayParts.day)
   const [error, setError] = useState('')
   const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -191,7 +229,22 @@ export default function RunsPage() {
   const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
   const showPacePreview = shouldShowPace(selectedDurationSeconds, selectedDistanceKm)
   const selectedDate = runDate || getTodayDateValue()
-  const hasFutureRunDate = isFutureRunDate(selectedDate)
+  const runDateLabel = formatRunDatePickerLabel(selectedDate)
+  const yearOptions = Array.from({ length: todayParts.year - 1999 }, (_, index) => 2000 + index)
+  const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
+  const dayOptions = Array.from({ length: getDaysInMonth(draftRunYear, draftRunMonth) }, (_, index) => index + 1)
+  const maxSelectableMonth = draftRunYear === todayParts.year ? todayParts.month : 12
+  const maxSelectableDay = draftRunYear === todayParts.year && draftRunMonth === todayParts.month
+    ? todayParts.day
+    : getDaysInMonth(draftRunYear, draftRunMonth)
+
+  function openRunDatePicker() {
+    const nextDateParts = parseDateParts(selectedDate)
+    setDraftRunYear(nextDateParts.year)
+    setDraftRunMonth(nextDateParts.month)
+    setDraftRunDay(nextDateParts.day)
+    setRunDatePickerOpen(true)
+  }
 
   function openDistancePicker() {
     setDraftDistanceWholeKm(distanceWholeKm)
@@ -212,6 +265,18 @@ export default function RunsPage() {
     setDraftDistanceWholeKm(wholeKm)
     setDraftDistanceTenthsKm(tenthsKm)
   }
+
+  useEffect(() => {
+    if (draftRunMonth > maxSelectableMonth) {
+      setDraftRunMonth(maxSelectableMonth)
+    }
+  }, [draftRunMonth, maxSelectableMonth])
+
+  useEffect(() => {
+    if (draftRunDay > maxSelectableDay) {
+      setDraftRunDay(maxSelectableDay)
+    }
+  }, [draftRunDay, maxSelectableDay])
 
   useEffect(() => {
     let isMounted = true
@@ -400,19 +465,15 @@ export default function RunsPage() {
         </div>
         <div>
           <label htmlFor="run_date" className="app-text-secondary block text-sm mb-1">Дата тренировки</label>
-          <input
+          <button
             id="run_date"
-            type="date"
-            value={runDate}
-            onChange={(e) => setRunDate(e.target.value)}
-            max={getTodayDateValue()}
-            required
+            type="button"
+            onClick={openRunDatePicker}
             disabled={submitting}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          />
-          {hasFutureRunDate ? (
-            <p className="mt-1 text-sm text-red-600">Нельзя добавить тренировку в будущем</p>
-          ) : null}
+            className="app-button-secondary flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+          >
+            <span className="app-text-primary font-semibold">{runDateLabel}</span>
+          </button>
         </div>
         <div>
           <label className="app-text-secondary mb-1 block text-sm">Дистанция</label>
@@ -470,7 +531,7 @@ export default function RunsPage() {
         </div>
         <button
           type="submit"
-          disabled={submitting || hasFutureRunDate}
+          disabled={submitting}
           className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {submitting ? '...' : 'Добавить тренировку'}
@@ -517,6 +578,40 @@ export default function RunsPage() {
         )}
       </div>
       </div>
+      <WheelPickerSheet
+        title="Дата тренировки"
+        open={runDatePickerOpen}
+        onCancel={() => setRunDatePickerOpen(false)}
+        onDone={() => {
+          setRunDate(buildDateValue(draftRunYear, draftRunMonth, draftRunDay))
+          setRunDatePickerOpen(false)
+        }}
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <WheelPickerColumn
+            label="ГОД"
+            value={draftRunYear}
+            options={yearOptions}
+            onChange={setDraftRunYear}
+          />
+          <WheelPickerColumn
+            label="МЕС"
+            value={draftRunMonth}
+            options={monthOptions}
+            onChange={setDraftRunMonth}
+            formatter={formatTwoDigits}
+            isOptionDisabled={(month) => month > maxSelectableMonth}
+          />
+          <WheelPickerColumn
+            label="ДЕНЬ"
+            value={draftRunDay}
+            options={dayOptions}
+            onChange={setDraftRunDay}
+            formatter={formatTwoDigits}
+            isOptionDisabled={(day) => day > maxSelectableDay}
+          />
+        </div>
+      </WheelPickerSheet>
       <WheelPickerSheet
         title="Дистанция"
         open={distancePickerOpen}

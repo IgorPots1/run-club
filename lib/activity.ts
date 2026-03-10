@@ -56,8 +56,8 @@ function formatMonthLabel(date: Date) {
   return RUSSIAN_MONTH_LABELS[date.getMonth()] ?? ''
 }
 
-function formatMonthYearLabel(date: Date) {
-  return `${formatMonthLabel(date)} ${String(date.getFullYear()).slice(-2)}`
+function formatYearLabel(date: Date) {
+  return String(date.getFullYear())
 }
 
 function formatWeekdayLabel(date: Date) {
@@ -74,6 +74,10 @@ function isSameDay(left: Date, right: Date) {
 
 function isSameMonth(left: Date, right: Date) {
   return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth()
+}
+
+function isSameYear(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear()
 }
 
 export async function loadActivityRuns(userId: string) {
@@ -157,21 +161,21 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     }
   }
 
-  const firstMonth = startOfMonth(normalizedRuns[0].createdAt)
-  const lastMonth = startOfMonth(now)
-  const months: Date[] = []
+  const firstYear = startOfYear(normalizedRuns[0].createdAt)
+  const lastYear = startOfYear(now)
+  const years: Date[] = []
 
-  for (let cursor = firstMonth; cursor <= lastMonth; cursor = addMonths(cursor, 1)) {
-    months.push(cursor)
+  for (let cursor = firstYear; cursor <= lastYear; cursor = addMonths(cursor, 12)) {
+    years.push(cursor)
   }
 
   return {
     totalDistance: normalizedRuns.reduce((sum, run) => sum + run.distance, 0),
     totalWorkouts: normalizedRuns.length,
-    chartData: months.map((month) => ({
-      label: formatMonthYearLabel(month),
+    chartData: years.map((year) => ({
+      label: formatYearLabel(year),
       distance: normalizedRuns
-        .filter((run) => isSameMonth(run.createdAt, month))
+        .filter((run) => isSameYear(run.createdAt, year))
         .reduce((sum, run) => sum + run.distance, 0),
     })),
   }

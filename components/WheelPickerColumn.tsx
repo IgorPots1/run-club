@@ -8,6 +8,7 @@ type WheelPickerColumnProps = {
   options: number[]
   onChange: (value: number) => void
   formatter?: (value: number) => string
+  isOptionDisabled?: (value: number) => boolean
 }
 
 const ITEM_HEIGHT = 44
@@ -20,6 +21,7 @@ export default function WheelPickerColumn({
   options,
   onChange,
   formatter = (option) => String(option),
+  isOptionDisabled = () => false,
 }: WheelPickerColumnProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -47,6 +49,27 @@ export default function WheelPickerColumn({
     }
   }, [])
 
+  function getClosestEnabledOption(option: number) {
+    if (!options.length) return option
+    if (!isOptionDisabled(option)) return option
+
+    const currentIndex = options.indexOf(option)
+
+    for (let offset = 1; offset < options.length; offset += 1) {
+      const previousOption = options[currentIndex - offset]
+      if (previousOption !== undefined && !isOptionDisabled(previousOption)) {
+        return previousOption
+      }
+
+      const nextOption = options[currentIndex + offset]
+      if (nextOption !== undefined && !isOptionDisabled(nextOption)) {
+        return nextOption
+      }
+    }
+
+    return option
+  }
+
   function handleScroll() {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -57,13 +80,14 @@ export default function WheelPickerColumn({
       if (!container) return
 
       const nextIndex = Math.max(0, Math.min(options.length - 1, Math.round(container.scrollTop / ITEM_HEIGHT)))
-      const nextValue = options[nextIndex]
+      const nextValue = getClosestEnabledOption(options[nextIndex])
 
       if (nextValue !== value) {
         onChange(nextValue)
       } else {
+        const alignedIndex = Math.max(options.indexOf(nextValue), 0)
         container.scrollTo({
-          top: nextIndex * ITEM_HEIGHT,
+          top: alignedIndex * ITEM_HEIGHT,
           behavior: 'smooth',
         })
       }
@@ -71,6 +95,7 @@ export default function WheelPickerColumn({
   }
 
   function handleSelect(option: number) {
+    if (isOptionDisabled(option)) return
     onChange(option)
   }
 
@@ -89,14 +114,20 @@ export default function WheelPickerColumn({
         >
           {options.map((option) => {
             const isActive = option === value
+            const isDisabled = isOptionDisabled(option)
 
             return (
               <button
                 key={option}
                 type="button"
+                disabled={isDisabled}
                 onClick={() => handleSelect(option)}
                 className={`flex h-11 w-full snap-center items-center justify-center rounded-lg text-base transition-colors ${
-                  isActive ? 'app-text-primary font-semibold' : 'app-text-secondary'
+                  isDisabled
+                    ? 'cursor-not-allowed text-gray-300 dark:text-gray-600'
+                    : isActive
+                      ? 'app-text-primary font-semibold'
+                      : 'app-text-secondary'
                 }`}
               >
                 {formatter(option)}
