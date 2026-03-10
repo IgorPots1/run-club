@@ -142,6 +142,9 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           }
         }
 
+        const activeItems = itemsWithProgress.filter((item) => !item.isCompleted)
+        const achievementItems = itemsWithProgress.filter((item) => item.isCompleted && isAchievementChallenge(item))
+
         setItems(itemsWithProgress)
       } catch (loadError) {
         console.error('[challenges] failed to load challenge section', loadError)

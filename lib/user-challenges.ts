@@ -19,8 +19,32 @@ type ChallengeCompletionResult = {
   error: unknown | null
 }
 
+function isMissingXpAwardedColumnError(error: { code?: string | null; message?: string | null }) {
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    Boolean(error.message?.includes('user_challenges.xp_awarded')) ||
+    Boolean(error.message?.includes("'xp_awarded' column of 'user_challenges'"))
+  )
+}
+
 export async function loadChallengeXpByUser() {
   const { data, error } = await supabase.from('user_challenges').select('user_id, challenge_id, xp_awarded')
+
+  if (error && isMissingXpAwardedColumnError(error)) {
+    const { error: fallbackError } = await supabase.from('user_challenges').select('user_id, challenge_id')
+
+    if (fallbackError) {
+      console.error('[user_challenges] fallback challenge XP read failed', {
+        code: fallbackError.code,
+        message: fallbackError.message,
+        details: fallbackError.details,
+        hint: fallbackError.hint,
+      })
+    }
+
+    return {}
+  }
 
   if (error) {
     console.error('[user_challenges] failed to load challenge XP by user', {
@@ -51,6 +75,25 @@ export async function loadChallengeXpByUserIds(userIds: string[]) {
     .select('user_id, challenge_id, xp_awarded')
     .in('user_id', userIds)
 
+  if (error && isMissingXpAwardedColumnError(error)) {
+    const { error: fallbackError } = await supabase
+      .from('user_challenges')
+      .select('user_id, challenge_id')
+      .in('user_id', userIds)
+
+    if (fallbackError) {
+      console.error('[user_challenges] fallback challenge XP read by user ids failed', {
+        userIds,
+        code: fallbackError.code,
+        message: fallbackError.message,
+        details: fallbackError.details,
+        hint: fallbackError.hint,
+      })
+    }
+
+    return {}
+  }
+
   if (error) {
     console.error('[user_challenges] failed to load challenge XP by user ids', {
       userIds,
@@ -76,6 +119,35 @@ export async function loadCompletedChallenges(userId: string) {
     .from('user_challenges')
     .select('challenge_id, completed_at, xp_awarded')
     .eq('user_id', userId)
+
+  if (error && isMissingXpAwardedColumnError(error)) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('user_challenges')
+      .select('challenge_id, completed_at')
+      .eq('user_id', userId)
+
+    if (fallbackError) {
+      console.error('[user_challenges] fallback completed challenges read failed', {
+        userId,
+        code: fallbackError.code,
+        message: fallbackError.message,
+        details: fallbackError.details,
+        hint: fallbackError.hint,
+      })
+      return new Map<string, CompletedChallengeRecord>()
+    }
+
+    return new Map(
+      (((fallbackData as Array<{ challenge_id: string; completed_at: string | null }> | null) ?? [])).map((item) => [
+        item.challenge_id,
+        {
+          challengeId: item.challenge_id,
+          completedAt: item.completed_at ?? null,
+          xpAwarded: 0,
+        },
+      ])
+    )
+  }
 
   if (error) {
     console.error('[user_challenges] failed to load completed challenges', {
@@ -111,18 +183,59 @@ export async function awardChallengeCompletion(
   challengeId: string,
   xpAwarded: number
 ): Promise<ChallengeCompletionResult> {
-  const { error } = await supabase.from('user_challenges').insert({
+  const insertPayload = {
     user_id: userId,
     challenge_id: challengeId,
     completed_at: new Date().toISOString(),
     xp_awarded: xpAwarded,
-  })
+  }
+  const { error } = await supabase.from('user_challenges').insert(insertPayload)
 
   if (!error) {
     return {
       success: true,
       duplicate: false,
       error: null,
+    }
+  }
+
+  if (isMissingXpAwardedColumnError(error)) {
+    const fallbackPayload = {
+      user_id: userId,
+      challenge_id: challengeId,
+      completed_at: insertPayload.completed_at,
+    }
+
+    const { error: fallbackError } = await supabase.from('user_challenges').insert(fallbackPayload)
+
+    if (!fallbackError) {
+      return {
+        success: true,
+        duplicate: false,
+        error: null,
+      }
+    }
+
+    if (fallbackError.code === '23505') {
+      return {
+        success: true,
+        duplicate: true,
+        error: null,
+      }
+    }
+    console.error('[user_challenges] fallback challenge completion insert failed', {
+      userId,
+      challengeId,
+      code: fallbackError.code,
+      message: fallbackError.message,
+      details: fallbackError.details,
+      hint: fallbackError.hint,
+    })
+
+    return {
+      success: false,
+      duplicate: false,
+      error: fallbackError,
     }
   }
 
@@ -133,7 +246,6 @@ export async function awardChallengeCompletion(
       error: null,
     }
   }
-
   console.error('[user_challenges] failed to persist challenge completion', {
     userId,
     challengeId,
