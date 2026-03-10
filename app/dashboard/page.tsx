@@ -302,7 +302,7 @@ export default function DashboardPage() {
               </div>
               <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
                 <div
-                  className="app-accent-bg h-full rounded-full"
+                  className="app-accent-bg h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
                   style={{ width: `${xpProgressPercent}%` }}
                 />
               </div>
