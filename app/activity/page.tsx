@@ -178,7 +178,8 @@ export default function ActivityPage() {
           </div>
         ) : runs && runs.length === 0 ? (
           <div className="app-card rounded-2xl p-5 text-center shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-6">
-            <p className="app-text-secondary text-sm">Пока нет тренировок для статистики</p>
+            <p className="app-text-secondary text-sm">Статистика появится после первой тренировки.</p>
+            <p className="app-text-secondary mt-2 text-sm">Добавьте пробежку и возвращайтесь за графиком.</p>
           </div>
         ) : (
           <>
@@ -197,7 +198,10 @@ export default function ActivityPage() {
               <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
                 <p className="app-text-secondary text-sm font-medium">График дистанции</p>
                 {summary.chartData.every((item) => item.distance === 0) ? (
-                  <div className="app-text-secondary mt-6 text-center text-sm">Нет данных за выбранный период</div>
+                  <div className="app-text-secondary mt-6 text-center text-sm">
+                    <p>За этот период пока нет данных.</p>
+                    <p className="mt-2">Попробуйте выбрать другой диапазон.</p>
+                  </div>
                 ) : (
                   <div className="mt-3 h-[220px] w-full md:mt-3.5 md:h-[300px]">
                     <div className="h-full w-full">

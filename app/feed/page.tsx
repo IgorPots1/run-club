@@ -312,7 +312,10 @@ export default function FeedPage() {
             </>
           ) : items.length === 0 ? (
             <div className="app-text-secondary mt-10 text-center">
-              <p>Пока нет тренировок</p>
+              <p>Лента пока пустая.</p>
+              <p className="mt-2 text-sm">
+                {currentUserId ? 'Добавьте первую тренировку или загляните позже.' : 'Войдите, чтобы видеть активность клуба.'}
+              </p>
               <Link href={emptyCtaHref} className="app-button-secondary mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
                 {emptyCtaLabel}
               </Link>

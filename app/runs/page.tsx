@@ -539,8 +539,8 @@ export default function RunsPage() {
           <p className="app-text-secondary text-sm">Загрузка тренировок...</p>
         ) : runs.length === 0 ? (
           <div className="app-text-secondary mt-10 text-center">
-            <p>Пока нет тренировок</p>
-            <p className="mt-2 text-sm">Добавьте первую тренировку через форму выше</p>
+            <p>Пока здесь пусто.</p>
+            <p className="mt-2 text-sm">Добавьте первую тренировку и начните собирать прогресс.</p>
           </div>
         ) : (
           runs.map((run) => (

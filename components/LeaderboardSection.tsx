@@ -119,7 +119,8 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         <p className="text-sm text-red-600">{error}</p>
       ) : rows.length === 0 ? (
         <div className="app-text-secondary mt-10 text-center">
-          <p>Рейтинг пока пуст</p>
+          <p>Рейтинг пока пуст.</p>
+          <p className="mt-2 text-sm">Как только появятся тренировки, здесь начнется гонка.</p>
         </div>
       ) : (
         <>

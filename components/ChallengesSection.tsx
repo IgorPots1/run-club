@@ -142,9 +142,6 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           }
         }
 
-        const activeItems = itemsWithProgress.filter((item) => !item.isCompleted)
-        const achievementItems = itemsWithProgress.filter((item) => item.isCompleted && isAchievementChallenge(item))
-
         setItems(itemsWithProgress)
       } catch (loadError) {
         console.error('[challenges] failed to load challenge section', loadError)
@@ -178,7 +175,8 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
           {items.length === 0 ? (
             <div className="app-text-secondary mt-10 text-center">
-              <p>Челленджей пока нет</p>
+              <p>Челленджи скоро появятся.</p>
+              <p className="mt-2 text-sm">Загляните позже за новыми целями.</p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -187,7 +185,8 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                 <div className="space-y-3">
                   {activeItems.length === 0 ? (
                     <div className="app-card rounded-xl border p-4 shadow-sm">
-                      <p className="app-text-secondary text-sm">Все активные челленджи уже выполнены</p>
+                      <p className="app-text-secondary text-sm">Все активные челленджи уже закрыты.</p>
+                      <p className="app-text-secondary mt-2 text-sm">Скоро появятся новые цели.</p>
                     </div>
                   ) : (
                     activeItems.map((item) => (
@@ -202,7 +201,8 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                 <div className="space-y-3">
                   {achievementItems.length === 0 ? (
                     <div className="app-card rounded-xl border p-4 shadow-sm">
-                      <p className="app-text-secondary text-sm">Здесь появятся выполненные достижения</p>
+                      <p className="app-text-secondary text-sm">Достижений пока нет.</p>
+                      <p className="app-text-secondary mt-2 text-sm">Выполняйте челленджи и собирайте коллекцию.</p>
                     </div>
                   ) : (
                     achievementItems.map((item) => (
