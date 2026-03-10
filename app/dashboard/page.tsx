@@ -230,10 +230,16 @@ export default function DashboardPage() {
                 <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 <span>Твой прогресс</span>
               </p>
-              <div className="mt-3 space-y-1">
-                <p className="app-text-primary text-lg font-semibold sm:text-xl">{formatDistanceKm(stats.totalKmThisMonth)} км в этом месяце</p>
-                <p className="app-text-secondary text-sm">{stats.runsCount} тренировок</p>
-                <p className="app-text-secondary text-sm">+{stats.totalXp} XP</p>
+              <div className="mt-3 space-y-2">
+                <div className="space-y-0.5">
+                  <p className="app-text-primary text-3xl font-bold tracking-tight sm:text-4xl">
+                    {formatDistanceKm(stats.totalKmThisMonth)} км
+                  </p>
+                  <p className="app-text-secondary text-sm">в этом месяце</p>
+                </div>
+                <p className="app-text-secondary text-sm">
+                  {stats.runsCount} тренировок • +{stats.totalXp} XP
+                </p>
               </div>
             </div>
           ) : (
