@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { Eye, EyeOff } from 'lucide-react'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
@@ -34,12 +35,18 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
   const [profileDataLoading, setProfileDataLoading] = useState(true)
   const [pageError, setPageError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -261,6 +268,53 @@ export default function ProfilePage() {
     }
   }
 
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault()
+    if (!user || changingPassword) return
+
+    const trimmedPassword = newPassword.trim()
+    const trimmedConfirmPassword = confirmPassword.trim()
+
+    setPageError('')
+    setPasswordMessage('')
+
+    if (!trimmedPassword) {
+      setPageError('Введите новый пароль')
+      return
+    }
+
+    if (trimmedPassword.length < 6) {
+      setPageError('Пароль должен быть не короче 6 символов')
+      return
+    }
+
+    if (trimmedPassword !== trimmedConfirmPassword) {
+      setPageError('Пароли не совпадают')
+      return
+    }
+
+    setChangingPassword(true)
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: trimmedPassword,
+      })
+
+      if (error) {
+        setPageError('Не удалось изменить пароль')
+        return
+      }
+
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordMessage('Пароль обновлен')
+    } catch {
+      setPageError('Не удалось изменить пароль')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -452,7 +506,7 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <label htmlFor="nickname" className="app-text-secondary block text-sm mb-1">Никнейм</label>
+              <label htmlFor="nickname" className="app-text-secondary block text-sm mb-1">Никнейм для профиля</label>
               <input
                 id="nickname"
                 type="text"
@@ -463,7 +517,7 @@ export default function ProfilePage() {
               />
             </div>
             <div>
-              <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email</label>
+              <label htmlFor="email" className="app-text-secondary block text-sm mb-1">Email для входа</label>
               <input
                 id="email"
                 type="email"
@@ -474,6 +528,62 @@ export default function ProfilePage() {
             </div>
             <button type="submit" disabled={saving} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
               {saving ? '...' : 'Сохранить'}
+            </button>
+          </form>
+          <form onSubmit={handlePasswordChange} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <div>
+              <h2 className="app-text-primary text-lg font-semibold">Смена пароля</h2>
+              <p className="app-text-secondary mt-1 text-sm">Email остается логином. Текущий пароль не показывается.</p>
+            </div>
+            {passwordMessage ? <p className="text-sm text-green-700">{passwordMessage}</p> : null}
+            <div>
+              <label htmlFor="new-password" className="app-text-secondary block text-sm mb-1">Новый пароль</label>
+              <div className="relative">
+                <input
+                  id="new-password"
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={changingPassword}
+                  className="app-input min-h-11 w-full rounded-lg border px-3 py-2 pr-11"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  className="app-text-secondary absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center"
+                  aria-label={showNewPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                >
+                  {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label htmlFor="confirm-password" className="app-text-secondary block text-sm mb-1">Подтвердите пароль</label>
+              <div className="relative">
+                <input
+                  id="confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={changingPassword}
+                  className="app-input min-h-11 w-full rounded-lg border px-3 py-2 pr-11"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="app-text-secondary absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center"
+                  aria-label={showConfirmPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={changingPassword}
+              className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
+            >
+              {changingPassword ? '...' : 'Изменить пароль'}
             </button>
           </form>
           <div className="app-card mt-6 overflow-hidden rounded-xl border p-4 shadow-sm">
