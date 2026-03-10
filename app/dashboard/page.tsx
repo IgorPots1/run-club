@@ -282,7 +282,13 @@ export default function DashboardPage() {
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 <span>Активный челлендж</span>
               </p>
-              <p className="app-text-secondary mt-3 text-sm">Все челленджи уже выполнены</p>
+              <p className="app-text-secondary mt-3 text-sm">Все активные челленджи уже выполнены</p>
+              <Link
+                href="/club"
+                className="app-button-secondary mt-3 inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm"
+              >
+                Открыть достижения
+              </Link>
             </div>
           ) : null}
           {stats && levelProgress ? (

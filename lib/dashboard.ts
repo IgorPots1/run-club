@@ -1,4 +1,4 @@
-import { getChallengeProgress, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
+import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
 import { loadLikeXpByUser, loadLikeXpByUserIds } from './likes-xp'
 import { loadRunLikesSummary, loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
@@ -109,7 +109,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
       .order('created_at', { ascending: false }),
     supabase
       .from('challenges')
-      .select('id, title, description, goal_km, goal_runs, xp_reward')
+      .select('*')
       .order('created_at', { ascending: true }),
     loadChallengeXpByUser(),
     loadLikeXpByUser(),
@@ -126,10 +126,9 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
     return runTime >= monthStart ? sum + Number(run.distance_km ?? 0) : sum
   }, 0)
   const totalRunXp = currentUserRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0)
-  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) =>
-    getChallengeProgress(challenge, currentUserRuns)
-  )
-  const firstActiveChallenge = challengeItems.find((challenge) => !challenge.isCompleted) ?? null
+  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => getChallengeProgress(challenge, currentUserRuns))
+  const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
+  const firstActiveChallenge = activeChallenges[0] ?? null
 
   return {
     stats: {
@@ -138,7 +137,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
       totalXp: totalRunXp + (challengeXpByUser[userId] ?? 0) + (likeXpByUser[userId] ?? 0),
     },
     activeChallenge: firstActiveChallenge,
-    allChallengesCompleted: challengeItems.length > 0 && !firstActiveChallenge,
+    allChallengesCompleted: challengeItems.length > 0 && activeChallenges.length === 0,
   }
 }
 
