@@ -24,6 +24,11 @@ type Profile = {
   avatar_url: string | null
 }
 
+type ProfileFormState = {
+  name: string
+  nickname: string
+}
+
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -31,6 +36,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
+  const [initialProfileForm, setInitialProfileForm] = useState<ProfileFormState | null>(null)
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -152,6 +158,10 @@ export default function ProfilePage() {
         setProfile(nextProfile)
         setName(nextProfile.name ?? '')
         setNickname(nextProfile.nickname ?? '')
+        setInitialProfileForm({
+          name: nextProfile.name ?? '',
+          nickname: nextProfile.nickname ?? '',
+        })
         setEmail(nextProfile.email ?? currentUser.email ?? '')
         setTotalXp(
           safeRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0) +
@@ -188,7 +198,7 @@ export default function ProfilePage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!user || saving) return
+    if (!user || saving || profileDataLoading || !initialProfileForm) return
 
     const nextName = name.trim()
     const nextNickname = nickname.trim()
@@ -259,6 +269,10 @@ export default function ProfilePage() {
       setProfile(nextProfile)
       setName(nextProfile.name ?? '')
       setNickname(nextProfile.nickname ?? '')
+      setInitialProfileForm({
+        name: nextProfile.name ?? '',
+        nickname: nextProfile.nickname ?? '',
+      })
       setEmail(nextProfile.email ?? user.email ?? '')
       setSaveMessage('Профиль сохранен')
     } catch {
@@ -408,6 +422,11 @@ export default function ProfilePage() {
   const currentLevel = getLevelFromXP(totalXp).level
   const profileIdentityLoading = profileDataLoading && !pageError
   const profileLevelLoading = profileDataLoading && !pageError
+  const hasProfileChanges = initialProfileForm !== null && (
+    name.trim() !== initialProfileForm.name.trim() ||
+    nickname.trim() !== initialProfileForm.nickname.trim()
+  )
+  const isSaveDisabled = profileDataLoading || saving || !hasProfileChanges
 
   return (
     <main className="min-h-screen">
@@ -500,7 +519,10 @@ export default function ProfilePage() {
                 id="name"
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setSaveMessage('')
+                }}
                 disabled={saving}
                 className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
               />
@@ -511,7 +533,10 @@ export default function ProfilePage() {
                 id="nickname"
                 type="text"
                 value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
+                onChange={(e) => {
+                  setNickname(e.target.value)
+                  setSaveMessage('')
+                }}
                 disabled={saving}
                 className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
               />
@@ -526,7 +551,11 @@ export default function ProfilePage() {
                 className="app-input app-input-readonly min-h-11 w-full rounded-lg border px-3 py-2"
               />
             </div>
-            <button type="submit" disabled={saving} className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto">
+            <button
+              type="submit"
+              disabled={isSaveDisabled}
+              className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
               {saving ? '...' : 'Сохранить'}
             </button>
           </form>
