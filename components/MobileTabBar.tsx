@@ -3,6 +3,7 @@
 import { Activity, Footprints, Home, User, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { MouseEvent } from 'react'
 
 type TabItem = {
   href: string
@@ -13,6 +14,19 @@ type TabItem = {
 
 function TabIcon({ children }: { children: React.ReactNode }) {
   return <span className="flex h-5 w-5 items-center justify-center">{children}</span>
+}
+
+function scrollPageToTop() {
+  if (typeof window === 'undefined') return
+
+  const scrollingElement = document.scrollingElement
+
+  if (scrollingElement) {
+    scrollingElement.scrollTo({ top: 0, behavior: 'smooth' })
+    return
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 export default function MobileTabBar() {
@@ -57,6 +71,13 @@ export default function MobileTabBar() {
     },
   ]
 
+  function handleTabClick(event: MouseEvent<HTMLAnchorElement>, isActive: boolean) {
+    if (!isActive) return
+
+    event.preventDefault()
+    scrollPageToTop()
+  }
+
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <nav
@@ -66,6 +87,7 @@ export default function MobileTabBar() {
           <Link
             key={tab.href}
             href={tab.href}
+            onClick={(event) => handleTabClick(event, tab.isActive)}
             className={`mx-0.5 flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors ${
               tab.isActive ? 'app-bottom-nav-active' : 'app-bottom-nav-inactive'
             }`}
