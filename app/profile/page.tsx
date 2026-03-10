@@ -362,19 +362,28 @@ export default function ProfilePage() {
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
       <div className="mb-6 flex flex-col items-center gap-4">
-        {profile?.avatar_url ? (
-          <Image
-            src={profile.avatar_url}
-            alt="Аватар"
-            width={112}
-            height={112}
-            className="h-28 w-28 rounded-full object-cover sm:h-32 sm:w-32"
-          />
-        ) : (
-          <div className="app-card app-text-secondary flex h-28 w-28 items-center justify-center rounded-full border text-sm sm:h-32 sm:w-32">
-            Аватар
-          </div>
-        )}
+        <label
+          htmlFor="avatar-upload"
+          className={`group relative block cursor-pointer rounded-full transition-transform active:scale-[0.98] ${
+            uploading ? 'pointer-events-none opacity-60' : ''
+          }`}
+          aria-label={profile?.avatar_url ? 'Изменить аватар' : 'Загрузить аватар'}
+        >
+          {profile?.avatar_url ? (
+            <Image
+              src={profile.avatar_url}
+              alt="Аватар"
+              width={112}
+              height={112}
+              className="h-28 w-28 rounded-full object-cover transition-opacity group-hover:opacity-95 sm:h-32 sm:w-32"
+            />
+          ) : (
+            <div className="app-card app-text-secondary flex h-28 w-28 items-center justify-center rounded-full border text-sm transition-colors group-hover:bg-black/5 sm:h-32 sm:w-32 dark:group-hover:bg-white/5">
+              Аватар
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-0 rounded-full ring-0 transition-all group-hover:ring-2 group-hover:ring-black/10 group-active:ring-2 group-active:ring-black/15 dark:group-hover:ring-white/15 dark:group-active:ring-white/20" />
+        </label>
         <label
           htmlFor="avatar-upload"
           className={`app-button-secondary inline-flex min-h-11 w-full max-w-sm cursor-pointer items-center justify-center rounded-lg border px-4 py-2 text-sm ${
