@@ -489,7 +489,6 @@ export default function ProfilePage() {
           loadingLevel={profileLevelLoading}
           displayName={profileDisplayName}
           levelLabel={`Уровень ${currentLevel}`}
-          email={profileIdentityLoading ? null : email}
           className="w-full text-center"
         />
       </div>
