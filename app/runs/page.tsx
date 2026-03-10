@@ -527,7 +527,7 @@ export default function RunsPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
       {runsError ? <p className="mb-4 text-sm text-red-600">{runsError}</p> : null}
-      <div className="space-y-3 mb-4">
+      <div className="mb-[calc(100px+env(safe-area-inset-bottom))] space-y-3">
         {loadingRuns ? (
           <p className="app-text-secondary text-sm">Загрузка тренировок...</p>
         ) : runs.length === 0 ? (
