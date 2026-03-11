@@ -15,8 +15,13 @@ type StravaRunInsertPayload = {
   name: string
   title: string
   distance_km: number
+  distance_meters: number
   duration_minutes: number
   duration_seconds: number
+  moving_time_seconds: number
+  elapsed_time_seconds: number
+  average_pace_seconds: number
+  elevation_gain_meters: number
   created_at: string
   external_source: string
   external_id: string
@@ -52,6 +57,41 @@ function toDurationMinutes(movingTimeSeconds: number) {
 
 function toDurationSeconds(movingTimeSeconds: number) {
   return Math.max(1, normalizeIntegerField('duration_seconds', movingTimeSeconds))
+}
+
+function toDistanceMeters(distanceMeters: number) {
+  return Math.max(1, normalizeIntegerField('distance_meters', distanceMeters))
+}
+
+function toMovingTimeSeconds(movingTimeSeconds: number) {
+  return Math.max(1, normalizeIntegerField('moving_time_seconds', movingTimeSeconds))
+}
+
+function toElapsedTimeSeconds(elapsedTimeSeconds: number, fallbackMovingTimeSeconds: number) {
+  const safeElapsedTime = Number.isFinite(elapsedTimeSeconds) && elapsedTimeSeconds > 0
+    ? elapsedTimeSeconds
+    : fallbackMovingTimeSeconds
+
+  return Math.max(1, normalizeIntegerField('elapsed_time_seconds', safeElapsedTime))
+}
+
+function toAveragePaceSeconds(movingTimeSeconds: number, distanceMeters: number) {
+  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
+    throw new StravaSyncRowError('Invalid numeric value for average_pace_seconds', {
+      field: 'distance_meters',
+      value: distanceMeters,
+    })
+  }
+
+  return Math.max(
+    1,
+    normalizeIntegerField('average_pace_seconds', movingTimeSeconds / (distanceMeters / 1000))
+  )
+}
+
+function toElevationGainMeters(totalElevationGain: number) {
+  const safeElevationGain = Number.isFinite(totalElevationGain) ? totalElevationGain : 0
+  return Math.max(0, normalizeIntegerField('elevation_gain_meters', safeElevationGain))
 }
 
 function normalizeIntegerField(field: string, value: number) {
@@ -101,16 +141,24 @@ function isValidStravaRun(activity: StravaActivitySummary) {
 
 function buildRunInsertPayload(userId: string, activity: StravaActivitySummary): StravaRunInsertPayload {
   const normalizedName = normalizeImportedRunName(activity.name)
-  const distanceKm = toDistanceKm(activity.distance)
-  const durationSeconds = toDurationSeconds(activity.moving_time)
+  const distanceMeters = toDistanceMeters(activity.distance)
+  const distanceKm = toDistanceKm(distanceMeters)
+  const movingTimeSeconds = toMovingTimeSeconds(activity.moving_time)
+  const durationSeconds = toDurationSeconds(movingTimeSeconds)
+  const elapsedTimeSeconds = toElapsedTimeSeconds(activity.elapsed_time, movingTimeSeconds)
 
   return {
     user_id: userId,
     name: normalizedName,
     title: normalizedName,
     distance_km: distanceKm,
+    distance_meters: distanceMeters,
     duration_minutes: toDurationMinutes(durationSeconds),
     duration_seconds: durationSeconds,
+    moving_time_seconds: movingTimeSeconds,
+    elapsed_time_seconds: elapsedTimeSeconds,
+    average_pace_seconds: toAveragePaceSeconds(movingTimeSeconds, distanceMeters),
+    elevation_gain_meters: toElevationGainMeters(activity.total_elevation_gain),
     created_at: new Date(activity.start_date).toISOString(),
     external_source: STRAVA_EXTERNAL_SOURCE,
     external_id: String(activity.id),
@@ -120,10 +168,25 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
 
 function findLikelyInvalidIntegerField(payload: StravaRunInsertPayload) {
   const integerFields: Array<
-    keyof Pick<StravaRunInsertPayload, 'duration_minutes' | 'duration_seconds' | 'xp'>
+    keyof Pick<
+      StravaRunInsertPayload,
+      | 'distance_meters'
+      | 'duration_minutes'
+      | 'duration_seconds'
+      | 'moving_time_seconds'
+      | 'elapsed_time_seconds'
+      | 'average_pace_seconds'
+      | 'elevation_gain_meters'
+      | 'xp'
+    >
   > = [
+    'distance_meters',
     'duration_minutes',
     'duration_seconds',
+    'moving_time_seconds',
+    'elapsed_time_seconds',
+    'average_pace_seconds',
+    'elevation_gain_meters',
     'xp',
   ]
 
