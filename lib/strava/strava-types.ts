@@ -32,7 +32,14 @@ export type StravaInitialSyncResult =
       ok: true
       imported: number
       skipped: number
+      failed: number
       totalRunsFetched: number
+      errors: Array<{
+        activityId: string
+        field?: string
+        value?: number | string | null
+        error: string
+      }>
     }
   | {
       ok: false

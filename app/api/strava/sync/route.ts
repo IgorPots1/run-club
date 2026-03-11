@@ -28,7 +28,9 @@ export async function GET(request: Request) {
       step: 'initial_sync_complete',
       imported: result.imported,
       skipped: result.skipped,
+      failed: result.failed,
       totalRunsFetched: result.totalRunsFetched,
+      errors: result.errors,
     })
   } catch (caughtError) {
     return NextResponse.json({

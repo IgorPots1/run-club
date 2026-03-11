@@ -7,13 +7,60 @@ import type { StravaActivitySummary, StravaInitialSyncResult } from './strava-ty
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
 const STRAVA_SYNC_WINDOW_DAYS = 7
+const MAX_SYNC_ERROR_DETAILS = 10
+
+type StravaRunInsertPayload = {
+  user_id: string
+  name: string
+  title: string
+  distance_km: number
+  duration_minutes: number
+  created_at: string
+  external_source: string
+  external_id: string
+  xp: number
+}
+
+type StravaSyncRowErrorDetail = {
+  activityId: string
+  field?: string
+  value?: number | string | null
+  error: string
+}
+
+class StravaSyncRowError extends Error {
+  field?: string
+  value?: number | string | null
+
+  constructor(message: string, detail: Omit<StravaSyncRowErrorDetail, 'activityId' | 'error'> = {}) {
+    super(message)
+    this.name = 'StravaSyncRowError'
+    this.field = detail.field
+    this.value = detail.value
+  }
+}
 
 function toDistanceKm(distanceMeters: number) {
   return Number((distanceMeters / 1000).toFixed(2))
 }
 
 function toDurationMinutes(movingTimeSeconds: number) {
-  return Math.max(1, Math.round(movingTimeSeconds / 60))
+  return Math.max(1, normalizeIntegerField('duration_minutes', movingTimeSeconds / 60))
+}
+
+function normalizeIntegerField(field: string, value: number) {
+  if (!Number.isFinite(value)) {
+    throw new StravaSyncRowError(`Invalid numeric value for ${field}`, {
+      field,
+      value: String(value),
+    })
+  }
+
+  return Math.round(value)
+}
+
+function toXp(distanceKm: number) {
+  return Math.max(0, normalizeIntegerField('xp', 50 + distanceKm * 10))
 }
 
 function isValidStravaRun(activity: StravaActivitySummary) {
@@ -25,6 +72,41 @@ function isValidStravaRun(activity: StravaActivitySummary) {
     activity.moving_time > 0 &&
     Boolean(activity.start_date)
   )
+}
+
+function buildRunInsertPayload(userId: string, activity: StravaActivitySummary): StravaRunInsertPayload {
+  const normalizedName = activity.name.trim() || FALLBACK_RUN_NAME
+  const distanceKm = toDistanceKm(activity.distance)
+
+  return {
+    user_id: userId,
+    name: normalizedName,
+    title: normalizedName,
+    distance_km: distanceKm,
+    duration_minutes: toDurationMinutes(activity.moving_time),
+    created_at: new Date(activity.start_date).toISOString(),
+    external_source: STRAVA_EXTERNAL_SOURCE,
+    external_id: String(activity.id),
+    xp: toXp(distanceKm),
+  }
+}
+
+function findLikelyInvalidIntegerField(payload: StravaRunInsertPayload) {
+  const integerFields: Array<keyof Pick<StravaRunInsertPayload, 'duration_minutes' | 'xp'>> = [
+    'duration_minutes',
+    'xp',
+  ]
+
+  for (const field of integerFields) {
+    if (!Number.isInteger(payload[field])) {
+      return {
+        field,
+        value: payload[field],
+      }
+    }
+  }
+
+  return null
 }
 
 export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncResult> {
@@ -74,30 +156,52 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     )
   }
 
-  const runsToInsert = runActivities
-    .filter((activity) => !existingExternalIds.has(String(activity.id)))
-    .map((activity) => {
-      const normalizedName = activity.name.trim() || FALLBACK_RUN_NAME
-      const distanceKm = toDistanceKm(activity.distance)
+  const activitiesToInsert = runActivities.filter(
+    (activity) => !existingExternalIds.has(String(activity.id))
+  )
+  let imported = 0
+  const errors: StravaSyncRowErrorDetail[] = []
 
-      return {
-        user_id: userId,
-        name: normalizedName,
-        title: normalizedName,
-        distance_km: distanceKm,
-        duration_minutes: toDurationMinutes(activity.moving_time),
-        created_at: new Date(activity.start_date).toISOString(),
-        external_source: STRAVA_EXTERNAL_SOURCE,
-        external_id: String(activity.id),
-        xp: 50 + distanceKm * 10,
+  for (const activity of activitiesToInsert) {
+    let payload: StravaRunInsertPayload | null = null
+
+    try {
+      payload = buildRunInsertPayload(userId, activity)
+      const { error: insertError } = await supabase.from('runs').insert(payload)
+
+      if (insertError) {
+        throw new Error(insertError.message)
       }
-    })
 
-  if (runsToInsert.length > 0) {
-    const { error: insertError } = await supabase.from('runs').insert(runsToInsert)
+      imported += 1
+    } catch (caughtError) {
+      const errorDetail: StravaSyncRowErrorDetail = {
+        activityId: String(activity.id),
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown row insert error',
+      }
 
-    if (insertError) {
-      throw new Error(insertError.message)
+      if (caughtError instanceof StravaSyncRowError) {
+        errorDetail.field = caughtError.field
+        errorDetail.value = caughtError.value
+      } else if (payload) {
+        const likelyInvalidField = findLikelyInvalidIntegerField(payload)
+
+        if (likelyInvalidField) {
+          errorDetail.field = likelyInvalidField.field
+          errorDetail.value = likelyInvalidField.value
+        }
+      }
+
+      if (errors.length < MAX_SYNC_ERROR_DETAILS) {
+        errors.push(errorDetail)
+      }
+
+      console.error('Strava sync row failed', {
+        activityId: activity.id,
+        error: errorDetail.error,
+        field: errorDetail.field ?? null,
+        value: errorDetail.value ?? null,
+      })
     }
   }
 
@@ -114,8 +218,10 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
 
   return {
     ok: true,
-    imported: runsToInsert.length,
-    skipped: runActivities.length - runsToInsert.length,
+    imported,
+    skipped: existingExternalIds.size,
+    failed: activitiesToInsert.length - imported,
     totalRunsFetched: runActivities.length,
+    errors,
   }
 }
