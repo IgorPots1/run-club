@@ -71,32 +71,44 @@ export default function WheelPickerColumn({
   }
 
   function handleScroll() {
+    const container = scrollRef.current
+    if (!container) return
+
+    const nextIndex = Math.max(0, Math.min(options.length - 1, Math.round(container.scrollTop / ITEM_HEIGHT)))
+    const nextValue = getClosestEnabledOption(options[nextIndex])
+
+    if (nextValue !== value) {
+      onChange(nextValue)
+    }
+
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
     }
 
     timeoutRef.current = setTimeout(() => {
-      const container = scrollRef.current
-      if (!container) return
+      const activeContainer = scrollRef.current
+      if (!activeContainer) return
 
-      const nextIndex = Math.max(0, Math.min(options.length - 1, Math.round(container.scrollTop / ITEM_HEIGHT)))
-      const nextValue = getClosestEnabledOption(options[nextIndex])
-
-      if (nextValue !== value) {
-        onChange(nextValue)
-      } else {
-        const alignedIndex = Math.max(options.indexOf(nextValue), 0)
-        container.scrollTo({
-          top: alignedIndex * ITEM_HEIGHT,
-          behavior: 'smooth',
-        })
-      }
+      const alignedIndex = Math.max(options.indexOf(nextValue), 0)
+      activeContainer.scrollTo({
+        top: alignedIndex * ITEM_HEIGHT,
+        behavior: 'smooth',
+      })
     }, 80)
   }
 
   function handleSelect(option: number) {
     if (isOptionDisabled(option)) return
     onChange(option)
+
+    const container = scrollRef.current
+    if (!container) return
+
+    const optionIndex = Math.max(options.indexOf(option), 0)
+    container.scrollTo({
+      top: optionIndex * ITEM_HEIGHT,
+      behavior: 'smooth',
+    })
   }
 
   return (

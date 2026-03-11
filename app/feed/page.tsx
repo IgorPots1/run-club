@@ -38,6 +38,21 @@ export default function FeedPage() {
   const pullStartYRef = useRef<number | null>(null)
   const isPullingRef = useRef(false)
   const readyToRefreshRef = useRef(false)
+  const currentUserIdRef = useRef<string | null>(null)
+  const itemsRef = useRef<FeedRunItem[]>([])
+  const pendingRunIdsRef = useRef<string[]>([])
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId
+  }, [currentUserId])
+
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
+    pendingRunIdsRef.current = pendingRunIds
+  }, [pendingRunIds])
 
   useEffect(() => {
     let isMounted = true
@@ -204,26 +219,28 @@ export default function FeedPage() {
     }
   }, [initialLoading, loadFirstPage, refreshing, resetPullState])
 
-  async function handleLikeToggle(runId: string) {
-    if (!currentUserId) {
+  const handleLikeToggle = useCallback(async (runId: string) => {
+    const activeUserId = currentUserIdRef.current
+
+    if (!activeUserId) {
       router.replace('/login')
       return
     }
 
-    if (pendingRunIds.includes(runId)) return
+    if (pendingRunIdsRef.current.includes(runId)) return
 
-    const currentItem = items.find((item) => item.id === runId)
+    const currentItem = itemsRef.current.find((item) => item.id === runId)
     if (!currentItem) return
 
     const wasLiked = currentItem.likedByMe
-    const previousItems = items
+    const previousItems = itemsRef.current
 
     setActionError('')
+    pendingRunIdsRef.current = [...pendingRunIdsRef.current, runId]
     setPendingRunIds((prev) => [...prev, runId])
 
     try {
-      setItems((currentItems) =>
-        currentItems.map((item) =>
+      const nextItems = previousItems.map((item) =>
           item.id === runId
             ? {
                 ...item,
@@ -231,23 +248,27 @@ export default function FeedPage() {
                 likesCount: Math.max(0, item.likesCount + (wasLiked ? -1 : 1)),
               }
             : item
-        )
       )
+      itemsRef.current = nextItems
+      setItems(nextItems)
 
-      const { error: likeError } = await toggleRunLike(runId, currentUserId, wasLiked)
+      const { error: likeError } = await toggleRunLike(runId, activeUserId, wasLiked)
 
       if (likeError) {
         setActionError('Не удалось обновить лайк')
+        itemsRef.current = previousItems
         setItems(previousItems)
         return
       }
     } catch {
       setActionError('Не удалось обновить лайк')
+      itemsRef.current = previousItems
       setItems(previousItems)
     } finally {
+      pendingRunIdsRef.current = pendingRunIdsRef.current.filter((id) => id !== runId)
       setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
-  }
+  }, [router])
 
   if (loading) return <main className="min-h-screen p-4">Загрузка...</main>
 
@@ -324,6 +345,7 @@ export default function FeedPage() {
             items.map((item) => (
               <WorkoutFeedCard
                 key={item.id}
+                runId={item.id}
                 rawTitle={item.title}
                 distanceKm={item.distance_km}
                 pace={item.pace}
@@ -335,7 +357,7 @@ export default function FeedPage() {
                 likesCount={item.likesCount}
                 likedByMe={item.likedByMe}
                 pending={pendingRunIds.includes(item.id)}
-                onToggleLike={() => handleLikeToggle(item.id)}
+                onToggleLike={handleLikeToggle}
               />
             ))
           )}

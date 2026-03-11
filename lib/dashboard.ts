@@ -16,7 +16,8 @@ type ProfileRow = {
 type RunRow = {
   id: string
   user_id: string
-  title: string | null
+  name: string | null
+  title?: string | null
   distance_km: number | null
   duration_minutes: number | null
   xp: number | null
@@ -152,7 +153,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
   ] = await Promise.all([
     supabase
       .from('runs')
-      .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
+      .select('*')
       .order('created_at', { ascending: false })
       .order('id', { ascending: false }),
     supabase.from('profiles').select('*'),
@@ -169,7 +170,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
 
   return ((runs as RunRow[] | null) ?? []).map((run) => {
     const profile = profileById[run.user_id]
-    const mappedTitle = run.title || 'Тренировка'
+    const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
 
     return {
       id: run.id,
@@ -214,7 +215,7 @@ export async function loadFeedRuns(
   const feedWindowStartIso = getFeedWindowStartIso()
   const { data: runs, error: runsError } = await supabase
     .from('runs')
-    .select('id, user_id, title, distance_km, duration_minutes, xp, created_at')
+    .select('*')
     .gte('created_at', feedWindowStartIso)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
@@ -269,7 +270,7 @@ export async function loadFeedRuns(
   return {
     items: pageRuns.map((run) => {
       const profile = profileById[run.user_id]
-      const mappedTitle = run.title || 'Тренировка'
+      const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
 
       return {
         id: run.id,

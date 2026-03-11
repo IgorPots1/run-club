@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { formatDistanceKm } from '@/lib/format'
 import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
+  runId?: string
   rawTitle: string | null
   distanceKm?: number | null
   pace?: string | number | null
@@ -17,7 +18,7 @@ type WorkoutFeedCardProps = {
   likesCount: number
   likedByMe: boolean
   pending: boolean
-  onToggleLike: () => void
+  onToggleLike: (runId: string) => void
   subtitle?: string | null
   profileHref?: string | null
 }
@@ -89,7 +90,8 @@ function buildDisplayTitle(rawTitle: string | null, distanceKm?: number | null, 
   return `${baseTitle} • ${paceLabel}/км`
 }
 
-export default function WorkoutFeedCard({
+function WorkoutFeedCard({
+  runId = '',
   rawTitle,
   distanceKm,
   pace,
@@ -156,7 +158,7 @@ export default function WorkoutFeedCard({
           likesCount={likesCount}
           likedByMe={likedByMe}
           pending={pending}
-          onToggle={onToggleLike}
+          onToggle={() => onToggleLike(runId)}
           summaryPrefix={`⚡ +${xp} XP`}
           variant="inline"
         />
@@ -164,3 +166,5 @@ export default function WorkoutFeedCard({
     </div>
   )
 }
+
+export default memo(WorkoutFeedCard)

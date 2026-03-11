@@ -15,7 +15,8 @@ import type { User } from '@supabase/supabase-js'
 type Run = {
   id: string
   user_id: string
-  title: string
+  name: string | null
+  title?: string | null
   distance_km: number
   duration_minutes: number
   xp: number
@@ -81,10 +82,8 @@ function formatRunDateLabel(dateString: string) {
   })
 }
 
-function buildRunTitle(rawTitle: string) {
-  const baseTitle = rawTitle.trim()
-  if (baseTitle) return baseTitle
-  return 'Пробежка'
+function getRunDisplayName(run: Pick<Run, 'name' | 'title'>) {
+  return run.name?.trim() || run.title?.trim() || 'Пробежка'
 }
 
 function getTodayDateValue() {
@@ -130,8 +129,9 @@ function formatRunDatePickerLabel(dateValue: string) {
   })
 }
 
-const DISTANCE_WHOLE_OPTIONS = Array.from({ length: 101 }, (_, index) => index)
+const DISTANCE_WHOLE_OPTIONS = Array.from({ length: 201 }, (_, index) => index)
 const DISTANCE_TENTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
+const DISTANCE_HUNDREDTHS_OPTIONS = Array.from({ length: 10 }, (_, index) => index)
 const DURATION_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
 const TIME_OPTIONS = Array.from({ length: 60 }, (_, index) => index)
 const QUICK_DISTANCE_CHIPS = [
@@ -145,12 +145,48 @@ function formatTwoDigits(value: number) {
   return String(value).padStart(2, '0')
 }
 
-function formatDistanceLabel(wholeKm: number, tenthsKm: number) {
-  return `${wholeKm}.${tenthsKm}`
+function buildDistanceKm(wholeKm: number, tenthsKm: number, hundredthsKm = 0) {
+  const normalizedHundredths = Math.max(0, Math.min(9, hundredthsKm))
+  return Number((wholeKm + tenthsKm / 10 + normalizedHundredths / 100).toFixed(2))
 }
 
-function formatCompactDistanceLabel(wholeKm: number, tenthsKm: number) {
-  return tenthsKm === 0 ? `${wholeKm}` : `${wholeKm}.${tenthsKm}`
+function formatCompactDistanceLabel(wholeKm: number, tenthsKm: number, hundredthsKm = 0) {
+  const value = buildDistanceKm(wholeKm, tenthsKm, hundredthsKm)
+  return value.toFixed(2).replace(/\.?0+$/, '')
+}
+
+function formatDistanceInputValue(wholeKm: number, tenthsKm: number, hundredthsKm = 0) {
+  return buildDistanceKm(wholeKm, tenthsKm, hundredthsKm).toFixed(2).replace(/\.?0+$/, '')
+}
+
+function parseDistanceInput(rawValue: string) {
+  const normalizedValue = rawValue.trim().replace(',', '.')
+
+  if (!normalizedValue) {
+    return null
+  }
+
+  if (!/^\d+(\.\d{0,2})?$/.test(normalizedValue)) {
+    return null
+  }
+
+  const parsedValue = Number(normalizedValue)
+
+  if (!Number.isFinite(parsedValue)) {
+    return null
+  }
+
+  return Number(parsedValue.toFixed(2))
+}
+
+function getDistanceParts(distanceKm: number) {
+  const normalizedDistance = Math.max(0, Math.round(distanceKm * 100))
+
+  return {
+    wholeKm: Math.floor(normalizedDistance / 100),
+    tenthsKm: Math.floor((normalizedDistance % 100) / 10),
+    hundredthsKm: normalizedDistance % 10,
+  }
 }
 
 function formatCompactDurationLabel(hours: number, minutes: number, seconds: number) {
@@ -187,6 +223,7 @@ export default function RunsPage() {
   const [runDate, setRunDate] = useState(getTodayDateValue())
   const [distanceWholeKm, setDistanceWholeKm] = useState(0)
   const [distanceTenthsKm, setDistanceTenthsKm] = useState(0)
+  const [distanceHundredthsKm, setDistanceHundredthsKm] = useState(0)
   const [durationHours, setDurationHours] = useState(0)
   const [durationClockMinutes, setDurationClockMinutes] = useState(0)
   const [durationSeconds, setDurationSeconds] = useState(0)
@@ -196,6 +233,10 @@ export default function RunsPage() {
   const [runDatePickerOpen, setRunDatePickerOpen] = useState(false)
   const [draftDistanceWholeKm, setDraftDistanceWholeKm] = useState(0)
   const [draftDistanceTenthsKm, setDraftDistanceTenthsKm] = useState(0)
+  const [draftDistanceHundredthsKm, setDraftDistanceHundredthsKm] = useState(0)
+  const [distanceEntryMode, setDistanceEntryMode] = useState<'wheel' | 'manual'>('wheel')
+  const [draftDistanceInput, setDraftDistanceInput] = useState('')
+  const [distancePickerError, setDistancePickerError] = useState('')
   const [draftDurationHours, setDraftDurationHours] = useState(0)
   const [draftDurationClockMinutes, setDraftDurationClockMinutes] = useState(0)
   const [draftDurationSeconds, setDraftDurationSeconds] = useState(0)
@@ -207,12 +248,12 @@ export default function RunsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
-  const selectedDistanceLabel = formatDistanceLabel(distanceWholeKm, distanceTenthsKm)
-  const compactDistanceLabel = formatCompactDistanceLabel(distanceWholeKm, distanceTenthsKm)
-  const selectedDistanceKm = Number(selectedDistanceLabel)
+  const compactDistanceLabel = formatCompactDistanceLabel(distanceWholeKm, distanceTenthsKm, distanceHundredthsKm)
+  const selectedDistanceKm = buildDistanceKm(distanceWholeKm, distanceTenthsKm, distanceHundredthsKm)
   const compactDurationLabel = formatCompactDurationLabel(durationHours, durationClockMinutes, durationSeconds)
   const selectedDurationSeconds = durationHours * 3600 + durationClockMinutes * 60 + durationSeconds
   const selectedDurationMinutes = selectedDurationSeconds > 0 ? Math.max(1, Math.round(selectedDurationSeconds / 60)) : 0
+  const normalizedWorkoutName = title.trim()
   const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
   const showPacePreview = shouldShowPace(selectedDurationSeconds, selectedDistanceKm)
   const selectedDate = runDate || getTodayDateValue()
@@ -225,6 +266,7 @@ export default function RunsPage() {
     ? todayParts.day
     : getDaysInMonth(draftRunYear, draftRunMonth)
   const isWorkoutFormValid =
+    normalizedWorkoutName.length > 0 &&
     Number.isFinite(selectedDistanceKm) &&
     selectedDistanceKm > 0 &&
     Number.isFinite(selectedDurationMinutes) &&
@@ -241,8 +283,12 @@ export default function RunsPage() {
   }
 
   function openDistancePicker() {
+    const nextDistanceInput = formatDistanceInputValue(distanceWholeKm, distanceTenthsKm, distanceHundredthsKm)
     setDraftDistanceWholeKm(distanceWholeKm)
     setDraftDistanceTenthsKm(distanceTenthsKm)
+    setDraftDistanceHundredthsKm(distanceHundredthsKm)
+    setDraftDistanceInput(nextDistanceInput)
+    setDistancePickerError('')
     setDistancePickerOpen(true)
   }
 
@@ -253,11 +299,86 @@ export default function RunsPage() {
     setDurationPickerOpen(true)
   }
 
-  function applyQuickDistance(wholeKm: number, tenthsKm: number) {
+  function applyQuickDistance(wholeKm: number, tenthsKm: number, hundredthsKm = 0) {
     setDistanceWholeKm(wholeKm)
     setDistanceTenthsKm(tenthsKm)
+    setDistanceHundredthsKm(hundredthsKm)
     setDraftDistanceWholeKm(wholeKm)
     setDraftDistanceTenthsKm(tenthsKm)
+    setDraftDistanceHundredthsKm(hundredthsKm)
+    setDraftDistanceInput(formatDistanceInputValue(wholeKm, tenthsKm, hundredthsKm))
+  }
+
+  function syncDraftDistanceInput(wholeKm: number, tenthsKm: number, hundredthsKm: number) {
+    setDraftDistanceInput(formatDistanceInputValue(wholeKm, tenthsKm, hundredthsKm))
+    setDistancePickerError('')
+  }
+
+  function handleDraftDistanceWholeChange(nextWholeKm: number) {
+    setDraftDistanceWholeKm(nextWholeKm)
+    syncDraftDistanceInput(nextWholeKm, draftDistanceTenthsKm, draftDistanceHundredthsKm)
+  }
+
+  function handleDraftDistanceTenthsChange(nextTenthsKm: number) {
+    setDraftDistanceTenthsKm(nextTenthsKm)
+    syncDraftDistanceInput(draftDistanceWholeKm, nextTenthsKm, draftDistanceHundredthsKm)
+  }
+
+  function handleDraftDistanceHundredthsChange(nextHundredthsKm: number) {
+    setDraftDistanceHundredthsKm(nextHundredthsKm)
+    syncDraftDistanceInput(draftDistanceWholeKm, draftDistanceTenthsKm, nextHundredthsKm)
+  }
+
+  function handleDistanceModeChange(nextMode: 'wheel' | 'manual') {
+    setDistanceEntryMode(nextMode)
+    setDistancePickerError('')
+
+    if (nextMode === 'manual') {
+      setDraftDistanceInput(formatDistanceInputValue(draftDistanceWholeKm, draftDistanceTenthsKm, draftDistanceHundredthsKm))
+    }
+  }
+
+  function handleDraftDistanceInputChange(nextValue: string) {
+    setDraftDistanceInput(nextValue)
+    setDistancePickerError('')
+
+    const parsedDistance = parseDistanceInput(nextValue)
+    if (parsedDistance == null) return
+
+    const parts = getDistanceParts(parsedDistance)
+    setDraftDistanceWholeKm(parts.wholeKm)
+    setDraftDistanceTenthsKm(parts.tenthsKm)
+    setDraftDistanceHundredthsKm(parts.hundredthsKm)
+  }
+
+  function applyDraftDistance() {
+    if (distanceEntryMode === 'manual') {
+      const parsedDistance = parseDistanceInput(draftDistanceInput)
+
+      if (parsedDistance == null || parsedDistance <= 0) {
+        setDistancePickerError('Введите дистанцию больше 0 км, например 5.25')
+        return
+      }
+
+      const parts = getDistanceParts(parsedDistance)
+      setDistanceWholeKm(parts.wholeKm)
+      setDistanceTenthsKm(parts.tenthsKm)
+      setDistanceHundredthsKm(parts.hundredthsKm)
+      setDraftDistanceWholeKm(parts.wholeKm)
+      setDraftDistanceTenthsKm(parts.tenthsKm)
+      setDraftDistanceHundredthsKm(parts.hundredthsKm)
+      setDraftDistanceInput(formatDistanceInputValue(parts.wholeKm, parts.tenthsKm, parts.hundredthsKm))
+      setDistancePickerOpen(false)
+      setDistancePickerError('')
+      return
+    }
+
+    setDistanceWholeKm(draftDistanceWholeKm)
+    setDistanceTenthsKm(draftDistanceTenthsKm)
+    setDistanceHundredthsKm(draftDistanceHundredthsKm)
+    setDraftDistanceInput(formatDistanceInputValue(draftDistanceWholeKm, draftDistanceTenthsKm, draftDistanceHundredthsKm))
+    setDistancePickerOpen(false)
+    setDistancePickerError('')
   }
 
   useEffect(() => {
@@ -344,9 +465,14 @@ export default function RunsPage() {
     if (!user || submitting) return
 
     const currentUser = user
-    const normalizedTitle = title.trim()
+    const normalizedTitle = normalizedWorkoutName
     const d = selectedDistanceKm
     const dur = selectedDurationMinutes
+
+    if (!normalizedTitle) {
+      setError('Введите название тренировки')
+      return
+    }
 
     if (!Number.isFinite(d) || d <= 0) {
       setError('Укажите дистанцию больше 0 км')
@@ -371,13 +497,13 @@ export default function RunsPage() {
 
     setError('')
     setSubmitting(true)
-    const runTitle = buildRunTitle(normalizedTitle)
     const xp = 50 + d * 10
 
     try {
       const { error } = await supabase.from('runs').insert({
         user_id: user.id,
-        title: runTitle,
+        name: normalizedTitle,
+        title: normalizedTitle,
         distance_km: d,
         duration_minutes: dur,
         created_at: createdAtDate.toISOString(),
@@ -393,11 +519,15 @@ export default function RunsPage() {
       setRunDate(getTodayDateValue())
       setDistanceWholeKm(0)
       setDistanceTenthsKm(0)
+      setDistanceHundredthsKm(0)
       setDurationHours(0)
       setDurationClockMinutes(0)
       setDurationSeconds(0)
       setDraftDistanceWholeKm(0)
       setDraftDistanceTenthsKm(0)
+      setDraftDistanceHundredthsKm(0)
+      setDraftDistanceInput('')
+      setDistancePickerError('')
       setDraftDurationHours(0)
       setDraftDurationClockMinutes(0)
       setDraftDurationSeconds(0)
@@ -447,7 +577,7 @@ export default function RunsPage() {
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
       <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
-          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки (необязательно)</label>
+          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки</label>
           <input
             id="title"
             type="text"
@@ -481,7 +611,10 @@ export default function RunsPage() {
           </button>
           <div className="mt-2 flex flex-wrap gap-2">
             {QUICK_DISTANCE_CHIPS.map((chip) => {
-              const isActive = distanceWholeKm === chip.wholeKm && distanceTenthsKm === chip.tenthsKm
+              const isActive =
+                distanceWholeKm === chip.wholeKm &&
+                distanceTenthsKm === chip.tenthsKm &&
+                distanceHundredthsKm === 0
 
               return (
                 <button
@@ -547,6 +680,9 @@ export default function RunsPage() {
             <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-2xl border p-4 shadow-sm">
               <div className="compact-run-card-layout flex flex-col gap-3">
                 <div className="min-w-0 flex-1">
+                  <p className="app-text-primary break-words text-base font-semibold">
+                    {getRunDisplayName(run)}
+                  </p>
                   <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
                     {formatDistanceKmLabel(run.distance_km)} км • {formatDurationMinutesLabel(run.duration_minutes)}
                     {formatRunPaceFromMinutes(run.distance_km, run.duration_minutes)
@@ -612,26 +748,79 @@ export default function RunsPage() {
       <WheelPickerSheet
         title="Дистанция"
         open={distancePickerOpen}
-        onCancel={() => setDistancePickerOpen(false)}
-        onDone={() => {
-          setDistanceWholeKm(draftDistanceWholeKm)
-          setDistanceTenthsKm(draftDistanceTenthsKm)
+        onCancel={() => {
           setDistancePickerOpen(false)
+          setDistancePickerError('')
         }}
+        onDone={applyDraftDistance}
       >
-        <div className="grid grid-cols-2 gap-3">
-          <WheelPickerColumn
-            label="КМ"
-            value={draftDistanceWholeKm}
-            options={DISTANCE_WHOLE_OPTIONS}
-            onChange={setDraftDistanceWholeKm}
-          />
-          <WheelPickerColumn
-            label="0.1 КМ"
-            value={draftDistanceTenthsKm}
-            options={DISTANCE_TENTHS_OPTIONS}
-            onChange={setDraftDistanceTenthsKm}
-          />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleDistanceModeChange('wheel')}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                distanceEntryMode === 'wheel' ? 'app-button-primary' : 'app-button-secondary'
+              }`}
+            >
+              Колесо
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDistanceModeChange('manual')}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                distanceEntryMode === 'manual' ? 'app-button-primary' : 'app-button-secondary'
+              }`}
+            >
+              Ввести вручную
+            </button>
+          </div>
+          {distanceEntryMode === 'manual' ? (
+            <div>
+              <label htmlFor="distance_manual" className="app-text-secondary mb-1 block text-sm">Дистанция в км</label>
+              <input
+                id="distance_manual"
+                type="text"
+                inputMode="decimal"
+                placeholder="Например: 5.25"
+                value={draftDistanceInput}
+                onChange={(event) => handleDraftDistanceInputChange(event.target.value)}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+              <p className="app-text-secondary mt-2 text-xs">Можно вводить десятичные значения, например 5.25 км.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="app-text-secondary text-sm">Выберите дистанцию колесом или переключитесь на ручной ввод для точного значения.</p>
+              <div className="grid grid-cols-3 gap-3">
+                <WheelPickerColumn
+                  label="КМ"
+                  value={draftDistanceWholeKm}
+                  options={DISTANCE_WHOLE_OPTIONS}
+                  onChange={handleDraftDistanceWholeChange}
+                />
+                <WheelPickerColumn
+                  label="0.1 КМ"
+                  value={draftDistanceTenthsKm}
+                  options={DISTANCE_TENTHS_OPTIONS}
+                  onChange={handleDraftDistanceTenthsChange}
+                />
+                <WheelPickerColumn
+                  label="0.01 КМ"
+                  value={draftDistanceHundredthsKm}
+                  options={DISTANCE_HUNDREDTHS_OPTIONS}
+                  onChange={handleDraftDistanceHundredthsChange}
+                />
+              </div>
+            </div>
+          )}
+          <div className="app-surface-muted rounded-xl px-4 py-3">
+            <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Выбрано</p>
+            <p className="app-text-primary mt-1 text-base font-semibold">
+              {formatCompactDistanceLabel(draftDistanceWholeKm, draftDistanceTenthsKm, draftDistanceHundredthsKm)} км
+            </p>
+          </div>
+          {distancePickerError ? <p className="text-sm text-red-600">{distancePickerError}</p> : null}
         </div>
       </WheelPickerSheet>
       <WheelPickerSheet

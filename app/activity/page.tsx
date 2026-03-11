@@ -9,13 +9,18 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 import type { User } from '@supabase/supabase-js'
-import { buildActivitySummary, loadActivityRuns, type ActivityPeriod } from '@/lib/activity'
+import {
+  buildActivitySummary,
+  loadActivityRuns,
+  type ActivityChartPoint,
+  type ActivityPeriod,
+} from '@/lib/activity'
 import { formatDistanceKm } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
 
@@ -31,23 +36,19 @@ function formatDistance(value: number) {
 }
 
 type ActivityChartTooltipProps = {
-  active?: boolean
-  payload?: Array<{ value?: number | string }>
-  label?: string | number
+  point: (ActivityChartPoint & { index: number }) | null
 }
 
-function ActivityChartTooltip({ active, payload, label }: ActivityChartTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-
-  const distance = Number(payload[0]?.value ?? 0)
+function ActivityChartTooltip({ point }: ActivityChartTooltipProps) {
+  if (!point) return null
 
   return (
     <div className="app-card max-w-[180px] rounded-xl border px-3 py-2 shadow-lg">
       <p className="app-text-secondary text-xs">
-        Период: <span className="app-text-primary font-medium">{String(label ?? '—')}</span>
+        Период: <span className="app-text-primary font-medium">{point.label}</span>
       </p>
       <p className="app-text-secondary mt-1 text-xs">
-        Дистанция: <span className="app-text-primary font-medium">{formatDistance(distance)} км</span>
+        Дистанция: <span className="app-text-primary font-medium">{formatDistance(point.distance)} км</span>
       </p>
     </div>
   )
@@ -58,7 +59,8 @@ export default function ActivityPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
-  const [isVerySmallScreen, setIsVerySmallScreen] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState<number | null>(null)
+  const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -93,7 +95,7 @@ export default function ActivityPage() {
 
   useEffect(() => {
     function updateViewportState() {
-      setIsVerySmallScreen(window.innerWidth < 390)
+      setViewportWidth(window.innerWidth)
     }
 
     updateViewportState()
@@ -114,15 +116,33 @@ export default function ActivityPage() {
   )
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
+  const isVerySmallScreen = viewportWidth !== null && viewportWidth < 390
+  const isSmallScreen = viewportWidth !== null && viewportWidth < 480
+  const yearXAxisInterval = viewportWidth !== null && viewportWidth < 360 ? 2 : isSmallScreen ? 1 : 0
   const mobileXAxisInterval =
     period === 'month'
       ? 4
       : period === 'all'
         ? (isVerySmallScreen && summary.chartData.length > 4 ? 1 : 0)
         : period === 'year'
-          ? (isVerySmallScreen ? 1 : 0)
+          ? yearXAxisInterval
           : 0
-  const chartTickFontSize = isVerySmallScreen ? 11 : 12
+  const chartTickFontSize =
+    period === 'year' && viewportWidth !== null && viewportWidth < 360
+      ? 10
+      : isVerySmallScreen
+        ? 11
+        : 12
+  const xAxisMinTickGap = period === 'year' ? (isSmallScreen ? 20 : 14) : isVerySmallScreen ? 16 : 10
+  const xAxisHeight = period === 'year' ? 40 : 30
+  const activeBar =
+    activeBarIndex === null || !summary.chartData[activeBarIndex]
+      ? null
+      : { ...summary.chartData[activeBarIndex], index: activeBarIndex }
+
+  useEffect(() => {
+    setActiveBarIndex(null)
+  }, [period, summary.chartData.length])
 
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
@@ -204,11 +224,14 @@ export default function ActivityPage() {
                   </div>
                 ) : (
                   <div className="mt-3 h-[220px] w-full md:mt-3.5 md:h-[300px]">
-                    <div className="h-full w-full">
+                    <div className="relative h-full w-full">
+                      <div className="pointer-events-none absolute left-2 top-2 z-10">
+                        <ActivityChartTooltip point={activeBar} />
+                      </div>
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
                           data={summary.chartData}
-                          margin={{ top: 4, right: 0, left: -8, bottom: 0 }}
+                          margin={{ top: 4, right: 0, left: -8, bottom: period === 'year' ? 6 : 0 }}
                           barCategoryGap="18%"
                           accessibilityLayer={false}
                         >
@@ -218,8 +241,10 @@ export default function ActivityPage() {
                             tickLine={false}
                             axisLine={false}
                             interval={mobileXAxisInterval}
-                            minTickGap={isVerySmallScreen ? 16 : 10}
-                            tickMargin={8}
+                            minTickGap={xAxisMinTickGap}
+                            tickMargin={period === 'year' ? 10 : 8}
+                            height={xAxisHeight}
+                            padding={period === 'year' ? { left: 8, right: 8 } : { left: 0, right: 0 }}
                             tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
                           />
                           <YAxis
@@ -228,12 +253,34 @@ export default function ActivityPage() {
                             tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
                             width={24}
                           />
-                          <Tooltip
-                            shared={false}
-                            cursor={false}
-                            content={<ActivityChartTooltip />}
-                          />
-                          <Bar dataKey="distance" fill="var(--accent-strong)" radius={[8, 8, 0, 0]} maxBarSize={28} />
+                          <Bar
+                            dataKey="distance"
+                            fill="var(--accent-strong)"
+                            radius={[8, 8, 0, 0]}
+                            maxBarSize={28}
+                            onMouseEnter={(_, index) => {
+                              if (summary.chartData[index]?.distance > 0) {
+                                setActiveBarIndex(index)
+                              }
+                            }}
+                            onMouseLeave={() => {
+                              setActiveBarIndex(null)
+                            }}
+                            onClick={(_, index) => {
+                              if (summary.chartData[index]?.distance > 0) {
+                                setActiveBarIndex((current) => (current === index ? null : index))
+                              }
+                            }}
+                          >
+                            {summary.chartData.map((entry, index) => (
+                              <Cell
+                                key={`${entry.label}-${index}`}
+                                cursor={entry.distance > 0 ? 'pointer' : 'default'}
+                                fillOpacity={activeBarIndex === index ? 0.82 : 1}
+                                pointerEvents={entry.distance > 0 ? 'auto' : 'none'}
+                              />
+                            ))}
+                          </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
