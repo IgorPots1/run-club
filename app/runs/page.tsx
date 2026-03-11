@@ -368,19 +368,27 @@ export default function RunsPage() {
     setRunsError('')
 
     try {
-      const { data, error: runsLoadError } = await supabase
-        .from('runs')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
+      const response = await fetch('/api/runs', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'include',
+      })
 
-      if (runsLoadError) {
+      if (response.status === 401) {
+        router.replace('/login')
+        return
+      }
+
+      const payload = (await response.json()) as
+        | { ok: true; runs: Run[] }
+        | { ok: false; step?: string; error?: string }
+
+      if (!response.ok || !payload.ok) {
         setRunsError('Не удалось загрузить тренировки')
         return
       }
 
-      const normalizedRuns = ((data as Run[] | null) ?? []).map((run) => ({
+      const normalizedRuns = (payload.runs ?? []).map((run) => ({
         ...run,
         distance_km: Number(run.distance_km ?? 0),
         duration_minutes: Number(run.duration_minutes ?? 0),
@@ -393,7 +401,7 @@ export default function RunsPage() {
     } finally {
       setLoadingRuns(false)
     }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     if (!user) return
