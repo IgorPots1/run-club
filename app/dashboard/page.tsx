@@ -153,8 +153,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
-  if (!user) {
+  if (!user && !loading) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
@@ -162,6 +161,7 @@ export default function DashboardPage() {
     )
   }
 
+  const isBootstrappingUser = loading && !user
   const stats = overview?.stats ?? null
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null
   const allChallengesCompleted = overview?.allChallengesCompleted ?? false
@@ -177,8 +177,15 @@ export default function DashboardPage() {
   )
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
   const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
-  const profileHeaderLoading = profileLoading && !profileSummary && !profileError
-  const levelHeaderLoading = overviewLoading && !overview && !overviewError
+  const headerDisplayName = user ? `Привет, ${profileName}` : 'Привет!'
+  const headerLevelLabel = levelProgress
+    ? `Уровень ${levelProgress.level}`
+    : user
+      ? 'Загружаем прогресс...'
+      : null
+  const showOverviewSkeleton = isBootstrappingUser || (overviewLoading && !overview && !overviewError)
+  const showRunsSkeleton = isBootstrappingUser || (runsLoading && !runs)
+  const weeklyLeaderboardLoading = isBootstrappingUser || weeklyRaceLoading
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -190,10 +197,10 @@ export default function DashboardPage() {
         <div className="mb-6 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
           <UserIdentitySummary
-            loadingIdentity={profileHeaderLoading}
-            loadingLevel={levelHeaderLoading}
-            displayName={`Привет, ${profileName}`}
-            levelLabel={`Уровень ${levelProgress?.level ?? 1}`}
+            loadingIdentity={false}
+            loadingLevel={false}
+            displayName={headerDisplayName}
+            levelLabel={headerLevelLabel}
           />
         </div>
         {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
@@ -205,7 +212,7 @@ export default function DashboardPage() {
           >
             + Добавить тренировку
           </Link>
-          {overviewLoading && !overview ? (
+          {showOverviewSkeleton ? (
             <>
               <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
                 <div className="skeleton-line h-4 w-28" />
@@ -335,14 +342,14 @@ export default function DashboardPage() {
           ) : null}
           <WeeklyLeaderboard
             leaderboard={weeklyRace ?? null}
-            currentUserId={user.id}
-            loading={weeklyRaceLoading}
+            currentUserId={user?.id ?? ''}
+            loading={weeklyLeaderboardLoading}
             error={weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
           />
           <h2 className="app-text-primary text-lg font-semibold mb-3">Последние тренировки</h2>
           {activityError ? <p className="mb-3 text-sm text-red-600">{activityError}</p> : null}
           <div className="space-y-3">
-            {runsLoading && !runs ? (
+            {showRunsSkeleton ? (
               <>
                 <div className="app-card rounded-xl border p-4 shadow-sm">
                   <div className="skeleton-line h-5 w-32" />
