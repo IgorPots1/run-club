@@ -1,9 +1,10 @@
 import 'server-only'
 
-import type { StravaTokenExchangeResponse } from './strava-types'
+import type { StravaActivitySummary, StravaTokenExchangeResponse } from './strava-types'
 
 const STRAVA_AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
+const STRAVA_ACTIVITIES_URL = 'https://www.strava.com/api/v3/athlete/activities'
 const STRAVA_MVP_SCOPE = 'read,activity:read_all'
 
 function getRequiredEnv(name: 'STRAVA_CLIENT_ID' | 'STRAVA_CLIENT_SECRET' | 'NEXT_PUBLIC_APP_URL') {
@@ -53,4 +54,27 @@ export async function exchangeStravaCodeForToken(code: string): Promise<StravaTo
   }
 
   return response.json() as Promise<StravaTokenExchangeResponse>
+}
+
+export async function fetchStravaActivities(
+  accessToken: string,
+  afterUnixSeconds: number
+): Promise<StravaActivitySummary[]> {
+  const params = new URLSearchParams({
+    after: String(afterUnixSeconds),
+    per_page: '100',
+  })
+
+  const response = await fetch(`${STRAVA_ACTIVITIES_URL}?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Strava activities fetch failed with status ${response.status}`)
+  }
+
+  return response.json() as Promise<StravaActivitySummary[]>
 }

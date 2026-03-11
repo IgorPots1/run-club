@@ -18,6 +18,27 @@ export type StravaTokenExchangeResponse = {
   athlete: StravaAthleteSummary
 }
 
+export type StravaActivitySummary = {
+  id: number
+  name: string
+  type: string
+  distance: number
+  moving_time: number
+  start_date: string
+}
+
+export type StravaInitialSyncResult =
+  | {
+      ok: true
+      imported: number
+      skipped: number
+      totalRunsFetched: number
+    }
+  | {
+      ok: false
+      step: 'missing_connection'
+    }
+
 export type StravaWebhookEvent = {
   aspect_type: string
   event_time: number
