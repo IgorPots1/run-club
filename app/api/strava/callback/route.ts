@@ -46,27 +46,49 @@ export async function GET(request: Request) {
       })
     }
 
-    const { error: upsertError } = await supabase.from('strava_connections').upsert(
-      {
-        user_id: connectUserId,
-        strava_athlete_id: tokenResponse.athlete.id,
-        access_token: tokenResponse.access_token,
-        refresh_token: tokenResponse.refresh_token,
-        expires_at: new Date(tokenResponse.expires_at * 1000).toISOString(),
-        last_synced_at: null,
-        status: 'connected',
-      },
-      {
-        onConflict: 'user_id',
-        ignoreDuplicates: false,
-      }
-    )
+    const connectionPayload = {
+      user_id: connectUserId,
+      strava_athlete_id: tokenResponse.athlete.id,
+      access_token: tokenResponse.access_token,
+      refresh_token: tokenResponse.refresh_token,
+      expires_at: new Date(tokenResponse.expires_at * 1000).toISOString(),
+      last_synced_at: null,
+      status: 'connected',
+    }
 
-    if (upsertError) {
+    const { data: existingConnection, error: selectError } = await supabase
+      .from('strava_connections')
+      .select('id')
+      .eq('user_id', connectUserId)
+      .maybeSingle()
+
+    if (selectError) {
       return NextResponse.json({
         ok: false,
         step: 'db_upsert_failed',
-        error: upsertError.message,
+        error: selectError.message,
+      })
+    }
+
+    const { error: saveError } = existingConnection
+      ? await supabase
+          .from('strava_connections')
+          .update({
+            strava_athlete_id: connectionPayload.strava_athlete_id,
+            access_token: connectionPayload.access_token,
+            refresh_token: connectionPayload.refresh_token,
+            expires_at: connectionPayload.expires_at,
+            last_synced_at: connectionPayload.last_synced_at,
+            status: connectionPayload.status,
+          })
+          .eq('id', existingConnection.id)
+      : await supabase.from('strava_connections').insert(connectionPayload)
+
+    if (saveError) {
+      return NextResponse.json({
+        ok: false,
+        step: 'db_upsert_failed',
+        error: saveError.message,
       })
     }
 
