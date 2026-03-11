@@ -76,5 +76,7 @@ export async function fetchStravaActivities(
     throw new Error(`Strava activities fetch failed with status ${response.status}`)
   }
 
-  return response.json() as Promise<StravaActivitySummary[]>
+  const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
+
+  return JSON.parse(responseText) as StravaActivitySummary[]
 }

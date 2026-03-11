@@ -19,6 +19,7 @@ type Run = {
   title?: string | null
   distance_km: number
   duration_minutes: number
+  duration_seconds?: number | null
   xp: number
   created_at: string
   external_source?: string | null
@@ -46,8 +47,67 @@ function formatDurationMinutesLabel(totalMinutes: number) {
   return `${hours} ч ${minutes} мин`
 }
 
-function formatDistanceKmLabel(distanceKm: number) {
-  return formatDistanceKm(distanceKm)
+function formatPreciseDurationLabel(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return '0:00'
+  }
+
+  const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
+  }
+
+  return `${minutes}:${formatTwoDigits(seconds)}`
+}
+
+function formatPreciseDistanceKm(value: number) {
+  const fixed = value.toFixed(2)
+
+  if (fixed.endsWith('00')) {
+    return value.toFixed(1)
+  }
+
+  if (fixed.endsWith('0')) {
+    return fixed.slice(0, -1)
+  }
+
+  return fixed
+}
+
+function formatDistanceKmLabel(run: Pick<Run, 'distance_km' | 'external_source'>) {
+  if (run.external_source === 'strava') {
+    return formatPreciseDistanceKm(run.distance_km)
+  }
+
+  return formatDistanceKm(run.distance_km)
+}
+
+function getRunDurationSeconds(run: Pick<Run, 'duration_minutes' | 'duration_seconds'>) {
+  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
+    return Math.round(run.duration_seconds ?? 0)
+  }
+
+  return Math.round(run.duration_minutes * 60)
+}
+
+function formatRunDurationLabel(run: Pick<Run, 'duration_minutes' | 'duration_seconds'>) {
+  const totalSeconds = getRunDurationSeconds(run)
+
+  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
+    return formatPreciseDurationLabel(totalSeconds)
+  }
+
+  return formatDurationMinutesLabel(run.duration_minutes)
+}
+
+function formatRunPace(run: Pick<Run, 'distance_km' | 'duration_minutes' | 'duration_seconds'>) {
+  const totalSeconds = getRunDurationSeconds(run)
+
+  return formatPaceLabel(totalSeconds, run.distance_km)
 }
 
 function formatRunPaceFromMinutes(distanceKm: number, durationMinutes: number) {
@@ -392,6 +452,8 @@ export default function RunsPage() {
         ...run,
         distance_km: Number(run.distance_km ?? 0),
         duration_minutes: Number(run.duration_minutes ?? 0),
+        duration_seconds:
+          run.duration_seconds == null ? null : Number(run.duration_seconds ?? 0),
         xp: Number(run.xp ?? 0),
       }))
 
@@ -489,6 +551,7 @@ export default function RunsPage() {
         title: normalizedTitle,
         distance_km: d,
         duration_minutes: dur,
+        duration_seconds: selectedDurationSeconds,
         created_at: createdAtDate.toISOString(),
         xp
       })
@@ -697,9 +760,9 @@ export default function RunsPage() {
                     {getRunDisplayName(run)}
                   </p>
                   <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
-                    {formatDistanceKmLabel(run.distance_km)} км • {formatDurationMinutesLabel(run.duration_minutes)}
-                    {formatRunPaceFromMinutes(run.distance_km, run.duration_minutes)
-                      ? ` • ${formatRunPaceFromMinutes(run.distance_km, run.duration_minutes)}`
+                    {formatDistanceKmLabel(run)} км • {formatRunDurationLabel(run)}
+                    {formatRunPace(run)
+                      ? ` • ${formatRunPace(run)}`
                       : ''}
                   </p>
                   <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">

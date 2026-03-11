@@ -8,6 +8,7 @@ const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
 const STRAVA_SYNC_WINDOW_DAYS = 7
 const MAX_SYNC_ERROR_DETAILS = 10
+const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
 
 type StravaRunInsertPayload = {
   user_id: string
@@ -15,6 +16,7 @@ type StravaRunInsertPayload = {
   title: string
   distance_km: number
   duration_minutes: number
+  duration_seconds: number
   created_at: string
   external_source: string
   external_id: string
@@ -41,11 +43,15 @@ class StravaSyncRowError extends Error {
 }
 
 function toDistanceKm(distanceMeters: number) {
-  return Number((distanceMeters / 1000).toFixed(2))
+  return Number((distanceMeters / 1000).toFixed(3))
 }
 
 function toDurationMinutes(movingTimeSeconds: number) {
   return Math.max(1, normalizeIntegerField('duration_minutes', movingTimeSeconds / 60))
+}
+
+function toDurationSeconds(movingTimeSeconds: number) {
+  return Math.max(1, normalizeIntegerField('duration_seconds', movingTimeSeconds))
 }
 
 function normalizeIntegerField(field: string, value: number) {
@@ -63,6 +69,25 @@ function toXp(distanceKm: number) {
   return Math.max(0, normalizeIntegerField('xp', 50 + distanceKm * 10))
 }
 
+function normalizeImportedRunName(rawName: string) {
+  const trimmedName = rawName.trim()
+
+  if (!trimmedName) {
+    return FALLBACK_RUN_NAME
+  }
+
+  if (!MOJIBAKE_PATTERN.test(trimmedName)) {
+    return trimmedName
+  }
+
+  try {
+    const decodedName = Buffer.from(trimmedName, 'latin1').toString('utf8').trim()
+    return decodedName && !decodedName.includes('\uFFFD') ? decodedName : trimmedName
+  } catch {
+    return trimmedName
+  }
+}
+
 function isValidStravaRun(activity: StravaActivitySummary) {
   return (
     activity.type === 'Run' &&
@@ -75,15 +100,17 @@ function isValidStravaRun(activity: StravaActivitySummary) {
 }
 
 function buildRunInsertPayload(userId: string, activity: StravaActivitySummary): StravaRunInsertPayload {
-  const normalizedName = activity.name.trim() || FALLBACK_RUN_NAME
+  const normalizedName = normalizeImportedRunName(activity.name)
   const distanceKm = toDistanceKm(activity.distance)
+  const durationSeconds = toDurationSeconds(activity.moving_time)
 
   return {
     user_id: userId,
     name: normalizedName,
     title: normalizedName,
     distance_km: distanceKm,
-    duration_minutes: toDurationMinutes(activity.moving_time),
+    duration_minutes: toDurationMinutes(durationSeconds),
+    duration_seconds: durationSeconds,
     created_at: new Date(activity.start_date).toISOString(),
     external_source: STRAVA_EXTERNAL_SOURCE,
     external_id: String(activity.id),
@@ -92,8 +119,11 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
 }
 
 function findLikelyInvalidIntegerField(payload: StravaRunInsertPayload) {
-  const integerFields: Array<keyof Pick<StravaRunInsertPayload, 'duration_minutes' | 'xp'>> = [
+  const integerFields: Array<
+    keyof Pick<StravaRunInsertPayload, 'duration_minutes' | 'duration_seconds' | 'xp'>
+  > = [
     'duration_minutes',
+    'duration_seconds',
     'xp',
   ]
 
