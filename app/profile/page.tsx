@@ -83,9 +83,16 @@ export default function ProfilePage() {
   const [passwordMessage, setPasswordMessage] = useState('')
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
-  const loadProfileData = useCallback(async (currentUser: User, isMounted = true) => {
+  const loadProfileData = useCallback(async (
+    currentUser: User,
+    options: { isMounted?: boolean; showLoading?: boolean } = {}
+  ) => {
+    const { isMounted = true, showLoading = true } = options
+
     setPageError('')
-    setProfileDataLoading(true)
+    if (showLoading) {
+      setProfileDataLoading(true)
+    }
 
     try {
       const profileFallback = {
@@ -161,7 +168,7 @@ export default function ProfilePage() {
         setPageError('Не удалось загрузить профиль')
       }
     } finally {
-      if (isMounted) {
+      if (isMounted && showLoading) {
         setProfileDataLoading(false)
       }
     }
@@ -234,7 +241,7 @@ export default function ProfilePage() {
     const currentUser = user
     let isMounted = true
 
-    void loadProfileData(currentUser, isMounted)
+    void loadProfileData(currentUser, { isMounted, showLoading: true })
 
     return () => {
       isMounted = false
@@ -503,7 +510,7 @@ export default function ProfilePage() {
       setStravaConnected(true)
       if (user) {
         await Promise.all([
-          loadProfileData(user),
+          loadProfileData(user, { showLoading: false }),
           loadStravaStatus(),
         ])
       }
