@@ -32,20 +32,20 @@ export async function GET() {
   } = await supabase.auth.getUser()
 
   if (error || !user) {
-    return NextResponse.redirect(
-      new URL('/login?error=strava_auth_required', process.env.NEXT_PUBLIC_APP_URL!)
-    )
+    return NextResponse.json({
+      ok: false,
+      step: 'no_user',
+      error: error?.message ?? null,
+    })
   }
 
   const state = crypto.randomUUID()
+  const authorizeUrl = buildStravaAuthorizeUrl(state)
 
-  cookieStore.set('strava_oauth_state', state, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 10,
+  return NextResponse.json({
+    ok: true,
+    step: 'has_user',
+    userId: user.id,
+    authorizeUrl,
   })
-
-  return NextResponse.redirect(buildStravaAuthorizeUrl(state))
 }
