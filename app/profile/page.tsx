@@ -501,7 +501,7 @@ export default function ProfilePage() {
       const payload = (await response.json()) as StravaSyncResponse
 
       if (!response.ok || !payload.ok) {
-        setPageError(payload.error || 'Не удалось синхронизировать Strava')
+        setPageError('Не удалось синхронизировать Strava')
         return
       }
 
