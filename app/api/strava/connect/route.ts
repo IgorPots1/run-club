@@ -31,7 +31,6 @@ export async function GET() {
   }
 
   const state = crypto.randomUUID()
-  const cookieStore = await cookies()
   cookieStore.set('strava_oauth_state', state, {
     httpOnly: true,
     sameSite: 'lax',
