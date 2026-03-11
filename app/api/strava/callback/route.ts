@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { exchangeStravaCodeForToken } from '@/lib/strava/strava-client'
 
 export async function GET(request: Request) {
@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   const state = url.searchParams.get('state')
   const cookieStore = await cookies()
   const storedState = cookieStore.get('strava_oauth_state')?.value
+  const connectUserId = cookieStore.get('strava_connect_user_id')?.value ?? null
 
   if (!code) {
     return NextResponse.json({
@@ -26,15 +27,14 @@ export async function GET(request: Request) {
     })
   }
 
-  const { supabase, user, error } = await getAuthenticatedUser()
-
-  if (error || !user) {
+  if (!connectUserId) {
     return NextResponse.json({
       ok: false,
-      step: 'auth_required',
-      error: error?.message ?? null,
+      step: 'missing_connect_user_id',
     })
   }
+
+  const supabase = await createSupabaseServerClient()
 
   try {
     const tokenResponse = await exchangeStravaCodeForToken(code)
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
     const { error: upsertError } = await supabase.from('strava_connections').upsert(
       {
-        user_id: user.id,
+        user_id: connectUserId,
         strava_athlete_id: tokenResponse.athlete.id,
         access_token: tokenResponse.access_token,
         refresh_token: tokenResponse.refresh_token,
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
       ok: true,
       step: 'connected',
       athleteId: String(tokenResponse.athlete.id),
-      userId: user.id,
+      userId: connectUserId,
     })
   } catch (caughtError) {
     return NextResponse.json({
