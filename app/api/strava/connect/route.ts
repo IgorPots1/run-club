@@ -5,6 +5,7 @@ import { buildStravaAuthorizeUrl } from '@/lib/strava/strava-client'
 
 export async function GET() {
   const cookieStore = await cookies()
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -14,23 +15,30 @@ export async function GET() {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          } catch {
+          }
         },
       },
     }
   )
+
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser()
 
   if (error || !user) {
-    return NextResponse.redirect(new URL('/login?error=strava_auth_required', process.env.NEXT_PUBLIC_APP_URL))
+    return NextResponse.redirect(
+      new URL('/login?error=strava_auth_required', process.env.NEXT_PUBLIC_APP_URL!)
+    )
   }
 
   const state = crypto.randomUUID()
+
   cookieStore.set('strava_oauth_state', state, {
     httpOnly: true,
     sameSite: 'lax',
