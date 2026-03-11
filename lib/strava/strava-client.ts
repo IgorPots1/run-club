@@ -62,7 +62,7 @@ export async function fetchStravaActivities(
 ): Promise<StravaActivitySummary[]> {
   const params = new URLSearchParams({
     after: String(afterUnixSeconds),
-    per_page: '100',
+    per_page: '200',
   })
 
   const response = await fetch(`${STRAVA_ACTIVITIES_URL}?${params.toString()}`, {

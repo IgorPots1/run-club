@@ -500,6 +500,30 @@ export default function RunsPage() {
     }
   }, [fetchRuns, user])
 
+  useEffect(() => {
+    if (!user) return
+
+    const currentUser = user
+
+    function handleRunsUpdated() {
+      void fetchRuns(currentUser)
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === 'run-club:runs-last-updated') {
+        void fetchRuns(currentUser)
+      }
+    }
+
+    window.addEventListener('run-club:runs-updated', handleRunsUpdated)
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener('run-club:runs-updated', handleRunsUpdated)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [fetchRuns, user])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!user || submitting) return

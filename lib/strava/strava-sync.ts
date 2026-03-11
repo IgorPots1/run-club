@@ -6,7 +6,7 @@ import type { StravaActivitySummary, StravaInitialSyncResult } from './strava-ty
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
-const STRAVA_SYNC_WINDOW_DAYS = 7
+const STRAVA_INITIAL_SYNC_WINDOW_DAYS = 30
 const MAX_SYNC_ERROR_DETAILS = 10
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
 
@@ -222,9 +222,28 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     }
   }
 
-  const afterUnixSeconds = Math.floor(
-    (Date.now() - STRAVA_SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000) / 1000
-  )
+  const { data: latestImportedRun, error: latestImportedRunError } = await supabase
+    .from('runs')
+    .select('created_at')
+    .eq('user_id', userId)
+    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestImportedRunError) {
+    throw new Error(latestImportedRunError.message)
+  }
+
+  const latestImportedRunTimestamp = latestImportedRun?.created_at
+    ? Math.floor(new Date(latestImportedRun.created_at).getTime() / 1000)
+    : null
+  const afterUnixSeconds = latestImportedRunTimestamp
+    ? Math.max(0, latestImportedRunTimestamp - 1)
+    : Math.floor(
+        (Date.now() - STRAVA_INITIAL_SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000) / 1000
+      )
+
   const activities = await fetchStravaActivities(connection.access_token, afterUnixSeconds)
   const runActivities = activities.filter(isValidStravaRun)
   const externalIds = runActivities.map((activity) => String(activity.id))

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
@@ -83,6 +83,120 @@ export default function ProfilePage() {
   const [passwordMessage, setPasswordMessage] = useState('')
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
+  const loadProfileData = useCallback(async (currentUser: User, isMounted = true) => {
+    setPageError('')
+    setProfileDataLoading(true)
+
+    try {
+      const profileFallback = {
+        id: currentUser.id,
+        email: currentUser.email ?? '',
+        name: '',
+        nickname: '',
+        avatar_url: null,
+      }
+
+      try {
+        await ensureProfileExists(currentUser)
+      } catch {
+        if (isMounted) {
+          setPageError('Не удалось загрузить профиль')
+        }
+      }
+
+      const [
+        { data: profileData, error: profileError },
+        { data: runs, error: runsError },
+        challengeXpByUser,
+        likeXpByUser,
+      ] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .maybeSingle(),
+        supabase
+          .from('runs')
+          .select('xp, distance_km')
+          .eq('user_id', currentUser.id),
+        loadChallengeXpByUser(),
+        loadLikeXpByUser(),
+      ])
+
+      if (!isMounted) return
+
+      if (profileError || runsError) {
+        setPageError('Не удалось загрузить профиль')
+      }
+
+      const nextProfile = profileData
+        ? {
+            id: profileData.id,
+            email: profileData.email ?? currentUser.email ?? '',
+            name: profileData.name ?? '',
+            nickname: profileData.nickname ?? '',
+            avatar_url: profileData.avatar_url ?? null,
+          }
+        : profileFallback
+
+      const safeRuns = runs ?? []
+
+      setProfile(nextProfile)
+      setName(nextProfile.name ?? '')
+      setNickname(nextProfile.nickname ?? '')
+      setInitialProfileForm({
+        name: nextProfile.name ?? '',
+        nickname: nextProfile.nickname ?? '',
+      })
+      setEmail(nextProfile.email ?? currentUser.email ?? '')
+      setTotalXp(
+        safeRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0) +
+        (challengeXpByUser[currentUser.id] ?? 0) +
+        (likeXpByUser[currentUser.id] ?? 0)
+      )
+      setTotalKm(safeRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0))
+      setRunsCount(safeRuns.length)
+    } catch {
+      if (isMounted) {
+        setPageError('Не удалось загрузить профиль')
+      }
+    } finally {
+      if (isMounted) {
+        setProfileDataLoading(false)
+      }
+    }
+  }, [])
+
+  const loadStravaStatus = useCallback(async (isMounted = true) => {
+    setLoadingStravaStatus(true)
+
+    try {
+      const response = await fetch('/api/strava/status', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'include',
+      })
+
+      const payload = (await response.json()) as StravaStatusResponse
+
+      if (!isMounted) return
+
+      if (!response.ok || !payload.ok) {
+        setStravaConnected(false)
+        return
+      }
+
+      setStravaConnected(payload.connected || payload.hasImportedRuns)
+    } catch {
+      if (!isMounted) return
+      setStravaConnected(false)
+    } finally {
+      if (isMounted) {
+        setLoadingStravaStatus(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     let isMounted = true
 
@@ -120,144 +234,24 @@ export default function ProfilePage() {
     const currentUser = user
     let isMounted = true
 
-    async function loadProfileData() {
-      setPageError('')
-      setProfileDataLoading(true)
-
-      try {
-        const profileFallback = {
-          id: currentUser.id,
-          email: currentUser.email ?? '',
-          name: '',
-          nickname: '',
-          avatar_url: null,
-        }
-
-        try {
-          await ensureProfileExists(currentUser)
-        } catch {
-          if (isMounted) {
-            setPageError('Не удалось загрузить профиль')
-          }
-        }
-
-        const [
-          { data: profileData, error: profileError },
-          { data: runs, error: runsError },
-          challengeXpByUser,
-          likeXpByUser,
-        ] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .maybeSingle(),
-          supabase
-            .from('runs')
-            .select('xp, distance_km')
-            .eq('user_id', currentUser.id),
-          loadChallengeXpByUser(),
-          loadLikeXpByUser(),
-        ])
-
-        if (!isMounted) return
-
-        console.log('[profile] load', {
-          authUserId: currentUser.id,
-          profileData,
-          profileError,
-        })
-
-        if (profileError || runsError) {
-          setPageError('Не удалось загрузить профиль')
-        }
-
-        const nextProfile = profileData
-          ? {
-              id: profileData.id,
-              email: profileData.email ?? currentUser.email ?? '',
-              name: profileData.name ?? '',
-              nickname: profileData.nickname ?? '',
-              avatar_url: profileData.avatar_url ?? null,
-            }
-          : profileFallback
-
-        const safeRuns = runs ?? []
-
-        setProfile(nextProfile)
-        setName(nextProfile.name ?? '')
-        setNickname(nextProfile.nickname ?? '')
-        setInitialProfileForm({
-          name: nextProfile.name ?? '',
-          nickname: nextProfile.nickname ?? '',
-        })
-        setEmail(nextProfile.email ?? currentUser.email ?? '')
-        setTotalXp(
-          safeRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0) +
-          (challengeXpByUser[currentUser.id] ?? 0) +
-          (likeXpByUser[currentUser.id] ?? 0)
-        )
-        setTotalKm(safeRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0))
-        setRunsCount(safeRuns.length)
-      } catch {
-        if (isMounted) {
-          setPageError('Не удалось загрузить профиль')
-        }
-      } finally {
-        if (isMounted) {
-          setProfileDataLoading(false)
-        }
-      }
-    }
-
-    void loadProfileData()
+    void loadProfileData(currentUser, isMounted)
 
     return () => {
       isMounted = false
     }
-  }, [user])
+  }, [loadProfileData, user])
 
   useEffect(() => {
     if (!user) return
 
     let isMounted = true
 
-    async function loadStravaStatus() {
-      setLoadingStravaStatus(true)
-
-      try {
-        const response = await fetch('/api/strava/status', {
-          method: 'GET',
-          cache: 'no-store',
-          credentials: 'include',
-        })
-
-        const payload = (await response.json()) as StravaStatusResponse
-
-        if (!isMounted) return
-
-        if (!response.ok || !payload.ok) {
-          setStravaConnected(false)
-          return
-        }
-
-        setStravaConnected(payload.connected || payload.hasImportedRuns)
-      } catch {
-        if (!isMounted) return
-        setStravaConnected(false)
-      } finally {
-        if (isMounted) {
-          setLoadingStravaStatus(false)
-        }
-      }
-    }
-
-    void loadStravaStatus()
+    void loadStravaStatus(isMounted)
 
     return () => {
       isMounted = false
     }
-  }, [user])
+  }, [loadStravaStatus, user])
 
   useEffect(() => {
     return () => {
@@ -505,11 +499,16 @@ export default function ProfilePage() {
         return
       }
 
-      setStravaSyncMessage(`Imported: ${payload.imported} · Skipped: ${payload.skipped}`)
+      setStravaSyncMessage(`Импортировано: ${payload.imported} · Пропущено: ${payload.skipped}`)
       setStravaConnected(true)
-      window.setTimeout(() => {
-        window.location.reload()
-      }, 700)
+      if (user) {
+        await Promise.all([
+          loadProfileData(user),
+          loadStravaStatus(),
+        ])
+      }
+      localStorage.setItem('run-club:runs-last-updated', String(Date.now()))
+      window.dispatchEvent(new Event('run-club:runs-updated'))
     } catch {
       setPageError('Не удалось синхронизировать Strava')
     } finally {
@@ -763,14 +762,14 @@ export default function ProfilePage() {
             {loadingStravaStatus ? (
               <p className="app-text-secondary text-sm">Проверяем подключение...</p>
             ) : stravaConnected ? (
-              <p className="app-text-primary text-sm font-medium">Strava connected ✅</p>
+              <p className="app-text-primary text-sm font-medium">Strava подключена ✅</p>
             ) : (
               <button
                 type="button"
                 onClick={handleConnectStrava}
                 className="app-button-primary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
               >
-                Connect Strava
+                Подключить Strava
               </button>
             )}
             <button
@@ -779,7 +778,7 @@ export default function ProfilePage() {
               disabled={syncingStrava || loadingStravaStatus || !stravaConnected}
               className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              {syncingStrava ? 'Syncing...' : 'Sync Strava'}
+              {syncingStrava ? 'Синхронизация...' : 'Синхронизировать Strava'}
             </button>
             {stravaSyncMessage ? <p className="app-text-secondary text-sm">{stravaSyncMessage}</p> : null}
           </div>
