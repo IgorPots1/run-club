@@ -3,10 +3,6 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { exchangeStravaCodeForToken } from '@/lib/strava/strava-client'
 
-function buildAppRedirect(path: string) {
-  return new URL(path, process.env.NEXT_PUBLIC_APP_URL)
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
@@ -14,22 +10,42 @@ export async function GET(request: Request) {
   const cookieStore = await cookies()
   const storedState = cookieStore.get('strava_oauth_state')?.value
 
-  if (!code || !state || !storedState || state !== storedState) {
-    const response = NextResponse.redirect(buildAppRedirect('/profile?error=strava_callback'))
-    response.cookies.delete('strava_oauth_state')
-    return response
+  if (!code) {
+    return NextResponse.json({
+      ok: false,
+      step: 'missing_code',
+    })
+  }
+
+  if (!state || !storedState || state !== storedState) {
+    return NextResponse.json({
+      ok: false,
+      step: 'invalid_state',
+      expected: storedState ?? null,
+      received: state,
+    })
   }
 
   const { supabase, user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
-    const response = NextResponse.redirect(buildAppRedirect('/login?error=strava_auth_required'))
-    response.cookies.delete('strava_oauth_state')
-    return response
+    return NextResponse.json({
+      ok: false,
+      step: 'auth_required',
+      error: error?.message ?? null,
+    })
   }
 
   try {
     const tokenResponse = await exchangeStravaCodeForToken(code)
+
+    if (!tokenResponse.athlete?.id) {
+      return NextResponse.json({
+        ok: false,
+        step: 'missing_athlete',
+      })
+    }
+
     const { error: upsertError } = await supabase.from('strava_connections').upsert(
       {
         user_id: user.id,
@@ -47,17 +63,24 @@ export async function GET(request: Request) {
     )
 
     if (upsertError) {
-      const response = NextResponse.redirect(buildAppRedirect('/profile?error=strava_save_failed'))
-      response.cookies.delete('strava_oauth_state')
-      return response
+      return NextResponse.json({
+        ok: false,
+        step: 'db_upsert_failed',
+        error: upsertError.message,
+      })
     }
 
-    const response = NextResponse.redirect(buildAppRedirect('/profile?strava=connected'))
-    response.cookies.delete('strava_oauth_state')
-    return response
-  } catch {
-    const response = NextResponse.redirect(buildAppRedirect('/profile?error=strava_exchange_failed'))
-    response.cookies.delete('strava_oauth_state')
-    return response
+    return NextResponse.json({
+      ok: true,
+      step: 'connected',
+      athleteId: String(tokenResponse.athlete.id),
+      userId: user.id,
+    })
+  } catch (caughtError) {
+    return NextResponse.json({
+      ok: false,
+      step: 'token_exchange_failed',
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown token exchange error',
+    })
   }
 }
