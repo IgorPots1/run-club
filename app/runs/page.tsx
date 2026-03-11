@@ -2,7 +2,7 @@
 
 import { Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm } from '@/lib/format'
@@ -21,6 +21,8 @@ type Run = {
   duration_minutes: number
   xp: number
   created_at: string
+  external_source?: string | null
+  external_id?: string | null
 }
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
@@ -361,7 +363,7 @@ export default function RunsPage() {
     }
   }, [router])
 
-  async function fetchRuns(currentUser: User) {
+  const fetchRuns = useCallback(async (currentUser: User) => {
     setLoadingRuns(true)
     setRunsError('')
 
@@ -378,13 +380,20 @@ export default function RunsPage() {
         return
       }
 
-      setRuns((data as Run[] | null) ?? [])
+      const normalizedRuns = ((data as Run[] | null) ?? []).map((run) => ({
+        ...run,
+        distance_km: Number(run.distance_km ?? 0),
+        duration_minutes: Number(run.duration_minutes ?? 0),
+        xp: Number(run.xp ?? 0),
+      }))
+
+      setRuns(normalizedRuns)
     } catch {
       setRunsError('Не удалось загрузить тренировки')
     } finally {
       setLoadingRuns(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -395,7 +404,31 @@ export default function RunsPage() {
     }
 
     void loadRuns()
-  }, [user])
+  }, [fetchRuns, user])
+
+  useEffect(() => {
+    if (!user) return
+
+    const currentUser = user
+
+    function handleVisibilityRefresh() {
+      if (document.visibilityState === 'visible') {
+        void fetchRuns(currentUser)
+      }
+    }
+
+    function handleWindowFocus() {
+      void fetchRuns(currentUser)
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleVisibilityRefresh)
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh)
+    }
+  }, [fetchRuns, user])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
