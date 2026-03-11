@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
+import { buildStravaAuthorizeUrl } from '@/lib/strava/strava-client'
 
 export async function GET() {
-  return NextResponse.json({ ok: true, route: 'strava_connect_reached' })
+  return NextResponse.redirect(buildStravaAuthorizeUrl('debug-state'))
 }
