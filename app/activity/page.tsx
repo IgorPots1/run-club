@@ -142,6 +142,7 @@ export default function ActivityPage() {
           yAxisWidth: 40,
           chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
           barCategoryGap: '30%',
+          barSize: 18,
           maxBarSize: 24,
         }
       : period === 'month'
@@ -154,6 +155,7 @@ export default function ActivityPage() {
             chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
             barCategoryGap:
               summary.chartData.length <= 4 ? '34%' : summary.chartData.length <= 8 ? '26%' : '18%',
+            barSize: summary.chartData.length <= 4 ? 20 : 14,
             maxBarSize: summary.chartData.length <= 4 ? 28 : 22,
           }
         : period === 'year'
@@ -165,6 +167,7 @@ export default function ActivityPage() {
               yAxisWidth: 42,
               chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
               barCategoryGap: '46%',
+              barSize: 12,
               maxBarSize: 16,
             }
           : {
@@ -175,6 +178,7 @@ export default function ActivityPage() {
               yAxisWidth: 42,
               chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
               barCategoryGap: summary.chartData.length === 1 ? '72%' : '36%',
+              barSize: summary.chartData.length === 1 ? 18 : 14,
               maxBarSize: summary.chartData.length === 1 ? 24 : 20,
             }
   const activeBar =
@@ -299,6 +303,7 @@ export default function ActivityPage() {
                             dataKey="distance"
                             fill="var(--accent-strong)"
                             radius={[8, 8, 0, 0]}
+                            barSize={chartConfig.barSize}
                             maxBarSize={chartConfig.maxBarSize}
                             onMouseEnter={(_, index) => {
                               if (summary.chartData[index]?.distance > 0) {
