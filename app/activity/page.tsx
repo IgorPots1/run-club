@@ -118,25 +118,65 @@ export default function ActivityPage() {
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
   const isVerySmallScreen = viewportWidth !== null && viewportWidth < 390
   const isSmallScreen = viewportWidth !== null && viewportWidth < 480
-  const yearXAxisInterval = viewportWidth !== null && viewportWidth < 360 ? 2 : isSmallScreen ? 1 : 0
-  const mobileXAxisInterval =
-    period === 'month'
-      ? 4
+  const chartTitle =
+    period === 'year'
+      ? 'Дистанция по месяцам'
       : period === 'all'
-        ? (isVerySmallScreen && summary.chartData.length > 4 ? 1 : 0)
-        : period === 'year'
-          ? yearXAxisInterval
-          : 0
+        ? 'Дистанция по годам'
+        : 'Дистанция по дням'
+  const shouldRenderEmptyState = summary.chartData.length === 0
   const chartTickFontSize =
     period === 'year' && viewportWidth !== null && viewportWidth < 360
       ? 10
       : isVerySmallScreen
         ? 11
         : 12
-  const xAxisMinTickGap = period === 'year' ? (isSmallScreen ? 20 : 14) : isVerySmallScreen ? 16 : 10
-  const xAxisHeight = period === 'year' ? 40 : 30
-  const chartTitle = period === 'year' ? 'Дистанция по месяцам' : 'График дистанции'
-  const shouldRenderEmptyState = period !== 'year' && summary.chartData.every((item) => item.distance === 0)
+  const xAxisHeight = period === 'year' || period === 'all' ? 40 : 32
+  const chartConfig =
+    period === 'week'
+      ? {
+          interval: 0,
+          minTickGap: 10,
+          tickMargin: 8,
+          xPadding: { left: 6, right: 6 },
+          yAxisWidth: 40,
+          chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
+          barCategoryGap: '30%',
+          maxBarSize: 24,
+        }
+      : period === 'month'
+        ? {
+            interval: isVerySmallScreen && summary.chartData.length > 10 ? 1 : 0,
+            minTickGap: isVerySmallScreen ? 12 : 10,
+            tickMargin: 8,
+            xPadding: { left: 4, right: 4 },
+            yAxisWidth: 40,
+            chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
+            barCategoryGap:
+              summary.chartData.length <= 4 ? '34%' : summary.chartData.length <= 8 ? '26%' : '18%',
+            maxBarSize: summary.chartData.length <= 4 ? 28 : 22,
+          }
+        : period === 'year'
+          ? {
+              interval: viewportWidth !== null && viewportWidth < 360 ? 2 : isSmallScreen ? 1 : 0,
+              minTickGap: isSmallScreen ? 20 : 14,
+              tickMargin: 10,
+              xPadding: { left: 8, right: 8 },
+              yAxisWidth: 42,
+              chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
+              barCategoryGap: '46%',
+              maxBarSize: 16,
+            }
+          : {
+              interval: isVerySmallScreen && summary.chartData.length > 5 ? 1 : 0,
+              minTickGap: isVerySmallScreen ? 16 : 12,
+              tickMargin: 10,
+              xPadding: summary.chartData.length === 1 ? { left: 32, right: 32 } : { left: 10, right: 10 },
+              yAxisWidth: 42,
+              chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
+              barCategoryGap: summary.chartData.length === 1 ? '72%' : '36%',
+              maxBarSize: summary.chartData.length === 1 ? 24 : 20,
+            }
   const activeBar =
     activeBarIndex === null || !summary.chartData[activeBarIndex]
       ? null
@@ -233,8 +273,8 @@ export default function ActivityPage() {
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
                           data={summary.chartData}
-                          margin={{ top: 4, right: 4, left: period === 'year' ? 12 : 0, bottom: period === 'year' ? 6 : 0 }}
-                          barCategoryGap={period === 'year' ? '48%' : '18%'}
+                          margin={chartConfig.chartMargin}
+                          barCategoryGap={chartConfig.barCategoryGap}
                           accessibilityLayer={false}
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
@@ -242,24 +282,24 @@ export default function ActivityPage() {
                             dataKey="label"
                             tickLine={false}
                             axisLine={false}
-                            interval={mobileXAxisInterval}
-                            minTickGap={xAxisMinTickGap}
-                            tickMargin={period === 'year' ? 10 : 8}
+                            interval={chartConfig.interval}
+                            minTickGap={chartConfig.minTickGap}
+                            tickMargin={chartConfig.tickMargin}
                             height={xAxisHeight}
-                            padding={period === 'year' ? { left: 8, right: 8 } : { left: 0, right: 0 }}
+                            padding={chartConfig.xPadding}
                             tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
                           />
                           <YAxis
                             tickLine={false}
                             axisLine={false}
                             tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
-                            width={period === 'year' ? 40 : 30}
+                            width={chartConfig.yAxisWidth}
                           />
                           <Bar
                             dataKey="distance"
                             fill="var(--accent-strong)"
                             radius={[8, 8, 0, 0]}
-                            maxBarSize={period === 'year' ? 18 : 28}
+                            maxBarSize={chartConfig.maxBarSize}
                             onMouseEnter={(_, index) => {
                               if (summary.chartData[index]?.distance > 0) {
                                 setActiveBarIndex(index)
