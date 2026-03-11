@@ -23,6 +23,8 @@ type Run = {
   created_at: string
 }
 
+const DEFAULT_WORKOUT_NAME = 'Бег'
+
 function formatDurationMinutesLabel(totalMinutes: number) {
   if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
     return '0 мин'
@@ -83,7 +85,7 @@ function formatRunDateLabel(dateString: string) {
 }
 
 function getRunDisplayName(run: Pick<Run, 'name' | 'title'>) {
-  return run.name?.trim() || run.title?.trim() || 'Пробежка'
+  return run.name?.trim() || run.title?.trim() || DEFAULT_WORKOUT_NAME
 }
 
 function getTodayDateValue() {
@@ -266,7 +268,7 @@ export default function RunsPage() {
     ? todayParts.day
     : getDaysInMonth(draftRunYear, draftRunMonth)
   const isWorkoutFormValid =
-    normalizedWorkoutName.length > 0 &&
+    Boolean(selectedDate) &&
     Number.isFinite(selectedDistanceKm) &&
     selectedDistanceKm > 0 &&
     Number.isFinite(selectedDurationMinutes) &&
@@ -465,14 +467,9 @@ export default function RunsPage() {
     if (!user || submitting) return
 
     const currentUser = user
-    const normalizedTitle = normalizedWorkoutName
+    const normalizedTitle = normalizedWorkoutName || DEFAULT_WORKOUT_NAME
     const d = selectedDistanceKm
     const dur = selectedDurationMinutes
-
-    if (!normalizedTitle) {
-      setError('Введите название тренировки')
-      return
-    }
 
     if (!Number.isFinite(d) || d <= 0) {
       setError('Укажите дистанцию больше 0 км')
@@ -577,11 +574,11 @@ export default function RunsPage() {
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
       <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
-          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки</label>
+          <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки (необязательно)</label>
           <input
             id="title"
             type="text"
-            placeholder="Например: Интервалы или парк"
+            placeholder={`По умолчанию: ${DEFAULT_WORKOUT_NAME}`}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={submitting}
@@ -660,7 +657,11 @@ export default function RunsPage() {
         <button
           type="submit"
           disabled={submitting || !isWorkoutFormValid}
-          className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          className={`min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed sm:w-auto ${
+            submitting || !isWorkoutFormValid
+              ? 'app-button-secondary text-[var(--text-muted)] opacity-70'
+              : 'app-button-primary shadow-sm'
+          }`}
         >
           {submitting ? 'Сохраняем тренировку...' : 'Добавить тренировку'}
         </button>
