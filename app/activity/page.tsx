@@ -117,7 +117,6 @@ export default function ActivityPage() {
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
   const isVerySmallScreen = viewportWidth !== null && viewportWidth < 390
-  const isSmallScreen = viewportWidth !== null && viewportWidth < 480
   const chartTitle =
     period === 'year'
       ? 'Дистанция по месяцам'
@@ -126,8 +125,12 @@ export default function ActivityPage() {
         : 'Дистанция по дням'
   const shouldRenderEmptyState = summary.chartData.length === 0
   const chartTickFontSize =
-    period === 'year' && viewportWidth !== null && viewportWidth < 360
-      ? 10
+    period === 'year'
+      ? viewportWidth !== null && viewportWidth < 360
+        ? 9
+        : isVerySmallScreen
+          ? 10
+          : 11
       : isVerySmallScreen
         ? 11
         : 12
@@ -160,10 +163,10 @@ export default function ActivityPage() {
           }
         : period === 'year'
           ? {
-              interval: viewportWidth !== null && viewportWidth < 360 ? 2 : isSmallScreen ? 1 : 0,
-              minTickGap: isSmallScreen ? 20 : 14,
-              tickMargin: 10,
-              xPadding: { left: 8, right: 8 },
+              interval: 0,
+              minTickGap: 0,
+              tickMargin: 8,
+              xPadding: { left: 4, right: 4 },
               yAxisWidth: 42,
               chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
               barCategoryGap: '46%',
