@@ -1,23 +1,19 @@
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { syncStravaRuns } from '@/lib/strava/strava-sync'
 
-export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const queryUserId = url.searchParams.get('userId')?.trim() ?? ''
-  const cookieStore = await cookies()
-  const cookieUserId = cookieStore.get('strava_connect_user_id')?.value?.trim() ?? ''
-  const userId = queryUserId || cookieUserId
+export async function GET() {
+  const { user, error } = await getAuthenticatedUser()
 
-  if (!userId) {
+  if (error || !user) {
     return NextResponse.json({
       ok: false,
-      step: 'missing_user_id',
+      step: 'auth_required',
     })
   }
 
   try {
-    const result = await syncStravaRuns(userId)
+    const result = await syncStravaRuns(user.id)
 
     if (!result.ok) {
       return NextResponse.json(result)
@@ -31,6 +27,7 @@ export async function GET(request: Request) {
       failed: result.failed,
       totalRunsFetched: result.totalRunsFetched,
       errors: result.errors,
+      userId: user.id,
     })
   } catch (caughtError) {
     return NextResponse.json({

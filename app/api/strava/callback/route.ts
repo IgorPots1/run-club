@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { exchangeStravaCodeForToken } from '@/lib/strava/strava-client'
 
@@ -9,7 +10,9 @@ export async function GET(request: Request) {
   const state = url.searchParams.get('state')
   const cookieStore = await cookies()
   const storedState = cookieStore.get('strava_oauth_state')?.value
-  const connectUserId = cookieStore.get('strava_connect_user_id')?.value ?? null
+  const cookieUserId = cookieStore.get('strava_connect_user_id')?.value ?? null
+  const { user: authenticatedUser } = await getAuthenticatedUser()
+  const connectUserId = authenticatedUser?.id ?? cookieUserId
 
   if (!code) {
     return NextResponse.json({
@@ -31,6 +34,15 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: false,
       step: 'missing_connect_user_id',
+    })
+  }
+
+  if (authenticatedUser?.id && cookieUserId && authenticatedUser.id !== cookieUserId) {
+    return NextResponse.json({
+      ok: false,
+      step: 'user_mismatch',
+      authenticatedUserId: authenticatedUser.id,
+      cookieUserId,
     })
   }
 

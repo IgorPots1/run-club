@@ -1,16 +1,13 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { buildStravaAuthorizeUrl } from '@/lib/strava/strava-client'
 
-export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const userId = url.searchParams.get('userId')?.trim() ?? ''
+export async function GET() {
+  const { user, error } = await getAuthenticatedUser()
 
-  if (!userId) {
-    return NextResponse.json({
-      ok: false,
-      step: 'missing_user_id',
-    })
+  if (error || !user) {
+    return NextResponse.redirect(new URL('/login?error=strava_auth_required', process.env.NEXT_PUBLIC_APP_URL))
   }
 
   const state = crypto.randomUUID()
@@ -24,7 +21,7 @@ export async function GET(request: Request) {
     maxAge: 60 * 10,
   })
 
-  cookieStore.set('strava_connect_user_id', userId, {
+  cookieStore.set('strava_connect_user_id', user.id, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
