@@ -753,7 +753,7 @@ export default function RunsPage() {
           </div>
         ) : (
           runs.map((run) => (
-            <div key={run.id} className="compact-run-card app-card overflow-hidden rounded-2xl border p-4 shadow-sm">
+            <div key={run.id} className="compact-run-card app-card relative overflow-hidden rounded-2xl border p-4 shadow-sm">
               <div className="compact-run-card-layout flex flex-col gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="app-text-primary break-words text-base font-semibold">
@@ -782,6 +782,11 @@ export default function RunsPage() {
                   <span>{deletingRunIds.includes(run.id) ? 'Удаляем...' : 'Удалить'}</span>
                 </button>
               </div>
+              {run.external_source === 'strava' ? (
+                <span className="app-text-secondary absolute bottom-4 right-4 rounded-full border px-2 py-1 text-[10px] font-semibold tracking-wide">
+                  STRAVA
+                </span>
+              ) : null}
             </div>
           ))
         )}

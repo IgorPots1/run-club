@@ -29,6 +29,30 @@ type ProfileFormState = {
   nickname: string
 }
 
+type StravaStatusResponse =
+  | {
+      ok: true
+      connected: boolean
+      hasImportedRuns: boolean
+    }
+  | {
+      ok: false
+      step?: string
+      error?: string
+    }
+
+type StravaSyncResponse =
+  | {
+      ok: true
+      imported: number
+      skipped: number
+    }
+  | {
+      ok: false
+      step?: string
+      error?: string
+    }
+
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -49,6 +73,10 @@ export default function ProfilePage() {
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
+  const [stravaConnected, setStravaConnected] = useState(false)
+  const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
+  const [syncingStrava, setSyncingStrava] = useState(false)
+  const [stravaSyncMessage, setStravaSyncMessage] = useState('')
   const [profileDataLoading, setProfileDataLoading] = useState(true)
   const [pageError, setPageError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
@@ -183,6 +211,48 @@ export default function ProfilePage() {
     }
 
     void loadProfileData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+
+    let isMounted = true
+
+    async function loadStravaStatus() {
+      setLoadingStravaStatus(true)
+
+      try {
+        const response = await fetch('/api/strava/status', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'include',
+        })
+
+        const payload = (await response.json()) as StravaStatusResponse
+
+        if (!isMounted) return
+
+        if (!response.ok || !payload.ok) {
+          setStravaConnected(false)
+          return
+        }
+
+        setStravaConnected(payload.connected || payload.hasImportedRuns)
+      } catch {
+        if (!isMounted) return
+        setStravaConnected(false)
+      } finally {
+        if (isMounted) {
+          setLoadingStravaStatus(false)
+        }
+      }
+    }
+
+    void loadStravaStatus()
 
     return () => {
       isMounted = false
@@ -407,6 +477,43 @@ export default function ProfilePage() {
       setPageError('Не удалось обновить аватар')
     } finally {
       setUploading(false)
+    }
+  }
+
+  function handleConnectStrava() {
+    window.location.href = '/api/strava/connect'
+  }
+
+  async function handleSyncStrava() {
+    if (syncingStrava) return
+
+    setSyncingStrava(true)
+    setStravaSyncMessage('')
+    setPageError('')
+
+    try {
+      const response = await fetch('/api/strava/sync', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'include',
+      })
+
+      const payload = (await response.json()) as StravaSyncResponse
+
+      if (!response.ok || !payload.ok) {
+        setPageError(payload.error || 'Не удалось синхронизировать Strava')
+        return
+      }
+
+      setStravaSyncMessage(`Imported: ${payload.imported} · Skipped: ${payload.skipped}`)
+      setStravaConnected(true)
+      window.setTimeout(() => {
+        window.location.reload()
+      }, 700)
+    } catch {
+      setPageError('Не удалось синхронизировать Strava')
+    } finally {
+      setSyncingStrava(false)
     }
   }
 
@@ -651,6 +758,31 @@ export default function ProfilePage() {
               {changingPassword ? 'Обновляем пароль...' : 'Изменить пароль'}
             </button>
           </form>
+          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-lg font-semibold">Strava</h2>
+            {loadingStravaStatus ? (
+              <p className="app-text-secondary text-sm">Проверяем подключение...</p>
+            ) : stravaConnected ? (
+              <p className="app-text-primary text-sm font-medium">Strava connected ✅</p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConnectStrava}
+                className="app-button-primary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
+              >
+                Connect Strava
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSyncStrava}
+              disabled={syncingStrava || loadingStravaStatus || !stravaConnected}
+              className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
+              {syncingStrava ? 'Syncing...' : 'Sync Strava'}
+            </button>
+            {stravaSyncMessage ? <p className="app-text-secondary text-sm">{stravaSyncMessage}</p> : null}
+          </div>
           <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
             <div className="flex items-center justify-between gap-4 border-b py-2">
