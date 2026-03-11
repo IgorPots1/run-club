@@ -1,6 +1,6 @@
 export type StravaConnectionStatus = 'connected' | 'disconnected' | 'error'
 
-export type StravaActivityType = 'Run'
+export type StravaActivityType = 'Run' | 'TrailRun' | 'VirtualRun'
 
 export type StravaAthleteSummary = {
   id: number

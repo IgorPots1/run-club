@@ -2,13 +2,14 @@ import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { fetchStravaActivities } from './strava-client'
-import type { StravaActivitySummary, StravaInitialSyncResult } from './strava-types'
+import type { StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
 const STRAVA_INITIAL_SYNC_WINDOW_DAYS = 30
 const MAX_SYNC_ERROR_DETAILS = 10
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
+const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run', 'TrailRun', 'VirtualRun']
 
 type StravaRunInsertPayload = {
   user_id: string
@@ -130,7 +131,7 @@ function normalizeImportedRunName(rawName: string) {
 
 function isValidStravaRun(activity: StravaActivitySummary) {
   return (
-    activity.type === 'Run' &&
+    ALLOWED_STRAVA_RUN_TYPES.includes(activity.type as StravaActivityType) &&
     Number.isFinite(activity.distance) &&
     activity.distance > 0 &&
     Number.isFinite(activity.moving_time) &&
