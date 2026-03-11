@@ -57,6 +57,7 @@ export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showProfileSkeleton, setShowProfileSkeleton] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
@@ -267,6 +268,21 @@ export default function ProfilePage() {
       }
     }
   }, [cropImageSrc])
+
+  useEffect(() => {
+    if (!profileDataLoading) {
+      setShowProfileSkeleton(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowProfileSkeleton(true)
+    }, 200)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [profileDataLoading])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -554,7 +570,7 @@ export default function ProfilePage() {
     trimmedNewPassword === trimmedConfirmPassword
   const isChangePasswordDisabled = changingPassword || !isPasswordFormValid
 
-  if (profileDataLoading) {
+  if (profileDataLoading && showProfileSkeleton) {
     return (
       <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
         <div className="mx-auto max-w-xl p-4">
@@ -605,6 +621,14 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      </main>
+    )
+  }
+
+  if (profileDataLoading) {
+    return (
+      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="mx-auto max-w-xl p-4" />
       </main>
     )
   }
