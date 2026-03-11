@@ -191,6 +191,30 @@ function getDistanceParts(distanceKm: number) {
   }
 }
 
+function parseDurationPartInput(rawValue: string, maxValue?: number) {
+  const normalizedValue = rawValue.trim()
+
+  if (!normalizedValue) {
+    return 0
+  }
+
+  if (!/^\d+$/.test(normalizedValue)) {
+    return null
+  }
+
+  const parsedValue = Number(normalizedValue)
+
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return null
+  }
+
+  if (typeof maxValue === 'number' && parsedValue > maxValue) {
+    return null
+  }
+
+  return parsedValue
+}
+
 function formatCompactDurationLabel(hours: number, minutes: number, seconds: number) {
   if (hours > 0) {
     return `${formatTwoDigits(hours)}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
@@ -242,6 +266,11 @@ export default function RunsPage() {
   const [draftDurationHours, setDraftDurationHours] = useState(0)
   const [draftDurationClockMinutes, setDraftDurationClockMinutes] = useState(0)
   const [draftDurationSeconds, setDraftDurationSeconds] = useState(0)
+  const [durationEntryMode, setDurationEntryMode] = useState<'wheel' | 'manual'>('wheel')
+  const [draftDurationHoursInput, setDraftDurationHoursInput] = useState('0')
+  const [draftDurationMinutesInput, setDraftDurationMinutesInput] = useState('0')
+  const [draftDurationSecondsInput, setDraftDurationSecondsInput] = useState('0')
+  const [durationPickerError, setDurationPickerError] = useState('')
   const [draftRunYear, setDraftRunYear] = useState(todayParts.year)
   const [draftRunMonth, setDraftRunMonth] = useState(todayParts.month)
   const [draftRunDay, setDraftRunDay] = useState(todayParts.day)
@@ -298,6 +327,10 @@ export default function RunsPage() {
     setDraftDurationHours(durationHours)
     setDraftDurationClockMinutes(durationClockMinutes)
     setDraftDurationSeconds(durationSeconds)
+    setDraftDurationHoursInput(String(durationHours))
+    setDraftDurationMinutesInput(String(durationClockMinutes))
+    setDraftDurationSecondsInput(String(durationSeconds))
+    setDurationPickerError('')
     setDurationPickerOpen(true)
   }
 
@@ -381,6 +414,89 @@ export default function RunsPage() {
     setDraftDistanceInput(formatDistanceInputValue(draftDistanceWholeKm, draftDistanceTenthsKm, draftDistanceHundredthsKm))
     setDistancePickerOpen(false)
     setDistancePickerError('')
+  }
+
+  function syncDraftDurationInputs(hours: number, minutes: number, seconds: number) {
+    setDraftDurationHoursInput(String(hours))
+    setDraftDurationMinutesInput(String(minutes))
+    setDraftDurationSecondsInput(String(seconds))
+    setDurationPickerError('')
+  }
+
+  function handleDraftDurationHoursChange(nextHours: number) {
+    setDraftDurationHours(nextHours)
+    syncDraftDurationInputs(nextHours, draftDurationClockMinutes, draftDurationSeconds)
+  }
+
+  function handleDraftDurationMinutesChange(nextMinutes: number) {
+    setDraftDurationClockMinutes(nextMinutes)
+    syncDraftDurationInputs(draftDurationHours, nextMinutes, draftDurationSeconds)
+  }
+
+  function handleDraftDurationSecondsChange(nextSeconds: number) {
+    setDraftDurationSeconds(nextSeconds)
+    syncDraftDurationInputs(draftDurationHours, draftDurationClockMinutes, nextSeconds)
+  }
+
+  function handleDurationModeChange(nextMode: 'wheel' | 'manual') {
+    setDurationEntryMode(nextMode)
+    setDurationPickerError('')
+
+    if (nextMode === 'manual') {
+      syncDraftDurationInputs(draftDurationHours, draftDurationClockMinutes, draftDurationSeconds)
+    }
+  }
+
+  function handleDraftDurationInputChange(
+    part: 'hours' | 'minutes' | 'seconds',
+    nextValue: string
+  ) {
+    if (!/^\d*$/.test(nextValue)) {
+      return
+    }
+
+    setDurationPickerError('')
+
+    if (part === 'hours') {
+      setDraftDurationHoursInput(nextValue)
+      return
+    }
+
+    if (part === 'minutes') {
+      setDraftDurationMinutesInput(nextValue)
+      return
+    }
+
+    setDraftDurationSecondsInput(nextValue)
+  }
+
+  function applyDraftDuration() {
+    if (durationEntryMode === 'manual') {
+      const parsedHours = parseDurationPartInput(draftDurationHoursInput)
+      const parsedMinutes = parseDurationPartInput(draftDurationMinutesInput, 59)
+      const parsedSeconds = parseDurationPartInput(draftDurationSecondsInput, 59)
+
+      if (parsedHours == null || parsedMinutes == null || parsedSeconds == null) {
+        setDurationPickerError('Проверьте время: часы от 0, минуты и секунды от 0 до 59')
+        return
+      }
+
+      setDraftDurationHours(parsedHours)
+      setDraftDurationClockMinutes(parsedMinutes)
+      setDraftDurationSeconds(parsedSeconds)
+      setDurationHours(parsedHours)
+      setDurationClockMinutes(parsedMinutes)
+      setDurationSeconds(parsedSeconds)
+      syncDraftDurationInputs(parsedHours, parsedMinutes, parsedSeconds)
+      setDurationPickerOpen(false)
+      return
+    }
+
+    setDurationHours(draftDurationHours)
+    setDurationClockMinutes(draftDurationClockMinutes)
+    setDurationSeconds(draftDurationSeconds)
+    syncDraftDurationInputs(draftDurationHours, draftDurationClockMinutes, draftDurationSeconds)
+    setDurationPickerOpen(false)
   }
 
   useEffect(() => {
@@ -528,6 +644,10 @@ export default function RunsPage() {
       setDraftDurationHours(0)
       setDraftDurationClockMinutes(0)
       setDraftDurationSeconds(0)
+      setDraftDurationHoursInput('0')
+      setDraftDurationMinutesInput('0')
+      setDraftDurationSecondsInput('0')
+      setDurationPickerError('')
       setError('')
       await fetchRuns(currentUser)
     } catch {
@@ -827,36 +947,104 @@ export default function RunsPage() {
       <WheelPickerSheet
         title="Время"
         open={durationPickerOpen}
-        onCancel={() => setDurationPickerOpen(false)}
-        onDone={() => {
-          setDurationHours(draftDurationHours)
-          setDurationClockMinutes(draftDurationClockMinutes)
-          setDurationSeconds(draftDurationSeconds)
+        onCancel={() => {
           setDurationPickerOpen(false)
+          setDurationPickerError('')
         }}
+        onDone={applyDraftDuration}
       >
-        <div className="grid grid-cols-3 gap-2">
-          <WheelPickerColumn
-            label="ЧАСЫ"
-            value={draftDurationHours}
-            options={DURATION_HOUR_OPTIONS}
-            onChange={setDraftDurationHours}
-            formatter={formatTwoDigits}
-          />
-          <WheelPickerColumn
-            label="МИН"
-            value={draftDurationClockMinutes}
-            options={TIME_OPTIONS}
-            onChange={setDraftDurationClockMinutes}
-            formatter={formatTwoDigits}
-          />
-          <WheelPickerColumn
-            label="СЕК"
-            value={draftDurationSeconds}
-            options={TIME_OPTIONS}
-            onChange={setDraftDurationSeconds}
-            formatter={formatTwoDigits}
-          />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleDurationModeChange('wheel')}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                durationEntryMode === 'wheel' ? 'app-button-primary' : 'app-button-secondary'
+              }`}
+            >
+              Колесо
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDurationModeChange('manual')}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                durationEntryMode === 'manual' ? 'app-button-primary' : 'app-button-secondary'
+              }`}
+            >
+              Ввести вручную
+            </button>
+          </div>
+          {durationEntryMode === 'manual' ? (
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="duration_hours_manual" className="app-text-secondary mb-1 block text-sm">Часы</label>
+                <input
+                  id="duration_hours_manual"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={draftDurationHoursInput}
+                  onChange={(event) => handleDraftDurationInputChange('hours', event.target.value)}
+                  className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label htmlFor="duration_minutes_manual" className="app-text-secondary mb-1 block text-sm">Мин</label>
+                <input
+                  id="duration_minutes_manual"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={draftDurationMinutesInput}
+                  onChange={(event) => handleDraftDurationInputChange('minutes', event.target.value)}
+                  className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label htmlFor="duration_seconds_manual" className="app-text-secondary mb-1 block text-sm">Сек</label>
+                <input
+                  id="duration_seconds_manual"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={draftDurationSecondsInput}
+                  onChange={(event) => handleDraftDurationInputChange('seconds', event.target.value)}
+                  className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <WheelPickerColumn
+                label="ЧАСЫ"
+                value={draftDurationHours}
+                options={DURATION_HOUR_OPTIONS}
+                onChange={handleDraftDurationHoursChange}
+                formatter={formatTwoDigits}
+              />
+              <WheelPickerColumn
+                label="МИН"
+                value={draftDurationClockMinutes}
+                options={TIME_OPTIONS}
+                onChange={handleDraftDurationMinutesChange}
+                formatter={formatTwoDigits}
+              />
+              <WheelPickerColumn
+                label="СЕК"
+                value={draftDurationSeconds}
+                options={TIME_OPTIONS}
+                onChange={handleDraftDurationSecondsChange}
+                formatter={formatTwoDigits}
+              />
+            </div>
+          )}
+          <div className="app-surface-muted rounded-xl px-4 py-3">
+            <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Выбрано</p>
+            <p className="app-text-primary mt-1 text-base font-semibold">
+              {formatCompactDurationLabel(draftDurationHours, draftDurationClockMinutes, draftDurationSeconds)}
+            </p>
+          </div>
+          {durationPickerError ? <p className="text-sm text-red-600">{durationPickerError}</p> : null}
         </div>
       </WheelPickerSheet>
     </main>
