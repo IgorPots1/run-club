@@ -72,10 +72,6 @@ function isSameDay(left: Date, right: Date) {
   )
 }
 
-function isSameMonth(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth()
-}
-
 function isSameYear(left: Date, right: Date) {
   return left.getFullYear() === right.getFullYear()
 }
@@ -140,15 +136,18 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     const start = startOfYear(now)
     const months = Array.from({ length: 12 }, (_, index) => new Date(now.getFullYear(), index, 1))
     const filteredRuns = normalizedRuns.filter((run) => run.createdAt >= start)
+    const distanceByMonth = filteredRuns.reduce<Record<number, number>>((totals, run) => {
+      const monthIndex = run.createdAt.getMonth()
+      totals[monthIndex] = (totals[monthIndex] ?? 0) + run.distance
+      return totals
+    }, {})
 
     return {
       totalDistance: filteredRuns.reduce((sum, run) => sum + run.distance, 0),
       totalWorkouts: filteredRuns.length,
       chartData: months.map((month) => ({
         label: formatMonthLabel(month),
-        distance: filteredRuns
-          .filter((run) => isSameMonth(run.createdAt, month))
-          .reduce((sum, run) => sum + run.distance, 0),
+        distance: distanceByMonth[month.getMonth()] ?? 0,
       })),
     }
   }

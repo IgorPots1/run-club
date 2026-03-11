@@ -135,6 +135,8 @@ export default function ActivityPage() {
         : 12
   const xAxisMinTickGap = period === 'year' ? (isSmallScreen ? 20 : 14) : isVerySmallScreen ? 16 : 10
   const xAxisHeight = period === 'year' ? 40 : 30
+  const chartTitle = period === 'year' ? 'Дистанция по месяцам' : 'График дистанции'
+  const shouldRenderEmptyState = period !== 'year' && summary.chartData.every((item) => item.distance === 0)
   const activeBar =
     activeBarIndex === null || !summary.chartData[activeBarIndex]
       ? null
@@ -216,8 +218,8 @@ export default function ActivityPage() {
               </div>
 
               <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
-                <p className="app-text-secondary text-sm font-medium">График дистанции</p>
-                {summary.chartData.every((item) => item.distance === 0) ? (
+                <p className="app-text-secondary text-sm font-medium">{chartTitle}</p>
+                {shouldRenderEmptyState ? (
                   <div className="app-text-secondary mt-6 text-center text-sm">
                     <p>За этот период пока нет данных.</p>
                     <p className="mt-2">Попробуйте выбрать другой диапазон.</p>
@@ -231,8 +233,8 @@ export default function ActivityPage() {
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
                           data={summary.chartData}
-                          margin={{ top: 4, right: 0, left: -8, bottom: period === 'year' ? 6 : 0 }}
-                          barCategoryGap="18%"
+                          margin={{ top: 4, right: 4, left: period === 'year' ? 12 : 0, bottom: period === 'year' ? 6 : 0 }}
+                          barCategoryGap={period === 'year' ? '48%' : '18%'}
                           accessibilityLayer={false}
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
@@ -251,13 +253,13 @@ export default function ActivityPage() {
                             tickLine={false}
                             axisLine={false}
                             tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
-                            width={24}
+                            width={period === 'year' ? 40 : 30}
                           />
                           <Bar
                             dataKey="distance"
                             fill="var(--accent-strong)"
                             radius={[8, 8, 0, 0]}
-                            maxBarSize={28}
+                            maxBarSize={period === 'year' ? 18 : 28}
                             onMouseEnter={(_, index) => {
                               if (summary.chartData[index]?.distance > 0) {
                                 setActiveBarIndex(index)
