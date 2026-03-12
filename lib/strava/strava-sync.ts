@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { fetchStravaActivities } from './strava-client'
+import { fetchStravaActivities, refreshStravaAccessToken } from './strava-client'
 import type { StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
@@ -9,7 +9,8 @@ const FALLBACK_RUN_NAME = 'Бег'
 const STRAVA_INITIAL_SYNC_WINDOW_DAYS = 30
 const MAX_SYNC_ERROR_DETAILS = 10
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
-const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run', 'TrailRun', 'VirtualRun']
+const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run']
+const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
 
 type StravaRunInsertPayload = {
   user_id: string
@@ -29,11 +30,33 @@ type StravaRunInsertPayload = {
   xp: number
 }
 
+type StravaConnectionRow = {
+  id: string
+  user_id: string
+  strava_athlete_id: number
+  access_token: string
+  refresh_token: string
+  expires_at: string
+  last_synced_at: string | null
+  status: string
+}
+
 type StravaSyncRowErrorDetail = {
   activityId: string
   field?: string
   value?: number | string | null
   error: string
+}
+
+type StravaImportOutcome = 'imported' | 'updated' | 'skipped_existing' | 'skipped_invalid'
+
+type StravaImportResult = {
+  status: StravaImportOutcome
+  activityId: string
+}
+
+type ImportStravaActivityOptions = {
+  updateExisting?: boolean
 }
 
 class StravaSyncRowError extends Error {
@@ -129,7 +152,7 @@ function normalizeImportedRunName(rawName: string) {
   }
 }
 
-function isValidStravaRun(activity: StravaActivitySummary) {
+export function isValidStravaRun(activity: StravaActivitySummary) {
   return (
     ALLOWED_STRAVA_RUN_TYPES.includes(activity.type as StravaActivityType) &&
     Number.isFinite(activity.distance) &&
@@ -203,18 +226,167 @@ function findLikelyInvalidIntegerField(payload: StravaRunInsertPayload) {
   return null
 }
 
-export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncResult> {
-  const supabase = createSupabaseAdminClient()
+function isStravaTokenExpiringSoon(expiresAt: string) {
+  const expiresAtMs = new Date(expiresAt).getTime()
 
-  const { data: connection, error: connectionError } = await supabase
+  if (Number.isNaN(expiresAtMs)) {
+    return true
+  }
+
+  return expiresAtMs <= Date.now() + STRAVA_TOKEN_REFRESH_BUFFER_MS
+}
+
+export async function touchStravaConnection(connectionId: string) {
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
     .from('strava_connections')
-    .select('id, access_token')
-    .eq('user_id', userId)
+    .update({
+      last_synced_at: new Date().toISOString(),
+    })
+    .eq('id', connectionId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
+async function getStravaConnectionByColumn(
+  column: 'user_id' | 'strava_athlete_id',
+  value: string | number
+): Promise<StravaConnectionRow | null> {
+  const supabase = createSupabaseAdminClient()
+  const { data, error } = await supabase
+    .from('strava_connections')
+    .select('id, user_id, strava_athlete_id, access_token, refresh_token, expires_at, last_synced_at, status')
+    .eq(column, value)
     .maybeSingle()
 
-  if (connectionError) {
-    throw new Error(connectionError.message)
+  if (error) {
+    throw new Error(error.message)
   }
+
+  return (data as StravaConnectionRow | null) ?? null
+}
+
+async function ensureFreshStravaConnection(connection: StravaConnectionRow): Promise<StravaConnectionRow> {
+  if (!isStravaTokenExpiringSoon(connection.expires_at)) {
+    return connection
+  }
+
+  const refreshedToken = await refreshStravaAccessToken(connection.refresh_token)
+  const nextConnection: StravaConnectionRow = {
+    ...connection,
+    access_token: refreshedToken.access_token,
+    refresh_token: refreshedToken.refresh_token,
+    expires_at: new Date(refreshedToken.expires_at * 1000).toISOString(),
+    strava_athlete_id: refreshedToken.athlete?.id ?? connection.strava_athlete_id,
+    status: 'connected',
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('strava_connections')
+    .update({
+      access_token: nextConnection.access_token,
+      refresh_token: nextConnection.refresh_token,
+      expires_at: nextConnection.expires_at,
+      strava_athlete_id: nextConnection.strava_athlete_id,
+      status: nextConnection.status,
+    })
+    .eq('id', connection.id)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return nextConnection
+}
+
+export async function getStravaConnectionForUser(userId: string) {
+  const connection = await getStravaConnectionByColumn('user_id', userId)
+  return connection ? ensureFreshStravaConnection(connection) : null
+}
+
+export async function getStravaConnectionForAthlete(stravaAthleteId: number) {
+  const connection = await getStravaConnectionByColumn('strava_athlete_id', stravaAthleteId)
+  return connection ? ensureFreshStravaConnection(connection) : null
+}
+
+export async function importStravaActivityForUser(
+  userId: string,
+  activity: StravaActivitySummary,
+  options: ImportStravaActivityOptions = {}
+): Promise<StravaImportResult> {
+  if (!isValidStravaRun(activity)) {
+    return {
+      status: 'skipped_invalid',
+      activityId: String(activity.id),
+    }
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const payload = buildRunInsertPayload(userId, activity)
+  const { data: existingRun, error: existingRunError } = await supabase
+    .from('runs')
+    .select('id')
+    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+    .eq('external_id', payload.external_id)
+    .maybeSingle()
+
+  if (existingRunError) {
+    throw new Error(existingRunError.message)
+  }
+
+  if (!existingRun) {
+    const { error: insertError } = await supabase.from('runs').insert(payload)
+
+    if (insertError) {
+      throw new Error(insertError.message)
+    }
+
+    return {
+      status: 'imported',
+      activityId: payload.external_id,
+    }
+  }
+
+  if (!options.updateExisting) {
+    return {
+      status: 'skipped_existing',
+      activityId: payload.external_id,
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('runs')
+    .update({
+      name: payload.name,
+      title: payload.title,
+      distance_km: payload.distance_km,
+      distance_meters: payload.distance_meters,
+      duration_minutes: payload.duration_minutes,
+      duration_seconds: payload.duration_seconds,
+      moving_time_seconds: payload.moving_time_seconds,
+      elapsed_time_seconds: payload.elapsed_time_seconds,
+      average_pace_seconds: payload.average_pace_seconds,
+      elevation_gain_meters: payload.elevation_gain_meters,
+      created_at: payload.created_at,
+      xp: payload.xp,
+    })
+    .eq('id', existingRun.id)
+
+  if (updateError) {
+    throw new Error(updateError.message)
+  }
+
+  return {
+    status: 'updated',
+    activityId: payload.external_id,
+  }
+}
+
+export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncResult> {
+  const connection = await getStravaConnectionForUser(userId)
 
   if (!connection) {
     return {
@@ -223,6 +395,7 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     }
   }
 
+  const supabase = createSupabaseAdminClient()
   const { data: latestImportedRun, error: latestImportedRunError } = await supabase
     .from('runs')
     .select('created_at')
@@ -247,46 +420,22 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
 
   const activities = await fetchStravaActivities(connection.access_token, afterUnixSeconds)
   const runActivities = activities.filter(isValidStravaRun)
-  const externalIds = runActivities.map((activity) => String(activity.id))
-
-  let existingExternalIds = new Set<string>()
-
-  if (externalIds.length > 0) {
-    const { data: existingRuns, error: existingRunsError } = await supabase
-      .from('runs')
-      .select('external_id')
-      .eq('external_source', STRAVA_EXTERNAL_SOURCE)
-      .in('external_id', externalIds)
-
-    if (existingRunsError) {
-      throw new Error(existingRunsError.message)
-    }
-
-    existingExternalIds = new Set(
-      (existingRuns ?? [])
-        .map((run) => run.external_id)
-        .filter((externalId): externalId is string => Boolean(externalId))
-    )
-  }
-
-  const activitiesToInsert = runActivities.filter(
-    (activity) => !existingExternalIds.has(String(activity.id))
-  )
   let imported = 0
+  let skipped = 0
   const errors: StravaSyncRowErrorDetail[] = []
 
-  for (const activity of activitiesToInsert) {
+  for (const activity of runActivities) {
     let payload: StravaRunInsertPayload | null = null
 
     try {
       payload = buildRunInsertPayload(userId, activity)
-      const { error: insertError } = await supabase.from('runs').insert(payload)
+      const result = await importStravaActivityForUser(userId, activity)
 
-      if (insertError) {
-        throw new Error(insertError.message)
+      if (result.status === 'imported') {
+        imported += 1
+      } else if (result.status === 'skipped_existing') {
+        skipped += 1
       }
-
-      imported += 1
     } catch (caughtError) {
       const errorDetail: StravaSyncRowErrorDetail = {
         activityId: String(activity.id),
@@ -318,22 +467,13 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     }
   }
 
-  const { error: updateConnectionError } = await supabase
-    .from('strava_connections')
-    .update({
-      last_synced_at: new Date().toISOString(),
-    })
-    .eq('id', connection.id)
-
-  if (updateConnectionError) {
-    throw new Error(updateConnectionError.message)
-  }
+  await touchStravaConnection(connection.id)
 
   return {
     ok: true,
     imported,
-    skipped: existingExternalIds.size,
-    failed: activitiesToInsert.length - imported,
+    skipped,
+    failed: runActivities.length - imported - skipped,
     totalRunsFetched: runActivities.length,
     errors,
   }
