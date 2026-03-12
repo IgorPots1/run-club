@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
 import { getBootstrapUser } from '@/lib/auth'
@@ -65,6 +65,8 @@ type StravaSyncResponse =
 
 export default function ProfilePage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [showProfileSkeleton, setShowProfileSkeleton] = useState(false)
@@ -94,7 +96,9 @@ export default function ProfilePage() {
   const [pageError, setPageError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
+  const [showStravaConnectedToast, setShowStravaConnectedToast] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const hasShownStravaConnectedToastRef = useRef(false)
 
   const loadProfileData = useCallback(async (
     currentUser: User,
@@ -272,6 +276,36 @@ export default function ProfilePage() {
       isMounted = false
     }
   }, [loadStravaStatus, user])
+
+  useEffect(() => {
+    const stravaStatus = searchParams.get('strava')
+
+    if (stravaStatus !== 'connected' || hasShownStravaConnectedToastRef.current) {
+      return
+    }
+
+    hasShownStravaConnectedToastRef.current = true
+    setShowStravaConnectedToast(true)
+
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.delete('strava')
+    const nextUrl = nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname
+    router.replace(nextUrl, { scroll: false })
+  }, [pathname, router, searchParams])
+
+  useEffect(() => {
+    if (!showStravaConnectedToast) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowStravaConnectedToast(false)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [showStravaConnectedToast])
 
   useEffect(() => {
     return () => {
@@ -963,6 +997,19 @@ export default function ProfilePage() {
           onCancel={closeCropModal}
           onConfirm={handleAvatarCropped}
         />
+      ) : null}
+      {showStravaConnectedToast ? (
+        <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
+          <div className="app-card flex w-full max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
+            <span
+              aria-hidden="true"
+              className="app-text-primary inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
+            >
+              ✓
+            </span>
+            <p className="app-text-primary text-sm font-medium">Strava успешно подключена</p>
+          </div>
+        </div>
       ) : null}
       </div>
     </main>
