@@ -77,6 +77,7 @@ export default function ProfilePage() {
   const [stravaConnected, setStravaConnected] = useState(false)
   const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
   const [syncingStrava, setSyncingStrava] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [stravaSyncMessage, setStravaSyncMessage] = useState('')
   const [profileDataLoading, setProfileDataLoading] = useState(true)
   const [pageError, setPageError] = useState('')
@@ -560,6 +561,36 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleLogout() {
+    if (loggingOut) return
+
+    const confirmed = window.confirm('Выйти из аккаунта?')
+
+    if (!confirmed) {
+      return
+    }
+
+    setLoggingOut(true)
+    setPageError('')
+    setStravaSyncMessage('')
+    setStravaConnected(false)
+
+    try {
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        setPageError('Не удалось выйти из аккаунта')
+        return
+      }
+
+      router.replace('/login')
+    } catch {
+      setPageError('Не удалось выйти из аккаунта')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
   if (!user) {
     return (
@@ -856,6 +887,16 @@ export default function ProfilePage() {
               <span className="app-text-secondary min-w-0">Тренировки</span>
               <span className="app-text-primary shrink-0 text-right font-semibold">{runsCount}</span>
             </div>
+          </div>
+          <div className="mb-8 mt-6">
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loggingOut ? 'Выходим...' : 'Выйти'}
+            </button>
           </div>
       </>
       {cropImageSrc ? (
