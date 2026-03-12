@@ -22,12 +22,51 @@ export async function GET(request: Request) {
   const mode = url.searchParams.get('hub.mode')
   const verifyToken = url.searchParams.get('hub.verify_token')
   const challenge = url.searchParams.get('hub.challenge')
+  let expectedVerifyToken: string
 
-  if (mode !== 'subscribe' || !challenge || verifyToken !== getStravaWebhookVerifyToken()) {
+  try {
+    expectedVerifyToken = getStravaWebhookVerifyToken()
+  } catch (caughtError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        step: 'missing_verify_token_config',
+        error: caughtError instanceof Error ? caughtError.message : 'Missing webhook verify token',
+      },
+      { status: 500 }
+    )
+  }
+
+  if (mode !== 'subscribe') {
     return NextResponse.json(
       {
         ok: false,
         step: 'invalid_webhook_verification',
+        error: 'Expected hub.mode=subscribe',
+        receivedMode: mode,
+      },
+      { status: 400 }
+    )
+  }
+
+  if (!verifyToken || verifyToken !== expectedVerifyToken) {
+    return NextResponse.json(
+      {
+        ok: false,
+        step: 'invalid_webhook_verification',
+        error: 'Invalid hub.verify_token',
+        hasVerifyToken: Boolean(verifyToken),
+      },
+      { status: 400 }
+    )
+  }
+
+  if (!challenge) {
+    return NextResponse.json(
+      {
+        ok: false,
+        step: 'invalid_webhook_verification',
+        error: 'Missing hub.challenge',
       },
       { status: 400 }
     )
