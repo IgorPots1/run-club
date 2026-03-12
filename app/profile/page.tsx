@@ -41,6 +41,16 @@ type StravaStatusResponse =
       error?: string
     }
 
+type StravaDisconnectResponse =
+  | {
+      ok: true
+    }
+  | {
+      ok: false
+      step?: string
+      error?: string
+    }
+
 type StravaSyncResponse =
   | {
       ok: true
@@ -77,6 +87,7 @@ export default function ProfilePage() {
   const [stravaConnected, setStravaConnected] = useState(false)
   const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
   const [syncingStrava, setSyncingStrava] = useState(false)
+  const [disconnectingStrava, setDisconnectingStrava] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [stravaSyncMessage, setStravaSyncMessage] = useState('')
   const [profileDataLoading, setProfileDataLoading] = useState(true)
@@ -195,7 +206,7 @@ export default function ProfilePage() {
         return
       }
 
-      setStravaConnected(payload.connected || payload.hasImportedRuns)
+      setStravaConnected(payload.connected)
     } catch {
       if (!isMounted) return
       setStravaConnected(false)
@@ -523,6 +534,42 @@ export default function ProfilePage() {
     window.location.href = '/api/strava/connect'
   }
 
+  async function handleDisconnectStrava() {
+    if (disconnectingStrava) return
+
+    const confirmed = window.confirm('Отключить Strava?')
+
+    if (!confirmed) {
+      return
+    }
+
+    setDisconnectingStrava(true)
+    setPageError('')
+    setStravaSyncMessage('')
+
+    try {
+      const response = await fetch('/api/strava/disconnect', {
+        method: 'DELETE',
+        cache: 'no-store',
+        credentials: 'include',
+      })
+
+      const payload = (await response.json()) as StravaDisconnectResponse
+
+      if (!response.ok || !payload.ok) {
+        setPageError('Не удалось отключить Strava')
+        return
+      }
+
+      setStravaConnected(false)
+      setStravaSyncMessage('Strava отключена')
+    } catch {
+      setPageError('Не удалось отключить Strava')
+    } finally {
+      setDisconnectingStrava(false)
+    }
+  }
+
   async function handleSyncStrava() {
     if (syncingStrava) return
 
@@ -845,7 +892,17 @@ export default function ProfilePage() {
             {loadingStravaStatus ? (
               <p className="app-text-secondary text-sm">Проверяем подключение...</p>
             ) : stravaConnected ? (
-              <p className="app-text-primary text-sm font-medium">Strava подключена ✅</p>
+              <>
+                <p className="app-text-primary text-sm font-medium">Strava подключена ✅</p>
+                <button
+                  type="button"
+                  onClick={handleDisconnectStrava}
+                  disabled={disconnectingStrava}
+                  className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                >
+                  {disconnectingStrava ? 'Отключаем...' : 'Отключить Strava'}
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -858,7 +915,7 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={handleSyncStrava}
-              disabled={syncingStrava || loadingStravaStatus || !stravaConnected}
+              disabled={syncingStrava || disconnectingStrava || loadingStravaStatus || !stravaConnected}
               className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
               {syncingStrava ? 'Синхронизация...' : 'Синхронизировать Strava'}
