@@ -71,7 +71,7 @@ function StravaIcon() {
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
-      className="inline-block align-[-0.125em] text-[#FC4C02]"
+      className="block h-4 w-4 shrink-0 text-[#FC4C02]"
     >
       <path d="M15.386 1 9.999 11.56h3.178L15.386 7l2.209 4.56h3.177L15.386 1Z" />
       <path d="M9.999 14.077 7.354 19.41h2.41L9.999 18.9l.235.51h2.41l-2.645-5.333Z" />
@@ -900,10 +900,10 @@ function ProfilePageContent() {
               <p className="app-text-secondary text-sm">Проверяем подключение...</p>
             ) : stravaConnected ? (
               <>
-                <p className="app-text-primary inline-flex items-center gap-2 text-sm font-medium">
+                <div className="app-text-primary flex items-center gap-1.5 text-sm font-medium">
                   <StravaIcon />
                   <span>Strava подключена</span>
-                </p>
+                </div>
                 <button
                   type="button"
                   onClick={handleDisconnectStrava}
