@@ -379,6 +379,7 @@ export default function DashboardPage() {
                 <WorkoutFeedCard
                   key={run.id}
                   rawTitle={run.title}
+                  externalSource={run.external_source}
                   distanceKm={run.distance_km}
                   pace={run.pace}
                   xp={run.xp}

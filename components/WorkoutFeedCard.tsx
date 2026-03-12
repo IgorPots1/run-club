@@ -9,6 +9,7 @@ import RunLikeControl from '@/components/RunLikeControl'
 type WorkoutFeedCardProps = {
   runId?: string
   rawTitle: string | null
+  externalSource?: string | null
   distanceKm?: number | null
   pace?: string | number | null
   xp: number
@@ -93,6 +94,7 @@ function buildDisplayTitle(rawTitle: string | null, distanceKm?: number | null, 
 function WorkoutFeedCard({
   runId = '',
   rawTitle,
+  externalSource = null,
   distanceKm,
   pace,
   xp,
@@ -151,6 +153,9 @@ function WorkoutFeedCard({
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
+        {externalSource === 'strava' ? (
+          <p className="app-text-secondary mt-1 text-sm font-medium">🟠 Strava</p>
+        ) : null}
       </div>
 
       <div className="mt-3">

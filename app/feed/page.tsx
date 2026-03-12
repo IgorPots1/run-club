@@ -347,6 +347,7 @@ export default function FeedPage() {
                 key={item.id}
                 runId={item.id}
                 rawTitle={item.title}
+                externalSource={item.external_source}
                 distanceKm={item.distance_km}
                 pace={item.pace}
                 xp={item.xp}

@@ -18,6 +18,7 @@ type RunRow = {
   user_id: string
   name: string | null
   title?: string | null
+  external_source?: string | null
   distance_km: number | null
   duration_minutes: number | null
   xp: number | null
@@ -28,6 +29,7 @@ export type DashboardRunItem = {
   id: string
   user_id: string
   title: string
+  external_source?: string | null
   distance_km: number
   pace: string | number | null
   xp: number
@@ -176,6 +178,7 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       id: run.id,
       user_id: run.user_id,
       title: mappedTitle,
+      external_source: run.external_source ?? null,
       distance_km: Number(run.distance_km ?? 0),
       pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
       xp: Number(run.xp ?? 0),
@@ -276,6 +279,7 @@ export async function loadFeedRuns(
         id: run.id,
         user_id: run.user_id,
         title: mappedTitle,
+        external_source: run.external_source ?? null,
         distance_km: Number(run.distance_km ?? 0),
         pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
         xp: Number(run.xp ?? 0),
