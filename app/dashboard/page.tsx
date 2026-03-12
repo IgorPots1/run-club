@@ -171,7 +171,7 @@ export default function DashboardPage() {
     {
       name: profileSummary?.name ?? null,
       nickname: profileSummary?.nickname ?? null,
-      email: user.email ?? null,
+      email: user?.email ?? null,
     },
     'Бегун'
   )
