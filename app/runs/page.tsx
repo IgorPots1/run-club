@@ -215,6 +215,14 @@ function parseDistanceInput(rawValue: string) {
   return Number(parsedValue.toFixed(2))
 }
 
+function normalizeIntegerMetric(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return Math.round(value)
+}
+
 function parseDurationPartInput(rawValue: string, maxValue?: number) {
   const normalizedValue = rawValue.trim()
 
@@ -568,7 +576,13 @@ export default function RunsPage() {
 
     setError('')
     setSubmitting(true)
-    const xp = 50 + d * 10
+    const distanceMeters = normalizeIntegerMetric(d * 1000)
+    const movingTimeSeconds = normalizeIntegerMetric(selectedDurationSeconds)
+    const elapsedTimeSeconds = normalizeIntegerMetric(selectedDurationSeconds)
+    const averagePaceSeconds = distanceMeters > 0
+      ? normalizeIntegerMetric(selectedDurationSeconds / (distanceMeters / 1000))
+      : 0
+    const xp = normalizeIntegerMetric(50 + d * 10)
 
     try {
       const { error } = await supabase.from('runs').insert({
@@ -576,8 +590,12 @@ export default function RunsPage() {
         name: normalizedTitle,
         title: normalizedTitle,
         distance_km: d,
+        distance_meters: distanceMeters,
         duration_minutes: dur,
         duration_seconds: selectedDurationSeconds,
+        moving_time_seconds: movingTimeSeconds,
+        elapsed_time_seconds: elapsedTimeSeconds,
+        average_pace_seconds: averagePaceSeconds,
         created_at: createdAtDate.toISOString(),
         xp
       })
