@@ -58,6 +58,7 @@ export type DashboardProgressStats = {
 
 export type DashboardOverview = {
   stats: DashboardProgressStats
+  profileSummary: UserProfileSummary
   activeChallenge: ChallengeWithProgress | null
   allChallengesCompleted: boolean
 }
@@ -69,6 +70,11 @@ export type UserProfileSummary = {
 }
 
 const DASHBOARD_RECENT_RUNS_LIMIT = 5
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
+const TOTAL_XP_CACHE_TTL_MS = 60 * 1000
+
+const profileCache = new Map<string, { value: ProfileRow | null; expiresAt: number }>()
+const totalXpCache = new Map<string, { value: number; expiresAt: number }>()
 
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
@@ -92,13 +98,123 @@ function formatPace(distanceKm: number, durationMinutes: number | null) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+function getFreshCachedValue<T>(cacheEntry: { value: T; expiresAt: number } | undefined) {
+  if (!cacheEntry || cacheEntry.expiresAt <= Date.now()) {
+    return { found: false as const, value: null as T | null }
+  }
+
+  return { found: true as const, value: cacheEntry.value }
+}
+
+async function loadProfilesByUserIds(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {} as Record<string, ProfileRow | null>
+  }
+
+  const uniqueUserIds = Array.from(new Set(userIds))
+  const profileById: Record<string, ProfileRow | null> = {}
+  const missingUserIds: string[] = []
+
+  for (const userId of uniqueUserIds) {
+    const cachedProfile = getFreshCachedValue(profileCache.get(userId))
+    if (cachedProfile.found) {
+      profileById[userId] = cachedProfile.value
+    } else {
+      missingUserIds.push(userId)
+    }
+  }
+
+  if (missingUserIds.length > 0) {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, name, nickname, email, avatar_url')
+      .in('id', missingUserIds)
+
+    if (!error) {
+      const fetchedProfiles = (profiles as ProfileRow[] | null) ?? []
+      const fetchedProfileById = Object.fromEntries(fetchedProfiles.map((profile) => [profile.id, profile]))
+
+      for (const userId of missingUserIds) {
+        const profile = fetchedProfileById[userId] ?? null
+        profileById[userId] = profile
+        profileCache.set(userId, {
+          value: profile,
+          expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+        })
+      }
+    } else {
+      for (const userId of missingUserIds) {
+        profileById[userId] = null
+      }
+    }
+  }
+
+  return profileById
+}
+
+async function loadTotalXpByUserIds(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {} as Record<string, number>
+  }
+
+  const uniqueUserIds = Array.from(new Set(userIds))
+  const totalsByUserId: Record<string, number> = {}
+  const missingUserIds: string[] = []
+
+  for (const userId of uniqueUserIds) {
+    const cachedTotalXp = getFreshCachedValue(totalXpCache.get(userId))
+    if (cachedTotalXp.found) {
+      totalsByUserId[userId] = cachedTotalXp.value ?? 0
+    } else {
+      missingUserIds.push(userId)
+    }
+  }
+
+  if (missingUserIds.length === 0) {
+    return totalsByUserId
+  }
+
+  const [
+    { data: userRuns, error: userRunsError },
+    challengeXpByUser,
+    likeXpByUser,
+  ] = await Promise.all([
+    supabase.from('runs').select('user_id, xp').in('user_id', missingUserIds),
+    loadChallengeXpByUserIds(missingUserIds),
+    loadLikeXpByUserIds(missingUserIds),
+  ])
+
+  const runXpByUserId: Record<string, number> = {}
+
+  for (const run of (userRuns as Array<{ user_id: string; xp: number | null }> | null) ?? []) {
+    runXpByUserId[run.user_id] = (runXpByUserId[run.user_id] ?? 0) + Number(run.xp ?? 0)
+  }
+
+  for (const userId of missingUserIds) {
+    const totalXp =
+      (userRunsError ? 0 : runXpByUserId[userId] ?? 0) +
+      (challengeXpByUser[userId] ?? 0) +
+      (likeXpByUser[userId] ?? 0)
+
+    totalsByUserId[userId] = totalXp
+    totalXpCache.set(userId, {
+      value: totalXp,
+      expiresAt: Date.now() + TOTAL_XP_CACHE_TTL_MS,
+    })
+  }
+
+  return totalsByUserId
+}
+
 export async function loadDashboardOverview(userId: string): Promise<DashboardOverview> {
   const [
+    profileById,
     { data: myRuns, error: myRunsError },
     { data: challenges, error: challengesError },
     challengeXpByUser,
     likeXpByUser,
   ] = await Promise.all([
+    loadProfilesByUserIds([userId]),
     supabase
       .from('runs')
       .select('distance_km, xp, created_at')
@@ -126,12 +242,18 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
   const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => getChallengeProgress(challenge, currentUserRuns))
   const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
   const firstActiveChallenge = activeChallenges[0] ?? null
+  const profile = profileById[userId]
 
   return {
     stats: {
       totalKmThisMonth,
       runsCount: currentUserRuns.length,
       totalXp: totalRunXp + (challengeXpByUser[userId] ?? 0) + (likeXpByUser[userId] ?? 0),
+    },
+    profileSummary: {
+      name: profile?.name?.trim() || null,
+      nickname: profile?.nickname?.trim() || null,
+      email: profile?.email ?? null,
     },
     activeChallenge: firstActiveChallenge,
     allChallengesCompleted: challengeItems.length > 0 && activeChallenges.length === 0,
@@ -141,7 +263,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
 export async function loadDashboardRuns(currentUserId: string): Promise<DashboardRunItem[]> {
   const { data: runs, error: runsError } = await supabase
     .from('runs')
-    .select('*')
+    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(DASHBOARD_RECENT_RUNS_LIMIT)
@@ -153,16 +275,10 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
   const runRows = (runs as RunRow[] | null) ?? []
   const runIds = runRows.map((run) => run.id)
   const userIds = Array.from(new Set(runRows.map((run) => run.user_id)))
-  const [{ data: profiles, error: profilesError }, likesSummary] = await Promise.all([
-    userIds.length > 0
-      ? supabase.from('profiles').select('*').in('id', userIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [profileById, likesSummary] = await Promise.all([
+    loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
   ])
-
-  const profileById = profilesError
-    ? {}
-    : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
 
   return runRows.map((run) => {
     const profile = profileById[run.user_id]
@@ -186,9 +302,10 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
 }
 
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+  const profileById = await loadProfilesByUserIds([userId])
+  const data = profileById[userId]
 
-  if (error) {
+  if (!data) {
     return {
       name: null,
       nickname: null,
@@ -212,7 +329,7 @@ export async function loadFeedRuns(
   const feedWindowStartIso = getFeedWindowStartIso()
   const { data: runs, error: runsError } = await supabase
     .from('runs')
-    .select('*')
+    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, xp, created_at')
     .gte('created_at', feedWindowStartIso)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
@@ -227,42 +344,14 @@ export async function loadFeedRuns(
   const runIds = pageRuns.map((run) => run.id)
 
   const [
-    { data: profiles, error: profilesError },
-    { data: userRuns, error: userRunsError },
+    profileById,
+    totalXpByUser,
     likesSummary,
-    challengeXpByUser,
-    likeXpByUser,
   ] = await Promise.all([
-    userIds.length > 0
-      ? supabase.from('profiles').select('*').in('id', userIds)
-      : Promise.resolve({ data: [], error: null }),
-    userIds.length > 0
-      ? supabase.from('runs').select('user_id, xp').in('user_id', userIds)
-      : Promise.resolve({ data: [], error: null }),
+    loadProfilesByUserIds(userIds),
+    loadTotalXpByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
-    loadChallengeXpByUserIds(userIds),
-    loadLikeXpByUserIds(userIds),
   ])
-
-  const profileById = profilesError
-    ? {}
-    : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
-
-  const totalXpByUser: Record<string, number> = {}
-
-  for (const run of (userRuns as Array<{ user_id: string; xp: number | null }> | null) ?? []) {
-    totalXpByUser[run.user_id] = (totalXpByUser[run.user_id] ?? 0) + Number(run.xp ?? 0)
-  }
-
-  if (!userRunsError) {
-    for (const [userId, xp] of Object.entries(challengeXpByUser)) {
-      totalXpByUser[userId] = (totalXpByUser[userId] ?? 0) + xp
-    }
-
-    for (const [userId, xp] of Object.entries(likeXpByUser)) {
-      totalXpByUser[userId] = (totalXpByUser[userId] ?? 0) + xp
-    }
-  }
 
   return {
     items: pageRuns.map((run) => {

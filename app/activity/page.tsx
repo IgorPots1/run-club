@@ -112,6 +112,9 @@ export default function ActivityPage() {
     {
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 15000,
+      focusThrottleInterval: 15000,
     }
   )
 

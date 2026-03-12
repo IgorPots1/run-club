@@ -9,7 +9,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
-import { loadDashboardOverview, loadDashboardRuns, loadUserProfileSummary } from '@/lib/dashboard'
+import { loadDashboardOverview, loadDashboardRuns } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [shouldLoadWeeklyRace, setShouldLoadWeeklyRace] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [actionError, setActionError] = useState('')
@@ -57,24 +58,31 @@ export default function DashboardPage() {
     }
   }, [router])
 
+  useEffect(() => {
+    if (!user) {
+      setShouldLoadWeeklyRace(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setShouldLoadWeeklyRace(true)
+    }, 180)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [user])
+
   const swrBaseOptions = {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
+    keepPreviousData: true,
+    dedupingInterval: 15000,
+    focusThrottleInterval: 15000,
   }
   const overviewKey = user ? (['dashboard-overview', user.id] as const) : null
   const runsKey = user ? (['dashboard-runs', user.id] as const) : null
-  const weeklyRaceKey = user ? (['weekly-race', user.id] as const) : null
-  const profileKey = user ? (['dashboard-profile', user.id] as const) : null
-
-  const {
-    data: profileSummary,
-    error: profileError,
-    isLoading: profileLoading,
-  } = useSWR(
-    profileKey,
-    ([, userId]: readonly [string, string]) => loadUserProfileSummary(userId),
-    swrBaseOptions
-  )
+  const weeklyRaceKey = user && shouldLoadWeeklyRace ? (['weekly-race', user.id] as const) : null
 
   const {
     data: overview,
@@ -167,14 +175,13 @@ export default function DashboardPage() {
   const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
   const profileName = getProfileDisplayName(
     {
-      name: profileSummary?.name ?? null,
-      nickname: profileSummary?.nickname ?? null,
-      email: user?.email ?? null,
+      name: overview?.profileSummary.name ?? null,
+      nickname: overview?.profileSummary.nickname ?? null,
+      email: overview?.profileSummary.email ?? user?.email ?? null,
     },
     'Бегун'
   )
   const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
-  const profileStateError = profileError ? 'Не удалось загрузить профиль' : ''
   const headerDisplayName = user ? `Привет, ${profileName}` : 'Привет!'
   const headerLevelLabel = levelProgress
     ? `Уровень ${levelProgress.level}`
@@ -183,7 +190,7 @@ export default function DashboardPage() {
       : null
   const showOverviewSkeleton = isBootstrappingUser || (overviewLoading && !overview && !overviewError)
   const showRunsSkeleton = isBootstrappingUser || (runsLoading && !runs)
-  const weeklyLeaderboardLoading = isBootstrappingUser || weeklyRaceLoading
+  const weeklyLeaderboardLoading = isBootstrappingUser || (shouldLoadWeeklyRace && weeklyRaceLoading)
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -201,8 +208,6 @@ export default function DashboardPage() {
             levelLabel={headerLevelLabel}
           />
         </div>
-        {profileStateError ? <p className="mb-4 text-sm text-red-600">{profileStateError}</p> : null}
-
         <div className="mb-4">
           <Link
             href="/runs"

@@ -1,6 +1,10 @@
 import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
+const ENSURE_PROFILE_CACHE_TTL_MS = 30000
+const ensureProfilePromiseByUserId = new Map<string, Promise<void>>()
+const ensuredProfileExpiresAtByUserId = new Map<string, number>()
+
 export type ProfileIdentity = {
   name?: string | null
   nickname?: string | null
@@ -109,35 +113,57 @@ export async function ensureProfileExists(user: User) {
     return
   }
 
-  const { data: existingProfile, error: existingProfileError } = await supabase
-    .from('profiles')
-    .select('id, email, name, nickname, avatar_url')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (existingProfileError) {
-    throw existingProfileError
+  const cachedUntil = ensuredProfileExpiresAtByUserId.get(user.id) ?? 0
+  if (Date.now() < cachedUntil) {
+    return
   }
 
-  const { error } = existingProfile
-    ? await supabase
-        .from('profiles')
-        .update({
-          email,
-          name: existingProfile.name ?? metadataProfile.name,
-          nickname: existingProfile.nickname ?? metadataProfile.nickname,
-          avatar_url: existingProfile.avatar_url ?? metadataProfile.avatar_url,
-        })
-        .eq('id', user.id)
-    : await upsertProfile({
-        id: user.id,
-        email,
-        name: metadataProfile.name,
-        nickname: metadataProfile.nickname,
-        avatar_url: metadataProfile.avatar_url,
-      })
+  const existingPromise = ensureProfilePromiseByUserId.get(user.id)
+  if (existingPromise) {
+    return existingPromise
+  }
 
-  if (error) {
-    throw error
+  const ensurePromise = (async () => {
+    const { data: existingProfile, error: existingProfileError } = await supabase
+      .from('profiles')
+      .select('id, email, name, nickname, avatar_url')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (existingProfileError) {
+      throw existingProfileError
+    }
+
+    const { error } = existingProfile
+      ? await supabase
+          .from('profiles')
+          .update({
+            email,
+            name: existingProfile.name ?? metadataProfile.name,
+            nickname: existingProfile.nickname ?? metadataProfile.nickname,
+            avatar_url: existingProfile.avatar_url ?? metadataProfile.avatar_url,
+          })
+          .eq('id', user.id)
+      : await upsertProfile({
+          id: user.id,
+          email,
+          name: metadataProfile.name,
+          nickname: metadataProfile.nickname,
+          avatar_url: metadataProfile.avatar_url,
+        })
+
+    if (error) {
+      throw error
+    }
+
+    ensuredProfileExpiresAtByUserId.set(user.id, Date.now() + ENSURE_PROFILE_CACHE_TTL_MS)
+  })()
+
+  ensureProfilePromiseByUserId.set(user.id, ensurePromise)
+
+  try {
+    await ensurePromise
+  } finally {
+    ensureProfilePromiseByUserId.delete(user.id)
   }
 }

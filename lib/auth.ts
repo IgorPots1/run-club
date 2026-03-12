@@ -2,6 +2,29 @@ import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
 const SESSION_BOOTSTRAP_TIMEOUT_MS = 2500
+const BOOTSTRAP_USER_CACHE_TTL_MS = 10000
+
+let cachedBootstrapUser: User | null = null
+let cachedBootstrapUserExpiresAt = 0
+let bootstrapUserPromise: Promise<User | null> | null = null
+let authListenerInitialized = false
+
+function clearBootstrapUserCache() {
+  cachedBootstrapUser = null
+  cachedBootstrapUserExpiresAt = 0
+  bootstrapUserPromise = null
+}
+
+function ensureBootstrapUserListener() {
+  if (authListenerInitialized) {
+    return
+  }
+
+  authListenerInitialized = true
+  supabase.auth.onAuthStateChange(() => {
+    clearBootstrapUserCache()
+  })
+}
 
 async function getSessionWithTimeout() {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
@@ -25,10 +48,29 @@ async function getSessionWithTimeout() {
 }
 
 export async function getBootstrapUser(): Promise<User | null> {
-  try {
-    const { data } = await getSessionWithTimeout()
-    return data.session?.user ?? null
-  } catch {
-    return null
+  ensureBootstrapUserListener()
+
+  if (Date.now() < cachedBootstrapUserExpiresAt) {
+    return cachedBootstrapUser
   }
+
+  if (!bootstrapUserPromise) {
+    bootstrapUserPromise = (async () => {
+      try {
+        const { data } = await getSessionWithTimeout()
+        const user = data.session?.user ?? null
+        cachedBootstrapUser = user
+        cachedBootstrapUserExpiresAt = Date.now() + BOOTSTRAP_USER_CACHE_TTL_MS
+        return user
+      } catch {
+        cachedBootstrapUser = null
+        cachedBootstrapUserExpiresAt = Date.now() + BOOTSTRAP_USER_CACHE_TTL_MS
+        return null
+      } finally {
+        bootstrapUserPromise = null
+      }
+    })()
+  }
+
+  return bootstrapUserPromise
 }

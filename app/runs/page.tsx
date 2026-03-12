@@ -2,12 +2,10 @@
 
 import { Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import WheelPickerColumn from '@/components/WheelPickerColumn'
-import WheelPickerSheet from '@/components/WheelPickerSheet'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
@@ -27,6 +25,7 @@ type Run = {
 }
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
+const RUNS_REFETCH_THROTTLE_MS = 8000
 
 function StravaIcon() {
   return (
@@ -147,39 +146,6 @@ function isFutureRunDate(dateValue: string) {
   return dateValue > getTodayDateValue()
 }
 
-function parseDateParts(dateValue: string) {
-  const [yearString, monthString, dayString] = dateValue.split('-')
-
-  return {
-    year: Number(yearString),
-    month: Number(monthString),
-    day: Number(dayString),
-  }
-}
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month, 0).getDate()
-}
-
-function buildDateValue(year: number, month: number, day: number) {
-  return `${year}-${formatTwoDigits(month)}-${formatTwoDigits(day)}`
-}
-
-function formatRunDatePickerLabel(dateValue: string) {
-  const { year, month, day } = parseDateParts(dateValue)
-  const date = new Date(year, month - 1, day)
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Выбрать дату'
-  }
-
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
 const QUICK_DISTANCE_CHIPS = [
   { label: '5 км', wholeKm: 5, tenthsKm: 0 },
   { label: '10 км', wholeKm: 10, tenthsKm: 0 },
@@ -283,17 +249,14 @@ export default function RunsPage() {
   const [durationHoursInput, setDurationHoursInput] = useState('0')
   const [durationMinutesInput, setDurationMinutesInput] = useState('0')
   const [durationSecondsInput, setDurationSecondsInput] = useState('0')
-  const todayParts = parseDateParts(getTodayDateValue())
-  const [runDatePickerOpen, setRunDatePickerOpen] = useState(false)
-  const [draftRunYear, setDraftRunYear] = useState(todayParts.year)
-  const [draftRunMonth, setDraftRunMonth] = useState(todayParts.month)
-  const [draftRunDay, setDraftRunDay] = useState(todayParts.day)
   const [error, setError] = useState('')
   const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const [activeStravaHintRunId, setActiveStravaHintRunId] = useState<string | null>(null)
+  const lastRunsFetchAtRef = useRef(0)
+  const runsRequestPromiseRef = useRef<Promise<void> | null>(null)
   const parsedDistanceKm = parseDistanceInput(distanceInput)
   const selectedDistanceKm = parsedDistanceKm ?? 0
   const compactDistanceLabel = selectedDistanceKm > 0 ? formatCompactDistanceLabel(selectedDistanceKm) : '0'
@@ -315,14 +278,7 @@ export default function RunsPage() {
   const pacePreview = formatPaceLabel(selectedDurationSeconds, selectedDistanceKm)
   const showPacePreview = shouldShowPace(selectedDurationSeconds, selectedDistanceKm)
   const selectedDate = runDate || getTodayDateValue()
-  const runDateLabel = formatRunDatePickerLabel(selectedDate)
-  const yearOptions = Array.from({ length: todayParts.year - 1999 }, (_, index) => 2000 + index)
-  const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
-  const dayOptions = Array.from({ length: getDaysInMonth(draftRunYear, draftRunMonth) }, (_, index) => index + 1)
-  const maxSelectableMonth = draftRunYear === todayParts.year ? todayParts.month : 12
-  const maxSelectableDay = draftRunYear === todayParts.year && draftRunMonth === todayParts.month
-    ? todayParts.day
-    : getDaysInMonth(draftRunYear, draftRunMonth)
+  const todayDateValue = getTodayDateValue()
   const isWorkoutFormValid =
     Boolean(selectedDate) &&
     Number.isFinite(selectedDistanceKm) &&
@@ -331,14 +287,6 @@ export default function RunsPage() {
     selectedDurationMinutes > 0 &&
     selectedDurationSeconds > 0 &&
     !isFutureRunDate(selectedDate)
-
-  function openRunDatePicker() {
-    const nextDateParts = parseDateParts(selectedDate)
-    setDraftRunYear(nextDateParts.year)
-    setDraftRunMonth(nextDateParts.month)
-    setDraftRunDay(nextDateParts.day)
-    setRunDatePickerOpen(true)
-  }
 
   function handleDistanceInputChange(nextValue: string) {
     const normalizedValue = nextValue.replace(',', '.')
@@ -377,18 +325,6 @@ export default function RunsPage() {
   }
 
   useEffect(() => {
-    if (draftRunMonth > maxSelectableMonth) {
-      setDraftRunMonth(maxSelectableMonth)
-    }
-  }, [draftRunMonth, maxSelectableMonth])
-
-  useEffect(() => {
-    if (draftRunDay > maxSelectableDay) {
-      setDraftRunDay(maxSelectableDay)
-    }
-  }, [draftRunDay, maxSelectableDay])
-
-  useEffect(() => {
     let isMounted = true
 
     async function loadUser() {
@@ -419,46 +355,66 @@ export default function RunsPage() {
     }
   }, [router])
 
-  const fetchRuns = useCallback(async (currentUser: User) => {
+  const fetchRuns = useCallback(async (
+    currentUser: User,
+    options: { force?: boolean } = {}
+  ) => {
+    const { force = false } = options
+
+    if (!force && Date.now() - lastRunsFetchAtRef.current < RUNS_REFETCH_THROTTLE_MS) {
+      return runsRequestPromiseRef.current ?? Promise.resolve()
+    }
+
+    if (runsRequestPromiseRef.current) {
+      return runsRequestPromiseRef.current
+    }
+
     setLoadingRuns(true)
     setRunsError('')
 
-    try {
-      const response = await fetch('/api/runs', {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'include',
-      })
+    const requestPromise = (async () => {
+      try {
+        const response = await fetch('/api/runs', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'include',
+        })
 
-      if (response.status === 401) {
-        router.replace('/login')
-        return
-      }
+        if (response.status === 401) {
+          router.replace('/login')
+          return
+        }
 
-      const payload = (await response.json()) as
-        | { ok: true; runs: Run[] }
-        | { ok: false; step?: string; error?: string }
+        const payload = (await response.json()) as
+          | { ok: true; runs: Run[] }
+          | { ok: false; step?: string; error?: string }
 
-      if (!response.ok || !payload.ok) {
+        if (!response.ok || !payload.ok) {
+          setRunsError('Не удалось загрузить тренировки')
+          return
+        }
+
+        const normalizedRuns = (payload.runs ?? []).map((run) => ({
+          ...run,
+          distance_km: Number(run.distance_km ?? 0),
+          duration_minutes: Number(run.duration_minutes ?? 0),
+          duration_seconds:
+            run.duration_seconds == null ? null : Number(run.duration_seconds ?? 0),
+          xp: Number(run.xp ?? 0),
+        }))
+
+        lastRunsFetchAtRef.current = Date.now()
+        setRuns(normalizedRuns)
+      } catch {
         setRunsError('Не удалось загрузить тренировки')
-        return
+      } finally {
+        setLoadingRuns(false)
+        runsRequestPromiseRef.current = null
       }
+    })()
 
-      const normalizedRuns = (payload.runs ?? []).map((run) => ({
-        ...run,
-        distance_km: Number(run.distance_km ?? 0),
-        duration_minutes: Number(run.duration_minutes ?? 0),
-        duration_seconds:
-          run.duration_seconds == null ? null : Number(run.duration_seconds ?? 0),
-        xp: Number(run.xp ?? 0),
-      }))
-
-      setRuns(normalizedRuns)
-    } catch {
-      setRunsError('Не удалось загрузить тренировки')
-    } finally {
-      setLoadingRuns(false)
-    }
+    runsRequestPromiseRef.current = requestPromise
+    return requestPromise
   }, [router])
 
   useEffect(() => {
@@ -466,7 +422,7 @@ export default function RunsPage() {
     const currentUser = user
 
     async function loadRuns() {
-      await fetchRuns(currentUser)
+      await fetchRuns(currentUser, { force: true })
     }
 
     void loadRuns()
@@ -516,12 +472,12 @@ export default function RunsPage() {
     const currentUser = user
 
     function handleRunsUpdated() {
-      void fetchRuns(currentUser)
+      void fetchRuns(currentUser, { force: true })
     }
 
     function handleStorage(event: StorageEvent) {
       if (event.key === 'run-club:runs-last-updated') {
-        void fetchRuns(currentUser)
+        void fetchRuns(currentUser, { force: true })
       }
     }
 
@@ -670,15 +626,16 @@ export default function RunsPage() {
         </div>
         <div>
           <label htmlFor="run_date" className="app-text-secondary block text-sm mb-1">Дата тренировки</label>
-          <button
+          <input
             id="run_date"
-            type="button"
-            onClick={openRunDatePicker}
+            type="date"
+            value={selectedDate}
+            max={todayDateValue}
+            onChange={(event) => setRunDate(event.target.value || todayDateValue)}
             disabled={submitting}
-            className="app-button-secondary flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
-          >
-            <span className="app-text-primary font-semibold">{runDateLabel}</span>
-          </button>
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+          />
+          <p className="app-text-secondary mt-2 text-xs">Будущие даты недоступны.</p>
         </div>
         <div>
           <label className="app-text-secondary mb-1 block text-sm">Дистанция</label>
@@ -850,40 +807,6 @@ export default function RunsPage() {
         )}
       </div>
       </div>
-      <WheelPickerSheet
-        title="Дата тренировки"
-        open={runDatePickerOpen}
-        onCancel={() => setRunDatePickerOpen(false)}
-        onDone={() => {
-          setRunDate(buildDateValue(draftRunYear, draftRunMonth, draftRunDay))
-          setRunDatePickerOpen(false)
-        }}
-      >
-        <div className="grid grid-cols-3 gap-2">
-          <WheelPickerColumn
-            label="ГОД"
-            value={draftRunYear}
-            options={yearOptions}
-            onChange={setDraftRunYear}
-          />
-          <WheelPickerColumn
-            label="МЕС"
-            value={draftRunMonth}
-            options={monthOptions}
-            onChange={setDraftRunMonth}
-            formatter={formatTwoDigits}
-            isOptionDisabled={(month) => month > maxSelectableMonth}
-          />
-          <WheelPickerColumn
-            label="ДЕНЬ"
-            value={draftRunDay}
-            options={dayOptions}
-            onChange={setDraftRunDay}
-            formatter={formatTwoDigits}
-            isOptionDisabled={(day) => day > maxSelectableDay}
-          />
-        </div>
-      </WheelPickerSheet>
     </main>
   )
 }
