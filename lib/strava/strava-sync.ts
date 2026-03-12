@@ -328,7 +328,7 @@ export async function importStravaActivityForUser(
   const payload = buildRunInsertPayload(userId, activity)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id')
+    .select('id, user_id')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -350,7 +350,9 @@ export async function importStravaActivityForUser(
     }
   }
 
-  if (!options.updateExisting) {
+  const requiresOwnerRepair = existingRun.user_id !== userId
+
+  if (!options.updateExisting && !requiresOwnerRepair) {
     return {
       status: 'skipped_existing',
       activityId: payload.external_id,
@@ -360,6 +362,7 @@ export async function importStravaActivityForUser(
   const { error: updateError } = await supabase
     .from('runs')
     .update({
+      user_id: payload.user_id,
       name: payload.name,
       title: payload.title,
       distance_km: payload.distance_km,
