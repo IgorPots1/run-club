@@ -270,7 +270,7 @@ export default function FeedPage() {
     }
   }, [router])
 
-  if (loading) return <main className="min-h-screen p-4">Загрузка...</main>
+  if (loading) return <main className="min-h-screen p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
 
   const error = actionError || feedError
   const emptyCtaHref = currentUserId ? '/runs' : '/login'
@@ -285,7 +285,7 @@ export default function FeedPage() {
 
   return (
     <main
-      className="relative min-h-screen"
+      className="relative min-h-screen pt-[env(safe-area-inset-top)] md:pt-0"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -301,7 +301,7 @@ export default function FeedPage() {
         </div>
       </div>
       <div
-        className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4"
+        className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4"
         style={{
           transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
           transition: pullDistance === 0 ? 'transform 180ms ease' : 'none',

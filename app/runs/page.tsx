@@ -285,6 +285,7 @@ export default function RunsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
+  const [activeStravaHintRunId, setActiveStravaHintRunId] = useState<string | null>(null)
   const parsedDistanceKm = parseDistanceInput(distanceInput)
   const selectedDistanceKm = parsedDistanceKm ?? 0
   const compactDistanceLabel = selectedDistanceKm > 0 ? formatCompactDistanceLabel(selectedDistanceKm) : '0'
@@ -488,6 +489,20 @@ export default function RunsPage() {
   }, [fetchRuns, user])
 
   useEffect(() => {
+    if (!activeStravaHintRunId) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setActiveStravaHintRunId(null)
+    }, 2200)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [activeStravaHintRunId])
+
+  useEffect(() => {
     if (!user) return
 
     const currentUser = user
@@ -609,18 +624,18 @@ export default function RunsPage() {
     }
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
+  if (loading) return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
   if (!user) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4">
+      <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
       <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
@@ -794,12 +809,23 @@ export default function RunsPage() {
                 </button>
               </div>
               {run.external_source === 'strava' ? (
-                <span
-                  aria-label="Strava"
-                  className="absolute bottom-4 right-4 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
-                >
-                  <StravaIcon />
-                </span>
+                <>
+                  {activeStravaHintRunId === run.id ? (
+                    <div className="app-text-secondary absolute bottom-12 right-4 z-10 rounded-full border bg-white/95 px-3 py-1.5 text-xs shadow-sm dark:bg-black/90">
+                      Импортировано из Strava
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Показать источник Strava"
+                    onClick={() =>
+                      setActiveStravaHintRunId((current) => (current === run.id ? null : run.id))
+                    }
+                    className="absolute bottom-4 right-4 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
+                  >
+                    <StravaIcon />
+                  </button>
+                </>
               ) : null}
             </div>
           ))

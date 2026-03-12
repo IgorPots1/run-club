@@ -153,7 +153,7 @@ export default function DashboardPage() {
 
   if (!user && !loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4">
+      <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
       </main>
     )
@@ -190,8 +190,8 @@ export default function DashboardPage() {
     : 0
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <div className="mb-6 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
           <UserIdentitySummary

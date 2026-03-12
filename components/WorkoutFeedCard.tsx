@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { memo, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import RunLikeControl from '@/components/RunLikeControl'
 
@@ -27,12 +27,12 @@ type WorkoutFeedCardProps = {
 function StravaIcon() {
   return (
     <svg
-      width="16"
-      height="16"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
-      className="block h-4 w-4 shrink-0 text-[#FC4C02]"
+      className="block h-[18px] w-[18px] shrink-0 text-[#FC4C02]"
     >
       <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
       <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
@@ -112,10 +112,26 @@ function WorkoutFeedCard({
   profileHref = null,
 }: WorkoutFeedCardProps) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
+  const [showStravaHint, setShowStravaHint] = useState(false)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
   const displayTitle = buildDisplayTitle(rawTitle, distanceKm, pace)
   const displayUserName = displayName.trim() || 'Бегун'
+
+  useEffect(() => {
+    if (!showStravaHint) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowStravaHint(false)
+    }, 2200)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [showStravaHint])
+
   const profileIdentity = (
     <>
       {showAvatarImage && avatarSrc ? (
@@ -171,12 +187,21 @@ function WorkoutFeedCard({
         />
       </div>
       {externalSource === 'strava' ? (
-        <span
-          aria-label="Strava"
-          className="absolute bottom-4 right-4 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
-        >
-          <StravaIcon />
-        </span>
+        <>
+          {showStravaHint ? (
+            <div className="app-text-secondary absolute bottom-12 right-4 z-10 rounded-full border bg-white/95 px-3 py-1.5 text-xs shadow-sm dark:bg-black/90">
+              Импортировано из Strava
+            </div>
+          ) : null}
+          <button
+            type="button"
+            aria-label="Показать источник Strava"
+            onClick={() => setShowStravaHint((current) => !current)}
+            className="absolute bottom-4 right-4 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
+          >
+            <StravaIcon />
+          </button>
+        </>
       ) : null}
     </div>
   )

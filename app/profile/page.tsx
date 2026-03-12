@@ -653,10 +653,10 @@ function ProfilePageContent() {
     }
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4">Загрузка...</main>
+  if (loading) return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
   if (!user) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4">
+      <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
       </main>
     )
@@ -686,8 +686,8 @@ function ProfilePageContent() {
 
   if (profileDataLoading) {
     return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
+      <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
           <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
           <div className="mb-6 flex flex-col items-center gap-4">
             <div className="skeleton-line h-28 w-28 rounded-full sm:h-32 sm:w-32" />
@@ -740,8 +740,8 @@ function ProfilePageContent() {
   }
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
