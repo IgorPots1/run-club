@@ -12,7 +12,7 @@ export function getProfileDisplayName(profile: ProfileIdentity | null | undefine
   const nickname = profile?.nickname?.trim()
   const email = profile?.email?.trim()
 
-  return name || nickname || email || fallback
+  return nickname || name || email || fallback
 }
 
 function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
@@ -27,6 +27,22 @@ function isMissingNicknameColumnError(error: { code?: string | null; message?: s
 function normalizeProfileValue(value: string | null | undefined) {
   const normalized = value?.trim()
   return normalized ? normalized : null
+}
+
+function getAuthMetadataProfileFields(user: User) {
+  const metadata = (user.user_metadata ?? {}) as {
+    name?: string | null
+    full_name?: string | null
+    nickname?: string | null
+    avatar_url?: string | null
+    picture?: string | null
+  }
+
+  return {
+    name: normalizeProfileValue(metadata.name ?? metadata.full_name ?? null),
+    nickname: normalizeProfileValue(metadata.nickname),
+    avatar_url: normalizeProfileValue(metadata.avatar_url ?? metadata.picture ?? null),
+  }
 }
 
 export async function upsertProfile(input: {
@@ -69,17 +85,18 @@ export async function upsertProfile(input: {
 
 export async function ensureProfileExists(user: User) {
   const email = normalizeProfileValue(user.email)
+  const metadataProfile = getAuthMetadataProfileFields(user)
 
   if (!user.id) {
     return
   }
 
-  const { error } = await supabase.from('profiles').upsert({
+  const { error } = await upsertProfile({
     id: user.id,
     email,
-  }, {
-    onConflict: 'id',
-    ignoreDuplicates: false,
+    name: metadataProfile.name,
+    nickname: metadataProfile.nickname,
+    avatar_url: metadataProfile.avatar_url,
   })
 
   if (error) {

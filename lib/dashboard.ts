@@ -150,7 +150,6 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
 export async function loadDashboardRuns(currentUserId: string): Promise<DashboardRunItem[]> {
   const [
     { data: runs, error: runsError },
-    { data: profiles, error: profilesError },
     { likesByRunId, likedRunIds },
   ] = await Promise.all([
     supabase
@@ -158,7 +157,6 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       .select('*')
       .order('created_at', { ascending: false })
       .order('id', { ascending: false }),
-    supabase.from('profiles').select('*'),
     safeLoadRunLikesSummary(currentUserId),
   ])
 
@@ -166,11 +164,17 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
     throw new Error('Не удалось загрузить тренировки')
   }
 
+  const runRows = (runs as RunRow[] | null) ?? []
+  const userIds = Array.from(new Set(runRows.map((run) => run.user_id)))
+  const { data: profiles, error: profilesError } = userIds.length > 0
+    ? await supabase.from('profiles').select('*').in('id', userIds)
+    : { data: [], error: null }
+
   const profileById = profilesError
     ? {}
     : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
 
-  return ((runs as RunRow[] | null) ?? []).map((run) => {
+  return runRows.map((run) => {
     const profile = profileById[run.user_id]
     const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
 

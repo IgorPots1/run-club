@@ -39,12 +39,19 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser()
 
   if (user) {
-    const metadata = user.user_metadata as { name?: string | null; nickname?: string | null } | undefined
+    const metadata = user.user_metadata as {
+      name?: string | null
+      full_name?: string | null
+      nickname?: string | null
+      avatar_url?: string | null
+      picture?: string | null
+    } | undefined
     const payload = {
       id: user.id,
       email: user.email?.trim() || null,
-      name: metadata?.name?.trim() || null,
+      name: metadata?.name?.trim() || metadata?.full_name?.trim() || null,
       nickname: metadata?.nickname?.trim() || null,
+      avatar_url: metadata?.avatar_url?.trim() || metadata?.picture?.trim() || null,
     }
 
     const result = await supabase.from('profiles').upsert(payload, {
@@ -58,6 +65,7 @@ export async function GET(request: Request) {
           id: payload.id,
           email: payload.email,
           name: payload.name,
+          avatar_url: payload.avatar_url,
         },
         {
           onConflict: 'id',
