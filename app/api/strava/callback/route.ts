@@ -8,42 +8,83 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
   const state = url.searchParams.get('state')
+  const debugMode = url.searchParams.get('debug') === '1'
   const cookieStore = await cookies()
   const storedState = cookieStore.get('strava_oauth_state')?.value
   const cookieUserId = cookieStore.get('strava_connect_user_id')?.value ?? null
   const { user: authenticatedUser } = await getAuthenticatedUser()
   const connectUserId = authenticatedUser?.id ?? cookieUserId
 
-  if (!code) {
-    return NextResponse.json({
-      ok: false,
-      step: 'missing_code',
+  function buildProfileRedirect(status: 'connected' | 'error') {
+    return NextResponse.redirect(new URL(`/profile?strava=${status}`, url.origin))
+  }
+
+  function clearStravaConnectCookies(response: NextResponse) {
+    response.cookies.set('strava_oauth_state', '', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 0,
     })
+
+    response.cookies.set('strava_connect_user_id', '', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 0,
+    })
+
+    return response
+  }
+
+  if (!code) {
+    if (debugMode) {
+      return NextResponse.json({
+        ok: false,
+        step: 'missing_code',
+      })
+    }
+
+    return clearStravaConnectCookies(buildProfileRedirect('error'))
   }
 
   if (!state || !storedState || state !== storedState) {
-    return NextResponse.json({
-      ok: false,
-      step: 'invalid_state',
-      expected: storedState ?? null,
-      received: state,
-    })
+    if (debugMode) {
+      return NextResponse.json({
+        ok: false,
+        step: 'invalid_state',
+        expected: storedState ?? null,
+        received: state,
+      })
+    }
+
+    return clearStravaConnectCookies(buildProfileRedirect('error'))
   }
 
   if (!connectUserId) {
-    return NextResponse.json({
-      ok: false,
-      step: 'missing_connect_user_id',
-    })
+    if (debugMode) {
+      return NextResponse.json({
+        ok: false,
+        step: 'missing_connect_user_id',
+      })
+    }
+
+    return clearStravaConnectCookies(buildProfileRedirect('error'))
   }
 
   if (authenticatedUser?.id && cookieUserId && authenticatedUser.id !== cookieUserId) {
-    return NextResponse.json({
-      ok: false,
-      step: 'user_mismatch',
-      authenticatedUserId: authenticatedUser.id,
-      cookieUserId,
-    })
+    if (debugMode) {
+      return NextResponse.json({
+        ok: false,
+        step: 'user_mismatch',
+        authenticatedUserId: authenticatedUser.id,
+        cookieUserId,
+      })
+    }
+
+    return clearStravaConnectCookies(buildProfileRedirect('error'))
   }
 
   const supabase = await createSupabaseServerClient()
@@ -52,10 +93,14 @@ export async function GET(request: Request) {
     const tokenResponse = await exchangeStravaCodeForToken(code)
 
     if (!tokenResponse.athlete?.id) {
-      return NextResponse.json({
-        ok: false,
-        step: 'missing_athlete',
-      })
+      if (debugMode) {
+        return NextResponse.json({
+          ok: false,
+          step: 'missing_athlete',
+        })
+      }
+
+      return clearStravaConnectCookies(buildProfileRedirect('error'))
     }
 
     const connectionPayload = {
@@ -75,11 +120,15 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (selectError) {
-      return NextResponse.json({
-        ok: false,
-        step: 'db_upsert_failed',
-        error: selectError.message,
-      })
+      if (debugMode) {
+        return NextResponse.json({
+          ok: false,
+          step: 'db_upsert_failed',
+          error: selectError.message,
+        })
+      }
+
+      return clearStravaConnectCookies(buildProfileRedirect('error'))
     }
 
     const { error: saveError } = existingConnection
@@ -97,24 +146,36 @@ export async function GET(request: Request) {
       : await supabase.from('strava_connections').insert(connectionPayload)
 
     if (saveError) {
+      if (debugMode) {
+        return NextResponse.json({
+          ok: false,
+          step: 'db_upsert_failed',
+          error: saveError.message,
+        })
+      }
+
+      return clearStravaConnectCookies(buildProfileRedirect('error'))
+    }
+
+    if (debugMode) {
       return NextResponse.json({
-        ok: false,
-        step: 'db_upsert_failed',
-        error: saveError.message,
+        ok: true,
+        step: 'connected',
+        athleteId: String(tokenResponse.athlete.id),
+        userId: connectUserId,
       })
     }
 
-    return NextResponse.json({
-      ok: true,
-      step: 'connected',
-      athleteId: String(tokenResponse.athlete.id),
-      userId: connectUserId,
-    })
+    return clearStravaConnectCookies(buildProfileRedirect('connected'))
   } catch (caughtError) {
-    return NextResponse.json({
-      ok: false,
-      step: 'token_exchange_failed',
-      error: caughtError instanceof Error ? caughtError.message : 'Unknown token exchange error',
-    })
+    if (debugMode) {
+      return NextResponse.json({
+        ok: false,
+        step: 'token_exchange_failed',
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown token exchange error',
+      })
+    }
+
+    return clearStravaConnectCookies(buildProfileRedirect('error'))
   }
 }
