@@ -28,6 +28,22 @@ type Run = {
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
 
+function StravaIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className="inline-block align-[-0.125em] text-[#FC4C02]"
+    >
+      <path d="M15.386 1 9.999 11.56h3.178L15.386 7l2.209 4.56h3.177L15.386 1Z" />
+      <path d="M9.999 14.077 7.354 19.41h2.41L9.999 18.9l.235.51h2.41l-2.645-5.333Z" />
+    </svg>
+  )
+}
+
 function formatDurationMinutesLabel(totalMinutes: number) {
   if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
     return '0 мин'
@@ -778,8 +794,11 @@ export default function RunsPage() {
                 </button>
               </div>
               {run.external_source === 'strava' ? (
-                <span className="app-text-secondary absolute bottom-4 right-4 rounded-full border px-2 py-1 text-[10px] font-semibold tracking-wide">
-                  STRAVA
+                <span
+                  aria-label="Strava"
+                  className="absolute bottom-4 right-4 inline-flex h-7 w-7 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
+                >
+                  <StravaIcon />
                 </span>
               ) : null}
             </div>

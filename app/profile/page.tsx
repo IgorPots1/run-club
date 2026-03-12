@@ -63,16 +63,18 @@ type StravaSyncResponse =
       error?: string
     }
 
-function CheckIcon() {
+function StravaIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M20 6L9 17L4 12"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className="inline-block align-[-0.125em] text-[#FC4C02]"
+    >
+      <path d="M15.386 1 9.999 11.56h3.178L15.386 7l2.209 4.56h3.177L15.386 1Z" />
+      <path d="M9.999 14.077 7.354 19.41h2.41L9.999 18.9l.235.51h2.41l-2.645-5.333Z" />
     </svg>
   )
 }
@@ -899,7 +901,7 @@ function ProfilePageContent() {
             ) : stravaConnected ? (
               <>
                 <p className="app-text-primary inline-flex items-center gap-2 text-sm font-medium">
-                  <CheckIcon />
+                  <StravaIcon />
                   <span>Strava подключена</span>
                 </p>
                 <button
@@ -977,9 +979,9 @@ function ProfilePageContent() {
           <div className="app-card flex w-full max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
             <span
               aria-hidden="true"
-              className="app-text-primary inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border"
             >
-              <CheckIcon />
+              <StravaIcon />
             </span>
             <p className="app-text-primary text-sm font-medium">Strava успешно подключена</p>
           </div>
