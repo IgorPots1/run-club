@@ -620,7 +620,7 @@ export default function RunsPage() {
 
   return (
     <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl p-4">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
       <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>

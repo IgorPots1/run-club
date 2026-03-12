@@ -66,12 +66,12 @@ type StravaSyncResponse =
 function StravaIcon() {
   return (
     <svg
-      width="16"
-      height="16"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
-      className="block h-4 w-4 shrink-0 text-[#FC4C02]"
+      className="block h-[18px] w-[18px] shrink-0 text-[#FC4C02]"
     >
       <path d="M15.386 1 9.999 11.56h3.178L15.386 7l2.209 4.56h3.177L15.386 1Z" />
       <path d="M9.999 14.077 7.354 19.41h2.41L9.999 18.9l.235.51h2.41l-2.645-5.333Z" />
@@ -687,7 +687,7 @@ function ProfilePageContent() {
   if (profileDataLoading) {
     return (
       <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl p-4">
+        <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
           <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
           <div className="mb-6 flex flex-col items-center gap-4">
             <div className="skeleton-line h-28 w-28 rounded-full sm:h-32 sm:w-32" />
@@ -741,7 +741,7 @@ function ProfilePageContent() {
 
   return (
     <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl p-4">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4">
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
       {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
@@ -900,9 +900,16 @@ function ProfilePageContent() {
               <p className="app-text-secondary text-sm">Проверяем подключение...</p>
             ) : stravaConnected ? (
               <>
-                <div className="app-text-primary flex items-center gap-1.5 text-sm font-medium">
-                  <StravaIcon />
-                  <span>Strava подключена</span>
+                <div className="flex items-start gap-2">
+                  <div className="pt-0.5">
+                    <StravaIcon />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="app-text-primary text-sm font-medium">Strava подключена</p>
+                    <p className="app-text-secondary mt-0.5 text-xs">
+                      Автоматическая синхронизация активна
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"

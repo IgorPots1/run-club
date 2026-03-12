@@ -301,7 +301,7 @@ export default function FeedPage() {
         </div>
       </div>
       <div
-        className="mx-auto max-w-xl p-4"
+        className="mx-auto max-w-xl px-4 pb-4 pt-[calc(16px+env(safe-area-inset-top))] md:p-4"
         style={{
           transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
           transition: pullDistance === 0 ? 'transform 180ms ease' : 'none',
