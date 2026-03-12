@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
-import { formatDistanceKm, formatRunDateTimeLabel } from '@/lib/format'
+import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import WheelPickerColumn from '@/components/WheelPickerColumn'
 import WheelPickerSheet from '@/components/WheelPickerSheet'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -761,7 +761,7 @@ export default function RunsPage() {
                       : ''}
                   </p>
                   <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">
-                    {formatRunDateTimeLabel(run.created_at)}
+                    {formatRunTimestampLabel(run.created_at, run.external_source)}
                   </p>
                   <div className="compact-run-card-like">
                     <p className="app-text-secondary text-sm">⚡ +{run.xp} XP</p>

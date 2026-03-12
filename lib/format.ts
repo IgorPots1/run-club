@@ -2,10 +2,33 @@ export function formatDistanceKm(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
-export function formatRunDateTimeLabel(dateString: string) {
+function parseRunDate(dateString: string) {
   const runDate = new Date(dateString)
 
   if (Number.isNaN(runDate.getTime())) {
+    return null
+  }
+
+  return runDate
+}
+
+export function formatRunDateLabel(dateString: string) {
+  const runDate = parseRunDate(dateString)
+
+  if (!runDate) {
+    return 'Дата неизвестна'
+  }
+
+  return runDate.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+export function formatRunDateTimeLabel(dateString: string) {
+  const runDate = parseRunDate(dateString)
+
+  if (!runDate) {
     return 'Дата неизвестна'
   }
 
@@ -35,4 +58,12 @@ export function formatRunDateTimeLabel(dateString: string) {
   })
 
   return `${dateLabel} ${timeLabel}`
+}
+
+export function formatRunTimestampLabel(dateString: string, externalSource?: string | null) {
+  if (externalSource === 'strava') {
+    return formatRunDateTimeLabel(dateString)
+  }
+
+  return formatRunDateLabel(dateString)
 }

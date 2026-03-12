@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { memo, useState } from 'react'
-import { formatDistanceKm, formatRunDateTimeLabel } from '@/lib/format'
+import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
@@ -133,7 +133,9 @@ function WorkoutFeedCard({
             {profileIdentity}
           </div>
         )}
-        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">{formatRunDateTimeLabel(createdAt)}</p>
+        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
+          {formatRunTimestampLabel(createdAt, externalSource)}
+        </p>
       </div>
 
       <div className="mt-3">
