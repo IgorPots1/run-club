@@ -135,7 +135,7 @@ function WorkoutFeedCard({
   )
 
   return (
-    <div className="app-card overflow-hidden rounded-2xl px-4 py-4 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10">
+    <div className="app-card relative overflow-hidden rounded-2xl px-4 py-4 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10">
       <div className="flex items-start justify-between gap-3">
         {profileHref ? (
           <Link href={profileHref} className="flex min-w-0 items-center gap-3">
@@ -153,9 +153,6 @@ function WorkoutFeedCard({
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
-        {externalSource === 'strava' ? (
-          <p className="app-text-secondary mt-1 text-sm font-medium">🟠 Strava</p>
-        ) : null}
       </div>
 
       <div className="mt-3">
@@ -168,6 +165,11 @@ function WorkoutFeedCard({
           variant="inline"
         />
       </div>
+      {externalSource === 'strava' ? (
+        <span className="app-text-secondary absolute bottom-4 right-4 rounded-full border px-2 py-1 text-[10px] font-semibold tracking-wide">
+          STRAVA
+        </span>
+      ) : null}
     </div>
   )
 }
