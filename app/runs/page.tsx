@@ -1,6 +1,6 @@
 'use client'
 
-import { Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -24,8 +24,17 @@ type Run = {
   external_id?: string | null
 }
 
+type CalendarDayCell = {
+  key: string
+  dateValue: string
+  dayNumber: number
+  isDisabled: boolean
+  isToday: boolean
+}
+
 const DEFAULT_WORKOUT_NAME = 'Бег'
 const RUNS_REFETCH_THROTTLE_MS = 8000
+const CALENDAR_WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 function StravaIcon() {
   return (
@@ -146,6 +155,207 @@ function isFutureRunDate(dateValue: string) {
   return dateValue > getTodayDateValue()
 }
 
+function parseDateValue(dateValue: string) {
+  const [yearString, monthString, dayString] = dateValue.split('-')
+  const year = Number(yearString)
+  const month = Number(monthString)
+  const day = Number(dayString)
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+
+  const parsedDate = new Date(year, month - 1, day, 12)
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null
+  }
+
+  return parsedDate
+}
+
+function getMonthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 12)
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1, 12)
+}
+
+function getDateValueFromDate(date: Date) {
+  return `${date.getFullYear()}-${formatTwoDigits(date.getMonth() + 1)}-${formatTwoDigits(date.getDate())}`
+}
+
+function formatRunDatePickerLabel(dateValue: string) {
+  const date = parseDateValue(dateValue)
+
+  if (!date) {
+    return 'Выбрать дату'
+  }
+
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function formatCalendarMonthLabel(date: Date) {
+  const label = date.toLocaleDateString('ru-RU', {
+    month: 'long',
+    year: 'numeric',
+  })
+
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function isSameMonth(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth()
+}
+
+function buildCalendarDays(monthDate: Date, maxDateValue: string) {
+  const year = monthDate.getFullYear()
+  const monthIndex = monthDate.getMonth()
+  const firstDayOfMonth = new Date(year, monthIndex, 1, 12)
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+  const leadingEmptyCells = (firstDayOfMonth.getDay() + 6) % 7
+  const totalCells = Math.ceil((leadingEmptyCells + daysInMonth) / 7) * 7
+  const todayValue = getTodayDateValue()
+
+  return Array.from({ length: totalCells }, (_, index) => {
+    const dayNumber = index - leadingEmptyCells + 1
+
+    if (dayNumber < 1 || dayNumber > daysInMonth) {
+      return null
+    }
+
+    const date = new Date(year, monthIndex, dayNumber, 12)
+    const dateValue = getDateValueFromDate(date)
+
+    return {
+      key: dateValue,
+      dateValue,
+      dayNumber,
+      isDisabled: dateValue > maxDateValue,
+      isToday: dateValue === todayValue,
+    } satisfies CalendarDayCell
+  })
+}
+
+type CalendarDatePickerSheetProps = {
+  open: boolean
+  selectedDate: string
+  maxDate: string
+  onClose: () => void
+  onSelect: (dateValue: string) => void
+}
+
+function CalendarDatePickerSheet({
+  open,
+  selectedDate,
+  maxDate,
+  onClose,
+  onSelect,
+}: CalendarDatePickerSheetProps) {
+  const fallbackDate = parseDateValue(maxDate) ?? new Date()
+  const [visibleMonth, setVisibleMonth] = useState(() => getMonthStart(parseDateValue(selectedDate) ?? fallbackDate))
+
+  useEffect(() => {
+    if (!open) return
+
+    setVisibleMonth(getMonthStart(parseDateValue(selectedDate) ?? fallbackDate))
+  }, [fallbackDate, open, selectedDate])
+
+  if (!open) return null
+
+  const maxMonth = getMonthStart(fallbackDate)
+  const canGoNext = !isSameMonth(visibleMonth, maxMonth)
+  const calendarDays = buildCalendarDays(visibleMonth, maxDate)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4" role="dialog" aria-modal="true" aria-label="Выбор даты тренировки">
+      <div className="absolute inset-0" aria-hidden="true" onClick={onClose} />
+      <div className="app-card relative w-full rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-md md:rounded-3xl">
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="app-text-secondary min-h-11 rounded-lg px-3 py-2 text-sm"
+          >
+            Отмена
+          </button>
+          <h2 className="app-text-primary text-base font-semibold">Дата тренировки</h2>
+          <div className="w-[84px]" aria-hidden="true" />
+        </div>
+        <div className="mt-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setVisibleMonth((currentMonth) => addMonths(currentMonth, -1))}
+              className="app-button-secondary inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border p-2"
+              aria-label="Показать предыдущий месяц"
+            >
+              <ChevronLeft className="h-4 w-4" strokeWidth={1.9} />
+            </button>
+            <p className="app-text-primary text-sm font-semibold">{formatCalendarMonthLabel(visibleMonth)}</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (!canGoNext) return
+                setVisibleMonth((currentMonth) => addMonths(currentMonth, 1))
+              }}
+              disabled={!canGoNext}
+              className="app-button-secondary inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border p-2 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Показать следующий месяц"
+            >
+              <ChevronRight className="h-4 w-4" strokeWidth={1.9} />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {CALENDAR_WEEKDAY_LABELS.map((weekday) => (
+              <div key={weekday} className="app-text-secondary px-1 py-2 text-xs font-medium">
+                {weekday}
+              </div>
+            ))}
+            {calendarDays.map((day, index) => {
+              if (!day) {
+                return <div key={`empty-${index}`} className="aspect-square" aria-hidden="true" />
+              }
+
+              const isSelected = day.dateValue === selectedDate && !day.isDisabled
+
+              return (
+                <button
+                  key={day.key}
+                  type="button"
+                  disabled={day.isDisabled}
+                  onClick={() => {
+                    if (day.isDisabled) return
+                    onSelect(day.dateValue)
+                    onClose()
+                  }}
+                  className={`aspect-square rounded-xl text-sm transition-colors ${
+                    day.isDisabled
+                      ? 'cursor-not-allowed bg-transparent text-gray-300 dark:text-gray-600'
+                      : isSelected
+                        ? 'app-button-primary'
+                        : day.isToday
+                          ? 'app-text-primary ring-1 ring-black/10 dark:ring-white/15'
+                          : 'app-text-primary hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10'
+                  }`}
+                  aria-label={formatRunDatePickerLabel(day.dateValue)}
+                >
+                  {day.dayNumber}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const QUICK_DISTANCE_CHIPS = [
   { label: '5 км', wholeKm: 5, tenthsKm: 0 },
   { label: '10 км', wholeKm: 10, tenthsKm: 0 },
@@ -245,6 +455,7 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([])
   const [title, setTitle] = useState('')
   const [runDate, setRunDate] = useState(getTodayDateValue())
+  const [runDatePickerOpen, setRunDatePickerOpen] = useState(false)
   const [distanceInput, setDistanceInput] = useState('')
   const [durationHoursInput, setDurationHoursInput] = useState('0')
   const [durationMinutesInput, setDurationMinutesInput] = useState('0')
@@ -279,6 +490,7 @@ export default function RunsPage() {
   const showPacePreview = shouldShowPace(selectedDurationSeconds, selectedDistanceKm)
   const selectedDate = runDate || getTodayDateValue()
   const todayDateValue = getTodayDateValue()
+  const runDateLabel = formatRunDatePickerLabel(selectedDate)
   const isWorkoutFormValid =
     Boolean(selectedDate) &&
     Number.isFinite(selectedDistanceKm) &&
@@ -626,16 +838,16 @@ export default function RunsPage() {
         </div>
         <div>
           <label htmlFor="run_date" className="app-text-secondary block text-sm mb-1">Дата тренировки</label>
-          <input
+          <button
             id="run_date"
-            type="date"
-            value={selectedDate}
-            max={todayDateValue}
-            onChange={(event) => setRunDate(event.target.value || todayDateValue)}
+            type="button"
+            onClick={() => setRunDatePickerOpen(true)}
             disabled={submitting}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          />
-          <p className="app-text-secondary mt-2 text-xs">Будущие даты недоступны.</p>
+            className="app-button-secondary flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+          >
+            <span className="app-text-primary font-semibold">{runDateLabel}</span>
+          </button>
+          <p className="app-text-secondary mt-2 text-xs">Будущие даты недоступны и отображаются неактивными в календаре.</p>
         </div>
         <div>
           <label className="app-text-secondary mb-1 block text-sm">Дистанция</label>
@@ -807,6 +1019,13 @@ export default function RunsPage() {
         )}
       </div>
       </div>
+      <CalendarDatePickerSheet
+        open={runDatePickerOpen}
+        selectedDate={selectedDate}
+        maxDate={todayDateValue}
+        onClose={() => setRunDatePickerOpen(false)}
+        onSelect={setRunDate}
+      />
     </main>
   )
 }
