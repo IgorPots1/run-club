@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { memo, useState } from 'react'
-import { formatDistanceKm } from '@/lib/format'
+import { formatDistanceKm, formatRunDateTimeLabel } from '@/lib/format'
 import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
@@ -22,19 +22,6 @@ type WorkoutFeedCardProps = {
   onToggleLike: (runId: string) => void
   subtitle?: string | null
   profileHref?: string | null
-}
-
-function formatRunDate(date: string) {
-  const parsedDate = new Date(date)
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return 'Дата неизвестна'
-  }
-
-  return parsedDate.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-  })
 }
 
 function AvatarFallback() {
@@ -146,7 +133,7 @@ function WorkoutFeedCard({
             {profileIdentity}
           </div>
         )}
-        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">{formatRunDate(createdAt)}</p>
+        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">{formatRunDateTimeLabel(createdAt)}</p>
       </div>
 
       <div className="mt-3">

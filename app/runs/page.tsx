@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
-import { formatDistanceKm } from '@/lib/format'
+import { formatDistanceKm, formatRunDateTimeLabel } from '@/lib/format'
 import WheelPickerColumn from '@/components/WheelPickerColumn'
 import WheelPickerSheet from '@/components/WheelPickerSheet'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -115,35 +115,6 @@ function formatRunPaceFromMinutes(distanceKm: number, durationMinutes: number) {
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return ''
 
   return formatPaceLabel(Math.round(durationMinutes * 60), distanceKm)
-}
-
-function formatRunDateLabel(dateString: string) {
-  const runDate = new Date(dateString)
-
-  if (Number.isNaN(runDate.getTime())) {
-    return 'Дата неизвестна'
-  }
-
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
-
-  const runDayKey = `${runDate.getFullYear()}-${runDate.getMonth()}-${runDate.getDate()}`
-  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`
-  const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`
-
-  if (runDayKey === todayKey) {
-    return 'Сегодня'
-  }
-
-  if (runDayKey === yesterdayKey) {
-    return 'Вчера'
-  }
-
-  return runDate.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-  })
 }
 
 function getRunDisplayName(run: Pick<Run, 'name' | 'title'>) {
@@ -790,7 +761,7 @@ export default function RunsPage() {
                       : ''}
                   </p>
                   <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">
-                    {formatRunDateLabel(run.created_at)}
+                    {formatRunDateTimeLabel(run.created_at)}
                   </p>
                   <div className="compact-run-card-like">
                     <p className="app-text-secondary text-sm">⚡ +{run.xp} XP</p>
