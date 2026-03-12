@@ -10,7 +10,7 @@ import AvatarCropModal from '@/components/AvatarCropModal'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
-import { ensureProfileExists, getProfileDisplayName, upsertProfile } from '@/lib/profiles'
+import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
@@ -309,14 +309,25 @@ export default function ProfilePage() {
         payload,
       })
 
-      const { error } = await upsertProfile(payload)
-
-      console.log('[profile] save upsert result', {
-        authUserId: user.id,
-        error,
+      const { error, data } = await updateProfileById({
+        id: user.id,
+        name: nextName || null,
+        nickname: nextNickname || null,
+        avatar_url: profile?.avatar_url ?? null,
       })
 
-      if (error) {
+      console.log('[profile] save update result', {
+        authUserId: user.id,
+        error,
+        data,
+      })
+
+      if (error || !data) {
+        console.error('[profile] save update failed', {
+          authUserId: user.id,
+          error,
+          data,
+        })
         setPageError('Не удалось сохранить профиль')
         return
       }
@@ -470,15 +481,25 @@ export default function ProfilePage() {
       }
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-      const { error: profileError } = await upsertProfile({
+      const { error: profileError, data: profileUpdateData } = await updateProfileById({
         id: user.id,
-        email: user.email ?? email,
         name: nextName,
         nickname: nextNickname,
         avatar_url: data.publicUrl,
       })
 
-      if (profileError) {
+      console.log('[profile] avatar update result', {
+        authUserId: user.id,
+        profileUpdateData,
+        profileError,
+      })
+
+      if (profileError || !profileUpdateData) {
+        console.error('[profile] avatar update failed', {
+          authUserId: user.id,
+          profileError,
+          profileUpdateData,
+        })
         throw new Error('profile_update_failed')
       }
 

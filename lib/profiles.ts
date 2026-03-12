@@ -83,6 +83,24 @@ export async function upsertProfile(input: {
   )
 }
 
+export async function updateProfileById(input: {
+  id: string
+  name?: string | null
+  nickname?: string | null
+  avatar_url?: string | null
+}) {
+  return supabase
+    .from('profiles')
+    .update({
+      name: normalizeProfileValue(input.name),
+      nickname: normalizeProfileValue(input.nickname),
+      avatar_url: input.avatar_url ?? null,
+    })
+    .eq('id', input.id)
+    .select('id')
+    .maybeSingle()
+}
+
 export async function ensureProfileExists(user: User) {
   const email = normalizeProfileValue(user.email)
   const metadataProfile = getAuthMetadataProfileFields(user)
@@ -91,13 +109,33 @@ export async function ensureProfileExists(user: User) {
     return
   }
 
-  const { error } = await upsertProfile({
-    id: user.id,
-    email,
-    name: metadataProfile.name,
-    nickname: metadataProfile.nickname,
-    avatar_url: metadataProfile.avatar_url,
-  })
+  const { data: existingProfile, error: existingProfileError } = await supabase
+    .from('profiles')
+    .select('id, email, name, nickname, avatar_url')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (existingProfileError) {
+    throw existingProfileError
+  }
+
+  const { error } = existingProfile
+    ? await supabase
+        .from('profiles')
+        .update({
+          email,
+          name: existingProfile.name ?? metadataProfile.name,
+          nickname: existingProfile.nickname ?? metadataProfile.nickname,
+          avatar_url: existingProfile.avatar_url ?? metadataProfile.avatar_url,
+        })
+        .eq('id', user.id)
+    : await upsertProfile({
+        id: user.id,
+        email,
+        name: metadataProfile.name,
+        nickname: metadataProfile.nickname,
+        avatar_url: metadataProfile.avatar_url,
+      })
 
   if (error) {
     throw error
