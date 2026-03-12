@@ -1,20 +1,16 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { getAuthenticatedUser, getServerAuthDebug } from '@/lib/supabase-server'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 export async function GET() {
   const { user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
-    const debug = await getServerAuthDebug('/api/runs')
-
     return NextResponse.json(
       {
         ok: false,
         step: 'auth_required',
-        authUserId: null,
         error: error?.message ?? null,
-        ...debug,
       },
       { status: 401 }
     )

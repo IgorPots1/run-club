@@ -1,7 +1,7 @@
 import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
 import { loadLikeXpByUser, loadLikeXpByUserIds } from './likes-xp'
 import { getProfileDisplayName } from './profiles'
-import { loadRunLikesSummary, loadRunLikesSummaryForRunIds } from './run-likes'
+import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
 import { loadChallengeXpByUser, loadChallengeXpByUserIds } from './user-challenges'
 
@@ -68,16 +68,7 @@ export type UserProfileSummary = {
   email: string | null
 }
 
-async function safeLoadRunLikesSummary(currentUserId: string | null) {
-  try {
-    return await loadRunLikesSummary(currentUserId)
-  } catch {
-    return {
-      likesByRunId: {},
-      likedRunIds: new Set<string>(),
-    }
-  }
-}
+const DASHBOARD_RECENT_RUNS_LIMIT = 5
 
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
@@ -148,27 +139,26 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
 }
 
 export async function loadDashboardRuns(currentUserId: string): Promise<DashboardRunItem[]> {
-  const [
-    { data: runs, error: runsError },
-    { likesByRunId, likedRunIds },
-  ] = await Promise.all([
-    supabase
-      .from('runs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false }),
-    safeLoadRunLikesSummary(currentUserId),
-  ])
+  const { data: runs, error: runsError } = await supabase
+    .from('runs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(DASHBOARD_RECENT_RUNS_LIMIT)
 
   if (runsError) {
     throw new Error('Не удалось загрузить тренировки')
   }
 
   const runRows = (runs as RunRow[] | null) ?? []
+  const runIds = runRows.map((run) => run.id)
   const userIds = Array.from(new Set(runRows.map((run) => run.user_id)))
-  const { data: profiles, error: profilesError } = userIds.length > 0
-    ? await supabase.from('profiles').select('*').in('id', userIds)
-    : { data: [], error: null }
+  const [{ data: profiles, error: profilesError }, likesSummary] = await Promise.all([
+    userIds.length > 0
+      ? supabase.from('profiles').select('*').in('id', userIds)
+      : Promise.resolve({ data: [], error: null }),
+    loadRunLikesSummaryForRunIds(runIds, currentUserId),
+  ])
 
   const profileById = profilesError
     ? {}
@@ -189,8 +179,8 @@ export async function loadDashboardRuns(currentUserId: string): Promise<Dashboar
       created_at: run.created_at,
       displayName: getProfileDisplayName(profile, 'Бегун'),
       avatar_url: profile?.avatar_url ?? null,
-      likesCount: likesByRunId[run.id] ?? 0,
-      likedByMe: likedRunIds.has(run.id),
+      likesCount: likesSummary.likesByRunId[run.id] ?? 0,
+      likedByMe: likesSummary.likedRunIds.has(run.id),
     }
   })
 }

@@ -83,7 +83,6 @@ export default function ProfilePage() {
   const searchParams = useSearchParams()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showProfileSkeleton, setShowProfileSkeleton] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
@@ -246,10 +245,6 @@ export default function ProfilePage() {
         setUser(nextUser)
         setEmail(nextUser?.email ?? '')
 
-        if (nextUser) {
-          void ensureProfileExists(nextUser)
-        }
-
         if (!nextUser) {
           router.replace('/login')
         }
@@ -329,21 +324,6 @@ export default function ProfilePage() {
     }
   }, [cropImageSrc])
 
-  useEffect(() => {
-    if (!profileDataLoading) {
-      setShowProfileSkeleton(false)
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setShowProfileSkeleton(true)
-    }, 200)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [profileDataLoading])
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!user || saving || profileDataLoading || !initialProfileForm) return
@@ -364,22 +344,11 @@ export default function ProfilePage() {
         avatar_url: profile?.avatar_url ?? null,
       }
 
-      console.log('[profile] save start', {
-        authUserId: user.id,
-        payload,
-      })
-
       const { error, data } = await updateProfileById({
         id: user.id,
         name: nextName || null,
         nickname: nextNickname || null,
         avatar_url: profile?.avatar_url ?? null,
-      })
-
-      console.log('[profile] save update result', {
-        authUserId: user.id,
-        error,
-        data,
       })
 
       if (error || !data) {
@@ -397,12 +366,6 @@ export default function ProfilePage() {
         .select('*')
         .eq('id', user.id)
         .maybeSingle()
-
-      console.log('[profile] save reload result', {
-        authUserId: user.id,
-        freshProfile,
-        freshProfileError,
-      })
 
       if (freshProfileError) {
         setPageError('Не удалось сохранить профиль')
@@ -546,12 +509,6 @@ export default function ProfilePage() {
         name: nextName,
         nickname: nextNickname,
         avatar_url: data.publicUrl,
-      })
-
-      console.log('[profile] avatar update result', {
-        authUserId: user.id,
-        profileUpdateData,
-        profileError,
       })
 
       if (profileError || !profileUpdateData) {
@@ -717,7 +674,7 @@ export default function ProfilePage() {
     trimmedNewPassword === trimmedConfirmPassword
   const isChangePasswordDisabled = changingPassword || !isPasswordFormValid
 
-  if (profileDataLoading && showProfileSkeleton) {
+  if (profileDataLoading) {
     return (
       <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
         <div className="mx-auto max-w-xl p-4">
@@ -768,14 +725,6 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-      </main>
-    )
-  }
-
-  if (profileDataLoading) {
-    return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl p-4" />
       </main>
     )
   }

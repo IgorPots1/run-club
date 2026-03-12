@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createServerClient } from '@supabase/ssr'
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies()
@@ -35,19 +35,5 @@ export async function getAuthenticatedUser() {
     supabase,
     user,
     error,
-  }
-}
-
-export async function getServerAuthDebug(pathname: string) {
-  const cookieStore = await cookies()
-  const headerStore = await headers()
-  const cookieNames = cookieStore.getAll().map((cookie) => cookie.name)
-
-  return {
-    pathname,
-    hasCookies: cookieNames.length > 0,
-    hasSupabaseCookies: cookieNames.some((cookieName) => cookieName.startsWith('sb-')),
-    cookieNames,
-    middlewareRan: headerStore.get('x-run-club-middleware') === '1',
   }
 }

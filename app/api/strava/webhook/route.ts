@@ -179,10 +179,11 @@ export async function POST(request: Request) {
   try {
     const connection = await getStravaConnectionForAthlete(event.owner_id)
 
-    if (!connection) {
+    if (!connection || !connection.user_id) {
       console.warn('Strava webhook connection missing', {
         ownerId: event.owner_id,
         activityId: event.object_id,
+        hasConnection: Boolean(connection),
       })
 
       return NextResponse.json({

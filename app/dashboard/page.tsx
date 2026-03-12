@@ -90,7 +90,6 @@ export default function DashboardPage() {
     mutate: mutateRuns,
   } = useSWR(runsKey, ([, userId]: readonly [string, string]) => loadDashboardRuns(userId), {
     ...swrBaseOptions,
-    refreshInterval: 30000,
   })
 
   const {
@@ -100,7 +99,6 @@ export default function DashboardPage() {
     mutate: mutateWeeklyRace,
   } = useSWR<WeeklyXpLeaderboard>(weeklyRaceKey, ([, userId]: readonly [string, string]) => loadWeeklyXpLeaderboard(userId), {
     ...swrBaseOptions,
-    refreshInterval: 30000,
   })
 
   async function handleLikeToggle(runId: string) {

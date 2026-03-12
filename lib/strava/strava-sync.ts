@@ -226,6 +226,10 @@ function findLikelyInvalidIntegerField(payload: StravaRunInsertPayload) {
   return null
 }
 
+function isUniqueViolationError(error: { code?: string | null } | null | undefined) {
+  return error?.code === '23505'
+}
+
 function isStravaTokenExpiringSoon(expiresAt: string) {
   const expiresAtMs = new Date(expiresAt).getTime()
 
@@ -341,6 +345,13 @@ export async function importStravaActivityForUser(
     const { error: insertError } = await supabase.from('runs').insert(payload)
 
     if (insertError) {
+      if (isUniqueViolationError(insertError)) {
+        return {
+          status: options.updateExisting ? 'updated' : 'skipped_existing',
+          activityId: payload.external_id,
+        }
+      }
+
       throw new Error(insertError.message)
     }
 
@@ -436,7 +447,7 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
 
       if (result.status === 'imported') {
         imported += 1
-      } else if (result.status === 'skipped_existing') {
+      } else if (result.status === 'skipped_existing' || result.status === 'updated') {
         skipped += 1
       }
     } catch (caughtError) {
