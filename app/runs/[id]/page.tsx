@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
+import { Map } from 'lucide-react'
 import RunRouteMapPreview, { hasRenderableRoutePolyline } from '@/components/RunRouteMapPreview'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -25,6 +26,7 @@ type RunDetailsRow = {
   elevation_gain_meters?: number | null
   average_heartrate?: number | null
   max_heartrate?: number | null
+  xp?: number | null
   map_polyline?: string | null
   created_at: string
 }
@@ -38,7 +40,7 @@ type ProfileRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
   'id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
@@ -62,6 +64,7 @@ function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefin
   return (
     message.includes('average_heartrate') ||
     message.includes('max_heartrate') ||
+    message.includes('xp') ||
     message.includes('map_polyline') ||
     message.includes('calories') ||
     message.includes('average_cadence')
@@ -147,7 +150,7 @@ function formatPaceLabel(averagePaceSeconds: number) {
   const safePace = Math.max(1, Math.round(averagePaceSeconds))
   const minutes = Math.floor(safePace / 60)
   const seconds = safePace % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}/км`
+  return `${minutes}:${String(seconds).padStart(2, '0')} /км`
 }
 
 function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
@@ -315,14 +318,9 @@ export default function RunDetailsPage() {
         Number.isFinite(run.elevation_gain_meters) && (run.elevation_gain_meters ?? 0) > 0
           ? `${Math.round(run.elevation_gain_meters ?? 0)} м`
           : null,
-      averageHeartrateLabel:
-        Number.isFinite(run.average_heartrate) && (run.average_heartrate ?? 0) > 0
-          ? `${Math.round(run.average_heartrate ?? 0)} уд/мин`
-          : null,
-      maxHeartrateLabel:
-        Number.isFinite(run.max_heartrate) && (run.max_heartrate ?? 0) > 0
-          ? `${Math.round(run.max_heartrate ?? 0)} уд/мин`
-          : null,
+      xpValue: Number.isFinite(run.xp) && (run.xp ?? 0) > 0
+        ? Math.round(run.xp ?? 0)
+        : Math.max(0, Math.round(50 + distanceKm * 10)),
       hasMap: Boolean(run.map_polyline?.trim() && hasRenderableRoutePolyline(run.map_polyline)),
     }
   }, [run])
@@ -457,76 +455,51 @@ export default function RunDetailsPage() {
             ) : null}
           </div>
 
-          <h1 className="app-text-primary mt-4 break-words text-xl font-semibold">{getRunTitle(run)}</h1>
+          <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            {details.distanceLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">Дистанция</p>
-                <p className="app-text-primary mt-1 font-semibold">{details.distanceLabel}</p>
-              </div>
-            ) : null}
-            {details.movingTimeLabel || details.durationLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">
-                  {details.movingTimeLabel ? 'Время в движении' : 'Длительность'}
-                </p>
-                <p className="app-text-primary mt-1 font-semibold">
-                  {details.movingTimeLabel || details.durationLabel}
-                </p>
-              </div>
-            ) : null}
-            {details.durationLabel && details.movingTimeLabel && details.durationLabel !== details.movingTimeLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">Общая длительность</p>
-                <p className="app-text-primary mt-1 font-semibold">{details.durationLabel}</p>
-              </div>
-            ) : null}
-            {details.paceLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">Средний темп</p>
-                <p className="app-text-primary mt-1 font-semibold">{details.paceLabel}</p>
-              </div>
-            ) : null}
-            {details.elevationLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">Набор высоты</p>
-                <p className="app-text-primary mt-1 font-semibold">{details.elevationLabel}</p>
-              </div>
-            ) : null}
-            {details.averageHeartrateLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">Средний пульс</p>
-                <p className="app-text-primary mt-1 font-semibold">{details.averageHeartrateLabel}</p>
-              </div>
-            ) : null}
-            {details.maxHeartrateLabel ? (
-              <div className="app-surface-muted rounded-xl p-3">
-                <p className="app-text-secondary text-xs">Макс. пульс</p>
-                <p className="app-text-primary mt-1 font-semibold">{details.maxHeartrateLabel}</p>
-              </div>
-            ) : null}
+          <div className="mt-2.5 text-sm">
+            <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Расстояние</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.distanceLabel ?? '—'}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Время в движении</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.movingTimeLabel || details.durationLabel || '—'}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Средний темп</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.paceLabel ?? '—'}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Набор высоты</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
+            </div>
           </div>
         </section>
 
         {details.hasMap && run.map_polyline ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-base font-semibold">Маршрут</h2>
-            <RunRouteMapPreview polyline={run.map_polyline} className="mt-3 h-44 w-full overflow-hidden rounded-xl border" />
+            <h2 className="app-text-primary inline-flex items-center gap-2 text-base font-semibold">
+              <Map className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+              <span>
+                Маршрут
+                {details.distanceLabel ? ` • ${details.distanceLabel}` : ''}
+              </span>
+            </h2>
+            <div className="mt-3 rounded-2xl p-1 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+              <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
+            </div>
           </section>
         ) : null}
 
         <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <h2 className="app-text-primary text-base font-semibold">Обсуждение</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div className="app-surface-muted rounded-xl p-3">
-              <p className="app-text-secondary text-xs">Лайки</p>
-              <p className="app-text-primary mt-1 font-semibold">{likesCount}</p>
-            </div>
-            <div className="app-surface-muted rounded-xl p-3">
-              <p className="app-text-secondary text-xs">Комментарии</p>
-              <p className="app-text-primary mt-1 font-semibold">{commentsCount}</p>
-            </div>
+          <div className="app-text-secondary flex items-center gap-6 text-sm">
+            <span>{likesCount} лайков</span>
+            <span>{commentsCount} комментариев</span>
           </div>
         </section>
       </div>

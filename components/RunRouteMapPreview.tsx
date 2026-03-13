@@ -78,7 +78,7 @@ function buildPathD(points: Point[]) {
 
   const width = 100
   const height = 60
-  const padding = 4
+  const padding = 8
   const latRange = Math.max(maxLat - minLat, 0.00001)
   const lngRange = Math.max(maxLng - minLng, 0.00001)
 
@@ -134,7 +134,7 @@ export default function RunRouteMapPreview({ polyline, className }: RunRouteMapP
           d={routePath.d}
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="3.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           className="text-[var(--accent)]"
