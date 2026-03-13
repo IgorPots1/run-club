@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
+import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -688,16 +689,16 @@ export default function RunsPage() {
     }
 
     function handleStorage(event: StorageEvent) {
-      if (event.key === 'run-club:runs-last-updated') {
+      if (event.key === RUNS_UPDATED_STORAGE_KEY) {
         void fetchRuns(currentUser, { force: true })
       }
     }
 
-    window.addEventListener('run-club:runs-updated', handleRunsUpdated)
+    window.addEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
     window.addEventListener('storage', handleStorage)
 
     return () => {
-      window.removeEventListener('run-club:runs-updated', handleRunsUpdated)
+      window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
       window.removeEventListener('storage', handleStorage)
     }
   }, [fetchRuns, user])

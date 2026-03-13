@@ -13,6 +13,7 @@ import { loadDashboardOverview } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
+import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
@@ -95,6 +96,30 @@ export default function DashboardPage() {
   } = useSWR<WeeklyXpLeaderboard>(weeklyRaceKey, ([, userId]: readonly [string, string]) => loadWeeklyXpLeaderboard(userId), {
     ...swrBaseOptions,
   })
+
+  useEffect(() => {
+    if (!user) return
+
+    function handleRunsUpdated() {
+      void mutateOverview()
+      void mutateWeeklyRace()
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === RUNS_UPDATED_STORAGE_KEY) {
+        void mutateOverview()
+        void mutateWeeklyRace()
+      }
+    }
+
+    window.addEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [mutateOverview, mutateWeeklyRace, user])
 
   if (!user && !loading) {
     return (

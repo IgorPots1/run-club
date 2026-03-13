@@ -23,6 +23,7 @@ import {
 } from '@/lib/activity'
 import { formatDistanceKm } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
+import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
 const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
   { id: 'week', label: 'Неделя' },
@@ -106,7 +107,7 @@ export default function ActivityPage() {
     }
   }, [])
 
-  const { data: runs, error, isLoading } = useSWR(
+  const { data: runs, error, isLoading, mutate } = useSWR(
     user ? (['activity-runs', user.id] as const) : null,
     ([, userId]: readonly [string, string]) => loadActivityRuns(userId),
     {
@@ -191,6 +192,28 @@ export default function ActivityPage() {
     activeBarIndex === null || !summary.chartData[activeBarIndex]
       ? null
       : { ...summary.chartData[activeBarIndex], index: activeBarIndex }
+
+  useEffect(() => {
+    if (!user) return
+
+    function handleRunsUpdated() {
+      void mutate()
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === RUNS_UPDATED_STORAGE_KEY) {
+        void mutate()
+      }
+    }
+
+    window.addEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [mutate, user])
 
   useEffect(() => {
     setActiveBarIndex(null)

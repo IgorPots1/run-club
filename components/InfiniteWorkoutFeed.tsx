@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
+import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
 import { getLevelFromXP } from '@/lib/xp'
 
@@ -103,6 +104,26 @@ export default function InfiniteWorkoutFeed({
     setNextOffset(0)
     setActionError('')
     void loadFirstPage()
+  }, [loadFirstPage])
+
+  useEffect(() => {
+    function handleRunsUpdated() {
+      void loadFirstPage()
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === RUNS_UPDATED_STORAGE_KEY) {
+        void loadFirstPage()
+      }
+    }
+
+    window.addEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
+      window.removeEventListener('storage', handleStorage)
+    }
   }, [loadFirstPage])
 
   useEffect(() => {

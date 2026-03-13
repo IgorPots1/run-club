@@ -11,6 +11,7 @@ import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
@@ -621,8 +622,9 @@ function ProfilePageContent() {
           loadStravaStatus(),
         ])
       }
-      localStorage.setItem('run-club:runs-last-updated', String(Date.now()))
-      window.dispatchEvent(new Event('run-club:runs-updated'))
+      if (payload.imported > 0) {
+        dispatchRunsUpdatedEvent()
+      }
     } catch {
       setPageError('Не удалось синхронизировать Strava')
     } finally {
