@@ -58,6 +58,8 @@ type StravaSyncResponse =
       ok: true
       imported: number
       skipped: number
+      failed: number
+      totalRunsFetched: number
     }
   | {
       ok: false
@@ -610,11 +612,21 @@ function ProfilePageContent() {
           return
         }
 
-        setPageError('Не удалось синхронизировать Strava')
+        setStravaSyncMessage('Не удалось синхронизировать Strava. Попробуйте снова.')
+        setPageError('')
         return
       }
 
-      setStravaSyncMessage(`Импортировано: ${payload.imported} · Пропущено: ${payload.skipped}`)
+      if (payload.imported > 0 && payload.failed > 0) {
+        setStravaSyncMessage(`Импортировано ${payload.imported} тренировок. ${payload.failed} не удалось загрузить.`)
+      } else if (payload.imported > 0) {
+        setStravaSyncMessage(`Импортировано ${payload.imported} тренировок из Strava.`)
+      } else if (payload.totalRunsFetched > 0) {
+        setStravaSyncMessage('Новых пробежек не найдено.')
+      } else {
+        setStravaSyncMessage('Новых пробежек не найдено.')
+      }
+
       setStravaConnectionState('connected')
       if (user) {
         await Promise.all([
@@ -626,7 +638,8 @@ function ProfilePageContent() {
         dispatchRunsUpdatedEvent()
       }
     } catch {
-      setPageError('Не удалось синхронизировать Strava')
+      setStravaSyncMessage('Не удалось синхронизировать Strava. Попробуйте снова.')
+      setPageError('')
     } finally {
       setSyncingStrava(false)
     }
