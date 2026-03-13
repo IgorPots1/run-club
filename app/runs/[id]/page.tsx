@@ -167,6 +167,15 @@ export default function RunDetailsPage() {
   const [likesCount, setLikesCount] = useState(0)
   const commentsCount = 0
 
+  function handleBackNavigation() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
+
+    router.push('/dashboard')
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -347,9 +356,14 @@ export default function RunDetailsPage() {
     return (
       <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <Link href="/dashboard" className="app-button-secondary inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm">
-            Назад к тренировкам
-          </Link>
+          <button
+            type="button"
+            onClick={handleBackNavigation}
+            className="app-text-secondary inline-flex items-center text-sm font-medium"
+            aria-label="Назад"
+          >
+            ← Назад
+          </button>
           <div className="app-card mt-4 rounded-xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
           </div>
@@ -361,9 +375,14 @@ export default function RunDetailsPage() {
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 pt-4 md:p-4">
-        <Link href="/dashboard" className="app-button-secondary inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm">
-          Назад к тренировкам
-        </Link>
+        <button
+          type="button"
+          onClick={handleBackNavigation}
+          className="app-text-secondary inline-flex items-center text-sm font-medium"
+          aria-label="Назад"
+        >
+          ← Назад
+        </button>
 
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
