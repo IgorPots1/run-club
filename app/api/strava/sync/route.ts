@@ -2,10 +2,44 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { syncStravaRuns } from '@/lib/strava/strava-sync'
 
-export async function GET() {
+type SyncDebugDiagnostics = {
+  totalActivitiesFetched: number
+  runActivitiesCount: number
+  imported: number
+  failed: number
+  firstFailure: { activityId: string; error: string; field?: string; value?: number | string | null } | null
+}
+
+function buildDebugDiagnostics(source: {
+  debug?: {
+    totalActivitiesFetched?: number
+    runActivitiesCount?: number
+    imported?: number
+    failed?: number
+    firstFailure?: { activityId: string; error: string; field?: string; value?: number | string | null } | null
+  }
+}): SyncDebugDiagnostics {
+  return {
+    totalActivitiesFetched: source.debug?.totalActivitiesFetched ?? 0,
+    runActivitiesCount: source.debug?.runActivitiesCount ?? 0,
+    imported: source.debug?.imported ?? 0,
+    failed: source.debug?.failed ?? 0,
+    firstFailure: source.debug?.firstFailure ?? null,
+  }
+}
+
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const debugMode = url.searchParams.get('debug') === '1'
   const { user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
+    // #region agent log
+    console.info('[strava-sync-debug] auth_required', {
+      hasUser: Boolean(user),
+      authError: error?.message ?? null,
+    })
+    // #endregion
     return NextResponse.json({
       ok: false,
       step: 'auth_required',
@@ -13,16 +47,49 @@ export async function GET() {
     }, { status: 401 })
   }
 
+  // #region agent log
+  console.info('[strava-sync-debug] route_enter', {
+    userId: user.id,
+  })
+  // #endregion
+
   try {
     const result = await syncStravaRuns(user.id)
 
     if (!result.ok) {
+      // #region agent log
+      console.info('[strava-sync-debug] sync_not_ok', {
+        userId: user.id,
+        step: result.step,
+        debug: result.debug ?? null,
+      })
+      // #endregion
       if (result.step === 'reconnect_required') {
-        return NextResponse.json(result, { status: 401 })
+        return NextResponse.json(
+          {
+            ...result,
+            ...(debugMode ? { debug: buildDebugDiagnostics(result) } : {}),
+          },
+          { status: 401 }
+        )
       }
 
-      return NextResponse.json(result)
+      return NextResponse.json({
+        ...result,
+        ...(debugMode ? { debug: buildDebugDiagnostics(result) } : {}),
+      })
     }
+
+    // #region agent log
+    console.info('[strava-sync-debug] sync_ok', {
+      userId: user.id,
+      imported: result.imported,
+      skipped: result.skipped,
+      failed: result.failed,
+      totalRunsFetched: result.totalRunsFetched,
+      debug: result.debug ?? null,
+    })
+    // #endregion
 
     return NextResponse.json({
       ok: true,
@@ -33,12 +100,33 @@ export async function GET() {
       totalRunsFetched: result.totalRunsFetched,
       errors: result.errors,
       userId: user.id,
+      ...(debugMode ? { debug: buildDebugDiagnostics(result) } : {}),
     })
   } catch (caughtError) {
+    // #region agent log
+    console.error('[strava-sync-debug] sync_exception', {
+      userId: user.id,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown sync error',
+    })
+    // #endregion
     return NextResponse.json({
       ok: false,
       step: 'initial_sync_failed',
       error: caughtError instanceof Error ? caughtError.message : 'Unknown sync error',
+      ...(debugMode
+        ? {
+            debug: {
+              totalActivitiesFetched: 0,
+              runActivitiesCount: 0,
+              imported: 0,
+              failed: 0,
+              firstFailure: {
+                activityId: 'n/a',
+                error: caughtError instanceof Error ? caughtError.message : 'Unknown sync error',
+              },
+            },
+          }
+        : {}),
     })
   }
 }

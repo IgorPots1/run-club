@@ -51,14 +51,77 @@ export type StravaInitialSyncResult =
         value?: number | string | null
         error: string
       }>
+      debug?: {
+        step: string
+        userId: string
+        athleteId: number | null
+        connectionId: string | null
+        totalActivitiesFetched: number
+        firstFetchedActivityId: string | null
+        firstFetchedActivityType: string | null
+        runActivitiesCount: number
+        imported: number
+        skipped: number
+        failed: number
+        firstFailure: {
+          activityId: string
+          field?: string
+          value?: number | string | null
+          error: string
+        } | null
+        afterParamUsed: number | null
+        latestExistingStravaRunAt: string | null
+      }
     }
   | {
       ok: false
       step: 'missing_connection'
+      debug?: {
+        step: string
+        userId: string
+        athleteId: number | null
+        connectionId: string | null
+        totalActivitiesFetched: number
+        firstFetchedActivityId: string | null
+        firstFetchedActivityType: string | null
+        runActivitiesCount: number
+        imported: number
+        skipped: number
+        failed: number
+        firstFailure: {
+          activityId: string
+          field?: string
+          value?: number | string | null
+          error: string
+        } | null
+        afterParamUsed: number | null
+        latestExistingStravaRunAt: string | null
+      }
     }
   | {
       ok: false
       step: 'reconnect_required'
+      debug?: {
+        step: string
+        userId: string
+        athleteId: number | null
+        connectionId: string | null
+        totalActivitiesFetched: number
+        firstFetchedActivityId: string | null
+        firstFetchedActivityType: string | null
+        runActivitiesCount: number
+        imported: number
+        skipped: number
+        failed: number
+        firstFailure: {
+          activityId: string
+          field?: string
+          value?: number | string | null
+          error: string
+        } | null
+        afterParamUsed: number | null
+        latestExistingStravaRunAt: string | null
+      }
     }
 
 export type StravaWebhookEvent = {
