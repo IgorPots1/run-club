@@ -8,6 +8,49 @@ const STRAVA_ACTIVITIES_URL = 'https://www.strava.com/api/v3/athlete/activities'
 const STRAVA_ACTIVITY_URL = 'https://www.strava.com/api/v3/activities'
 const STRAVA_MVP_SCOPE = 'read,activity:read_all'
 
+export class StravaApiError extends Error {
+  status: number
+  responseBody: string | null
+  authFailure: boolean
+
+  constructor(message: string, status: number, responseBody: string | null, authFailure: boolean) {
+    super(message)
+    this.name = 'StravaApiError'
+    this.status = status
+    this.responseBody = responseBody
+    this.authFailure = authFailure
+  }
+}
+
+function detectStravaAuthFailure(status: number, responseBody: string | null) {
+  if (status === 401) {
+    return true
+  }
+
+  if (!responseBody) {
+    return false
+  }
+
+  return /invalid_grant|unauthorized|invalid token/i.test(responseBody)
+}
+
+function buildStravaApiError(messagePrefix: string, status: number, responseBody: string | null) {
+  const authFailure = detectStravaAuthFailure(status, responseBody)
+  return new StravaApiError(`${messagePrefix} with status ${status}`, status, responseBody, authFailure)
+}
+
+async function readErrorBody(response: Response) {
+  try {
+    return await response.text()
+  } catch {
+    return null
+  }
+}
+
+export function isStravaAuthError(error: unknown): error is StravaApiError {
+  return error instanceof StravaApiError && error.authFailure
+}
+
 function getRequiredEnv(
   name:
     | 'STRAVA_CLIENT_ID'
@@ -57,7 +100,7 @@ export async function exchangeStravaCodeForToken(code: string): Promise<StravaTo
   })
 
   if (!response.ok) {
-    throw new Error(`Strava token exchange failed with status ${response.status}`)
+    throw buildStravaApiError('Strava token exchange failed', response.status, await readErrorBody(response))
   }
 
   return response.json() as Promise<StravaTokenExchangeResponse>
@@ -79,7 +122,7 @@ export async function refreshStravaAccessToken(refreshToken: string): Promise<St
   })
 
   if (!response.ok) {
-    throw new Error(`Strava token refresh failed with status ${response.status}`)
+    throw buildStravaApiError('Strava token refresh failed', response.status, await readErrorBody(response))
   }
 
   return response.json() as Promise<StravaTokenExchangeResponse>
@@ -106,7 +149,7 @@ export async function fetchStravaActivities(
   })
 
   if (!response.ok) {
-    throw new Error(`Strava activities fetch failed with status ${response.status}`)
+    throw buildStravaApiError('Strava activities fetch failed', response.status, await readErrorBody(response))
   }
 
   const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
@@ -126,7 +169,7 @@ export async function fetchStravaActivityById(
   })
 
   if (!response.ok) {
-    throw new Error(`Strava activity fetch failed with status ${response.status}`)
+    throw buildStravaApiError('Strava activity fetch failed', response.status, await readErrorBody(response))
   }
 
   const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())

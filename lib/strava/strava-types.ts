@@ -1,4 +1,4 @@
-export type StravaConnectionStatus = 'connected' | 'disconnected' | 'error'
+export type StravaConnectionStatus = 'connected' | 'reconnect_required' | 'disconnected' | 'error'
 
 export type StravaActivityType = 'Run' | 'TrailRun' | 'VirtualRun'
 
@@ -46,6 +46,10 @@ export type StravaInitialSyncResult =
   | {
       ok: false
       step: 'missing_connection'
+    }
+  | {
+      ok: false
+      step: 'reconnect_required'
     }
 
 export type StravaWebhookEvent = {

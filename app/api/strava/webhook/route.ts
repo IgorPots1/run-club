@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server'
-import { fetchStravaActivityById, getStravaWebhookVerifyToken } from '@/lib/strava/strava-client'
+import {
+  fetchStravaActivityById,
+  getStravaWebhookVerifyToken,
+  isStravaAuthError,
+} from '@/lib/strava/strava-client'
 import {
   getStravaConnectionForAthlete,
   importStravaActivityForUser,
   isValidStravaRun,
+  StravaReconnectRequiredError,
   touchStravaConnection,
 } from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
@@ -228,6 +233,19 @@ export async function POST(request: Request) {
       result: result.status,
     })
   } catch (caughtError) {
+    if (caughtError instanceof StravaReconnectRequiredError || isStravaAuthError(caughtError)) {
+      console.warn('Strava webhook requires reconnect', {
+        ownerId: event.owner_id,
+        activityId: event.object_id,
+        aspectType: event.aspect_type,
+      })
+
+      return NextResponse.json({
+        ok: true,
+        step: 'reconnect_required',
+      })
+    }
+
     console.error('Strava webhook processing failed', {
       error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook error',
       ownerId: event.owner_id,

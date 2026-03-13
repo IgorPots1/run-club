@@ -17,6 +17,10 @@ export async function GET() {
     const result = await syncStravaRuns(user.id)
 
     if (!result.ok) {
+      if (result.step === 'reconnect_required') {
+        return NextResponse.json(result, { status: 401 })
+      }
+
       return NextResponse.json(result)
     }
 

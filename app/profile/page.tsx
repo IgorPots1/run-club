@@ -32,6 +32,7 @@ type ProfileFormState = {
 type StravaStatusResponse =
   | {
       ok: true
+      state: 'connected' | 'reconnect_required' | 'disconnected'
       connected: boolean
       hasImportedRuns: boolean
     }
@@ -59,7 +60,7 @@ type StravaSyncResponse =
     }
   | {
       ok: false
-      step?: string
+      step?: 'auth_required' | 'missing_connection' | 'reconnect_required' | 'initial_sync_failed'
       error?: string
     }
 
@@ -109,7 +110,7 @@ function ProfilePageContent() {
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
-  const [stravaConnected, setStravaConnected] = useState(false)
+  const [stravaConnectionState, setStravaConnectionState] = useState<'connected' | 'reconnect_required' | 'disconnected'>('disconnected')
   const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
   const [syncingStrava, setSyncingStrava] = useState(false)
   const [disconnectingStrava, setDisconnectingStrava] = useState(false)
@@ -229,14 +230,14 @@ function ProfilePageContent() {
       if (!isMounted) return
 
       if (!response.ok || !payload.ok) {
-        setStravaConnected(false)
+        setStravaConnectionState('disconnected')
         return
       }
 
-      setStravaConnected(payload.connected)
+      setStravaConnectionState(payload.state)
     } catch {
       if (!isMounted) return
-      setStravaConnected(false)
+      setStravaConnectionState('disconnected')
     } finally {
       if (isMounted) {
         setLoadingStravaStatus(false)
@@ -576,7 +577,7 @@ function ProfilePageContent() {
         return
       }
 
-      setStravaConnected(false)
+      setStravaConnectionState('disconnected')
       setStravaSyncMessage('Strava отключена')
     } catch {
       setPageError('Не удалось отключить Strava')
@@ -602,12 +603,18 @@ function ProfilePageContent() {
       const payload = (await response.json()) as StravaSyncResponse
 
       if (!response.ok || !payload.ok) {
+        if (!payload.ok && payload.step === 'reconnect_required') {
+          setStravaConnectionState('reconnect_required')
+          setPageError('Сессия Strava истекла. Переподключите Strava.')
+          return
+        }
+
         setPageError('Не удалось синхронизировать Strava')
         return
       }
 
       setStravaSyncMessage(`Импортировано: ${payload.imported} · Пропущено: ${payload.skipped}`)
-      setStravaConnected(true)
+      setStravaConnectionState('connected')
       if (user) {
         await Promise.all([
           loadProfileData(user, { showLoading: false }),
@@ -635,7 +642,7 @@ function ProfilePageContent() {
     setLoggingOut(true)
     setPageError('')
     setStravaSyncMessage('')
-    setStravaConnected(false)
+    setStravaConnectionState('disconnected')
 
     try {
       const { error } = await supabase.auth.signOut()
@@ -683,6 +690,8 @@ function ProfilePageContent() {
     trimmedConfirmPassword.length >= 6 &&
     trimmedNewPassword === trimmedConfirmPassword
   const isChangePasswordDisabled = changingPassword || !isPasswordFormValid
+  const stravaConnected = stravaConnectionState === 'connected'
+  const stravaReconnectRequired = stravaConnectionState === 'reconnect_required'
 
   if (profileDataLoading) {
     return (
@@ -918,6 +927,27 @@ function ProfilePageContent() {
                   className="app-button-secondary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   {disconnectingStrava ? 'Отключаем...' : 'Отключить Strava'}
+                </button>
+              </>
+            ) : stravaReconnectRequired ? (
+              <>
+                <div className="flex items-start gap-2">
+                  <div className="pt-0.5">
+                    <StravaIcon />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="app-text-primary text-sm font-medium">Требуется переподключение Strava</p>
+                    <p className="app-text-secondary mt-0.5 text-xs">
+                      Сессия истекла или недействительна
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConnectStrava}
+                  className="app-button-primary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
+                >
+                  Переподключить Strava
                 </button>
               </>
             ) : (

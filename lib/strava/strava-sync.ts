@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { fetchStravaActivities, refreshStravaAccessToken } from './strava-client'
+import { fetchStravaActivities, isStravaAuthError, refreshStravaAccessToken } from './strava-client'
 import type { StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
@@ -57,6 +57,13 @@ type StravaImportResult = {
 
 type ImportStravaActivityOptions = {
   updateExisting?: boolean
+}
+
+export class StravaReconnectRequiredError extends Error {
+  constructor(message = 'Strava reconnect required') {
+    super(message)
+    this.name = 'StravaReconnectRequiredError'
+  }
 }
 
 class StravaSyncRowError extends Error {
@@ -240,6 +247,20 @@ function isStravaTokenExpiringSoon(expiresAt: string) {
   return expiresAtMs <= Date.now() + STRAVA_TOKEN_REFRESH_BUFFER_MS
 }
 
+async function markStravaConnectionReconnectRequired(connectionId: string) {
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('strava_connections')
+    .update({
+      status: 'reconnect_required',
+    })
+    .eq('id', connectionId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
 export async function touchStravaConnection(connectionId: string) {
   const supabase = createSupabaseAdminClient()
   const { error } = await supabase
@@ -273,11 +294,27 @@ async function getStravaConnectionByColumn(
 }
 
 async function ensureFreshStravaConnection(connection: StravaConnectionRow): Promise<StravaConnectionRow> {
+  if (connection.status === 'reconnect_required') {
+    throw new StravaReconnectRequiredError()
+  }
+
   if (!isStravaTokenExpiringSoon(connection.expires_at)) {
     return connection
   }
 
-  const refreshedToken = await refreshStravaAccessToken(connection.refresh_token)
+  let refreshedToken
+
+  try {
+    refreshedToken = await refreshStravaAccessToken(connection.refresh_token)
+  } catch (caughtError) {
+    if (isStravaAuthError(caughtError)) {
+      await markStravaConnectionReconnectRequired(connection.id)
+      throw new StravaReconnectRequiredError()
+    }
+
+    throw caughtError
+  }
+
   const nextConnection: StravaConnectionRow = {
     ...connection,
     access_token: refreshedToken.access_token,
@@ -400,12 +437,32 @@ export async function importStravaActivityForUser(
 }
 
 export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncResult> {
-  const connection = await getStravaConnectionForUser(userId)
+  let connection: StravaConnectionRow | null = null
+
+  try {
+    connection = await getStravaConnectionForUser(userId)
+  } catch (caughtError) {
+    if (caughtError instanceof StravaReconnectRequiredError) {
+      return {
+        ok: false,
+        step: 'reconnect_required',
+      }
+    }
+
+    throw caughtError
+  }
 
   if (!connection) {
     return {
       ok: false,
       step: 'missing_connection',
+    }
+  }
+
+  if (connection.status === 'reconnect_required') {
+    return {
+      ok: false,
+      step: 'reconnect_required',
     }
   }
 
@@ -432,7 +489,21 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
         (Date.now() - STRAVA_INITIAL_SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000) / 1000
       )
 
-  const activities = await fetchStravaActivities(connection.access_token, afterUnixSeconds)
+  let activities: StravaActivitySummary[] = []
+
+  try {
+    activities = await fetchStravaActivities(connection.access_token, afterUnixSeconds)
+  } catch (caughtError) {
+    if (isStravaAuthError(caughtError)) {
+      await markStravaConnectionReconnectRequired(connection.id)
+      return {
+        ok: false,
+        step: 'reconnect_required',
+      }
+    }
+
+    throw caughtError
+  }
   const runActivities = activities.filter(isValidStravaRun)
   let imported = 0
   let skipped = 0

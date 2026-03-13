@@ -21,7 +21,7 @@ export async function GET() {
     await Promise.all([
       supabaseAdmin
         .from('strava_connections')
-        .select('id', { count: 'exact', head: false })
+        .select('id, status', { count: 'exact', head: false })
         .eq('user_id', user.id)
         .maybeSingle(),
       supabaseAdmin
@@ -42,9 +42,16 @@ export async function GET() {
     )
   }
 
+  const connectionState = !connection
+    ? 'disconnected'
+    : connection.status === 'reconnect_required'
+      ? 'reconnect_required'
+      : 'connected'
+
   return NextResponse.json({
     ok: true,
-    connected: Boolean(connection),
+    state: connectionState,
+    connected: connectionState === 'connected',
     hasImportedRuns: (importedRunsCount ?? 0) > 0,
   })
 }
