@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -256,14 +256,14 @@ function CalendarDatePickerSheet({
   onClose,
   onSelect,
 }: CalendarDatePickerSheetProps) {
-  const fallbackDate = parseDateValue(maxDate) ?? new Date()
+  const fallbackDate = useMemo(() => parseDateValue(maxDate) ?? new Date(), [maxDate])
   const [visibleMonth, setVisibleMonth] = useState(() => getMonthStart(parseDateValue(selectedDate) ?? fallbackDate))
 
   useEffect(() => {
     if (!open) return
 
     setVisibleMonth(getMonthStart(parseDateValue(selectedDate) ?? fallbackDate))
-  }, [fallbackDate, open, selectedDate])
+  }, [fallbackDate, open, selectedDate, maxDate])
 
   if (!open) return null
 
