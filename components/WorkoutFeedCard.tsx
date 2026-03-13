@@ -13,6 +13,7 @@ type WorkoutFeedCardProps = {
   externalSource?: string | null
   distanceKm?: number | null
   pace?: string | number | null
+  movingTime?: string | null
   xp: number
   createdAt: string
   displayName: string
@@ -74,25 +75,8 @@ function normalizePaceLabel(pace: string | number | null | undefined) {
   return paceLabel.endsWith('/км') ? paceLabel.slice(0, -3) : paceLabel
 }
 
-function buildDisplayTitle(rawTitle: string | null, distanceKm?: number | null, pace?: string | number | null) {
-  const baseTitle = (rawTitle?.trim() || 'Тренировка').replace(/(\d+)\.0(\s*км\b)/g, '$1$2')
-  const paceLabel = normalizePaceLabel(pace)
-
-  if (!paceLabel) {
-    return baseTitle
-  }
-
-  if (typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0) {
-    const distanceLabel = `${formatDistanceLabel(distanceKm)} км`
-
-    if (baseTitle.includes(distanceLabel)) {
-      return `${baseTitle} • ${paceLabel}/км`
-    }
-
-    return `${baseTitle} - ${distanceLabel} • ${paceLabel}/км`
-  }
-
-  return `${baseTitle} • ${paceLabel}/км`
+function buildDisplayTitle(rawTitle: string | null) {
+  return (rawTitle?.trim() || 'Тренировка').replace(/(\d+)\.0(\s*км\b)/g, '$1$2')
 }
 
 function WorkoutFeedCard({
@@ -101,6 +85,7 @@ function WorkoutFeedCard({
   externalSource = null,
   distanceKm,
   pace,
+  movingTime = null,
   xp,
   createdAt,
   displayName,
@@ -117,8 +102,14 @@ function WorkoutFeedCard({
   const [showStravaHint, setShowStravaHint] = useState(false)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
-  const displayTitle = buildDisplayTitle(rawTitle, distanceKm, pace)
+  const displayTitle = buildDisplayTitle(rawTitle)
   const displayUserName = displayName.trim() || 'Бегун'
+  const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
+    ? `${formatDistanceLabel(distanceKm)} км`
+    : '—'
+  const paceLabel = normalizePaceLabel(pace)
+  const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
+  const movingTimeLabel = movingTime?.trim() || '—'
 
   useEffect(() => {
     if (!showStravaHint) {
@@ -157,7 +148,7 @@ function WorkoutFeedCard({
 
   return (
     <div
-      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-4 py-4 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10"
+      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10"
       role="button"
       tabIndex={0}
       onClick={(event) => {
@@ -196,7 +187,15 @@ function WorkoutFeedCard({
         </p>
       </div>
 
-      <div className="mt-3">
+      <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
+        <span className="font-semibold">{distanceLabel}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="font-semibold">{paceWithUnit}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="font-semibold">{movingTimeLabel}</span>
+      </div>
+
+      <div className="app-text-secondary mt-4 text-sm">
         <RunLikeControl
           likesCount={likesCount}
           likedByMe={likedByMe}

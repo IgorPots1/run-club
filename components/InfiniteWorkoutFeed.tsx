@@ -248,6 +248,7 @@ export default function InfiniteWorkoutFeed({
             externalSource={item.external_source}
             distanceKm={item.distance_km}
             pace={item.pace}
+            movingTime={item.movingTime}
             xp={item.xp}
             createdAt={item.created_at}
             displayName={item.displayName}

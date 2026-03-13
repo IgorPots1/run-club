@@ -32,6 +32,7 @@ export type DashboardRunItem = {
   external_source?: string | null
   distance_km: number
   pace: string | number | null
+  movingTime: string | null
   xp: number
   created_at: string
   displayName: string
@@ -87,6 +88,23 @@ function formatPace(distanceKm: number, durationMinutes: number | null) {
   const paceSeconds = Math.round(totalSeconds / distanceKm)
   const minutes = Math.floor(paceSeconds / 60)
   const seconds = paceSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatMovingTime(durationMinutes: number | null) {
+  if (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) <= 0) {
+    return null
+  }
+
+  const totalSeconds = Math.max(0, Math.round(Number(durationMinutes) * 60))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
 
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
@@ -315,6 +333,7 @@ export async function loadFeedRuns(
         external_source: run.external_source ?? null,
         distance_km: Number(run.distance_km ?? 0),
         pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
+        movingTime: formatMovingTime(run.duration_minutes ?? null),
         xp: Number(run.xp ?? 0),
         created_at: run.created_at,
         displayName: getProfileDisplayName(profile, 'Бегун'),
