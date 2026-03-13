@@ -623,6 +623,7 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     try {
       payload = buildRunInsertPayload(userId, activity)
       const result = await importStravaActivityForUser(userId, activity, {
+        updateExisting: true,
         debugRunId,
       })
 
