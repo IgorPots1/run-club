@@ -76,15 +76,22 @@ function buildPathD(points: Point[]) {
     maxLng = Math.max(maxLng, point.lng)
   }
 
-  const width = 100
-  const height = 60
-  const padding = 8
-  const latRange = Math.max(maxLat - minLat, 0.00001)
-  const lngRange = Math.max(maxLng - minLng, 0.00001)
+  const width = 300
+  const height = 180
+  const padding = 40
+  const safeLatRange = Math.max(maxLat - minLat, 0.00001)
+  const safeLngRange = Math.max(maxLng - minLng, 0.00001)
+  const drawableWidth = Math.max(1, width - padding * 2)
+  const drawableHeight = Math.max(1, height - padding * 2)
+  const uniformScale = Math.min(drawableWidth / safeLngRange, drawableHeight / safeLatRange)
+  const routeWidth = safeLngRange * uniformScale
+  const routeHeight = safeLatRange * uniformScale
+  const offsetX = padding + (drawableWidth - routeWidth) / 2
+  const offsetY = padding + (drawableHeight - routeHeight) / 2
 
   const normalized = points.map((point) => {
-    const x = padding + ((point.lng - minLng) / lngRange) * (width - padding * 2)
-    const y = padding + ((maxLat - point.lat) / latRange) * (height - padding * 2)
+    const x = offsetX + (point.lng - minLng) * uniformScale
+    const y = offsetY + (maxLat - point.lat) * uniformScale
     return { x, y }
   })
 
@@ -128,19 +135,43 @@ export default function RunRouteMapPreview({ polyline, className }: RunRouteMapP
 
   return (
     <div className={className}>
-      <svg viewBox="0 0 100 60" className="h-full w-full rounded-xl" role="img" aria-label="Маршрут тренировки">
-        <rect x="0" y="0" width="100" height="60" className="fill-[var(--surface-muted)]" />
+      <svg viewBox="0 0 300 180" className="h-full w-full rounded-xl" role="img" aria-label="Маршрут тренировки">
+        <defs>
+          <pattern id="route-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path
+              d="M 40 0 L 0 0 0 40"
+              fill="none"
+              stroke="currentColor"
+              opacity="0.04"
+              className="text-black dark:text-white"
+              strokeWidth="1"
+            />
+          </pattern>
+        </defs>
+
+        <rect x="0" y="0" width="300" height="180" className="fill-[var(--surface-muted)]" />
+        <rect x="0" y="0" width="300" height="180" fill="url(#route-grid)" />
         <path
           d={routePath.d}
           fill="none"
-          stroke="currentColor"
-          strokeWidth="3.5"
+          stroke="#FFFFFF"
+          opacity="0.6"
+          strokeWidth="6"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-[var(--accent)]"
         />
-        <circle cx={routePath.start.x} cy={routePath.start.y} r="1.8" className="fill-emerald-500" />
-        <circle cx={routePath.end.x} cy={routePath.end.y} r="1.8" className="fill-rose-500" />
+        <path
+          d={routePath.d}
+          fill="none"
+          stroke="#111827"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx={routePath.start.x} cy={routePath.start.y} r="3.2" className="fill-white/85 dark:fill-black/55" />
+        <circle cx={routePath.start.x} cy={routePath.start.y} r="2" className="fill-emerald-500" />
+        <circle cx={routePath.end.x} cy={routePath.end.y} r="3.2" className="fill-white/85 dark:fill-black/55" />
+        <circle cx={routePath.end.x} cy={routePath.end.y} r="2" className="fill-rose-500" />
       </svg>
     </div>
   )
