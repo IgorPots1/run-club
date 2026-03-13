@@ -1,50 +1,13 @@
 'use client'
 
-import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { getBootstrapUser } from '@/lib/auth'
-import WorkoutFeedCard from '@/components/WorkoutFeedCard'
-import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
+import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import { ensureProfileExists } from '@/lib/profiles'
-import { toggleRunLike } from '@/lib/run-likes'
-import { getLevelFromXP } from '../../lib/xp'
-
-const FEED_PAGE_SIZE = 10
-function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
-  const existingIds = new Set(existing.map((item) => item.id))
-  return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
-}
 
 export default function FeedPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [items, setItems] = useState<FeedRunItem[]>([])
-  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
-  const [actionError, setActionError] = useState('')
-  const [feedError, setFeedError] = useState('')
-  const [initialLoading, setInitialLoading] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
-  const [nextOffset, setNextOffset] = useState(0)
-  const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  const currentUserIdRef = useRef<string | null>(null)
-  const itemsRef = useRef<FeedRunItem[]>([])
-  const pendingRunIdsRef = useRef<string[]>([])
-
-  useEffect(() => {
-    currentUserIdRef.current = currentUserId
-  }, [currentUserId])
-
-  useEffect(() => {
-    itemsRef.current = items
-  }, [items])
-
-  useEffect(() => {
-    pendingRunIdsRef.current = pendingRunIds
-  }, [pendingRunIds])
 
   useEffect(() => {
     let isMounted = true
@@ -73,209 +36,24 @@ export default function FeedPage() {
     }
   }, [])
 
-  const loadFirstPage = useCallback(
-    async (mode: 'initial' | 'refresh' = 'initial') => {
-      if (mode === 'refresh') {
-        setRefreshing(true)
-      } else {
-        setInitialLoading(true)
-      }
-
-      setFeedError('')
-
-      try {
-        const page = await loadFeedRuns(currentUserId, 0, FEED_PAGE_SIZE)
-        setItems(page.items)
-        setHasMore(page.hasMore)
-        setNextOffset(page.items.length)
-      } catch {
-        setFeedError('Не удалось загрузить ленту')
-
-        if (mode === 'initial') {
-          setItems([])
-          setHasMore(false)
-          setNextOffset(0)
-        }
-      } finally {
-        setInitialLoading(false)
-        setRefreshing(false)
-      }
-    },
-    [currentUserId]
-  )
-
-  const loadMoreRuns = useCallback(async () => {
-    if (loading || initialLoading || loadingMore || refreshing || !hasMore) return
-
-    setLoadingMore(true)
-    setFeedError('')
-
-    try {
-      const page = await loadFeedRuns(currentUserId, nextOffset, FEED_PAGE_SIZE)
-      setItems((prev) => mergeUniqueFeedItems(prev, page.items))
-      setHasMore(page.hasMore)
-      setNextOffset((prev) => prev + page.items.length)
-    } catch {
-      setFeedError('Не удалось загрузить ленту')
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [currentUserId, hasMore, initialLoading, loading, loadingMore, nextOffset, refreshing])
-
-  useEffect(() => {
-    if (loading) return
-
-    setItems([])
-    setHasMore(true)
-    setNextOffset(0)
-    setActionError('')
-    void loadFirstPage('initial')
-  }, [loading, currentUserId, loadFirstPage])
-
-  useEffect(() => {
-    const target = loadMoreRef.current
-    if (!target || loading || initialLoading || loadingMore || refreshing || !hasMore) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          void loadMoreRuns()
-        }
-      },
-      {
-        root: null,
-        rootMargin: '320px 0px',
-        threshold: 0.01,
-      }
-    )
-
-    observer.observe(target)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [hasMore, initialLoading, loadMoreRuns, loading, loadingMore, refreshing, items.length])
-
-  const handleLikeToggle = useCallback(async (runId: string) => {
-    const activeUserId = currentUserIdRef.current
-
-    if (!activeUserId) {
-      router.replace('/login')
-      return
-    }
-
-    if (pendingRunIdsRef.current.includes(runId)) return
-
-    const currentItem = itemsRef.current.find((item) => item.id === runId)
-    if (!currentItem) return
-
-    const wasLiked = currentItem.likedByMe
-    const previousItems = itemsRef.current
-
-    setActionError('')
-    pendingRunIdsRef.current = [...pendingRunIdsRef.current, runId]
-    setPendingRunIds((prev) => [...prev, runId])
-
-    try {
-      const nextItems = previousItems.map((item) =>
-          item.id === runId
-            ? {
-                ...item,
-                likedByMe: !wasLiked,
-                likesCount: Math.max(0, item.likesCount + (wasLiked ? -1 : 1)),
-              }
-            : item
-      )
-      itemsRef.current = nextItems
-      setItems(nextItems)
-
-      const { error: likeError } = await toggleRunLike(runId, activeUserId, wasLiked)
-
-      if (likeError) {
-        setActionError('Не удалось обновить лайк')
-        itemsRef.current = previousItems
-        setItems(previousItems)
-        return
-      }
-    } catch {
-      setActionError('Не удалось обновить лайк')
-      itemsRef.current = previousItems
-      setItems(previousItems)
-    } finally {
-      pendingRunIdsRef.current = pendingRunIdsRef.current.filter((id) => id !== runId)
-      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
-    }
-  }, [router])
-
   if (loading) return <main className="min-h-screen p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
 
-  const error = actionError || feedError
   const emptyCtaHref = currentUserId ? '/runs' : '/login'
   const emptyCtaLabel = currentUserId ? 'Добавить тренировку' : 'Войти'
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
-        {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-        <div className="space-y-4 pb-2">
-          {initialLoading && items.length === 0 ? (
-            <>
-              <div className="app-card rounded-xl border p-4 shadow-sm">
-                <div className="skeleton-line h-5 w-32" />
-                <div className="mt-2 skeleton-line h-4 w-36" />
-                <div className="mt-3 space-y-2">
-                  <div className="skeleton-line h-4 w-20" />
-                  <div className="skeleton-line h-4 w-16" />
-                  <div className="skeleton-line h-4 w-24" />
-                </div>
-              </div>
-              <div className="app-card rounded-xl border p-4 shadow-sm">
-                <div className="skeleton-line h-5 w-28" />
-                <div className="mt-2 skeleton-line h-4 w-40" />
-                <div className="mt-3 space-y-2">
-                  <div className="skeleton-line h-4 w-24" />
-                  <div className="skeleton-line h-4 w-16" />
-                  <div className="skeleton-line h-4 w-20" />
-                </div>
-              </div>
-            </>
-          ) : items.length === 0 ? (
-            <div className="app-text-secondary mt-10 text-center">
-              <p>Лента пока пустая.</p>
-              <p className="mt-2 text-sm">
-                {currentUserId ? 'Добавьте первую тренировку или загляните позже.' : 'Войдите, чтобы видеть активность клуба.'}
-              </p>
-              <Link href={emptyCtaHref} className="app-button-secondary mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
-                {emptyCtaLabel}
-              </Link>
-            </div>
-          ) : (
-            items.map((item) => (
-              <WorkoutFeedCard
-                key={item.id}
-                runId={item.id}
-                rawTitle={item.title}
-                externalSource={item.external_source}
-                distanceKm={item.distance_km}
-                pace={item.pace}
-                xp={item.xp}
-                createdAt={item.created_at}
-                displayName={item.displayName}
-                avatarUrl={item.avatar_url}
-                subtitle={`Уровень ${getLevelFromXP(item.totalXp).level}`}
-                likesCount={item.likesCount}
-                likedByMe={item.likedByMe}
-                pending={pendingRunIds.includes(item.id)}
-                onToggleLike={handleLikeToggle}
-              />
-            ))
-          )}
-          {loadingMore ? (
-            <p className="app-text-secondary py-3 text-center text-sm">Загружаем еще...</p>
-          ) : null}
-          {hasMore && items.length > 0 ? <div ref={loadMoreRef} className="h-1" aria-hidden="true" /> : null}
-        </div>
+        <InfiniteWorkoutFeed
+          currentUserId={currentUserId}
+          pageSize={10}
+          emptyTitle="Лента пока пуста."
+          emptyDescription={currentUserId ? 'Добавьте первую тренировку или загляните позже.' : 'Войдите, чтобы видеть активность клуба.'}
+          emptyCtaHref={emptyCtaHref}
+          emptyCtaLabel={emptyCtaLabel}
+          showLevelSubtitle
+        />
       </div>
     </main>
   )

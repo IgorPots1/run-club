@@ -6,14 +6,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { getBootstrapUser } from '@/lib/auth'
+import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
-import WorkoutFeedCard from '@/components/WorkoutFeedCard'
-import { loadDashboardOverview, loadDashboardRuns } from '@/lib/dashboard'
+import { loadDashboardOverview } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
-import { toggleRunLike } from '@/lib/run-likes'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
@@ -24,8 +23,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [shouldLoadWeeklyRace, setShouldLoadWeeklyRace] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
-  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
-  const [actionError, setActionError] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -81,7 +78,6 @@ export default function DashboardPage() {
     focusThrottleInterval: 15000,
   }
   const overviewKey = user ? (['dashboard-overview', user.id] as const) : null
-  const runsKey = user ? (['dashboard-runs', user.id] as const) : null
   const weeklyRaceKey = user && shouldLoadWeeklyRace ? (['weekly-race', user.id] as const) : null
 
   const {
@@ -92,15 +88,6 @@ export default function DashboardPage() {
   } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), swrBaseOptions)
 
   const {
-    data: runs,
-    error: runsError,
-    isLoading: runsLoading,
-    mutate: mutateRuns,
-  } = useSWR(runsKey, ([, userId]: readonly [string, string]) => loadDashboardRuns(userId), {
-    ...swrBaseOptions,
-  })
-
-  const {
     data: weeklyRace,
     error: weeklyRaceError,
     isLoading: weeklyRaceLoading,
@@ -108,56 +95,6 @@ export default function DashboardPage() {
   } = useSWR<WeeklyXpLeaderboard>(weeklyRaceKey, ([, userId]: readonly [string, string]) => loadWeeklyXpLeaderboard(userId), {
     ...swrBaseOptions,
   })
-
-  async function handleLikeToggle(runId: string) {
-    if (!user) {
-      router.replace('/login')
-      return
-    }
-
-    if (pendingRunIds.includes(runId)) return
-
-    const currentRun = runs?.find((run) => run.id === runId)
-    if (!currentRun) return
-
-    const wasLiked = currentRun.likedByMe
-
-    setActionError('')
-    setPendingRunIds((prev) => [...prev, runId])
-
-    try {
-      await mutateRuns(
-        (currentRuns = []) =>
-          currentRuns.map((run) =>
-            run.id === runId
-              ? {
-                  ...run,
-                  likedByMe: !wasLiked,
-                  likesCount: Math.max(0, run.likesCount + (wasLiked ? -1 : 1)),
-                }
-              : run
-          ),
-        false
-      )
-
-      const { error: likeError } = await toggleRunLike(runId, user.id, wasLiked)
-
-      if (likeError) {
-        setActionError('Не удалось обновить лайк')
-        await mutateRuns()
-        return
-      }
-
-      void mutateRuns()
-      void mutateWeeklyRace()
-      void mutateOverview()
-    } catch {
-      setActionError('Не удалось обновить лайк')
-      await mutateRuns()
-    } finally {
-      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
-    }
-  }
 
   if (!user && !loading) {
     return (
@@ -172,7 +109,6 @@ export default function DashboardPage() {
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null
   const allChallengesCompleted = overview?.allChallengesCompleted ?? false
   const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
-  const activityError = actionError || (runsError ? 'Не удалось загрузить тренировки' : '')
   const profileName = getProfileDisplayName(
     {
       name: overview?.profileSummary.name ?? null,
@@ -189,7 +125,6 @@ export default function DashboardPage() {
       ? 'Загружаем прогресс...'
       : null
   const showOverviewSkeleton = isBootstrappingUser || (overviewLoading && !overview && !overviewError)
-  const showRunsSkeleton = isBootstrappingUser || (runsLoading && !runs)
   const weeklyLeaderboardLoading = isBootstrappingUser || (shouldLoadWeeklyRace && weeklyRaceLoading)
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
@@ -349,54 +284,40 @@ export default function DashboardPage() {
             loading={weeklyLeaderboardLoading}
             error={weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
           />
-          <h2 className="app-text-primary text-lg font-semibold mb-3">Последние тренировки</h2>
-          {activityError ? <p className="mb-3 text-sm text-red-600">{activityError}</p> : null}
-          <div className="space-y-3">
-            {showRunsSkeleton ? (
-              <>
-                <div className="app-card rounded-xl border p-4 shadow-sm">
-                  <div className="skeleton-line h-5 w-32" />
-                  <div className="mt-2 skeleton-line h-4 w-24" />
-                  <div className="mt-3 space-y-2">
-                    <div className="skeleton-line h-4 w-20" />
-                    <div className="skeleton-line h-4 w-16" />
-                    <div className="skeleton-line h-4 w-24" />
-                  </div>
+          <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
+          {isBootstrappingUser ? (
+            <div className="space-y-3">
+              <div className="app-card rounded-xl border p-4 shadow-sm">
+                <div className="skeleton-line h-5 w-32" />
+                <div className="mt-2 skeleton-line h-4 w-24" />
+                <div className="mt-3 space-y-2">
+                  <div className="skeleton-line h-4 w-20" />
+                  <div className="skeleton-line h-4 w-16" />
+                  <div className="skeleton-line h-4 w-24" />
                 </div>
-                <div className="app-card rounded-xl border p-4 shadow-sm">
-                  <div className="skeleton-line h-5 w-36" />
-                  <div className="mt-2 skeleton-line h-4 w-28" />
-                  <div className="mt-3 space-y-2">
-                    <div className="skeleton-line h-4 w-24" />
-                    <div className="skeleton-line h-4 w-16" />
-                    <div className="skeleton-line h-4 w-20" />
-                  </div>
-                </div>
-              </>
-            ) : !runs || runs.length === 0 ? (
-              <div className="app-text-secondary mt-10 text-center">
-                <p>Пока нет тренировок</p>
               </div>
-            ) : (
-              runs.map((run) => (
-                <WorkoutFeedCard
-                  key={run.id}
-                  rawTitle={run.title}
-                  externalSource={run.external_source}
-                  distanceKm={run.distance_km}
-                  pace={run.pace}
-                  xp={run.xp}
-                  createdAt={run.created_at}
-                  displayName={run.displayName}
-                  avatarUrl={run.avatar_url}
-                  likesCount={run.likesCount}
-                  likedByMe={run.likedByMe}
-                  pending={pendingRunIds.includes(run.id)}
-                  onToggleLike={() => handleLikeToggle(run.id)}
-                />
-              ))
-            )}
-          </div>
+              <div className="app-card rounded-xl border p-4 shadow-sm">
+                <div className="skeleton-line h-5 w-36" />
+                <div className="mt-2 skeleton-line h-4 w-28" />
+                <div className="mt-3 space-y-2">
+                  <div className="skeleton-line h-4 w-24" />
+                  <div className="skeleton-line h-4 w-16" />
+                  <div className="skeleton-line h-4 w-20" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <InfiniteWorkoutFeed
+              currentUserId={user?.id ?? null}
+              pageSize={10}
+              emptyTitle="Пока нет тренировок"
+              showLevelSubtitle
+              onSuccessfulLikeToggle={() => {
+                void mutateWeeklyRace()
+                void mutateOverview()
+              }}
+            />
+          )}
         </div>
       </div>
       {showXpModal ? (

@@ -69,7 +69,6 @@ export type UserProfileSummary = {
   email: string | null
 }
 
-const DASHBOARD_RECENT_RUNS_LIMIT = 5
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const TOTAL_XP_CACHE_TTL_MS = 60 * 1000
 
@@ -78,12 +77,6 @@ const totalXpCache = new Map<string, { value: number; expiresAt: number }>()
 
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-function getFeedWindowStartIso() {
-  const date = new Date()
-  date.setDate(date.getDate() - 30)
-  return date.toISOString()
 }
 
 function formatPace(distanceKm: number, durationMinutes: number | null) {
@@ -260,47 +253,6 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
   }
 }
 
-export async function loadDashboardRuns(currentUserId: string): Promise<DashboardRunItem[]> {
-  const { data: runs, error: runsError } = await supabase
-    .from('runs')
-    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, xp, created_at')
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(DASHBOARD_RECENT_RUNS_LIMIT)
-
-  if (runsError) {
-    throw new Error('Не удалось загрузить тренировки')
-  }
-
-  const runRows = (runs as RunRow[] | null) ?? []
-  const runIds = runRows.map((run) => run.id)
-  const userIds = Array.from(new Set(runRows.map((run) => run.user_id)))
-  const [profileById, likesSummary] = await Promise.all([
-    loadProfilesByUserIds(userIds),
-    loadRunLikesSummaryForRunIds(runIds, currentUserId),
-  ])
-
-  return runRows.map((run) => {
-    const profile = profileById[run.user_id]
-    const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
-
-    return {
-      id: run.id,
-      user_id: run.user_id,
-      title: mappedTitle,
-      external_source: run.external_source ?? null,
-      distance_km: Number(run.distance_km ?? 0),
-      pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
-      xp: Number(run.xp ?? 0),
-      created_at: run.created_at,
-      displayName: getProfileDisplayName(profile, 'Бегун'),
-      avatar_url: profile?.avatar_url ?? null,
-      likesCount: likesSummary.likesByRunId[run.id] ?? 0,
-      likedByMe: likesSummary.likedRunIds.has(run.id),
-    }
-  })
-}
-
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
   const profileById = await loadProfilesByUserIds([userId])
   const data = profileById[userId]
@@ -326,11 +278,9 @@ export async function loadFeedRuns(
   limit = 10
 ): Promise<FeedRunPage> {
   const end = start + limit - 1
-  const feedWindowStartIso = getFeedWindowStartIso()
   const { data: runs, error: runsError } = await supabase
     .from('runs')
     .select('id, user_id, name, title, external_source, distance_km, duration_minutes, xp, created_at')
-    .gte('created_at', feedWindowStartIso)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
