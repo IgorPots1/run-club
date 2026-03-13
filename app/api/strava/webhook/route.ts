@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getStravaWebhookVerifyToken } from '@/lib/strava/strava-client'
+import { fetchStravaActivityById, getStravaWebhookVerifyToken } from '@/lib/strava/strava-client'
+import { getStravaConnectionForAthlete, importStravaActivityForUser } from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
 
 export async function GET(request: Request) {
@@ -84,8 +85,46 @@ export async function POST(request: Request) {
     objectId: event.object_id ?? null,
   })
 
+  const isActivityCreateOrUpdate = (
+    event.object_type === 'activity' &&
+    (event.aspect_type === 'create' || event.aspect_type === 'update')
+  )
+
+  if (isActivityCreateOrUpdate) {
+    const activityId = event.object_id
+
+    console.info('Webhook importing activity', {
+      activityId,
+    })
+
+    void (async () => {
+      try {
+        const connection = await getStravaConnectionForAthlete(event.owner_id)
+
+        if (!connection) {
+          console.warn('Webhook import skipped: missing connection', {
+            ownerId: event.owner_id,
+            activityId,
+          })
+          return
+        }
+
+        const activity = await fetchStravaActivityById(connection.access_token, activityId)
+
+        await importStravaActivityForUser(connection.user_id, activity, {
+          updateExisting: true,
+        })
+      } catch (caughtError) {
+        console.error('Webhook import failed', {
+          activityId,
+          error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
+        })
+      }
+    })()
+  }
+
   return NextResponse.json({
     ok: true,
-    step: 'event_logged',
+    step: isActivityCreateOrUpdate ? 'event_scheduled' : 'event_ignored',
   })
 }
