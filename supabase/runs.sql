@@ -27,6 +27,21 @@ add column if not exists external_id text;
 alter table public.runs
 add column if not exists duration_seconds integer;
 
+alter table public.runs
+add column if not exists average_heartrate integer;
+
+alter table public.runs
+add column if not exists max_heartrate integer;
+
+alter table public.runs
+add column if not exists map_polyline text;
+
+alter table public.runs
+add column if not exists calories integer;
+
+alter table public.runs
+add column if not exists average_cadence integer;
+
 create unique index if not exists runs_external_source_external_id_idx
 on public.runs (external_source, external_id)
 where external_source is not null and external_id is not null;

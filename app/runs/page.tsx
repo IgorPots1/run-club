@@ -23,6 +23,11 @@ type Run = {
   created_at: string
   external_source?: string | null
   external_id?: string | null
+  average_heartrate?: number | null
+  max_heartrate?: number | null
+  map_polyline?: string | null
+  calories?: number | null
+  average_cadence?: number | null
 }
 
 type CalendarDayCell = {

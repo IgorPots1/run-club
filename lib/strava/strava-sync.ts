@@ -24,6 +24,11 @@ type StravaRunInsertPayload = {
   elapsed_time_seconds: number
   average_pace_seconds: number
   elevation_gain_meters: number
+  average_heartrate: number | null
+  max_heartrate: number | null
+  map_polyline: string | null
+  calories: number | null
+  average_cadence: number | null
   created_at: string
   external_source: string
   external_id: string
@@ -125,6 +130,26 @@ function toElevationGainMeters(totalElevationGain: number) {
   return Math.max(0, normalizeIntegerField('elevation_gain_meters', safeElevationGain))
 }
 
+function toNullableIntegerField(field: string, value: number | null | undefined) {
+  if (value == null) {
+    return null
+  }
+
+  if (!Number.isFinite(value)) {
+    throw new StravaSyncRowError(`Invalid numeric value for ${field}`, {
+      field,
+      value: String(value),
+    })
+  }
+
+  return Math.round(value)
+}
+
+function toMapPolyline(activity: Pick<StravaActivitySummary, 'map'>) {
+  const polyline = activity.map?.summary_polyline?.trim() || activity.map?.polyline?.trim() || null
+  return polyline && polyline.length > 0 ? polyline : null
+}
+
 function normalizeIntegerField(field: string, value: number) {
   if (!Number.isFinite(value)) {
     throw new StravaSyncRowError(`Invalid numeric value for ${field}`, {
@@ -190,6 +215,11 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
     elapsed_time_seconds: elapsedTimeSeconds,
     average_pace_seconds: toAveragePaceSeconds(movingTimeSeconds, distanceMeters),
     elevation_gain_meters: toElevationGainMeters(activity.total_elevation_gain),
+    average_heartrate: toNullableIntegerField('average_heartrate', activity.average_heartrate),
+    max_heartrate: toNullableIntegerField('max_heartrate', activity.max_heartrate),
+    map_polyline: toMapPolyline(activity),
+    calories: toNullableIntegerField('calories', activity.calories),
+    average_cadence: toNullableIntegerField('average_cadence', activity.average_cadence),
     created_at: new Date(activity.start_date).toISOString(),
     external_source: STRAVA_EXTERNAL_SOURCE,
     external_id: String(activity.id),
@@ -421,6 +451,11 @@ export async function importStravaActivityForUser(
       elapsed_time_seconds: payload.elapsed_time_seconds,
       average_pace_seconds: payload.average_pace_seconds,
       elevation_gain_meters: payload.elevation_gain_meters,
+      average_heartrate: payload.average_heartrate,
+      max_heartrate: payload.max_heartrate,
+      map_polyline: payload.map_polyline,
+      calories: payload.calories,
+      average_cadence: payload.average_cadence,
       created_at: payload.created_at,
       xp: payload.xp,
     })

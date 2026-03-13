@@ -27,6 +27,15 @@ export type StravaActivitySummary = {
   elapsed_time: number
   total_elevation_gain: number
   start_date: string
+  average_heartrate?: number | null
+  max_heartrate?: number | null
+  calories?: number | null
+  average_cadence?: number | null
+  map?: {
+    id?: string | null
+    summary_polyline?: string | null
+    polyline?: string | null
+  } | null
 }
 
 export type StravaInitialSyncResult =
