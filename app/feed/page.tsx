@@ -11,9 +11,6 @@ import { toggleRunLike } from '@/lib/run-likes'
 import { getLevelFromXP } from '../../lib/xp'
 
 const FEED_PAGE_SIZE = 10
-const PULL_TO_REFRESH_THRESHOLD = 56
-const MAX_PULL_DISTANCE = 72
-
 function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
   const existingIds = new Set(existing.map((item) => item.id))
   return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
@@ -32,12 +29,7 @@ export default function FeedPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [nextOffset, setNextOffset] = useState(0)
-  const [pullDistance, setPullDistance] = useState(0)
-  const [readyToRefresh, setReadyToRefresh] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  const pullStartYRef = useRef<number | null>(null)
-  const isPullingRef = useRef(false)
-  const readyToRefreshRef = useRef(false)
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
   const pendingRunIdsRef = useRef<string[]>([])
@@ -164,61 +156,6 @@ export default function FeedPage() {
     }
   }, [hasMore, initialLoading, loadMoreRuns, loading, loadingMore, refreshing, items.length])
 
-  function getScrollTop() {
-    return window.scrollY || document.documentElement.scrollTop || 0
-  }
-
-  const resetPullState = useCallback(() => {
-    pullStartYRef.current = null
-    isPullingRef.current = false
-    readyToRefreshRef.current = false
-    setReadyToRefresh(false)
-    setPullDistance(0)
-  }, [])
-
-  const handleTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
-    if (event.touches.length !== 1 || refreshing || initialLoading || getScrollTop() > 0) {
-      resetPullState()
-      return
-    }
-
-    pullStartYRef.current = event.touches[0].clientY
-    isPullingRef.current = true
-  }, [initialLoading, refreshing, resetPullState])
-
-  const handleTouchMove = useCallback((event: React.TouchEvent<HTMLElement>) => {
-    if (!isPullingRef.current || pullStartYRef.current === null) return
-    if (event.touches.length !== 1 || getScrollTop() > 0) {
-      resetPullState()
-      return
-    }
-
-    const deltaY = event.touches[0].clientY - pullStartYRef.current
-
-    if (deltaY <= 0) {
-      readyToRefreshRef.current = false
-      setReadyToRefresh(false)
-      setPullDistance(0)
-      return
-    }
-
-    const nextPullDistance = Math.min(deltaY * 0.45, MAX_PULL_DISTANCE)
-    const shouldRefresh = nextPullDistance >= PULL_TO_REFRESH_THRESHOLD
-
-    readyToRefreshRef.current = shouldRefresh
-    setReadyToRefresh(shouldRefresh)
-    setPullDistance(nextPullDistance)
-  }, [resetPullState])
-
-  const handleTouchEnd = useCallback(() => {
-    const shouldRefresh = readyToRefreshRef.current
-    resetPullState()
-
-    if (shouldRefresh && !refreshing && !initialLoading) {
-      void loadFirstPage('refresh')
-    }
-  }, [initialLoading, loadFirstPage, refreshing, resetPullState])
-
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current
 
@@ -275,38 +212,10 @@ export default function FeedPage() {
   const error = actionError || feedError
   const emptyCtaHref = currentUserId ? '/runs' : '/login'
   const emptyCtaLabel = currentUserId ? 'Добавить тренировку' : 'Войти'
-  const pullIndicatorLabel = refreshing
-    ? 'Обновляем...'
-    : readyToRefresh
-      ? 'Отпусти, чтобы обновить'
-      : pullDistance > 0
-        ? 'Потяни, чтобы обновить'
-        : ''
 
   return (
-    <main
-      className="relative min-h-screen pt-[env(safe-area-inset-top)] md:pt-0"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={resetPullState}
-    >
-      <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center px-4">
-        <div
-          className={`app-text-secondary rounded-full bg-black/5 px-3 py-1 text-xs transition-all dark:bg-white/5 ${
-            refreshing || pullDistance > 0 ? 'opacity-100' : 'opacity-0'
-          }`}
-        >
-          {pullIndicatorLabel}
-        </div>
-      </div>
-      <div
-        className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4"
-        style={{
-          transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
-          transition: pullDistance === 0 ? 'transform 180ms ease' : 'none',
-        }}
-      >
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
         {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
         <div className="space-y-4 pb-2">
