@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { memo, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import RunLikeControl from '@/components/RunLikeControl'
 
@@ -111,6 +112,7 @@ function WorkoutFeedCard({
   subtitle,
   profileHref = null,
 }: WorkoutFeedCardProps) {
+  const router = useRouter()
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
@@ -154,7 +156,25 @@ function WorkoutFeedCard({
   )
 
   return (
-    <div className="app-card relative overflow-hidden rounded-2xl px-4 py-4 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10">
+    <div
+      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-4 py-4 shadow-sm shadow-black/5 ring-1 ring-black/5 dark:ring-white/10"
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        if (!runId) return
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        router.push(`/runs/${runId}`)
+      }}
+      onKeyDown={(event) => {
+        if (!runId) return
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        event.preventDefault()
+        router.push(`/runs/${runId}`)
+      }}
+    >
       <div className="flex items-start justify-between gap-3">
         {profileHref ? (
           <Link href={profileHref} className="flex min-w-0 items-center gap-3">

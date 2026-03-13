@@ -816,6 +816,15 @@ export default function RunsPage() {
     }
   }
 
+  function handleRunCardOpen(runId: string, event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) {
+    const target = event.target as HTMLElement
+    if (target.closest('button,a')) {
+      return
+    }
+
+    router.push(`/runs/${runId}`)
+  }
+
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
   if (!user) {
     return (
@@ -972,7 +981,18 @@ export default function RunsPage() {
           </div>
         ) : (
           runs.map((run) => (
-            <div key={run.id} className="compact-run-card app-card relative overflow-hidden rounded-2xl border p-4 shadow-sm">
+            <div
+              key={run.id}
+              className="compact-run-card app-card relative cursor-pointer overflow-hidden rounded-2xl border p-4 shadow-sm"
+              role="button"
+              tabIndex={0}
+              onClick={(event) => handleRunCardOpen(run.id, event)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                handleRunCardOpen(run.id, event)
+              }}
+            >
               <div className="compact-run-card-layout flex flex-col gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="app-text-primary break-words text-base font-semibold">
