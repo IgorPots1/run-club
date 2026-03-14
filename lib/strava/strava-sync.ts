@@ -6,7 +6,9 @@ import type { StravaActivitySummary, StravaActivityType, StravaInitialSyncResult
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
-const STRAVA_INITIAL_SYNC_WINDOW_DAYS = 30
+const INITIAL_SYNC_CUTOFF = '2026-01-01T00:00:00Z'
+const INITIAL_SYNC_CUTOFF_MS = new Date(INITIAL_SYNC_CUTOFF).getTime()
+const INITIAL_SYNC_CUTOFF_UNIX_SECONDS = Math.floor(INITIAL_SYNC_CUTOFF_MS / 1000)
 const MAX_SYNC_ERROR_DETAILS = 10
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
 const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run']
@@ -194,6 +196,20 @@ export function isValidStravaRun(activity: StravaActivitySummary) {
     activity.moving_time > 0 &&
     Boolean(activity.start_date)
   )
+}
+
+function isOnOrAfterInitialSyncCutoff(startDate: string | null | undefined) {
+  if (!startDate) {
+    return false
+  }
+
+  const activityStartDateMs = new Date(startDate).getTime()
+
+  if (Number.isNaN(activityStartDateMs) || Number.isNaN(INITIAL_SYNC_CUTOFF_MS)) {
+    return false
+  }
+
+  return activityStartDateMs >= INITIAL_SYNC_CUTOFF_MS
 }
 
 function buildRunInsertPayload(userId: string, activity: StravaActivitySummary): StravaRunInsertPayload {
@@ -579,9 +595,7 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     : null
   const afterUnixSeconds = latestImportedRunTimestamp
     ? Math.max(0, latestImportedRunTimestamp - 1)
-    : Math.floor(
-        (Date.now() - STRAVA_INITIAL_SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000) / 1000
-      )
+    : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_param', message: 'Computed Strava activities after parameter', data: { userId, connectionId: connection.id, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, afterParamUsed: afterUnixSeconds }, timestamp: Date.now() }) }).catch(() => {})
@@ -607,7 +621,9 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:activities_fetched', message: 'Fetched Strava activities list', data: { userId, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, firstFiveFetchedActivities: activities.slice(0, 5).map((activity) => ({ id: String(activity.id), type: activity.type ?? null })) }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
-  const runActivities = activities.filter(isValidStravaRun)
+  const runActivities = activities.filter(
+    (activity) => isValidStravaRun(activity) && isOnOrAfterInitialSyncCutoff(activity.start_date)
+  )
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H2', location: 'lib/strava/strava-sync.ts:syncStravaRuns:activities_filtered', message: 'Filtered Strava activities to valid runs', data: { userId, connectionId: connection.id, totalActivitiesFetched: activities.length, runActivitiesCount: runActivities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null }, timestamp: Date.now() }) }).catch(() => {})
