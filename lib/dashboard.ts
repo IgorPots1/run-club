@@ -21,6 +21,9 @@ type RunRow = {
   external_source?: string | null
   distance_km: number | null
   duration_minutes: number | null
+  duration_seconds?: number | null
+  moving_time_seconds?: number | null
+  elapsed_time_seconds?: number | null
   xp: number | null
   created_at: string
 }
@@ -80,11 +83,11 @@ function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
 
-function formatPace(distanceKm: number, durationMinutes: number | null) {
+function formatPace(distanceKm: number, totalDurationSeconds: number | null) {
   if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null
-  if (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) <= 0) return null
+  if (!Number.isFinite(Number(totalDurationSeconds)) || Number(totalDurationSeconds) <= 0) return null
 
-  const totalSeconds = Math.round(Number(durationMinutes) * 60)
+  const totalSeconds = Math.round(Number(totalDurationSeconds))
   const paceSeconds = Math.round(totalSeconds / distanceKm)
   const minutes = Math.floor(paceSeconds / 60)
   const seconds = paceSeconds % 60
@@ -92,12 +95,12 @@ function formatPace(distanceKm: number, durationMinutes: number | null) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
-function formatMovingTime(durationMinutes: number | null) {
-  if (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) <= 0) {
+function formatMovingTime(totalDurationSeconds: number | null) {
+  if (!Number.isFinite(Number(totalDurationSeconds)) || Number(totalDurationSeconds) <= 0) {
     return null
   }
 
-  const totalSeconds = Math.max(0, Math.round(Number(durationMinutes) * 60))
+  const totalSeconds = Math.max(0, Math.round(Number(totalDurationSeconds)))
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
@@ -107,6 +110,22 @@ function formatMovingTime(durationMinutes: number | null) {
   }
 
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
+  if (Number.isFinite(run.moving_time_seconds) && (run.moving_time_seconds ?? 0) > 0) {
+    return Math.round(run.moving_time_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
+    return Math.round(run.duration_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run.duration_minutes) && (run.duration_minutes ?? 0) > 0) {
+    return Math.round(Number(run.duration_minutes ?? 0) * 60)
+  }
+
+  return null
 }
 
 function getFreshCachedValue<T>(cacheEntry: { value: T; expiresAt: number } | undefined) {
@@ -298,7 +317,7 @@ export async function loadFeedRuns(
   const end = start + limit - 1
   const { data: runs, error: runsError } = await supabase
     .from('runs')
-    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, xp, created_at')
+    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
@@ -325,6 +344,7 @@ export async function loadFeedRuns(
     items: pageRuns.map((run) => {
       const profile = profileById[run.user_id]
       const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
+      const resolvedDurationSeconds = resolveDurationSeconds(run)
 
       return {
         id: run.id,
@@ -332,8 +352,8 @@ export async function loadFeedRuns(
         title: mappedTitle,
         external_source: run.external_source ?? null,
         distance_km: Number(run.distance_km ?? 0),
-        pace: formatPace(Number(run.distance_km ?? 0), run.duration_minutes ?? null),
-        movingTime: formatMovingTime(run.duration_minutes ?? null),
+        pace: formatPace(Number(run.distance_km ?? 0), resolvedDurationSeconds),
+        movingTime: formatMovingTime(resolvedDurationSeconds),
         xp: Number(run.xp ?? 0),
         created_at: run.created_at,
         displayName: getProfileDisplayName(profile, 'Бегун'),
