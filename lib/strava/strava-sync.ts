@@ -67,6 +67,12 @@ type ImportStravaActivityOptions = {
   debugRunId?: string
 }
 
+type StravaSyncMode = 'incremental' | 'backfill'
+
+type SyncStravaRunsOptions = {
+  mode?: StravaSyncMode
+}
+
 export class StravaReconnectRequiredError extends Error {
   constructor(message = 'Strava reconnect required') {
     super(message)
@@ -509,8 +515,12 @@ export async function importStravaActivityForUser(
   }
 }
 
-export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncResult> {
+export async function syncStravaRuns(
+  userId: string,
+  options: SyncStravaRunsOptions = {}
+): Promise<StravaInitialSyncResult> {
   const debugRunId = `sync-${Date.now()}-${userId.slice(0, 8)}`
+  const syncMode: StravaSyncMode = options.mode ?? 'incremental'
   let connection: StravaConnectionRow | null = null
 
   try {
@@ -576,26 +586,34 @@ export async function syncStravaRuns(userId: string): Promise<StravaInitialSyncR
     }
   }
 
-  const supabase = createSupabaseAdminClient()
-  const { data: latestImportedRun, error: latestImportedRunError } = await supabase
-    .from('runs')
-    .select('created_at')
-    .eq('user_id', userId)
-    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  let latestImportedRun: { created_at: string } | null = null
 
-  if (latestImportedRunError) {
-    throw new Error(latestImportedRunError.message)
+  if (syncMode === 'incremental') {
+    const supabase = createSupabaseAdminClient()
+    const { data: latestImportedRunData, error: latestImportedRunError } = await supabase
+      .from('runs')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (latestImportedRunError) {
+      throw new Error(latestImportedRunError.message)
+    }
+
+    latestImportedRun = latestImportedRunData
   }
 
   const latestImportedRunTimestamp = latestImportedRun?.created_at
     ? Math.floor(new Date(latestImportedRun.created_at).getTime() / 1000)
     : null
-  const afterUnixSeconds = latestImportedRunTimestamp
-    ? Math.max(0, latestImportedRunTimestamp - 1)
-    : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+  const afterUnixSeconds = syncMode === 'backfill'
+    ? INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+    : latestImportedRunTimestamp
+      ? Math.max(0, latestImportedRunTimestamp - 1)
+      : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_param', message: 'Computed Strava activities after parameter', data: { userId, connectionId: connection.id, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, afterParamUsed: afterUnixSeconds }, timestamp: Date.now() }) }).catch(() => {})

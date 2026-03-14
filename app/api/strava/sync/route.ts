@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   // #endregion
 
   try {
-    const result = await syncStravaRuns(user.id)
+    const result = await syncStravaRuns(user.id, { mode: 'backfill' })
 
     if (!result.ok) {
       // #region agent log
