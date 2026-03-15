@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
-import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
+import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -712,7 +712,6 @@ export default function RunsPage() {
     e.preventDefault()
     if (!user || submitting) return
 
-    const currentUser = user
     const normalizedTitle = normalizedWorkoutName || DEFAULT_WORKOUT_NAME
     const d = selectedDistanceKm
     const dur = selectedDurationMinutes
@@ -786,7 +785,7 @@ export default function RunsPage() {
       setDurationMinutesInput('0')
       setDurationSecondsInput('0')
       setError('')
-      await fetchRuns(currentUser)
+      dispatchRunsUpdatedEvent()
     } catch {
       setError('Не удалось сохранить тренировку')
     } finally {
@@ -809,6 +808,7 @@ export default function RunsPage() {
       }
 
       setRuns((prev) => prev.filter((r) => r.id !== id))
+      dispatchRunsUpdatedEvent()
     } catch {
       setError('Не удалось удалить тренировку')
     } finally {
