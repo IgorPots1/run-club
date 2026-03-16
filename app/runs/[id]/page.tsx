@@ -295,7 +295,7 @@ export default function RunDetailsPage() {
 
         try {
           runComments = await loadRunComments(runData.id)
-        } catch {
+        } catch (error) {
           nextCommentsError = 'Не удалось загрузить комментарии'
         }
 

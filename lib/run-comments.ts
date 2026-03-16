@@ -28,11 +28,13 @@ export type RunCommentItem = {
 }
 
 export async function createRunComment(runId: string, userId: string, comment: string) {
-  return supabase.from('run_comments').insert({
+  const result = await supabase.from('run_comments').insert({
     run_id: runId,
     user_id: userId,
     comment,
   })
+
+  return result
 }
 
 export async function loadRunComments(runId: string): Promise<RunCommentItem[]> {

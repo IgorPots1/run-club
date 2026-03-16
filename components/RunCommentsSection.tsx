@@ -75,7 +75,7 @@ export default function RunCommentsSection({
     try {
       await onSubmitComment(trimmedComment)
       setComment('')
-    } catch {
+    } catch (error) {
       setSubmitError('Не удалось отправить комментарий')
     } finally {
       setSubmitting(false)
