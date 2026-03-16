@@ -1,12 +1,14 @@
 'use client'
 
 import Image from 'next/image'
+import { useState } from 'react'
 import type { RunCommentItem } from '@/lib/run-comments'
 
 type RunCommentsSectionProps = {
   comments: RunCommentItem[]
   loading?: boolean
   error?: string
+  onSubmitComment?: (comment: string) => Promise<void>
 }
 
 function AvatarFallback() {
@@ -48,10 +50,67 @@ export default function RunCommentsSection({
   comments,
   loading = false,
   error = '',
+  onSubmitComment,
 }: RunCommentsSectionProps) {
+  const [comment, setComment] = useState('')
+  const [submitError, setSubmitError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const trimmedComment = comment.trim()
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!onSubmitComment || submitting) {
+      return
+    }
+
+    if (!trimmedComment) {
+      setSubmitError('Введите комментарий')
+      return
+    }
+
+    setSubmitting(true)
+    setSubmitError('')
+
+    try {
+      await onSubmitComment(trimmedComment)
+      setComment('')
+    } catch {
+      setSubmitError('Не удалось отправить комментарий')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <section className="app-card rounded-2xl border p-4 shadow-sm">
       <h2 className="app-text-primary text-base font-semibold">Комментарии</h2>
+      {onSubmitComment ? (
+        <form onSubmit={handleSubmit} className="mt-4">
+          <label htmlFor="run-comment" className="sr-only">Комментарий</label>
+          <textarea
+            id="run-comment"
+            value={comment}
+            onChange={(event) => {
+              setComment(event.target.value)
+              setSubmitError('')
+            }}
+            placeholder="Напиши комментарий"
+            disabled={submitting}
+            className="app-input min-h-24 w-full rounded-lg border px-3 py-2"
+          />
+          {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
+          <div className="mt-3 flex justify-end">
+            <button
+              type="submit"
+              disabled={submitting || !trimmedComment}
+              className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? 'Отправляем...' : 'Отправить'}
+            </button>
+          </div>
+        </form>
+      ) : null}
       {loading ? (
         <div className="mt-4 space-y-4">
           <div className="flex items-start gap-3">

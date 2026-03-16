@@ -10,7 +10,7 @@ import RunRouteMapPreview, { hasRenderableRoutePolyline } from '@/components/Run
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
-import { loadRunComments, type RunCommentItem } from '@/lib/run-comments'
+import { createRunComment, loadRunComments, type RunCommentItem } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -180,6 +180,28 @@ export default function RunDetailsPage() {
     }
 
     router.push('/dashboard')
+  }
+
+  async function handleCommentSubmit(comment: string) {
+    if (!user || !run) {
+      throw new Error('missing_context')
+    }
+
+    const trimmedComment = comment.trim()
+
+    if (!trimmedComment) {
+      throw new Error('empty_comment')
+    }
+
+    const { error: insertError } = await createRunComment(run.id, user.id, trimmedComment)
+
+    if (insertError) {
+      throw insertError
+    }
+
+    const refreshedComments = await loadRunComments(run.id)
+    setComments(refreshedComments)
+    setCommentsError('')
   }
 
   useEffect(() => {
@@ -520,7 +542,7 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
-        <RunCommentsSection comments={comments} error={commentsError} />
+        <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
       </div>
     </main>
   )
