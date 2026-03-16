@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Cropper, { type Area } from 'react-easy-crop'
 
 type AvatarCropModalProps = {
@@ -21,6 +21,47 @@ function loadImage(src: string) {
     image.onerror = () => reject(new Error('Не удалось загрузить изображение'))
     image.src = src
   })
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob)
+        return
+      }
+
+      reject(new Error('Не удалось сохранить аватар'))
+    }, type, quality)
+  })
+}
+
+async function normalizeImageSource(imageSrc: string) {
+  if (typeof window === 'undefined' || typeof createImageBitmap !== 'function') {
+    return imageSrc
+  }
+
+  const response = await fetch(imageSrc)
+  const sourceBlob = await response.blob()
+  const bitmap = await createImageBitmap(sourceBlob, { imageOrientation: 'from-image' })
+
+  try {
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      throw new Error('Не удалось подготовить аватар')
+    }
+
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    context.drawImage(bitmap, 0, 0)
+
+    const normalizedBlob = await canvasToBlob(canvas, OUTPUT_TYPE, 0.92)
+    return URL.createObjectURL(normalizedBlob)
+  } finally {
+    bitmap.close()
+  }
 }
 
 async function createCroppedAvatar(imageSrc: string, croppedAreaPixels: Area) {
@@ -58,16 +99,7 @@ async function createCroppedAvatar(imageSrc: string, croppedAreaPixels: Area) {
   )
   context.restore()
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob)
-        return
-      }
-
-      reject(new Error('Не удалось сохранить аватар'))
-    }, OUTPUT_TYPE, OUTPUT_QUALITY)
-  })
+  return canvasToBlob(canvas, OUTPUT_TYPE, OUTPUT_QUALITY)
 }
 
 export default function AvatarCropModal({
@@ -79,7 +111,58 @@ export default function AvatarCropModal({
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
+  const [normalizedImageSrc, setNormalizedImageSrc] = useState<string | null>(null)
+  const [preparingImage, setPreparingImage] = useState(true)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    let isActive = true
+    let normalizedObjectUrl: string | null = null
+
+    setPreparingImage(true)
+    setNormalizedImageSrc(null)
+    setCroppedAreaPixels(null)
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+    setError('')
+
+    void (async () => {
+      try {
+        const preparedImageSrc = await normalizeImageSource(imageSrc)
+
+        if (!isActive) {
+          if (preparedImageSrc !== imageSrc) {
+            URL.revokeObjectURL(preparedImageSrc)
+          }
+          return
+        }
+
+        if (preparedImageSrc !== imageSrc) {
+          normalizedObjectUrl = preparedImageSrc
+        }
+
+        setNormalizedImageSrc(preparedImageSrc)
+      } catch {
+        if (!isActive) {
+          return
+        }
+
+        setNormalizedImageSrc(imageSrc)
+      } finally {
+        if (isActive) {
+          setPreparingImage(false)
+        }
+      }
+    })()
+
+    return () => {
+      isActive = false
+
+      if (normalizedObjectUrl) {
+        URL.revokeObjectURL(normalizedObjectUrl)
+      }
+    }
+  }, [imageSrc])
 
   const handleCropComplete = useCallback((_: Area, croppedPixels: Area) => {
     setError('')
@@ -87,12 +170,12 @@ export default function AvatarCropModal({
   }, [])
 
   async function handleConfirm() {
-    if (!croppedAreaPixels || loading) return
+    if (!croppedAreaPixels || loading || preparingImage || !normalizedImageSrc) return
 
     setError('')
 
     try {
-      const blob = await createCroppedAvatar(imageSrc, croppedAreaPixels)
+      const blob = await createCroppedAvatar(normalizedImageSrc, croppedAreaPixels)
       await onConfirm(blob)
     } catch {
       setError('Не удалось подготовить аватар')
@@ -112,18 +195,24 @@ export default function AvatarCropModal({
         </div>
 
         <div className="relative mt-4 flex-1">
-          <Cropper
-            image={imageSrc}
-            crop={crop}
-            zoom={zoom}
-            aspect={1}
-            cropShape="round"
-            showGrid={false}
-            objectFit="cover"
-            onCropChange={setCrop}
-            onCropComplete={handleCropComplete}
-            onZoomChange={setZoom}
-          />
+          {normalizedImageSrc ? (
+            <Cropper
+              image={normalizedImageSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid={false}
+              objectFit="cover"
+              onCropChange={setCrop}
+              onCropComplete={handleCropComplete}
+              onZoomChange={setZoom}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center px-4 text-sm text-white/70">
+              Подготавливаем фото...
+            </div>
+          )}
         </div>
 
         <div className="bg-black/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
@@ -155,7 +244,7 @@ export default function AvatarCropModal({
             <button
               type="button"
               onClick={() => void handleConfirm()}
-              disabled={loading || !croppedAreaPixels}
+              disabled={loading || preparingImage || !croppedAreaPixels || !normalizedImageSrc}
               className="flex-1 rounded-xl bg-white py-3 text-sm font-medium text-black disabled:opacity-60"
             >
               {loading ? 'Сохраняем...' : 'Сохранить'}
