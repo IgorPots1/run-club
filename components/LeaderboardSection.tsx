@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
@@ -128,7 +129,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
             {rows.map((row, index) => (
               <div key={row.user_id} className="app-card mb-4 overflow-hidden rounded-2xl border p-4 shadow-sm">
                 <p className="app-text-primary mb-3 font-medium">{index + 1} место</p>
-                <div className="mb-4 flex items-center gap-3">
+                <Link href={`/users/${row.user_id}`} className="mb-4 flex items-center gap-3">
                   {row.avatar_url ? (
                     <img src={row.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
                   ) : (
@@ -140,7 +141,7 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                     <p className="app-text-primary truncate font-medium">{row.displayName}</p>
                     <p className="app-text-secondary text-sm">Уровень {getLevelFromXP(row.total_xp).level}</p>
                   </div>
-                </div>
+                </Link>
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   <div>
                     <p className="app-text-secondary text-xs">Всего XP</p>
@@ -176,15 +177,22 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
                   <tr key={row.user_id} className="border-b">
                     <td className="border p-2">{index + 1}</td>
                     <td className="border p-2">
-                      {row.avatar_url ? (
-                        <img src={row.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                      ) : (
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
-                          {(row.displayName[0] ?? '?').toUpperCase()}
-                        </span>
-                      )}
+                      <Link href={`/users/${row.user_id}`} className="inline-flex">
+                        {row.avatar_url ? (
+                          <img src={row.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                        ) : (
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
+                            {(row.displayName[0] ?? '?').toUpperCase()}
+                          </span>
+                        )}
+                      </Link>
                     </td>
-                    <td className="border p-2">{row.displayName} · Уровень {getLevelFromXP(row.total_xp).level}</td>
+                    <td className="border p-2">
+                      <Link href={`/users/${row.user_id}`} className="app-text-primary inline-flex min-w-0 truncate">
+                        {row.displayName}
+                      </Link>{' '}
+                      · Уровень {getLevelFromXP(row.total_xp).level}
+                    </td>
                     <td className="border p-2">{row.total_xp}</td>
                     <td className="border p-2">{formatDistanceKm(row.total_km)}</td>
                     <td className="border p-2">{row.runs_count}</td>

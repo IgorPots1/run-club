@@ -258,6 +258,7 @@ export default function InfiniteWorkoutFeed({
             likedByMe={item.likedByMe}
             pending={pendingRunIds.includes(item.id)}
             onToggleLike={handleLikeToggle}
+            profileHref={`/users/${item.user_id}`}
           />
         ))
       )}

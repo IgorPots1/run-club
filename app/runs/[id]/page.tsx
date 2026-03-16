@@ -428,7 +428,7 @@ export default function RunDetailsPage() {
 
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+            <Link href={`/users/${run.user_id}`} className="flex min-w-0 items-center gap-3">
               {avatarSrc ? (
                 <Image
                   src={avatarSrc}
@@ -446,7 +446,7 @@ export default function RunDetailsPage() {
                   {formatRunTimestampLabel(run.created_at, run.external_source)}
                 </p>
               </div>
-            </div>
+            </Link>
             {run.external_source === 'strava' ? (
               <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
                 <StravaIcon />

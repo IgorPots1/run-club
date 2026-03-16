@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Flame } from 'lucide-react'
 import type { WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 
@@ -61,9 +62,9 @@ export default function WeeklyLeaderboard({
         <div className="mt-3 space-y-2">
           {topRows.map((row) => (
             <div key={row.user_id} className="flex items-center justify-between gap-3 text-sm">
-              <p className="app-text-primary min-w-0 flex-1 truncate">
+              <Link href={`/users/${row.user_id}`} className="app-text-primary min-w-0 flex-1 truncate">
                 {row.rank}. {row.displayName}
-              </p>
+              </Link>
               <p className="app-text-primary shrink-0 font-medium">{row.totalXp} XP</p>
             </div>
           ))}
