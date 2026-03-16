@@ -5,10 +5,12 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Map } from 'lucide-react'
+import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview, { hasRenderableRoutePolyline } from '@/components/RunRouteMapPreview'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
+import { loadRunComments, type RunCommentItem } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -168,7 +170,8 @@ export default function RunDetailsPage() {
   const [run, setRun] = useState<RunDetailsRow | null>(null)
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [likesCount, setLikesCount] = useState(0)
-  const commentsCount = 0
+  const [comments, setComments] = useState<RunCommentItem[]>([])
+  const [commentsError, setCommentsError] = useState('')
 
   function handleBackNavigation() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -232,6 +235,7 @@ export default function RunDetailsPage() {
 
       setLoading(true)
       setError('')
+      setCommentsError('')
 
       try {
         const { data: runData, error: runError } = await loadRunDetailsRow(runId)
@@ -264,6 +268,15 @@ export default function RunDetailsPage() {
             .eq('run_id', runData.id),
         ])
 
+        let runComments: RunCommentItem[] = []
+        let nextCommentsError = ''
+
+        try {
+          runComments = await loadRunComments(runData.id)
+        } catch {
+          nextCommentsError = 'Не удалось загрузить комментарии'
+        }
+
         if (!isMounted) {
           return
         }
@@ -271,10 +284,13 @@ export default function RunDetailsPage() {
         setRun(runData as RunDetailsRow)
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
         setLikesCount(Number(likesResult.count ?? 0))
+        setComments(runComments)
+        setCommentsError(nextCommentsError)
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить тренировку')
           setRun(null)
+          setComments([])
         }
       } finally {
         if (isMounted) {
@@ -292,6 +308,7 @@ export default function RunDetailsPage() {
 
   const avatarSrc = author?.avatar_url?.trim() || null
   const authorName = getProfileDisplayName(author, 'Бегун')
+  const commentsCount = comments.length
   const details = useMemo(() => {
     if (!run) {
       return null
@@ -502,6 +519,8 @@ export default function RunDetailsPage() {
             <span>{commentsCount} комментариев</span>
           </div>
         </section>
+
+        <RunCommentsSection comments={comments} error={commentsError} />
       </div>
     </main>
   )
