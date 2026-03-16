@@ -11,6 +11,7 @@ import { getLevelFromXP } from '@/lib/xp'
 
 type InfiniteWorkoutFeedProps = {
   currentUserId: string | null
+  targetUserId?: string | null
   pageSize?: number
   emptyTitle: string
   emptyDescription?: string
@@ -27,6 +28,7 @@ function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) 
 
 export default function InfiniteWorkoutFeed({
   currentUserId,
+  targetUserId = null,
   pageSize = 10,
   emptyTitle,
   emptyDescription,
@@ -66,7 +68,7 @@ export default function InfiniteWorkoutFeed({
     setFeedError('')
 
     try {
-      const page = await loadFeedRuns(currentUserId, 0, pageSize)
+      const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
       setItems(page.items)
       setHasMore(page.hasMore)
       setNextOffset(page.items.length)
@@ -78,7 +80,7 @@ export default function InfiniteWorkoutFeed({
     } finally {
       setInitialLoading(false)
     }
-  }, [currentUserId, pageSize])
+  }, [currentUserId, pageSize, targetUserId])
 
   const loadMoreRuns = useCallback(async () => {
     if (initialLoading || loadingMore || !hasMore) return
@@ -87,7 +89,7 @@ export default function InfiniteWorkoutFeed({
     setFeedError('')
 
     try {
-      const page = await loadFeedRuns(currentUserId, nextOffset, pageSize)
+      const page = await loadFeedRuns(currentUserId, nextOffset, pageSize, targetUserId)
       setItems((prev) => mergeUniqueFeedItems(prev, page.items))
       setHasMore(page.hasMore)
       setNextOffset((prev) => prev + page.items.length)
@@ -96,7 +98,7 @@ export default function InfiniteWorkoutFeed({
     } finally {
       setLoadingMore(false)
     }
-  }, [currentUserId, hasMore, initialLoading, loadingMore, nextOffset, pageSize])
+  }, [currentUserId, hasMore, initialLoading, loadingMore, nextOffset, pageSize, targetUserId])
 
   useEffect(() => {
     setItems([])

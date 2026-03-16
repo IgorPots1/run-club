@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -152,6 +153,17 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             <span className="app-text-secondary min-w-0">Тренировки</span>
             <span className="app-text-primary shrink-0 text-right font-semibold">{totalRuns}</span>
           </div>
+        </div>
+        <div className="mt-6">
+          <h2 className="app-text-primary mb-3 text-lg font-semibold">Тренировки</h2>
+          <InfiniteWorkoutFeed
+            currentUserId={user.id}
+            targetUserId={userId}
+            pageSize={10}
+            emptyTitle="У этого участника пока нет тренировок"
+            emptyDescription="Когда появятся пробежки, они будут показаны здесь."
+            showLevelSubtitle={false}
+          />
         </div>
       </div>
     </main>

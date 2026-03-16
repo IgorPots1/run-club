@@ -312,15 +312,22 @@ export async function loadUserProfileSummary(userId: string): Promise<UserProfil
 export async function loadFeedRuns(
   currentUserId: string | null,
   start = 0,
-  limit = 10
+  limit = 10,
+  targetUserId?: string | null
 ): Promise<FeedRunPage> {
   const end = start + limit - 1
-  const { data: runs, error: runsError } = await supabase
+  let runsQuery = supabase
     .from('runs')
     .select('id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
+
+  if (targetUserId) {
+    runsQuery = runsQuery.eq('user_id', targetUserId)
+  }
+
+  const { data: runs, error: runsError } = await runsQuery
 
   if (runsError) {
     throw new Error('Не удалось загрузить ленту')
