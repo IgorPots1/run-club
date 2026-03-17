@@ -851,8 +851,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card rounded-2xl border p-4 pb-20 shadow-sm md:pb-24">
-            <div className="space-y-4">
+          <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-20 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-24">
+            <div className="mt-auto space-y-4">
               {messages.map((message) => (
                 <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
                   {message.id === firstUnreadMessageId ? (
