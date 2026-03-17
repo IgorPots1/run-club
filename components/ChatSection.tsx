@@ -292,36 +292,46 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return
     }
 
+    let nestedAnimationFrameId: number | null = null
     const animationFrameId = window.requestAnimationFrame(() => {
-      if (firstUnreadMessageId) {
-        const targetMessage = messageRefs.current[firstUnreadMessageId]
+      nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        if (firstUnreadMessageId) {
+          const targetMessage = messageRefs.current[firstUnreadMessageId]
 
-        if (!targetMessage) {
-          return
+          if (!targetMessage) {
+            return
+          }
+
+          const nextTop = targetMessage.getBoundingClientRect().top + window.scrollY
+          window.scrollTo({
+            top: Math.max(0, nextTop),
+            behavior: 'auto',
+          })
+        } else {
+          const bottomSentinel = bottomSentinelRef.current
+
+          if (!bottomSentinel) {
+            return
+          }
+
+          const nextTop =
+            bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
+
+          window.scrollTo({
+            top: Math.max(0, nextTop),
+            behavior: 'auto',
+          })
         }
 
-        targetMessage.scrollIntoView({
-          block: 'start',
-          behavior: 'auto',
-        })
-      } else {
-        const bottomSentinel = bottomSentinelRef.current
-
-        if (!bottomSentinel) {
-          return
-        }
-
-        bottomSentinel.scrollIntoView({
-          block: 'end',
-          behavior: 'auto',
-        })
-      }
-
-      hasAppliedInitialScrollRef.current = true
+        hasAppliedInitialScrollRef.current = true
+      })
     })
 
     return () => {
       window.cancelAnimationFrame(animationFrameId)
+      if (nestedAnimationFrameId !== null) {
+        window.cancelAnimationFrame(nestedAnimationFrameId)
+      }
     }
   }, [firstUnreadMessageId, hasLoadedReadState, loading, messages.length])
 
