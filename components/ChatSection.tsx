@@ -851,7 +851,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card rounded-2xl border p-4 pb-[calc(9rem+4.75rem+env(safe-area-inset-bottom))] shadow-sm md:pb-32">
+          <section className="app-card rounded-2xl border p-4 pb-20 shadow-sm md:pb-24">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
