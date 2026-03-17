@@ -253,10 +253,15 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           return
         }
 
-        const [initialMessages, nextLastReadAt] = await Promise.all([
-          loadRecentChatMessages(50),
-          loadChatReadState(user.id),
-        ])
+        const initialMessages = await loadRecentChatMessages(50)
+        let nextLastReadAt: string | null = null
+
+        try {
+          nextLastReadAt = await loadChatReadState(user.id)
+        } catch (readStateError) {
+          console.error('Failed to load chat read state', readStateError)
+          nextLastReadAt = null
+        }
 
         if (!isMounted) {
           return
