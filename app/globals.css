@@ -251,6 +251,12 @@ textarea {
   color: var(--bottom-nav-inactive);
 }
 
+.chat-message {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .skeleton-line {
   border-radius: 9999px;
   background: var(--surface-subtle);

@@ -481,7 +481,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 )}
                 <div
                   className={[
-                    'min-w-0 flex-1 rounded-2xl transition duration-150',
+                    'chat-message min-w-0 flex-1 rounded-2xl transition duration-150',
                     isActionSheetOpen && selectedMessage?.id === message.id
                       ? 'scale-[1.01] bg-black/[0.04] ring-1 ring-black/10 dark:bg-white/[0.05] dark:ring-white/10'
                       : '',
