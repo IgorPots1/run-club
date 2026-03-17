@@ -525,8 +525,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         </div>
       ) : null}
       {selectedMessage && isActionSheetOpen ? (
-        <div className="chat-no-select chat-selected-preview pointer-events-none fixed inset-x-4 top-[40svh] z-[60] mx-auto max-w-xl -translate-y-1/2 md:left-1/2 md:w-full md:max-w-md md:-translate-x-1/2">
-          <div className="chat-no-select app-card rounded-2xl border px-4 py-3 shadow-lg ring-1 ring-black/10 dark:ring-white/10">
+        <div className="chat-no-select pointer-events-none fixed inset-x-4 top-[40svh] z-[60] mx-auto max-w-xl -translate-y-1/2 md:left-1/2 md:w-full md:max-w-md md:-translate-x-1/2">
+          <div className="chat-no-select chat-selected-preview app-card rounded-2xl border px-4 py-3 shadow-lg ring-1 ring-black/10 dark:ring-white/10">
             <div className="flex items-start gap-3">
               {selectedMessage.avatarUrl ? (
                 <Image

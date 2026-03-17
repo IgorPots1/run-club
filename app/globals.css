@@ -259,6 +259,7 @@ textarea {
 
 .chat-selected-preview {
   animation: chat-selected-preview-enter 140ms ease-out;
+  transform-origin: center center;
 }
 
 .skeleton-line {
@@ -343,11 +344,11 @@ textarea {
 @keyframes chat-selected-preview-enter {
   from {
     opacity: 0;
-    transform: translateY(calc(-50% + 8px)) scale(0.96);
+    transform: scale(0.96);
   }
 
   to {
     opacity: 1;
-    transform: translateY(-50%) scale(1);
+    transform: scale(1);
   }
 }
