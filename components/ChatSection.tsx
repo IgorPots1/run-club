@@ -844,7 +844,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card rounded-2xl border p-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] shadow-sm md:pb-28">
+          <section className="app-card rounded-2xl border p-4 pb-[calc(12rem+env(safe-area-inset-bottom))] shadow-sm md:pb-36">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
@@ -893,23 +893,24 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         )}
 
-        <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-4 bg-[color:var(--background)]/95 px-4 pb-2 pt-2 backdrop-blur md:bottom-0 md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-0">
-          {pendingNewMessagesCount > 0 ? (
-            <div className="mb-2 flex justify-center md:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingNewMessagesCount(0)
-                  scrollPageToBottom()
-                }}
-                className="app-button-secondary min-h-11 rounded-full border px-4 py-2 text-sm font-medium shadow-sm"
-              >
-                {getNewMessagesLabel(pendingNewMessagesCount)}
-              </button>
-            </div>
-          ) : null}
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <form onSubmit={handleSubmit}>
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 px-4 pb-2 pt-2 md:bottom-0 md:pb-4 md:pt-0">
+          <div className="mx-auto w-full max-w-xl pointer-events-auto bg-[color:var(--background)]/95 backdrop-blur md:max-w-7xl md:bg-transparent md:backdrop-blur-0">
+            {pendingNewMessagesCount > 0 ? (
+              <div className="mb-2 flex justify-center md:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingNewMessagesCount(0)
+                    scrollPageToBottom()
+                  }}
+                  className="app-button-secondary min-h-11 rounded-full border px-4 py-2 text-sm font-medium shadow-sm"
+                >
+                  {getNewMessagesLabel(pendingNewMessagesCount)}
+                </button>
+              </div>
+            ) : null}
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <form onSubmit={handleSubmit}>
               {replyingToMessage ? (
                 <div className="mb-3 flex items-start justify-between gap-3 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                   <div className="min-w-0">
@@ -936,7 +937,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   setDraftMessage(event.target.value)
                   setSubmitError('')
                 }}
-                placeholder="Напиши сообщение клубу"
+                placeholder="Сообщение"
                 disabled={submitting}
                 maxLength={CHAT_MESSAGE_MAX_LENGTH}
                 className="app-input min-h-24 w-full rounded-lg border px-3 py-2"
@@ -954,8 +955,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 </button>
               </div>
               {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
-            </form>
-          </section>
+              </form>
+            </section>
+          </div>
         </div>
       </div>
 
