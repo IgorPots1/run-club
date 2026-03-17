@@ -935,8 +935,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         )}
 
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-4 pb-2 pt-2 md:bottom-0 md:pb-4 md:pt-0">
-          <div className="mx-auto w-full max-w-xl pointer-events-auto bg-[color:var(--background)]/95 backdrop-blur md:max-w-7xl md:bg-transparent md:backdrop-blur-0">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0">
+          <div className="mx-auto w-full max-w-xl pointer-events-auto md:max-w-7xl">
             {pendingNewMessagesCount > 0 ? (
               <div className="mb-2 flex justify-center md:justify-end">
                 <button
@@ -951,10 +951,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 </button>
               </div>
             ) : null}
-            <section className="rounded-[28px] border bg-[color:var(--surface)] px-3 py-2 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
+            <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/82 px-2 py-1.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[color:var(--background)]/78">
               <form onSubmit={handleSubmit}>
                 {replyingToMessage ? (
-                  <div className="mb-2 flex items-start justify-between gap-3 rounded-2xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                  <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                     <div className="min-w-0">
                       <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
                       <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
@@ -962,22 +962,22 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                     <button
                       type="button"
                       onClick={() => setReplyingToMessage(null)}
-                      className="app-text-secondary shrink-0 rounded-full p-2 text-sm"
+                      className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
                       aria-label="Отменить ответ"
                     >
                       X
                     </button>
                   </div>
                 ) : null}
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-1.5">
                   <button
                     type="button"
-                    className="app-button-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-lg font-medium"
+                    className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
                     aria-label="Скоро: вложения"
                   >
                     +
                   </button>
-                  <div className="app-input flex min-w-0 flex-1 items-end rounded-full border px-4 py-2">
+                  <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 py-1.5 shadow-none">
                     <label htmlFor="chat-message" className="sr-only">
                       Сообщение
                     </label>
@@ -998,13 +998,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   <button
                     type="submit"
                     disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
-                    className="app-button-primary flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {submitting ? '...' : '>'
                     }
                   </button>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-3 px-1">
+                <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
                   <p className="app-text-secondary text-xs">
                     {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
                   </p>
