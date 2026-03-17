@@ -28,6 +28,7 @@ type ChatSectionProps = {
 const LONG_PRESS_MS = 450
 const INITIAL_CHAT_MESSAGE_LIMIT = 10
 const OLDER_CHAT_BATCH_LIMIT = 10
+const MAX_RENDERED_CHAT_MESSAGES = 60
 
 function AvatarFallback() {
   return (
@@ -157,17 +158,25 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return messages.find((message) => new Date(message.createdAt).getTime() > lastReadAtMs)?.id ?? null
   })()
 
+  const keepLatestRenderedMessages = useCallback((nextMessages: ChatMessageItem[]) => {
+    if (nextMessages.length <= MAX_RENDERED_CHAT_MESSAGES) {
+      return nextMessages
+    }
+
+    return nextMessages.slice(-MAX_RENDERED_CHAT_MESSAGES)
+  }, [])
+
   const refreshMessages = useCallback(async () => {
     try {
       const recentMessages = await loadRecentChatMessages(50)
-      setMessages(recentMessages)
+      setMessages(keepLatestRenderedMessages(recentMessages))
       setError('')
       return recentMessages
     } catch {
       setError('Не удалось загрузить чат')
       return null
     }
-  }, [])
+  }, [keepLatestRenderedMessages])
 
   const setMessageRef = useCallback((messageId: string, node: HTMLElement | null) => {
     if (node) {
@@ -222,7 +231,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     const seenMessageIds = new Set(currentMessages.map((message) => message.id))
     const uniqueOlderMessages = olderMessages.filter((message) => !seenMessageIds.has(message.id))
 
-    return [...uniqueOlderMessages, ...currentMessages]
+    const nextMessages = [...uniqueOlderMessages, ...currentMessages]
+
+    if (nextMessages.length <= MAX_RENDERED_CHAT_MESSAGES) {
+      return nextMessages
+    }
+
+    return nextMessages.slice(0, MAX_RENDERED_CHAT_MESSAGES)
   }
 
   const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
@@ -323,7 +338,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           return
         }
 
-        setMessages(initialMessages)
+        setMessages(keepLatestRenderedMessages(initialMessages))
         setError('')
         setLastReadAt(nextLastReadAt)
         setHasLoadedReadState(true)
@@ -345,7 +360,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       isMounted = false
     }
-  }, [router])
+  }, [keepLatestRenderedMessages, router])
 
   useEffect(() => {
     if (loading || !hasLoadedReadState || !pendingInitialScroll) {
@@ -627,7 +642,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
               setPendingNewMessagesCount((currentCount) => currentCount + 1)
             }
 
-            setMessages((currentMessages) => insertMessageChronologically(currentMessages, nextMessage))
+            setMessages((currentMessages) =>
+              keepLatestRenderedMessages(insertMessageChronologically(currentMessages, nextMessage))
+            )
           } catch {
             void refreshMessages()
           }
@@ -655,7 +672,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
               return
             }
 
-            setMessages((currentMessages) => upsertMessageById(currentMessages, nextMessage))
+            setMessages((currentMessages) =>
+              keepLatestRenderedMessages(upsertMessageById(currentMessages, nextMessage))
+            )
           } catch {
             // Keep realtime additive and non-blocking if enrichment fails.
           }
@@ -666,7 +685,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [isNearBottom, loading, isAuthenticated, refreshMessages])
+  }, [isNearBottom, keepLatestRenderedMessages, loading, isAuthenticated, refreshMessages])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -698,7 +717,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       const recentMessages = await loadRecentChatMessages(50)
       pendingAutoScrollToBottomRef.current = true
       setPendingNewMessagesCount(0)
-      setMessages(recentMessages)
+      setMessages(keepLatestRenderedMessages(recentMessages))
       setDraftMessage('')
       setReplyingToMessage(null)
     } catch {
