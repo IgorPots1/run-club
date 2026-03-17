@@ -561,6 +561,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         return
       }
 
+      const oldestCreatedAt = oldestLoadedMessageCreatedAt
+
       const scrollingElement = document.scrollingElement
 
       if (!scrollingElement) {
@@ -574,7 +576,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       }
 
       try {
-        const olderMessages = await loadOlderChatMessages(oldestLoadedMessageCreatedAt, OLDER_CHAT_BATCH_LIMIT)
+        const olderMessages = await loadOlderChatMessages(oldestCreatedAt, OLDER_CHAT_BATCH_LIMIT)
 
         if (olderMessages.length === 0) {
           prependScrollRestoreRef.current = null
