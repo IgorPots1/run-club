@@ -957,7 +957,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       disabled={submitting}
                       maxLength={CHAT_MESSAGE_MAX_LENGTH}
                       rows={1}
-                      className="min-h-[28px] max-h-32 w-full resize-none bg-transparent py-1 text-sm leading-6 outline-none placeholder:app-text-secondary"
+                      className="min-h-0 max-h-24 w-full resize-none bg-transparent py-0.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
                     />
                   </div>
                   <button
