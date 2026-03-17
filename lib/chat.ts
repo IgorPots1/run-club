@@ -247,3 +247,41 @@ export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageIte
     )
   })
 }
+
+export async function loadOlderChatMessages(beforeCreatedAt: string, limit = 10): Promise<ChatMessageItem[]> {
+  const { data: messages, error: messagesError } = await supabase
+    .from('chat_messages')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
+    .eq('is_deleted', false)
+    .lt('created_at', beforeCreatedAt)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (messagesError) {
+    throw messagesError
+  }
+
+  const messageRows = ((messages as ChatMessageRow[] | null) ?? []).slice().reverse()
+  const replyIds = Array.from(
+    new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
+  )
+  const replyById = await loadChatReplyRowsByIds(replyIds)
+  const userIds = Array.from(
+    new Set([
+      ...messageRows.map((message) => message.user_id),
+      ...Object.values(replyById).map((message) => message.user_id),
+    ])
+  )
+  const profileById = await loadProfilesByUserIds(userIds)
+
+  return messageRows.map((message) => {
+    const replyMessage = message.reply_to_id ? replyById[message.reply_to_id] ?? null : null
+
+    return toChatMessageItem(
+      message,
+      profileById[message.user_id],
+      replyMessage,
+      replyMessage ? profileById[replyMessage.user_id] : undefined
+    )
+  })
+}

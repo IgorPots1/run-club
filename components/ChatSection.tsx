@@ -11,6 +11,7 @@ import {
   createChatMessage,
   loadChatReadState,
   loadChatMessageItem,
+  loadOlderChatMessages,
   loadRecentChatMessages,
   softDeleteChatMessage,
   type ChatMessageItem,
@@ -26,6 +27,7 @@ type ChatSectionProps = {
 
 const LONG_PRESS_MS = 450
 const INITIAL_CHAT_MESSAGE_LIMIT = 10
+const OLDER_CHAT_BATCH_LIMIT = 10
 
 function AvatarFallback() {
   return (
@@ -118,6 +120,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const longPressTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
+  const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollY: number } | null>(null)
+  const isLoadingOlderMessagesRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -126,6 +130,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [hasLoadedReadState, setHasLoadedReadState] = useState(false)
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
   const [pendingNewMessagesCount, setPendingNewMessagesCount] = useState(0)
+  const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
   const [submitError, setSubmitError] = useState('')
@@ -138,6 +143,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
+  const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
     if (messages.length === 0) {
       return null
@@ -207,6 +213,16 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
   function getNewMessagesLabel(count: number) {
     return count === 1 ? '1 new message' : `${count} new messages`
+  }
+
+  function prependMessages(
+    currentMessages: ChatMessageItem[],
+    olderMessages: ChatMessageItem[],
+  ) {
+    const seenMessageIds = new Set(currentMessages.map((message) => message.id))
+    const uniqueOlderMessages = olderMessages.filter((message) => !seenMessageIds.has(message.id))
+
+    return [...uniqueOlderMessages, ...currentMessages]
   }
 
   const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
@@ -311,6 +327,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         setError('')
         setLastReadAt(nextLastReadAt)
         setHasLoadedReadState(true)
+        setHasMoreOlderMessages(initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT)
         setPendingInitialScroll(true)
       } catch {
         if (isMounted) {
@@ -459,6 +476,42 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   }, [messages, scrollPageToBottom])
 
   useEffect(() => {
+    const pendingRestore = prependScrollRestoreRef.current
+
+    if (!pendingRestore) {
+      return
+    }
+
+    let nestedAnimationFrameId: number | null = null
+    const animationFrameId = window.requestAnimationFrame(() => {
+      nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        const scrollingElement = document.scrollingElement
+
+        if (!scrollingElement) {
+          prependScrollRestoreRef.current = null
+          return
+        }
+
+        const scrollHeightDelta = scrollingElement.scrollHeight - pendingRestore.scrollHeight
+
+        window.scrollTo({
+          top: Math.max(0, pendingRestore.scrollY + scrollHeightDelta),
+          behavior: 'auto',
+        })
+
+        prependScrollRestoreRef.current = null
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+      if (nestedAnimationFrameId !== null) {
+        window.cancelAnimationFrame(nestedAnimationFrameId)
+      }
+    }
+  }, [messages])
+
+  useEffect(() => {
     if (pendingNewMessagesCount === 0) {
       return
     }
@@ -477,6 +530,62 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       window.removeEventListener('resize', handleScroll)
     }
   }, [isNearBottom, pendingNewMessagesCount])
+
+  useEffect(() => {
+    if (
+      loading ||
+      !isAuthenticated ||
+      !oldestLoadedMessageCreatedAt ||
+      !hasMoreOlderMessages
+    ) {
+      return
+    }
+
+    async function loadOlderMessages() {
+      if (window.scrollY > 80 || isLoadingOlderMessagesRef.current) {
+        return
+      }
+
+      const scrollingElement = document.scrollingElement
+
+      if (!scrollingElement) {
+        return
+      }
+
+      isLoadingOlderMessagesRef.current = true
+      prependScrollRestoreRef.current = {
+        scrollHeight: scrollingElement.scrollHeight,
+        scrollY: window.scrollY,
+      }
+
+      try {
+        const olderMessages = await loadOlderChatMessages(oldestLoadedMessageCreatedAt, OLDER_CHAT_BATCH_LIMIT)
+
+        if (olderMessages.length === 0) {
+          prependScrollRestoreRef.current = null
+          setHasMoreOlderMessages(false)
+          return
+        }
+
+        setHasMoreOlderMessages(olderMessages.length === OLDER_CHAT_BATCH_LIMIT)
+        setMessages((currentMessages) => prependMessages(currentMessages, olderMessages))
+      } catch {
+        prependScrollRestoreRef.current = null
+      } finally {
+        isLoadingOlderMessagesRef.current = false
+      }
+    }
+
+    function handleScroll() {
+      void loadOlderMessages()
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+    }
+  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
