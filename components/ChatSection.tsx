@@ -146,6 +146,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
+  const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const layoutViewportHeightRef = useRef(0)
   const composerViewportOffsetRef = useRef(0)
   const longPressTimeoutRef = useRef<number | null>(null)
@@ -190,11 +191,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   })()
 
   const keepLatestRenderedMessages = useCallback((nextMessages: ChatMessageItem[]) => {
-    if (nextMessages.length <= MAX_RENDERED_CHAT_MESSAGES) {
-      return nextMessages
+    const filteredMessages = filterPendingDeletedMessages(nextMessages)
+
+    if (filteredMessages.length <= MAX_RENDERED_CHAT_MESSAGES) {
+      return filteredMessages
     }
 
-    return nextMessages.slice(-MAX_RENDERED_CHAT_MESSAGES)
+    return filteredMessages.slice(-MAX_RENDERED_CHAT_MESSAGES)
   }, [])
 
   const refreshMessages = useCallback(async () => {
@@ -263,12 +266,22 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return count === 1 ? '1 new message' : `${count} new messages`
   }
 
-  function prependMessages(
+  function filterPendingDeletedMessages(nextMessages: ChatMessageItem[]) {
+    if (pendingDeletedMessageIdsRef.current.size === 0) {
+      return nextMessages
+    }
+
+    return nextMessages.filter((message) => !pendingDeletedMessageIdsRef.current.has(message.id))
+  }
+
+  const prependMessages = useCallback((
     currentMessages: ChatMessageItem[],
     olderMessages: ChatMessageItem[],
-  ) {
+  ) => {
     const seenMessageIds = new Set(currentMessages.map((message) => message.id))
-    const uniqueOlderMessages = olderMessages.filter((message) => !seenMessageIds.has(message.id))
+    const uniqueOlderMessages = filterPendingDeletedMessages(olderMessages).filter(
+      (message) => !seenMessageIds.has(message.id)
+    )
 
     const nextMessages = [...uniqueOlderMessages, ...currentMessages]
 
@@ -277,7 +290,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
 
     return nextMessages.slice(0, MAX_RENDERED_CHAT_MESSAGES)
-  }
+  }, [])
 
   const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
     if (!currentUserId || document.visibilityState !== 'visible') {
@@ -677,7 +690,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       window.removeEventListener('scroll', handleScroll)
     }
-  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt])
+  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
@@ -702,6 +715,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           }
 
           if (messagesRef.current.some((message) => message.id === nextMessageId)) {
+            return
+          }
+
+          if (pendingDeletedMessageIdsRef.current.has(nextMessageId)) {
             return
           }
 
@@ -745,7 +762,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             const nextMessage = await loadChatMessageItem(nextMessageId)
 
             if (!nextMessage) {
+              pendingDeletedMessageIdsRef.current.delete(nextMessageId)
               setMessages((currentMessages) => removeMessageById(currentMessages, nextMessageId))
+              return
+            }
+
+            if (pendingDeletedMessageIdsRef.current.has(nextMessageId)) {
               return
             }
 
@@ -818,6 +840,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
 
     setDeletingMessageId(message.id)
+    pendingDeletedMessageIdsRef.current.add(message.id)
+    setMessages((currentMessages) => removeMessageById(currentMessages, message.id))
 
     try {
       const { error: deleteError } = await softDeleteChatMessage(message.id, currentUserId)
@@ -826,8 +850,11 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         throw deleteError
       }
 
-      setMessages((currentMessages) => removeMessageById(currentMessages, message.id))
     } catch {
+      pendingDeletedMessageIdsRef.current.delete(message.id)
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(insertMessageChronologically(currentMessages, message))
+      )
       setError('Не удалось удалить сообщение')
     } finally {
       setDeletingMessageId(null)
