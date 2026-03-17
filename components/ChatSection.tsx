@@ -102,15 +102,19 @@ function ChatMessageBody({
 }) {
   return (
     <>
-      {isOwnMessage ? null : (
-        <p className="app-text-primary truncate text-xs font-semibold">{message.displayName}</p>
-      )}
+      <p
+        className={`truncate text-[11px] font-medium ${
+          isOwnMessage ? 'app-text-secondary text-right' : 'app-text-primary'
+        }`}
+      >
+        {message.displayName}
+      </p>
       {message.replyTo ? (
         <div
-          className={`mt-1.5 rounded-2xl px-3 py-2 ${
+          className={`mt-1 rounded-[14px] px-2.5 py-1.5 ${
             isOwnMessage
-              ? 'bg-black/5 dark:bg-white/10'
-              : 'bg-black/[0.04] dark:bg-white/[0.06]'
+              ? 'bg-black/[0.04] dark:bg-white/[0.07]'
+              : 'bg-black/[0.03] dark:bg-white/[0.05]'
           }`}
         >
           <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
@@ -119,7 +123,7 @@ function ChatMessageBody({
       ) : null}
       <p
         className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
-          isOwnMessage || message.replyTo ? 'mt-1.5' : 'mt-1'
+          isOwnMessage || message.replyTo ? 'mt-1' : 'mt-0.5'
         } ${
           isOwnMessage ? 'text-right' : ''
         }`}
@@ -905,10 +909,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       <AvatarFallback />
                     )}
                     <div
-                      className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[22px] border px-3.5 py-2.5 shadow-sm ring-1 ${
+                      className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
                         isOwnMessage
-                          ? 'ml-auto border-black/10 bg-black/[0.045] ring-black/5 dark:border-white/10 dark:bg-white/[0.09] dark:ring-white/10'
-                          : 'border-black/[0.08] bg-[color:var(--surface)] ring-black/5 dark:border-white/10 dark:ring-white/10'
+                          ? 'ml-auto border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
+                          : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
                       }`}
                       onTouchStart={() => startLongPress(message)}
                       onTouchEnd={clearLongPressTimeout}
