@@ -417,105 +417,109 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         </div>
       ) : null}
 
-      <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
-        <form onSubmit={handleSubmit}>
-          {replyingToMessage ? (
-            <div className="mb-3 flex items-start justify-between gap-3 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-              <div className="min-w-0">
-                <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
-                <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReplyingToMessage(null)}
-                className="app-text-secondary shrink-0 rounded-lg px-2 py-1 text-sm"
-                aria-label="Отменить ответ"
-              >
-                X
-              </button>
-            </div>
-          ) : null}
-          <label htmlFor="chat-message" className="sr-only">
-            Сообщение
-          </label>
-          <textarea
-            id="chat-message"
-            value={draftMessage}
-            onChange={(event) => {
-              setDraftMessage(event.target.value)
-              setSubmitError('')
-            }}
-            placeholder="Напиши сообщение клубу"
-            disabled={submitting}
-            maxLength={CHAT_MESSAGE_MAX_LENGTH}
-            className="app-input min-h-24 w-full rounded-lg border px-3 py-2"
-          />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <p className="app-text-secondary text-xs">
-              {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+      <div className="relative">
+        {error ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <p className="text-sm text-red-600">{error}</p>
+          </section>
+        ) : messages.length === 0 ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
+            <p className="app-text-secondary mt-2 text-sm">
+              Когда в базе появятся сообщения, они отобразятся здесь.
             </p>
-            <button
-              type="submit"
-              disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
-              className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting ? 'Отправляем...' : 'Отправить'}
-            </button>
-          </div>
-          {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
-        </form>
-      </section>
+          </section>
+        ) : (
+          <section className="app-card rounded-2xl border p-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] shadow-sm md:pb-28">
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <article key={message.id} className="flex items-start gap-3">
+                  {message.avatarUrl ? (
+                    <Image
+                      src={message.avatarUrl}
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="h-10 w-10 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <AvatarFallback />
+                  )}
+                  <div
+                    className="chat-no-select min-w-0 flex-1 rounded-2xl"
+                    onTouchStart={() => startLongPress(message)}
+                    onTouchEnd={clearLongPressTimeout}
+                    onTouchCancel={clearLongPressTimeout}
+                    onTouchMove={clearLongPressTimeout}
+                    onMouseDown={() => startLongPress(message)}
+                    onMouseUp={clearLongPressTimeout}
+                    onMouseLeave={clearLongPressTimeout}
+                    onContextMenu={(event) => {
+                      event.preventDefault()
+                      clearLongPressTimeout()
+                      setSelectedMessage(message)
+                      setIsActionSheetOpen(true)
+                    }}
+                  >
+                    <ChatMessageBody message={message} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
-      {error ? (
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <p className="text-sm text-red-600">{error}</p>
-        </section>
-      ) : messages.length === 0 ? (
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
-          <p className="app-text-secondary mt-2 text-sm">
-            Когда в базе появятся сообщения, они отобразятся здесь.
-          </p>
-        </section>
-      ) : (
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <article key={message.id} className="flex items-start gap-3">
-                {message.avatarUrl ? (
-                  <Image
-                    src={message.avatarUrl}
-                    alt=""
-                    width={40}
-                    height={40}
-                    className="h-10 w-10 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <AvatarFallback />
-                )}
-                <div
-                  className="chat-no-select min-w-0 flex-1 rounded-2xl"
-                  onTouchStart={() => startLongPress(message)}
-                  onTouchEnd={clearLongPressTimeout}
-                  onTouchCancel={clearLongPressTimeout}
-                  onTouchMove={clearLongPressTimeout}
-                  onMouseDown={() => startLongPress(message)}
-                  onMouseUp={clearLongPressTimeout}
-                  onMouseLeave={clearLongPressTimeout}
-                  onContextMenu={(event) => {
-                    event.preventDefault()
-                    clearLongPressTimeout()
-                    setSelectedMessage(message)
-                    setIsActionSheetOpen(true)
-                  }}
-                >
-                  <ChatMessageBody message={message} />
+        <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-4 bg-[color:var(--background)]/95 px-4 pb-2 pt-2 backdrop-blur md:bottom-0 md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-0">
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <form onSubmit={handleSubmit}>
+              {replyingToMessage ? (
+                <div className="mb-3 flex items-start justify-between gap-3 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                  <div className="min-w-0">
+                    <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
+                    <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingToMessage(null)}
+                    className="app-text-secondary shrink-0 rounded-lg px-2 py-1 text-sm"
+                    aria-label="Отменить ответ"
+                  >
+                    X
+                  </button>
                 </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
+              ) : null}
+              <label htmlFor="chat-message" className="sr-only">
+                Сообщение
+              </label>
+              <textarea
+                id="chat-message"
+                value={draftMessage}
+                onChange={(event) => {
+                  setDraftMessage(event.target.value)
+                  setSubmitError('')
+                }}
+                placeholder="Напиши сообщение клубу"
+                disabled={submitting}
+                maxLength={CHAT_MESSAGE_MAX_LENGTH}
+                className="app-input min-h-24 w-full rounded-lg border px-3 py-2"
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="app-text-secondary text-xs">
+                  {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+                </p>
+                <button
+                  type="submit"
+                  disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
+                  className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? 'Отправляем...' : 'Отправить'}
+                </button>
+              </div>
+              {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
+            </form>
+          </section>
+        </div>
+      </div>
 
       {showBackLink ? (
         <div className="mt-4">
