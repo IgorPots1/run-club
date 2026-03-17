@@ -557,11 +557,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         return
       }
 
-      if (!oldestLoadedMessageCreatedAt) {
+      const oldestCreatedAt = oldestLoadedMessageCreatedAt
+
+      if (!oldestCreatedAt) {
+        prependScrollRestoreRef.current = null
         return
       }
-
-      const oldestCreatedAt = oldestLoadedMessageCreatedAt
 
       const scrollingElement = document.scrollingElement
 
