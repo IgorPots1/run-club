@@ -107,7 +107,7 @@ function ChatMessageBody({
       )}
       {message.replyTo ? (
         <div
-          className={`mt-2 rounded-2xl px-3 py-2 ${
+          className={`mt-1.5 rounded-2xl px-3 py-2 ${
             isOwnMessage
               ? 'bg-black/5 dark:bg-white/10'
               : 'bg-black/[0.04] dark:bg-white/[0.06]'
@@ -119,14 +119,14 @@ function ChatMessageBody({
       ) : null}
       <p
         className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
-          isOwnMessage || message.replyTo ? 'mt-2' : 'mt-1.5'
+          isOwnMessage || message.replyTo ? 'mt-1.5' : 'mt-1'
         } ${
           isOwnMessage ? 'text-right' : ''
         }`}
       >
         {message.text}
       </p>
-      <p className={`app-text-secondary mt-2 text-xs ${isOwnMessage ? 'text-right' : ''}`}>
+      <p className={`app-text-secondary mt-1 text-xs ${isOwnMessage ? 'text-right' : ''}`}>
         {message.createdAtLabel}
       </p>
     </>
@@ -871,21 +871,28 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-20 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-24">
-            <div className="mt-auto space-y-4">
-              {messages.map((message) => {
+          <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-14 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-16">
+            <div className="mt-auto flex flex-col">
+              {messages.map((message, index) => {
                 const isOwnMessage = currentUserId === message.userId
+                const previousMessage = index > 0 ? messages[index - 1] : null
+                const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
+                const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1.5' : 'mt-3.5'
 
                 return (
-                  <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
+                  <div
+                    key={message.id}
+                    ref={(node) => setMessageRef(message.id, node)}
+                    className={messageSpacingClass}
+                  >
                   {message.id === firstUnreadMessageId ? (
-                    <div className="mb-4 flex items-center gap-3">
+                    <div className="mb-3 flex items-center gap-3">
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
                       <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
                     </div>
                   ) : null}
-                  <article className={`flex items-end gap-3 ${isOwnMessage ? 'justify-end' : ''}`}>
+                  <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
                     {isOwnMessage ? null : message.avatarUrl ? (
                       <Image
                         src={message.avatarUrl}
@@ -898,7 +905,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       <AvatarFallback />
                     )}
                     <div
-                      className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[22px] border px-4 py-3 shadow-sm ring-1 ${
+                      className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[22px] border px-3.5 py-2.5 shadow-sm ring-1 ${
                         isOwnMessage
                           ? 'ml-auto border-black/10 bg-black/[0.045] ring-black/5 dark:border-white/10 dark:bg-white/[0.09] dark:ring-white/10'
                           : 'border-black/[0.08] bg-[color:var(--surface)] ring-black/5 dark:border-white/10 dark:ring-white/10'
