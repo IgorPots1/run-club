@@ -257,6 +257,10 @@ textarea {
   -webkit-touch-callout: none;
 }
 
+.chat-selected-preview {
+  animation: chat-selected-preview-enter 140ms ease-out;
+}
+
 .skeleton-line {
   border-radius: 9999px;
   background: var(--surface-subtle);
@@ -333,5 +337,17 @@ textarea {
 
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes chat-selected-preview-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 8px)) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
   }
 }
