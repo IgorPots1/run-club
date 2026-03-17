@@ -5,7 +5,12 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
-import { loadRecentChatMessages, type ChatMessageItem } from '@/lib/chat'
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  createChatMessage,
+  loadRecentChatMessages,
+  type ChatMessageItem,
+} from '@/lib/chat'
 import { ensureProfileExists } from '@/lib/profiles'
 
 function AvatarFallback() {
@@ -32,8 +37,15 @@ export default function ChatPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [error, setError] = useState('')
+  const [draftMessage, setDraftMessage] = useState('')
+  const [submitError, setSubmitError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const trimmedDraftMessage = draftMessage.trim()
+  const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
 
   useEffect(() => {
     let isMounted = true
@@ -48,11 +60,13 @@ export default function ChatPage() {
 
         if (!user) {
           setIsAuthenticated(false)
+          setCurrentUserId(null)
           router.replace('/login')
           return
         }
 
         setIsAuthenticated(true)
+        setCurrentUserId(user.id)
         void ensureProfileExists(user)
 
         const recentMessages = await loadRecentChatMessages(50)
@@ -80,6 +94,43 @@ export default function ChatPage() {
       isMounted = false
     }
   }, [router])
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!currentUserId || submitting) {
+      return
+    }
+
+    if (!trimmedDraftMessage) {
+      setSubmitError('Введите сообщение')
+      return
+    }
+
+    if (isMessageTooLong) {
+      setSubmitError(`Сообщение должно быть не длиннее ${CHAT_MESSAGE_MAX_LENGTH} символов`)
+      return
+    }
+
+    setSubmitting(true)
+    setSubmitError('')
+
+    try {
+      const { error: insertError } = await createChatMessage(currentUserId, trimmedDraftMessage)
+
+      if (insertError) {
+        throw insertError
+      }
+
+      const recentMessages = await loadRecentChatMessages(50)
+      setMessages(recentMessages)
+      setDraftMessage('')
+    } catch {
+      setSubmitError('Не удалось отправить сообщение')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -128,6 +179,39 @@ export default function ChatPage() {
           <h1 className="app-text-primary text-2xl font-bold">Чат клуба</h1>
           <p className="app-text-secondary text-sm">Последние 50 сообщений клуба в хронологическом порядке.</p>
         </div>
+
+        <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+          <form onSubmit={handleSubmit}>
+            <label htmlFor="chat-message" className="sr-only">
+              Сообщение
+            </label>
+            <textarea
+              id="chat-message"
+              value={draftMessage}
+              onChange={(event) => {
+                setDraftMessage(event.target.value)
+                setSubmitError('')
+              }}
+              placeholder="Напиши сообщение клубу"
+              disabled={submitting}
+              maxLength={CHAT_MESSAGE_MAX_LENGTH}
+              className="app-input min-h-24 w-full rounded-lg border px-3 py-2"
+            />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="app-text-secondary text-xs">
+                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+              </p>
+              <button
+                type="submit"
+                disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
+                className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? 'Отправляем...' : 'Отправить'}
+              </button>
+            </div>
+            {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
+          </form>
+        </section>
 
         {error ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">

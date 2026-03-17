@@ -2,6 +2,8 @@ import { formatRunDateTimeLabel } from './format'
 import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
+export const CHAT_MESSAGE_MAX_LENGTH = 500
+
 type ChatMessageRow = {
   id: string
   user_id: string
@@ -27,6 +29,23 @@ export type ChatMessageItem = {
   isDeleted: boolean
   displayName: string
   avatarUrl: string | null
+}
+
+export async function createChatMessage(userId: string, text: string) {
+  const trimmedText = text.trim()
+
+  if (!trimmedText) {
+    throw new Error('empty_message')
+  }
+
+  if (trimmedText.length > CHAT_MESSAGE_MAX_LENGTH) {
+    throw new Error('message_too_long')
+  }
+
+  return supabase.from('chat_messages').insert({
+    user_id: userId,
+    text: trimmedText,
+  })
 }
 
 export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageItem[]> {
