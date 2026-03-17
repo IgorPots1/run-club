@@ -33,6 +33,7 @@ export default function Navbar() {
           <Link href="/runs">Тренировки</Link>
           <Link href="/leaderboard">Рейтинг</Link>
           <Link href="/challenges">Челленджи</Link>
+          <Link href="/chat">Чат</Link>
           <Link href="/feed">Лента</Link>
           <Link href="/profile">Профиль</Link>
       </div>
