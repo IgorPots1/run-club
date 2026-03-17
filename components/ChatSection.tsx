@@ -102,26 +102,32 @@ function ChatMessageBody({
 }) {
   return (
     <>
-      <div
-        className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 ${
-          isOwnMessage ? 'justify-end text-right' : ''
-        }`}
-      >
-        <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
-        <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
-      </div>
+      {isOwnMessage ? null : (
+        <p className="app-text-primary truncate text-xs font-semibold">{message.displayName}</p>
+      )}
       {message.replyTo ? (
-        <div className="mt-1 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+        <div
+          className={`mt-2 rounded-2xl px-3 py-2 ${
+            isOwnMessage
+              ? 'bg-black/5 dark:bg-white/10'
+              : 'bg-black/[0.04] dark:bg-white/[0.06]'
+          }`}
+        >
           <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
           <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
         </div>
       ) : null}
       <p
-        className={`app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-6 ${
+        className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
+          isOwnMessage || message.replyTo ? 'mt-2' : 'mt-1.5'
+        } ${
           isOwnMessage ? 'text-right' : ''
         }`}
       >
         {message.text}
+      </p>
+      <p className={`app-text-secondary mt-2 text-xs ${isOwnMessage ? 'text-right' : ''}`}>
+        {message.createdAtLabel}
       </p>
     </>
   )
@@ -879,7 +885,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
                     </div>
                   ) : null}
-                  <article className={`flex items-start gap-3 ${isOwnMessage ? 'justify-end' : ''}`}>
+                  <article className={`flex items-end gap-3 ${isOwnMessage ? 'justify-end' : ''}`}>
                     {isOwnMessage ? null : message.avatarUrl ? (
                       <Image
                         src={message.avatarUrl}
@@ -892,10 +898,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       <AvatarFallback />
                     )}
                     <div
-                      className={`chat-no-select min-w-0 rounded-2xl ${
+                      className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[22px] border px-4 py-3 shadow-sm ring-1 ${
                         isOwnMessage
-                          ? 'app-surface-muted ml-auto w-full max-w-[85%] px-4 py-3'
-                          : 'flex-1'
+                          ? 'ml-auto border-black/10 bg-black/[0.045] ring-black/5 dark:border-white/10 dark:bg-white/[0.09] dark:ring-white/10'
+                          : 'border-black/[0.08] bg-[color:var(--surface)] ring-black/5 dark:border-white/10 dark:ring-white/10'
                       }`}
                       onTouchStart={() => startLongPress(message)}
                       onTouchEnd={clearLongPressTimeout}
