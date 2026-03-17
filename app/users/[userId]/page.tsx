@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import BackNavigationButton from '@/components/BackNavigationButton'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
@@ -55,6 +56,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     return (
       <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+          <BackNavigationButton className="mb-4" />
           <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
           <div className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="app-text-secondary text-sm">Пользователь не найден.</p>
@@ -71,6 +73,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     return (
       <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+          <BackNavigationButton className="mb-4" />
           <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
           <div className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">Не удалось загрузить профиль.</p>
@@ -98,6 +101,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+        <BackNavigationButton className="mb-4" />
         <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
         <div className="mb-6 flex flex-col items-center gap-4">
           <span className="relative inline-flex h-28 w-28 items-center justify-center rounded-full sm:h-32 sm:w-32">
