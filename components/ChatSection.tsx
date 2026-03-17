@@ -116,6 +116,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const messagesRef = useRef<ChatMessageItem[]>([])
   const longPressTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
+  const pendingAutoScrollToBottomRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -167,6 +168,39 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
 
     delete messageRefs.current[messageId]
+  }, [])
+
+  const isNearBottom = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    const scrollingElement = document.scrollingElement
+
+    if (!scrollingElement) {
+      return true
+    }
+
+    const distanceFromBottom =
+      scrollingElement.scrollHeight - (window.scrollY + window.innerHeight)
+
+    return distanceFromBottom <= 100
+  }, [])
+
+  const scrollPageToBottom = useCallback(() => {
+    const bottomSentinel = bottomSentinelRef.current
+
+    if (!bottomSentinel) {
+      return
+    }
+
+    const nextTop =
+      bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
+
+    window.scrollTo({
+      top: Math.max(0, nextTop),
+      behavior: 'auto',
+    })
   }, [])
 
   const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
@@ -412,6 +446,27 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   ])
 
   useEffect(() => {
+    if (!pendingAutoScrollToBottomRef.current || messages.length === 0) {
+      return
+    }
+
+    let nestedAnimationFrameId: number | null = null
+    const animationFrameId = window.requestAnimationFrame(() => {
+      nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        scrollPageToBottom()
+        pendingAutoScrollToBottomRef.current = false
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+      if (nestedAnimationFrameId !== null) {
+        window.cancelAnimationFrame(nestedAnimationFrameId)
+      }
+    }
+  }, [messages, scrollPageToBottom])
+
+  useEffect(() => {
     if (loading || !isAuthenticated) {
       return
     }
@@ -427,6 +482,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         },
         async (payload) => {
           const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+          const shouldAutoScroll = isNearBottom()
 
           if (!nextMessageId) {
             return
@@ -441,6 +497,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
             if (!nextMessage) {
               return
+            }
+
+            if (shouldAutoScroll) {
+              pendingAutoScrollToBottomRef.current = true
             }
 
             setMessages((currentMessages) => insertMessageChronologically(currentMessages, nextMessage))
@@ -482,7 +542,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [loading, isAuthenticated, refreshMessages])
+  }, [isNearBottom, loading, isAuthenticated, refreshMessages])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -512,6 +572,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       }
 
       const recentMessages = await loadRecentChatMessages(50)
+      pendingAutoScrollToBottomRef.current = true
       setMessages(recentMessages)
       setDraftMessage('')
       setReplyingToMessage(null)
