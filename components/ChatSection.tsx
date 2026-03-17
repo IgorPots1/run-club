@@ -335,6 +335,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   function startLongPress(message: ChatMessageItem) {
     clearLongPressTimeout()
     longPressTimeoutRef.current = window.setTimeout(() => {
+      navigator.vibrate?.(10)
       setSelectedMessage(message)
       setIsActionSheetOpen(true)
       longPressTimeoutRef.current = null
@@ -438,7 +439,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="space-y-4">
             {messages.map((message) => (
-              <article key={message.id} className="flex items-start gap-3">
+              <article
+                key={message.id}
+                className={[
+                  'flex items-start gap-3',
+                  isActionSheetOpen && selectedMessage?.id === message.id ? 'relative z-[60]' : '',
+                ].join(' ')}
+              >
                 {message.avatarUrl ? (
                   <Image
                     src={message.avatarUrl}
@@ -451,7 +458,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   <AvatarFallback />
                 )}
                 <div
-                  className="min-w-0 flex-1 rounded-2xl"
+                  className={[
+                    'min-w-0 flex-1 rounded-2xl transition duration-150',
+                    isActionSheetOpen && selectedMessage?.id === message.id
+                      ? 'scale-[1.01] bg-black/[0.04] ring-1 ring-black/10 dark:bg-white/[0.05] dark:ring-white/10'
+                      : '',
+                  ].join(' ')}
                   onTouchStart={() => startLongPress(message)}
                   onTouchEnd={clearLongPressTimeout}
                   onTouchCancel={clearLongPressTimeout}

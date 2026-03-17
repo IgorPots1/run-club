@@ -21,6 +21,7 @@ export default function ChatMessageActions({
   const router = useRouter()
 
   const isOwnMessage = currentUserId === message.userId
+  const messagePreview = message.text.trim()
 
   async function handleCopy() {
     try {
@@ -43,7 +44,7 @@ export default function ChatMessageActions({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4">
+    <div className="fixed inset-0 z-50 flex items-end bg-black/30 md:items-center md:justify-center md:p-4">
       <button
         type="button"
         aria-label="Закрыть действия сообщения"
@@ -54,15 +55,15 @@ export default function ChatMessageActions({
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
         <div className="mb-4">
           <p className="app-text-primary text-base font-semibold">Действия</p>
-          <p className="app-text-secondary mt-1 truncate text-sm">{message.displayName}</p>
+          <p className="app-text-secondary mt-1 truncate text-sm">&quot;{messagePreview}&quot;</p>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <button
             type="button"
             onClick={() => {
               void handleCopy()
             }}
-            className="app-card app-text-primary min-h-12 w-full rounded-2xl border px-4 py-3 text-left text-sm font-medium shadow-sm"
+            className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
           >
             Копировать
           </button>
@@ -72,7 +73,7 @@ export default function ChatMessageActions({
               onClick={() => {
                 void handleDelete()
               }}
-              className="app-card min-h-12 w-full rounded-2xl border px-4 py-3 text-left text-sm font-medium text-red-600 shadow-sm"
+              className="min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium text-red-500"
             >
               Удалить
             </button>
@@ -80,7 +81,7 @@ export default function ChatMessageActions({
             <button
               type="button"
               onClick={handleOpenProfile}
-              className="app-card app-text-primary min-h-12 w-full rounded-2xl border px-4 py-3 text-left text-sm font-medium shadow-sm"
+              className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
             >
               Открыть профиль
             </button>
@@ -88,7 +89,7 @@ export default function ChatMessageActions({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="app-text-secondary min-h-11 w-full rounded-2xl px-4 py-3 text-sm font-medium"
+            className="app-text-secondary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
           >
             Отмена
           </button>
