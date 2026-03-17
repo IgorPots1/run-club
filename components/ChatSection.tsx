@@ -80,6 +80,10 @@ function upsertMessageById(messages: ChatMessageItem[], nextMessage: ChatMessage
   })
 }
 
+function removeMessageById(messages: ChatMessageItem[], messageId: string) {
+  return messages.filter((message) => message.id !== messageId)
+}
+
 export default function ChatSection({ showTitle = true, showBackLink = false }: ChatSectionProps) {
   const router = useRouter()
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -204,6 +208,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             const nextMessage = await loadChatMessageItem(nextMessageId)
 
             if (!nextMessage) {
+              setMessages((currentMessages) => removeMessageById(currentMessages, nextMessageId))
               return
             }
 
@@ -279,13 +284,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         throw deleteError
       }
 
-      setMessages((currentMessages) =>
-        upsertMessageById(currentMessages, {
-          ...message,
-          text: 'Сообщение удалено',
-          isDeleted: true,
-        })
-      )
+      setMessages((currentMessages) => removeMessageById(currentMessages, message.id))
     } catch {
       setError('Не удалось удалить сообщение')
     } finally {

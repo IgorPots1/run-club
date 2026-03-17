@@ -52,7 +52,7 @@ function toChatMessageItem(message: ChatMessageRow, profile?: ProfileRow): ChatM
   return {
     id: message.id,
     userId: message.user_id,
-    text: message.is_deleted ? 'Сообщение удалено' : message.text,
+    text: message.text,
     createdAt: message.created_at,
     createdAtLabel: formatRunDateTimeLabel(message.created_at),
     isDeleted: message.is_deleted,
@@ -101,7 +101,7 @@ export async function loadChatMessageItem(messageId: string): Promise<ChatMessag
 
   const messageRow = message as ChatMessageRow | null
 
-  if (!messageRow) {
+  if (!messageRow || messageRow.is_deleted) {
     return null
   }
 
@@ -114,6 +114,7 @@ export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageIte
   const { data: messages, error: messagesError } = await supabase
     .from('chat_messages')
     .select('id, user_id, text, created_at, is_deleted')
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
 
