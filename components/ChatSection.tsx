@@ -146,6 +146,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
+  const layoutViewportHeightRef = useRef(0)
+  const composerViewportOffsetRef = useRef(0)
   const longPressTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
@@ -168,6 +170,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
+  const [composerViewportOffset, setComposerViewportOffset] = useState(0)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
@@ -215,6 +218,15 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     delete messageRefs.current[messageId]
   }, [])
 
+  const getViewportMetrics = useCallback(() => {
+    const visualViewport = window.visualViewport
+
+    return {
+      height: visualViewport?.height ?? window.innerHeight,
+      offsetTop: visualViewport?.offsetTop ?? 0,
+    }
+  }, [])
+
   const isNearBottom = useCallback(() => {
     if (typeof window === 'undefined') {
       return false
@@ -226,11 +238,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return true
     }
 
+    const viewportMetrics = getViewportMetrics()
     const distanceFromBottom =
-      scrollingElement.scrollHeight - (window.scrollY + window.innerHeight)
+      scrollingElement.scrollHeight - (window.scrollY + viewportMetrics.offsetTop + viewportMetrics.height)
 
     return distanceFromBottom <= 100
-  }, [])
+  }, [getViewportMetrics])
 
   const scrollPageToBottom = useCallback(() => {
     const bottomSentinel = bottomSentinelRef.current
@@ -239,11 +252,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return
     }
 
-    const nextTop =
-      bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
-
-    window.scrollTo({
-      top: Math.max(0, nextTop),
+    bottomSentinel.scrollIntoView({
+      block: 'end',
+      inline: 'nearest',
       behavior: 'auto',
     })
   }, [])
@@ -306,6 +317,62 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const visualViewport = window.visualViewport
+
+    if (!visualViewport) {
+      return
+    }
+
+    let lastWindowWidth = window.innerWidth
+
+    function updateComposerViewportOffset() {
+      const nextVisualViewport = window.visualViewport
+
+      if (!nextVisualViewport) {
+        return
+      }
+
+      const viewportBottom = nextVisualViewport.height + nextVisualViewport.offsetTop
+
+      if (layoutViewportHeightRef.current === 0 || window.innerWidth !== lastWindowWidth) {
+        lastWindowWidth = window.innerWidth
+        layoutViewportHeightRef.current = Math.max(window.innerHeight, viewportBottom)
+      } else {
+        layoutViewportHeightRef.current = Math.max(
+          layoutViewportHeightRef.current,
+          window.innerHeight,
+          viewportBottom,
+        )
+      }
+
+      const nextOffset = Math.max(0, Math.round(layoutViewportHeightRef.current - viewportBottom))
+
+      if (composerViewportOffsetRef.current === nextOffset) {
+        return
+      }
+
+      composerViewportOffsetRef.current = nextOffset
+      setComposerViewportOffset(nextOffset)
+    }
+
+    updateComposerViewportOffset()
+
+    visualViewport.addEventListener('resize', updateComposerViewportOffset)
+    visualViewport.addEventListener('scroll', updateComposerViewportOffset)
+    window.addEventListener('resize', updateComposerViewportOffset)
+
+    return () => {
+      visualViewport.removeEventListener('resize', updateComposerViewportOffset)
+      visualViewport.removeEventListener('scroll', updateComposerViewportOffset)
+      window.removeEventListener('resize', updateComposerViewportOffset)
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -399,30 +466,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return
     }
 
-    const scrollingElement = document.scrollingElement
-
-    if (scrollingElement) {
-      scrollingElement.scrollTop = scrollingElement.scrollHeight
-      setPendingInitialScroll(false)
-      return
-    }
-
-    const bottomSentinel = bottomSentinelRef.current
-
-    if (!bottomSentinel) {
-      return
-    }
-
-    const nextTop =
-      bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
-
-    window.scrollTo({
-      top: Math.max(0, nextTop),
-      behavior: 'auto',
-    })
-
+    scrollPageToBottom()
     setPendingInitialScroll(false)
-  }, [hasLoadedReadState, loading, messages.length, pendingInitialScroll])
+  }, [hasLoadedReadState, loading, messages.length, pendingInitialScroll, scrollPageToBottom])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
@@ -952,7 +998,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         )}
 
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0">
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0"
+          style={{
+            transform: composerViewportOffset > 0 ? `translateY(-${composerViewportOffset}px)` : undefined,
+          }}
+        >
           <div className="mx-auto w-full max-w-xl pointer-events-auto md:max-w-7xl">
             {pendingNewMessagesCount > 0 ? (
               <div className="mb-2 flex justify-center md:justify-end">
