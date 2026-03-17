@@ -2,16 +2,18 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
+  loadChatMessageItem,
   loadRecentChatMessages,
   type ChatMessageItem,
 } from '@/lib/chat'
 import { ensureProfileExists } from '@/lib/profiles'
+import { supabase } from '@/lib/supabase'
 
 function AvatarFallback() {
   return (
@@ -33,8 +35,26 @@ function AvatarFallback() {
   )
 }
 
+function insertMessageChronologically(messages: ChatMessageItem[], nextMessage: ChatMessageItem) {
+  if (messages.some((message) => message.id === nextMessage.id)) {
+    return messages
+  }
+
+  return [...messages, nextMessage].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime()
+    const rightTime = new Date(right.createdAt).getTime()
+
+    if (leftTime === rightTime) {
+      return left.id.localeCompare(right.id)
+    }
+
+    return leftTime - rightTime
+  })
+}
+
 export default function ChatPage() {
   const router = useRouter()
+  const messagesRef = useRef<ChatMessageItem[]>([])
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -46,6 +66,10 @@ export default function ChatPage() {
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   useEffect(() => {
     let isMounted = true
@@ -94,6 +118,51 @@ export default function ChatPage() {
       isMounted = false
     }
   }, [router])
+
+  useEffect(() => {
+    if (loading || !isAuthenticated) {
+      return
+    }
+
+    const channel = supabase
+      .channel('chat-messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        async (payload) => {
+          const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+
+          if (!nextMessageId) {
+            return
+          }
+
+          if (messagesRef.current.some((message) => message.id === nextMessageId)) {
+            return
+          }
+
+          try {
+            const nextMessage = await loadChatMessageItem(nextMessageId)
+
+            if (!nextMessage) {
+              return
+            }
+
+            setMessages((currentMessages) => insertMessageChronologically(currentMessages, nextMessage))
+          } catch {
+            // Keep realtime additive and non-blocking if enrichment fails.
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [loading, isAuthenticated])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()

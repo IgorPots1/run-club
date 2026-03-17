@@ -31,6 +31,36 @@ export type ChatMessageItem = {
   avatarUrl: string | null
 }
 
+async function loadProfilesByUserIds(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {}
+  }
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, name, nickname, email, avatar_url')
+    .in('id', userIds)
+
+  if (profilesError) {
+    throw profilesError
+  }
+
+  return Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])) as Record<string, ProfileRow>
+}
+
+function toChatMessageItem(message: ChatMessageRow, profile?: ProfileRow): ChatMessageItem {
+  return {
+    id: message.id,
+    userId: message.user_id,
+    text: message.is_deleted ? 'Сообщение удалено' : message.text,
+    createdAt: message.created_at,
+    createdAtLabel: formatRunDateTimeLabel(message.created_at),
+    isDeleted: message.is_deleted,
+    displayName: getProfileDisplayName(profile, 'Бегун'),
+    avatarUrl: profile?.avatar_url ?? null,
+  }
+}
+
 export async function createChatMessage(userId: string, text: string) {
   const trimmedText = text.trim()
 
@@ -48,6 +78,28 @@ export async function createChatMessage(userId: string, text: string) {
   })
 }
 
+export async function loadChatMessageItem(messageId: string): Promise<ChatMessageItem | null> {
+  const { data: message, error: messageError } = await supabase
+    .from('chat_messages')
+    .select('id, user_id, text, created_at, is_deleted')
+    .eq('id', messageId)
+    .maybeSingle()
+
+  if (messageError) {
+    throw messageError
+  }
+
+  const messageRow = message as ChatMessageRow | null
+
+  if (!messageRow) {
+    return null
+  }
+
+  const profileById = await loadProfilesByUserIds([messageRow.user_id])
+
+  return toChatMessageItem(messageRow, profileById[messageRow.user_id])
+}
+
 export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageItem[]> {
   const { data: messages, error: messagesError } = await supabase
     .from('chat_messages')
@@ -61,34 +113,7 @@ export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageIte
 
   const messageRows = ((messages as ChatMessageRow[] | null) ?? []).slice().reverse()
   const userIds = Array.from(new Set(messageRows.map((message) => message.user_id)))
+  const profileById = await loadProfilesByUserIds(userIds)
 
-  let profileById: Record<string, ProfileRow> = {}
-
-  if (userIds.length > 0) {
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, name, nickname, email, avatar_url')
-      .in('id', userIds)
-
-    if (profilesError) {
-      throw profilesError
-    }
-
-    profileById = Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
-  }
-
-  return messageRows.map((message) => {
-    const profile = profileById[message.user_id]
-
-    return {
-      id: message.id,
-      userId: message.user_id,
-      text: message.is_deleted ? 'Сообщение удалено' : message.text,
-      createdAt: message.created_at,
-      createdAtLabel: formatRunDateTimeLabel(message.created_at),
-      isDeleted: message.is_deleted,
-      displayName: getProfileDisplayName(profile, 'Бегун'),
-      avatarUrl: profile?.avatar_url ?? null,
-    }
-  })
+  return messageRows.map((message) => toChatMessageItem(message, profileById[message.user_id]))
 }
