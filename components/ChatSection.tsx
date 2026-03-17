@@ -124,6 +124,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [lastReadAt, setLastReadAt] = useState<string | null>(null)
   const [hasLoadedReadState, setHasLoadedReadState] = useState(false)
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
+  const [pendingNewMessagesCount, setPendingNewMessagesCount] = useState(0)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
   const [submitError, setSubmitError] = useState('')
@@ -202,6 +203,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       behavior: 'auto',
     })
   }, [])
+
+  function getNewMessagesLabel(count: number) {
+    return count === 1 ? '1 new message' : `${count} new messages`
+  }
 
   const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
     if (!currentUserId || document.visibilityState !== 'visible') {
@@ -467,6 +472,26 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   }, [messages, scrollPageToBottom])
 
   useEffect(() => {
+    if (pendingNewMessagesCount === 0) {
+      return
+    }
+
+    function handleScroll() {
+      if (isNearBottom()) {
+        setPendingNewMessagesCount(0)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('resize', handleScroll)
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
+    }
+  }, [isNearBottom, pendingNewMessagesCount])
+
+  useEffect(() => {
     if (loading || !isAuthenticated) {
       return
     }
@@ -501,6 +526,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
             if (shouldAutoScroll) {
               pendingAutoScrollToBottomRef.current = true
+              setPendingNewMessagesCount(0)
+            } else {
+              setPendingNewMessagesCount((currentCount) => currentCount + 1)
             }
 
             setMessages((currentMessages) => insertMessageChronologically(currentMessages, nextMessage))
@@ -573,6 +601,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
       const recentMessages = await loadRecentChatMessages(50)
       pendingAutoScrollToBottomRef.current = true
+      setPendingNewMessagesCount(0)
       setMessages(recentMessages)
       setDraftMessage('')
       setReplyingToMessage(null)
@@ -754,6 +783,20 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         )}
 
         <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-4 bg-[color:var(--background)]/95 px-4 pb-2 pt-2 backdrop-blur md:bottom-0 md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-0">
+          {pendingNewMessagesCount > 0 ? (
+            <div className="mb-2 flex justify-center md:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingNewMessagesCount(0)
+                  scrollPageToBottom()
+                }}
+                className="app-button-secondary min-h-11 rounded-full border px-4 py-2 text-sm font-medium shadow-sm"
+              >
+                {getNewMessagesLabel(pendingNewMessagesCount)}
+              </button>
+            </div>
+          ) : null}
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <form onSubmit={handleSubmit}>
               {replyingToMessage ? (
