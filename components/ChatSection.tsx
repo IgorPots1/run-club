@@ -292,31 +292,37 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return
     }
 
-    if (firstUnreadMessageId) {
-      const targetMessage = messageRefs.current[firstUnreadMessageId]
+    const animationFrameId = window.requestAnimationFrame(() => {
+      if (firstUnreadMessageId) {
+        const targetMessage = messageRefs.current[firstUnreadMessageId]
 
-      if (!targetMessage) {
-        return
+        if (!targetMessage) {
+          return
+        }
+
+        targetMessage.scrollIntoView({
+          block: 'start',
+          behavior: 'auto',
+        })
+      } else {
+        const bottomSentinel = bottomSentinelRef.current
+
+        if (!bottomSentinel) {
+          return
+        }
+
+        bottomSentinel.scrollIntoView({
+          block: 'end',
+          behavior: 'auto',
+        })
       }
 
-      targetMessage.scrollIntoView({
-        block: 'start',
-        behavior: 'auto',
-      })
-    } else {
-      const bottomSentinel = bottomSentinelRef.current
+      hasAppliedInitialScrollRef.current = true
+    })
 
-      if (!bottomSentinel) {
-        return
-      }
-
-      bottomSentinel.scrollIntoView({
-        block: 'end',
-        behavior: 'auto',
-      })
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
     }
-
-    hasAppliedInitialScrollRef.current = true
   }, [firstUnreadMessageId, hasLoadedReadState, loading, messages.length])
 
   useEffect(() => {
