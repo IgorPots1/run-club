@@ -10,6 +10,7 @@ import {
   createChatMessage,
   loadChatMessageItem,
   loadRecentChatMessages,
+  softDeleteChatMessage,
   type ChatMessageItem,
 } from '@/lib/chat'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -52,6 +53,28 @@ function insertMessageChronologically(messages: ChatMessageItem[], nextMessage: 
   })
 }
 
+function upsertMessageById(messages: ChatMessageItem[], nextMessage: ChatMessageItem) {
+  const existingIndex = messages.findIndex((message) => message.id === nextMessage.id)
+
+  if (existingIndex === -1) {
+    return insertMessageChronologically(messages, nextMessage)
+  }
+
+  const nextMessages = [...messages]
+  nextMessages[existingIndex] = nextMessage
+
+  return nextMessages.sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime()
+    const rightTime = new Date(right.createdAt).getTime()
+
+    if (leftTime === rightTime) {
+      return left.id.localeCompare(right.id)
+    }
+
+    return leftTime - rightTime
+  })
+}
+
 export default function ChatPage() {
   const router = useRouter()
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -63,6 +86,7 @@ export default function ChatPage() {
   const [draftMessage, setDraftMessage] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
@@ -157,6 +181,33 @@ export default function ChatPage() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        async (payload) => {
+          const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+
+          if (!nextMessageId) {
+            return
+          }
+
+          try {
+            const nextMessage = await loadChatMessageItem(nextMessageId)
+
+            if (!nextMessage) {
+              return
+            }
+
+            setMessages((currentMessages) => upsertMessageById(currentMessages, nextMessage))
+          } catch {
+            // Keep realtime additive and non-blocking if enrichment fails.
+          }
+        }
+      )
       .subscribe()
 
     return () => {
@@ -198,6 +249,42 @@ export default function ChatPage() {
       setSubmitError('Не удалось отправить сообщение')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleDeleteMessage(message: ChatMessageItem) {
+    if (!currentUserId || deletingMessageId || message.userId !== currentUserId || message.isDeleted) {
+      return
+    }
+
+    const shouldDelete = typeof window === 'undefined'
+      ? true
+      : window.confirm('Удалить это сообщение?')
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setDeletingMessageId(message.id)
+
+    try {
+      const { error: deleteError } = await softDeleteChatMessage(message.id, currentUserId)
+
+      if (deleteError) {
+        throw deleteError
+      }
+
+      setMessages((currentMessages) =>
+        upsertMessageById(currentMessages, {
+          ...message,
+          text: 'Сообщение удалено',
+          isDeleted: true,
+        })
+      )
+    } catch {
+      setError('Не удалось удалить сообщение')
+    } finally {
+      setDeletingMessageId(null)
     }
   }
 
@@ -313,6 +400,18 @@ export default function ChatPage() {
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                       <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
                       <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
+                      {currentUserId === message.userId && !message.isDeleted ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleDeleteMessage(message)
+                          }}
+                          disabled={deletingMessageId === message.id}
+                          className="app-text-secondary text-xs underline disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingMessageId === message.id ? 'Удаляем...' : 'Удалить'}
+                        </button>
+                      ) : null}
                     </div>
                     <p
                       className={[

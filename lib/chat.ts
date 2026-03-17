@@ -78,6 +78,16 @@ export async function createChatMessage(userId: string, text: string) {
   })
 }
 
+export async function softDeleteChatMessage(messageId: string, userId: string) {
+  return supabase
+    .from('chat_messages')
+    .update({
+      is_deleted: true,
+    })
+    .eq('id', messageId)
+    .eq('user_id', userId)
+}
+
 export async function loadChatMessageItem(messageId: string): Promise<ChatMessageItem | null> {
   const { data: message, error: messageError } = await supabase
     .from('chat_messages')
