@@ -13,6 +13,12 @@ type ChatMessageRow = {
   reply_to_id: string | null
 }
 
+type ChatReadStateRow = {
+  user_id: string
+  last_read_at: string | null
+  updated_at: string
+}
+
 type ProfileRow = {
   id: string
   name: string | null
@@ -131,6 +137,33 @@ export async function createChatMessage(userId: string, text: string, replyToId?
     text: trimmedText,
     reply_to_id: replyToId ?? null,
   })
+}
+
+export async function loadChatReadState(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('chat_read_states')
+    .select('last_read_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return ((data as Pick<ChatReadStateRow, 'last_read_at'> | null) ?? null)?.last_read_at ?? null
+}
+
+export async function upsertChatReadState(userId: string, lastReadAt: string | null) {
+  return supabase
+    .from('chat_read_states')
+    .upsert(
+      {
+        user_id: userId,
+        last_read_at: lastReadAt,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
 }
 
 export async function softDeleteChatMessage(messageId: string, userId: string) {

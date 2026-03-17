@@ -2,17 +2,19 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
+  loadChatReadState,
   loadChatMessageItem,
   loadRecentChatMessages,
   softDeleteChatMessage,
   type ChatMessageItem,
+  upsertChatReadState,
 } from '@/lib/chat'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
@@ -109,12 +111,18 @@ function ChatMessageBody({ message }: { message: ChatMessageItem }) {
 
 export default function ChatSection({ showTitle = true, showBackLink = false }: ChatSectionProps) {
   const router = useRouter()
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
+  const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const longPressTimeoutRef = useRef<number | null>(null)
+  const hasAppliedInitialScrollRef = useRef(false)
+  const isMarkingReadRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
+  const [lastReadAt, setLastReadAt] = useState<string | null>(null)
+  const [hasLoadedReadState, setHasLoadedReadState] = useState(false)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
   const [submitError, setSubmitError] = useState('')
@@ -126,6 +134,75 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
+  const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
+  const firstUnreadMessageId = (() => {
+    if (messages.length === 0) {
+      return null
+    }
+
+    if (!lastReadAt) {
+      return messages[0]?.id ?? null
+    }
+
+    const lastReadAtMs = new Date(lastReadAt).getTime()
+    return messages.find((message) => new Date(message.createdAt).getTime() > lastReadAtMs)?.id ?? null
+  })()
+
+  const refreshMessages = useCallback(async () => {
+    try {
+      const recentMessages = await loadRecentChatMessages(50)
+      setMessages(recentMessages)
+      setError('')
+      return recentMessages
+    } catch {
+      setError('Не удалось загрузить чат')
+      return null
+    }
+  }, [])
+
+  const setMessageRef = useCallback((messageId: string, node: HTMLElement | null) => {
+    if (node) {
+      messageRefs.current[messageId] = node
+      return
+    }
+
+    delete messageRefs.current[messageId]
+  }, [])
+
+  const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
+    if (!currentUserId || document.visibilityState !== 'visible') {
+      return
+    }
+
+    const nextLastReadAtMs = new Date(nextLastReadAt).getTime()
+    const currentLastReadAtMs = lastReadAt ? new Date(lastReadAt).getTime() : null
+
+    if ((currentLastReadAtMs ?? 0) >= nextLastReadAtMs || isMarkingReadRef.current) {
+      return
+    }
+
+    isMarkingReadRef.current = true
+
+    try {
+      const { error: upsertError } = await upsertChatReadState(currentUserId, nextLastReadAt)
+
+      if (upsertError) {
+        throw upsertError
+      }
+
+      setLastReadAt((currentLastReadValue) => {
+        if (!currentLastReadValue || new Date(currentLastReadValue).getTime() < nextLastReadAtMs) {
+          return nextLastReadAt
+        }
+
+        return currentLastReadValue
+      })
+    } catch {
+      // Keep read tracking non-blocking for the chat experience.
+    } finally {
+      isMarkingReadRef.current = false
+    }
+  }, [currentUserId, lastReadAt])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -172,14 +249,21 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         setCurrentUserId(user.id)
         void ensureProfileExists(user)
 
-        const recentMessages = await loadRecentChatMessages(50)
+        if (!isMounted) {
+          return
+        }
+
+        const [, nextLastReadAt] = await Promise.all([
+          refreshMessages(),
+          loadChatReadState(user.id),
+        ])
 
         if (!isMounted) {
           return
         }
 
-        setMessages(recentMessages)
-        setError('')
+        setLastReadAt(nextLastReadAt)
+        setHasLoadedReadState(true)
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить чат')
@@ -196,7 +280,113 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       isMounted = false
     }
-  }, [router])
+  }, [refreshMessages, router])
+
+  useEffect(() => {
+    if (loading || !hasLoadedReadState || hasAppliedInitialScrollRef.current) {
+      return
+    }
+
+    if (messages.length === 0) {
+      hasAppliedInitialScrollRef.current = true
+      return
+    }
+
+    if (firstUnreadMessageId) {
+      const targetMessage = messageRefs.current[firstUnreadMessageId]
+
+      if (!targetMessage) {
+        return
+      }
+
+      targetMessage.scrollIntoView({
+        block: 'start',
+        behavior: 'auto',
+      })
+    } else {
+      const bottomSentinel = bottomSentinelRef.current
+
+      if (!bottomSentinel) {
+        return
+      }
+
+      bottomSentinel.scrollIntoView({
+        block: 'end',
+        behavior: 'auto',
+      })
+    }
+
+    hasAppliedInitialScrollRef.current = true
+  }, [firstUnreadMessageId, hasLoadedReadState, loading, messages.length])
+
+  useEffect(() => {
+    if (loading || !isAuthenticated) {
+      return
+    }
+
+    function handleWindowFocus() {
+      void refreshMessages()
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void refreshMessages()
+      }
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [loading, isAuthenticated, refreshMessages])
+
+  useEffect(() => {
+    if (
+      loading ||
+      !isAuthenticated ||
+      !hasLoadedReadState ||
+      !currentUserId ||
+      !latestLoadedMessageCreatedAt ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      return
+    }
+
+    const bottomSentinel = bottomSentinelRef.current
+
+    if (!bottomSentinel) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) {
+          return
+        }
+
+        void markMessagesRead(latestLoadedMessageCreatedAt)
+      },
+      {
+        threshold: 0.1,
+      }
+    )
+
+    observer.observe(bottomSentinel)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [
+    currentUserId,
+    hasLoadedReadState,
+    isAuthenticated,
+    latestLoadedMessageCreatedAt,
+    loading,
+    markMessagesRead,
+  ])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
@@ -232,7 +422,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
             setMessages((currentMessages) => insertMessageChronologically(currentMessages, nextMessage))
           } catch {
-            // Keep realtime additive and non-blocking if enrichment fails.
+            void refreshMessages()
           }
         }
       )
@@ -269,7 +459,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [loading, isAuthenticated])
+  }, [loading, isAuthenticated, refreshMessages])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -433,39 +623,49 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           <section className="app-card rounded-2xl border p-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] shadow-sm md:pb-28">
             <div className="space-y-4">
               {messages.map((message) => (
-                <article key={message.id} className="flex items-start gap-3">
-                  {message.avatarUrl ? (
-                    <Image
-                      src={message.avatarUrl}
-                      alt=""
-                      width={40}
-                      height={40}
-                      className="h-10 w-10 shrink-0 rounded-full object-cover"
-                    />
-                  ) : (
-                    <AvatarFallback />
-                  )}
-                  <div
-                    className="chat-no-select min-w-0 flex-1 rounded-2xl"
-                    onTouchStart={() => startLongPress(message)}
-                    onTouchEnd={clearLongPressTimeout}
-                    onTouchCancel={clearLongPressTimeout}
-                    onTouchMove={clearLongPressTimeout}
-                    onMouseDown={() => startLongPress(message)}
-                    onMouseUp={clearLongPressTimeout}
-                    onMouseLeave={clearLongPressTimeout}
-                    onContextMenu={(event) => {
-                      event.preventDefault()
-                      clearLongPressTimeout()
-                      setSelectedMessage(message)
-                      setIsActionSheetOpen(true)
-                    }}
-                  >
-                    <ChatMessageBody message={message} />
-                  </div>
-                </article>
+                <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
+                  {message.id === firstUnreadMessageId ? (
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                      <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
+                      <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                    </div>
+                  ) : null}
+                  <article className="flex items-start gap-3">
+                    {message.avatarUrl ? (
+                      <Image
+                        src={message.avatarUrl}
+                        alt=""
+                        width={40}
+                        height={40}
+                        className="h-10 w-10 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <AvatarFallback />
+                    )}
+                    <div
+                      className="chat-no-select min-w-0 flex-1 rounded-2xl"
+                      onTouchStart={() => startLongPress(message)}
+                      onTouchEnd={clearLongPressTimeout}
+                      onTouchCancel={clearLongPressTimeout}
+                      onTouchMove={clearLongPressTimeout}
+                      onMouseDown={() => startLongPress(message)}
+                      onMouseUp={clearLongPressTimeout}
+                      onMouseLeave={clearLongPressTimeout}
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        clearLongPressTimeout()
+                        setSelectedMessage(message)
+                        setIsActionSheetOpen(true)
+                      }}
+                    >
+                      <ChatMessageBody message={message} />
+                    </div>
+                  </article>
+                </div>
               ))}
             </div>
+            <div ref={bottomSentinelRef} className="h-px w-full" aria-hidden="true" />
           </section>
         )}
 
