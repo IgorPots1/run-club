@@ -102,6 +102,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
@@ -271,7 +272,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     setSubmitError('')
 
     try {
-      const { error: insertError } = await createChatMessage(currentUserId, trimmedDraftMessage)
+      const { error: insertError } = await createChatMessage(currentUserId, trimmedDraftMessage, replyingToMessage?.id ?? null)
 
       if (insertError) {
         throw insertError
@@ -280,6 +281,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       const recentMessages = await loadRecentChatMessages(50)
       setMessages(recentMessages)
       setDraftMessage('')
+      setReplyingToMessage(null)
     } catch {
       setSubmitError('Не удалось отправить сообщение')
     } finally {
@@ -323,6 +325,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     if (!open) {
       setSelectedMessage(null)
     }
+  }
+
+  function handleReplyToMessage(message: ChatMessageItem) {
+    setReplyingToMessage(message)
   }
 
   function clearLongPressTimeout() {
@@ -393,6 +399,22 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
 
       <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
         <form onSubmit={handleSubmit}>
+          {replyingToMessage ? (
+            <div className="mb-3 flex items-start justify-between gap-3 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+              <div className="min-w-0">
+                <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
+                <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingToMessage(null)}
+                className="app-text-secondary shrink-0 rounded-lg px-2 py-1 text-sm"
+                aria-label="Отменить ответ"
+              >
+                X
+              </button>
+            </div>
+          ) : null}
           <label htmlFor="chat-message" className="sr-only">
             Сообщение
           </label>
@@ -482,6 +504,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                     <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
                     <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
                   </div>
+                  {message.replyTo ? (
+                    <div className="mt-1 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                      <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
+                      <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
+                    </div>
+                  ) : null}
                   <p
                     className={[
                       'mt-1 break-words whitespace-pre-wrap text-sm leading-6',
@@ -511,6 +539,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           open={isActionSheetOpen}
           onOpenChange={handleActionSheetOpenChange}
           onDelete={handleDeleteMessage}
+          onReply={handleReplyToMessage}
         />
       ) : null}
     </div>

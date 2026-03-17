@@ -9,6 +9,7 @@ type ChatMessageActionsProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDelete: (message: ChatMessageItem) => Promise<void> | void
+  onReply: (message: ChatMessageItem) => void
 }
 
 export default function ChatMessageActions({
@@ -17,6 +18,7 @@ export default function ChatMessageActions({
   open,
   onOpenChange,
   onDelete,
+  onReply,
 }: ChatMessageActionsProps) {
   const router = useRouter()
 
@@ -36,6 +38,11 @@ export default function ChatMessageActions({
   async function handleDelete() {
     onOpenChange(false)
     await onDelete(message)
+  }
+
+  function handleReply() {
+    onOpenChange(false)
+    onReply(message)
   }
 
   function handleOpenProfile() {
@@ -66,6 +73,13 @@ export default function ChatMessageActions({
             className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
           >
             Копировать
+          </button>
+          <button
+            type="button"
+            onClick={handleReply}
+            className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+          >
+            Ответить
           </button>
           {isOwnMessage ? (
             <button

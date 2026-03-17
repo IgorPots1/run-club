@@ -10,6 +10,7 @@ type ChatMessageRow = {
   text: string
   created_at: string
   is_deleted: boolean
+  reply_to_id: string | null
 }
 
 type ProfileRow = {
@@ -29,6 +30,13 @@ export type ChatMessageItem = {
   isDeleted: boolean
   displayName: string
   avatarUrl: string | null
+  replyToId: string | null
+  replyTo: {
+    id: string
+    userId: string | null
+    displayName: string
+    text: string
+  } | null
 }
 
 async function loadProfilesByUserIds(userIds: string[]) {
@@ -48,7 +56,34 @@ async function loadProfilesByUserIds(userIds: string[]) {
   return Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])) as Record<string, ProfileRow>
 }
 
-function toChatMessageItem(message: ChatMessageRow, profile?: ProfileRow): ChatMessageItem {
+function toChatReplyPreview(message: ChatMessageRow | null | undefined, profile?: ProfileRow) {
+  if (!message) {
+    return null
+  }
+
+  if (message.is_deleted) {
+    return {
+      id: message.id,
+      userId: message.user_id,
+      displayName: getProfileDisplayName(profile, 'Ответ'),
+      text: 'Сообщение недоступно',
+    }
+  }
+
+  return {
+    id: message.id,
+    userId: message.user_id,
+    displayName: getProfileDisplayName(profile, 'Бегун'),
+    text: message.text,
+  }
+}
+
+function toChatMessageItem(
+  message: ChatMessageRow,
+  profile?: ProfileRow,
+  replyToMessage?: ChatMessageRow | null,
+  replyToProfile?: ProfileRow
+): ChatMessageItem {
   return {
     id: message.id,
     userId: message.user_id,
@@ -58,10 +93,29 @@ function toChatMessageItem(message: ChatMessageRow, profile?: ProfileRow): ChatM
     isDeleted: message.is_deleted,
     displayName: getProfileDisplayName(profile, 'Бегун'),
     avatarUrl: profile?.avatar_url ?? null,
+    replyToId: message.reply_to_id,
+    replyTo: message.reply_to_id ? toChatReplyPreview(replyToMessage, replyToProfile) : null,
   }
 }
 
-export async function createChatMessage(userId: string, text: string) {
+async function loadChatReplyRowsByIds(replyIds: string[]) {
+  if (replyIds.length === 0) {
+    return {}
+  }
+
+  const { data: replyMessages, error: replyMessagesError } = await supabase
+    .from('chat_messages')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
+    .in('id', replyIds)
+
+  if (replyMessagesError) {
+    throw replyMessagesError
+  }
+
+  return Object.fromEntries(((replyMessages as ChatMessageRow[] | null) ?? []).map((message) => [message.id, message])) as Record<string, ChatMessageRow>
+}
+
+export async function createChatMessage(userId: string, text: string, replyToId?: string | null) {
   const trimmedText = text.trim()
 
   if (!trimmedText) {
@@ -75,6 +129,7 @@ export async function createChatMessage(userId: string, text: string) {
   return supabase.from('chat_messages').insert({
     user_id: userId,
     text: trimmedText,
+    reply_to_id: replyToId ?? null,
   })
 }
 
@@ -91,7 +146,7 @@ export async function softDeleteChatMessage(messageId: string, userId: string) {
 export async function loadChatMessageItem(messageId: string): Promise<ChatMessageItem | null> {
   const { data: message, error: messageError } = await supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
     .eq('id', messageId)
     .maybeSingle()
 
@@ -105,15 +160,28 @@ export async function loadChatMessageItem(messageId: string): Promise<ChatMessag
     return null
   }
 
-  const profileById = await loadProfilesByUserIds([messageRow.user_id])
+  const replyById = await loadChatReplyRowsByIds(messageRow.reply_to_id ? [messageRow.reply_to_id] : [])
+  const replyMessage = messageRow.reply_to_id ? replyById[messageRow.reply_to_id] ?? null : null
+  const profileIds = Array.from(
+    new Set([
+      messageRow.user_id,
+      ...(replyMessage ? [replyMessage.user_id] : []),
+    ])
+  )
+  const profileById = await loadProfilesByUserIds(profileIds)
 
-  return toChatMessageItem(messageRow, profileById[messageRow.user_id])
+  return toChatMessageItem(
+    messageRow,
+    profileById[messageRow.user_id],
+    replyMessage,
+    replyMessage ? profileById[replyMessage.user_id] : undefined
+  )
 }
 
 export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageItem[]> {
   const { data: messages, error: messagesError } = await supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -123,8 +191,26 @@ export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageIte
   }
 
   const messageRows = ((messages as ChatMessageRow[] | null) ?? []).slice().reverse()
-  const userIds = Array.from(new Set(messageRows.map((message) => message.user_id)))
+  const replyIds = Array.from(
+    new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
+  )
+  const replyById = await loadChatReplyRowsByIds(replyIds)
+  const userIds = Array.from(
+    new Set([
+      ...messageRows.map((message) => message.user_id),
+      ...Object.values(replyById).map((message) => message.user_id),
+    ])
+  )
   const profileById = await loadProfilesByUserIds(userIds)
 
-  return messageRows.map((message) => toChatMessageItem(message, profileById[message.user_id]))
+  return messageRows.map((message) => {
+    const replyMessage = message.reply_to_id ? replyById[message.reply_to_id] ?? null : null
+
+    return toChatMessageItem(
+      message,
+      profileById[message.user_id],
+      replyMessage,
+      replyMessage ? profileById[replyMessage.user_id] : undefined
+    )
+  })
 }
