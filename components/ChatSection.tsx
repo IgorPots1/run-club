@@ -557,6 +557,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         return
       }
 
+      if (!oldestLoadedMessageCreatedAt) {
+        return
+      }
+
       const scrollingElement = document.scrollingElement
 
       if (!scrollingElement) {
