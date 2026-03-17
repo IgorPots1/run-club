@@ -144,9 +144,11 @@ function ChatMessageBody({
 export default function ChatSection({ showTitle = true, showBackLink = false }: ChatSectionProps) {
   const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
+  const keyboardClosedViewportHeightRef = useRef(0)
   const longPressTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
@@ -169,9 +171,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
+  const [isComposerFocused, setIsComposerFocused] = useState(false)
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
+  const useKeyboardOpenComposerLayout = isKeyboardOpen
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -317,6 +322,57 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const visualViewport = window.visualViewport
+
+    if (!visualViewport) {
+      return
+    }
+
+    function updateKeyboardOpenState() {
+      const nextVisualViewport = window.visualViewport
+
+      if (!nextVisualViewport) {
+        return
+      }
+
+      const viewportHeight = nextVisualViewport.height
+      const isMobileViewport = window.innerWidth < 768
+
+      if (!isMobileViewport) {
+        keyboardClosedViewportHeightRef.current = viewportHeight
+        setIsKeyboardOpen(false)
+        return
+      }
+
+      if (!isComposerFocused) {
+        keyboardClosedViewportHeightRef.current = viewportHeight
+        setIsKeyboardOpen(false)
+        return
+      }
+
+      if (keyboardClosedViewportHeightRef.current === 0) {
+        keyboardClosedViewportHeightRef.current = viewportHeight
+      }
+
+      setIsKeyboardOpen(keyboardClosedViewportHeightRef.current - viewportHeight > 120)
+    }
+
+    updateKeyboardOpenState()
+
+    visualViewport.addEventListener('resize', updateKeyboardOpenState)
+    window.addEventListener('resize', updateKeyboardOpenState)
+
+    return () => {
+      visualViewport.removeEventListener('resize', updateKeyboardOpenState)
+      window.removeEventListener('resize', updateKeyboardOpenState)
+    }
+  }, [isComposerFocused])
 
   useEffect(() => {
     return () => {
@@ -883,7 +939,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-6 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-8">
+          <section
+            className={`app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 shadow-sm md:min-h-[calc(100vh-12rem)] ${
+              useKeyboardOpenComposerLayout
+                ? 'pb-4 md:pb-24'
+                : 'pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-24'
+            }`}
+          >
             <div className="mt-auto flex flex-col">
               {messages.map((message, index) => {
                 const isOwnMessage = currentUserId === message.userId
@@ -956,8 +1018,14 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         )}
 
-        <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0">
-          <div className="mx-auto w-full max-w-xl md:max-w-7xl">
+        <div
+          className={
+            useKeyboardOpenComposerLayout
+              ? '-mx-4 mt-2 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2'
+              : 'pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0'
+          }
+        >
+          <div className={`mx-auto w-full max-w-xl md:max-w-7xl ${useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'}`}>
             {pendingNewMessagesCount > 0 ? (
               <div className="mb-2 flex justify-center md:justify-end">
                 <button
@@ -1003,12 +1071,15 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       Сообщение
                     </label>
                     <textarea
+                      ref={composerTextareaRef}
                       id="chat-message"
                       value={draftMessage}
                       onChange={(event) => {
                         setDraftMessage(event.target.value)
                         setSubmitError('')
                       }}
+                      onFocus={() => setIsComposerFocused(true)}
+                      onBlur={() => setIsComposerFocused(false)}
                       placeholder="Сообщение"
                       disabled={submitting}
                       maxLength={CHAT_MESSAGE_MAX_LENGTH}
