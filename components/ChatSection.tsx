@@ -141,7 +141,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
 
     if (!lastReadAt) {
-      return messages[0]?.id ?? null
+      return null
     }
 
     const lastReadAtMs = new Date(lastReadAt).getTime()
