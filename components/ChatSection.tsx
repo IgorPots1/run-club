@@ -96,19 +96,23 @@ function removeMessageById(messages: ChatMessageItem[], messageId: string) {
 function ChatMessageBody({
   message,
   isOwnMessage = false,
+  showSenderName = true,
 }: {
   message: ChatMessageItem
   isOwnMessage?: boolean
+  showSenderName?: boolean
 }) {
   return (
     <>
-      <p
-        className={`truncate text-[11px] font-medium ${
-          isOwnMessage ? 'app-text-secondary text-right' : 'app-text-primary'
-        }`}
-      >
-        {message.displayName}
-      </p>
+      {showSenderName ? (
+        <p
+          className={`truncate text-[11px] font-medium ${
+            isOwnMessage ? 'app-text-secondary text-right' : 'app-text-primary'
+          }`}
+        >
+          {message.displayName}
+        </p>
+      ) : null}
       {message.replyTo ? (
         <div
           className={`mt-1 rounded-[14px] px-2.5 py-1.5 ${
@@ -123,7 +127,7 @@ function ChatMessageBody({
       ) : null}
       <p
         className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
-          isOwnMessage || message.replyTo ? 'mt-1' : 'mt-0.5'
+          message.replyTo ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
         } ${
           isOwnMessage ? 'text-right' : ''
         }`}
@@ -881,6 +885,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 const isOwnMessage = currentUserId === message.userId
                 const previousMessage = index > 0 ? messages[index - 1] : null
                 const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
+                const isFirstInAuthorRun = !isSameAuthorAsPrevious
+                const showAvatar = !isOwnMessage && isFirstInAuthorRun
+                const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
                 const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
 
                 return (
@@ -897,7 +904,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                     </div>
                   ) : null}
                   <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
-                    {isOwnMessage ? null : message.avatarUrl ? (
+                    {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
                       <Image
                         src={message.avatarUrl}
                         alt=""
@@ -907,6 +914,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       />
                     ) : (
                       <AvatarFallback />
+                    ) : (
+                      <div className="h-10 w-10 shrink-0" aria-hidden="true" />
                     )}
                     <div
                       className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
@@ -928,7 +937,11 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                         setIsActionSheetOpen(true)
                       }}
                     >
-                      <ChatMessageBody message={message} isOwnMessage={isOwnMessage} />
+                      <ChatMessageBody
+                        message={message}
+                        isOwnMessage={isOwnMessage}
+                        showSenderName={showSenderName}
+                      />
                     </div>
                   </article>
                   </div>
