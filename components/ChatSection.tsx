@@ -115,7 +115,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const longPressTimeoutRef = useRef<number | null>(null)
-  const hasAppliedInitialScrollRef = useRef(false)
   const isMarkingReadRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
@@ -123,6 +122,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [lastReadAt, setLastReadAt] = useState<string | null>(null)
   const [hasLoadedReadState, setHasLoadedReadState] = useState(false)
+  const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
   const [submitError, setSubmitError] = useState('')
@@ -253,8 +253,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           return
         }
 
-        const [, nextLastReadAt] = await Promise.all([
-          refreshMessages(),
+        const [initialMessages, nextLastReadAt] = await Promise.all([
+          loadRecentChatMessages(50),
           loadChatReadState(user.id),
         ])
 
@@ -262,8 +262,11 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           return
         }
 
+        setMessages(initialMessages)
+        setError('')
         setLastReadAt(nextLastReadAt)
         setHasLoadedReadState(true)
+        setPendingInitialScroll(true)
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить чат')
@@ -280,15 +283,14 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     return () => {
       isMounted = false
     }
-  }, [refreshMessages, router])
+  }, [router])
 
   useEffect(() => {
-    if (loading || !hasLoadedReadState || hasAppliedInitialScrollRef.current) {
+    if (loading || !hasLoadedReadState || !pendingInitialScroll) {
       return
     }
 
     if (messages.length === 0) {
-      hasAppliedInitialScrollRef.current = true
       return
     }
 
@@ -323,7 +325,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           })
         }
 
-        hasAppliedInitialScrollRef.current = true
+        setPendingInitialScroll(false)
       })
     })
 
@@ -333,7 +335,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         window.cancelAnimationFrame(nestedAnimationFrameId)
       }
     }
-  }, [firstUnreadMessageId, hasLoadedReadState, loading, messages.length])
+  }, [firstUnreadMessageId, hasLoadedReadState, loading, messages.length, pendingInitialScroll])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
