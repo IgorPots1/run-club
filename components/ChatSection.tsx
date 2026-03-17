@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { getBootstrapUser } from '@/lib/auth'
@@ -362,7 +362,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
   }, [keepLatestRenderedMessages, router])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (loading || !hasLoadedReadState || !pendingInitialScroll) {
       return
     }
@@ -371,34 +371,30 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return
     }
 
-    let nestedAnimationFrameId: number | null = null
-    const animationFrameId = window.requestAnimationFrame(() => {
-      nestedAnimationFrameId = window.requestAnimationFrame(() => {
-        const bottomSentinel = bottomSentinelRef.current
+    const scrollingElement = document.scrollingElement
 
-        if (!bottomSentinel) {
-          return
-        }
+    if (scrollingElement) {
+      scrollingElement.scrollTop = scrollingElement.scrollHeight
+      setPendingInitialScroll(false)
+      return
+    }
 
-        const nextTop =
-          bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
+    const bottomSentinel = bottomSentinelRef.current
 
-        window.scrollTo({
-          top: Math.max(0, nextTop),
-          behavior: 'auto',
-        })
+    if (!bottomSentinel) {
+      return
+    }
 
-        setPendingInitialScroll(false)
-      })
+    const nextTop =
+      bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
+
+    window.scrollTo({
+      top: Math.max(0, nextTop),
+      behavior: 'auto',
     })
 
-    return () => {
-      window.cancelAnimationFrame(animationFrameId)
-      if (nestedAnimationFrameId !== null) {
-        window.cancelAnimationFrame(nestedAnimationFrameId)
-      }
-    }
-  }, [firstUnreadMessageId, hasLoadedReadState, loading, messages.length, pendingInitialScroll])
+    setPendingInitialScroll(false)
+  }, [hasLoadedReadState, loading, messages.length, pendingInitialScroll])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
