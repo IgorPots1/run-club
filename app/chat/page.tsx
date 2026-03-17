@@ -2,7 +2,10 @@ import ChatSection from '@/components/ChatSection'
 
 export default function ChatPage() {
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+    <main
+      data-chat-isolated-route="true"
+      className="h-[100dvh] overflow-hidden pt-[env(safe-area-inset-top)] md:min-h-screen md:h-auto md:overflow-visible md:pt-0"
+    >
       <ChatSection showBackLink />
     </main>
   )

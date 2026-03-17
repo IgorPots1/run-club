@@ -29,6 +29,7 @@ const LONG_PRESS_MS = 450
 const INITIAL_CHAT_MESSAGE_LIMIT = 10
 const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
+const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
 
 function AvatarFallback() {
   return (
@@ -145,6 +146,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
@@ -152,7 +154,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const longPressTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
-  const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollY: number } | null>(null)
+  const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollY: number | null; scrollTop: number | null } | null>(null)
   const isLoadingOlderMessagesRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
@@ -174,9 +176,10 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
 
+  const useIsolatedChatLayout = showBackLink
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
-  const useKeyboardOpenComposerLayout = isKeyboardOpen
+  const useKeyboardOpenComposerLayout = !useIsolatedChatLayout && isKeyboardOpen
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -228,6 +231,19 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return false
     }
 
+    if (useIsolatedChatLayout) {
+      const scrollContainer = scrollContainerRef.current
+
+      if (!scrollContainer) {
+        return true
+      }
+
+      const distanceFromBottom =
+        scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight)
+
+      return distanceFromBottom <= 100
+    }
+
     const scrollingElement = document.scrollingElement
 
     if (!scrollingElement) {
@@ -238,9 +254,23 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       scrollingElement.scrollHeight - (window.scrollY + window.innerHeight)
 
     return distanceFromBottom <= 100
-  }, [])
+  }, [useIsolatedChatLayout])
 
   const scrollPageToBottom = useCallback(() => {
+    if (useIsolatedChatLayout) {
+      const scrollContainer = scrollContainerRef.current
+
+      if (!scrollContainer) {
+        return
+      }
+
+      scrollContainer.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: 'auto',
+      })
+      return
+    }
+
     const bottomSentinel = bottomSentinelRef.current
 
     if (!bottomSentinel) {
@@ -252,7 +282,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       inline: 'nearest',
       behavior: 'auto',
     })
-  }, [])
+  }, [useIsolatedChatLayout])
 
   function getNewMessagesLabel(count: number) {
     return count === 1 ? '1 new message' : `${count} new messages`
@@ -322,6 +352,46 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    if (!useIsolatedChatLayout || typeof document === 'undefined') {
+      return
+    }
+
+    document.documentElement.dataset.chatIsolatedRoute = 'true'
+    document.body.dataset.chatIsolatedRoute = 'true'
+
+    return () => {
+      delete document.documentElement.dataset.chatIsolatedRoute
+      delete document.body.dataset.chatIsolatedRoute
+    }
+  }, [useIsolatedChatLayout])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(CHAT_KEYBOARD_VISIBILITY_EVENT, {
+        detail: { keyboardOpen: useKeyboardOpenComposerLayout },
+      })
+    )
+  }, [useKeyboardOpenComposerLayout])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent(CHAT_KEYBOARD_VISIBILITY_EVENT, {
+          detail: { keyboardOpen: false },
+        })
+      )
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -521,6 +591,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         void markMessagesRead(latestLoadedMessageCreatedAt)
       },
       {
+        root: useIsolatedChatLayout ? scrollContainerRef.current : null,
         threshold: 0.1,
       }
     )
@@ -537,6 +608,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     latestLoadedMessageCreatedAt,
     loading,
     markMessagesRead,
+    useIsolatedChatLayout,
   ])
 
   useEffect(() => {
@@ -570,9 +642,23 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     let nestedAnimationFrameId: number | null = null
     const animationFrameId = window.requestAnimationFrame(() => {
       nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        if (useIsolatedChatLayout) {
+          const scrollContainer = scrollContainerRef.current
+
+          if (!scrollContainer || pendingRestore.scrollTop === null) {
+            prependScrollRestoreRef.current = null
+            return
+          }
+
+          const scrollHeightDelta = scrollContainer.scrollHeight - pendingRestore.scrollHeight
+          scrollContainer.scrollTop = Math.max(0, pendingRestore.scrollTop + scrollHeightDelta)
+          prependScrollRestoreRef.current = null
+          return
+        }
+
         const scrollingElement = document.scrollingElement
 
-        if (!scrollingElement) {
+        if (!scrollingElement || pendingRestore.scrollY === null) {
           prependScrollRestoreRef.current = null
           return
         }
@@ -594,7 +680,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         window.cancelAnimationFrame(nestedAnimationFrameId)
       }
     }
-  }, [messages])
+  }, [messages, useIsolatedChatLayout])
 
   useEffect(() => {
     if (pendingNewMessagesCount === 0) {
@@ -607,14 +693,24 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       }
     }
 
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    const scrollContainer = useIsolatedChatLayout ? scrollContainerRef.current : null
+
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+    } else {
+      window.addEventListener('scroll', handleScroll, { passive: true })
+    }
     window.addEventListener('resize', handleScroll)
 
     return () => {
-      window.removeEventListener('scroll', handleScroll)
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', handleScroll)
+      } else {
+        window.removeEventListener('scroll', handleScroll)
+      }
       window.removeEventListener('resize', handleScroll)
     }
-  }, [isNearBottom, pendingNewMessagesCount])
+  }, [isNearBottom, pendingNewMessagesCount, useIsolatedChatLayout])
 
   useEffect(() => {
     if (
@@ -627,10 +723,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
 
     async function loadOlderMessages() {
-      if (window.scrollY > 80 || isLoadingOlderMessagesRef.current) {
-        return
-      }
-
       const oldestCreatedAt = oldestLoadedMessageCreatedAt
 
       if (!oldestCreatedAt) {
@@ -638,16 +730,36 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         return
       }
 
-      const scrollingElement = document.scrollingElement
+      if (useIsolatedChatLayout) {
+        const scrollContainer = scrollContainerRef.current
 
-      if (!scrollingElement) {
-        return
-      }
+        if (!scrollContainer || scrollContainer.scrollTop > 80 || isLoadingOlderMessagesRef.current) {
+          return
+        }
 
-      isLoadingOlderMessagesRef.current = true
-      prependScrollRestoreRef.current = {
-        scrollHeight: scrollingElement.scrollHeight,
-        scrollY: window.scrollY,
+        isLoadingOlderMessagesRef.current = true
+        prependScrollRestoreRef.current = {
+          scrollHeight: scrollContainer.scrollHeight,
+          scrollY: null,
+          scrollTop: scrollContainer.scrollTop,
+        }
+      } else {
+        if (window.scrollY > 80 || isLoadingOlderMessagesRef.current) {
+          return
+        }
+
+        const scrollingElement = document.scrollingElement
+
+        if (!scrollingElement) {
+          return
+        }
+
+        isLoadingOlderMessagesRef.current = true
+        prependScrollRestoreRef.current = {
+          scrollHeight: scrollingElement.scrollHeight,
+          scrollY: window.scrollY,
+          scrollTop: null,
+        }
       }
 
       try {
@@ -672,12 +784,22 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       void loadOlderMessages()
     }
 
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    const scrollContainer = useIsolatedChatLayout ? scrollContainerRef.current : null
+
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+    } else {
+      window.addEventListener('scroll', handleScroll, { passive: true })
+    }
 
     return () => {
-      window.removeEventListener('scroll', handleScroll)
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', handleScroll)
+      } else {
+        window.removeEventListener('scroll', handleScroll)
+      }
     }
-  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages])
+  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages, useIsolatedChatLayout])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
@@ -918,21 +1040,32 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-none md:p-4">
+    <div
+      className={`mx-auto max-w-xl md:max-w-none ${
+        useIsolatedChatLayout
+          ? 'flex h-full min-h-0 flex-col overflow-hidden px-4 pb-4 pt-4 md:p-4'
+          : 'px-4 pb-4 pt-4 md:p-4'
+      }`}
+    >
       {showTitle ? (
         <div className="mb-4 space-y-1">
+          {useIsolatedChatLayout && showBackLink ? (
+            <Link href="/dashboard" className="app-text-secondary inline-flex text-sm underline">
+              Назад на главную
+            </Link>
+          ) : null}
           <h1 className="app-text-primary text-2xl font-bold">Чат клуба</h1>
           <p className="app-text-secondary text-sm">Последние 50 сообщений клуба в хронологическом порядке.</p>
         </div>
       ) : null}
 
-      <div className="relative">
+      <div className={`relative ${useIsolatedChatLayout ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
         {error ? (
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <section className={`app-card rounded-2xl border p-4 shadow-sm ${useIsolatedChatLayout ? 'flex-1' : ''}`}>
             <p className="text-sm text-red-600">{error}</p>
           </section>
         ) : messages.length === 0 ? (
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <section className={`app-card rounded-2xl border p-4 shadow-sm ${useIsolatedChatLayout ? 'flex-1' : ''}`}>
             <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
             <p className="app-text-secondary mt-2 text-sm">
               Когда в базе появятся сообщения, они отобразятся здесь.
@@ -940,13 +1073,24 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         ) : (
           <section
-            className={`app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 shadow-sm md:min-h-[calc(100vh-12rem)] ${
-              useKeyboardOpenComposerLayout
-                ? 'pb-4 md:pb-24'
-                : 'pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-24'
+            className={`app-card flex flex-col rounded-2xl border shadow-sm ${
+              useIsolatedChatLayout
+                ? 'min-h-0 flex-1 overflow-hidden'
+                : `min-h-[calc(100svh-15rem)] p-4 md:min-h-[calc(100vh-12rem)] ${
+                    useKeyboardOpenComposerLayout
+                      ? 'pb-4 md:pb-24'
+                      : 'pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-24'
+                  }`
             }`}
           >
-            <div className="mt-auto flex flex-col">
+            <div
+              ref={useIsolatedChatLayout ? scrollContainerRef : undefined}
+              className={`flex flex-col ${
+                useIsolatedChatLayout
+                  ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 [WebkitOverflowScrolling:touch]'
+                  : 'mt-auto'
+              }`}
+            >
               {messages.map((message, index) => {
                 const isOwnMessage = currentUserId === message.userId
                 const previousMessage = index > 0 ? messages[index - 1] : null
@@ -1013,19 +1157,25 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   </div>
                 )
               })}
+              <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
             </div>
-            <div ref={bottomSentinelRef} className="h-px w-full" aria-hidden="true" />
           </section>
         )}
 
         <div
           className={
-            useKeyboardOpenComposerLayout
+            useIsolatedChatLayout
+              ? 'mt-3'
+              : useKeyboardOpenComposerLayout
               ? '-mx-4 mt-2 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2'
               : 'pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0'
           }
         >
-          <div className={`mx-auto w-full max-w-xl md:max-w-7xl ${useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'}`}>
+          <div
+            className={`mx-auto w-full max-w-xl md:max-w-7xl ${
+              useIsolatedChatLayout || useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'
+            }`}
+          >
             {pendingNewMessagesCount > 0 ? (
               <div className="mb-2 flex justify-center md:justify-end">
                 <button
@@ -1108,7 +1258,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         </div>
       </div>
 
-      {showBackLink ? (
+      {showBackLink && !useIsolatedChatLayout ? (
         <div className="mt-4">
           <Link href="/dashboard" className="app-text-secondary text-sm underline">
             Назад на главную

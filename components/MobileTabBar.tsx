@@ -3,7 +3,9 @@
 import { Activity, Footprints, Home, User, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import type { MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
+
+const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
 
 type TabItem = {
   href: string
@@ -31,11 +33,30 @@ function scrollPageToTop() {
 
 export default function MobileTabBar() {
   const pathname = usePathname()
+  const [isChatKeyboardOpen, setIsChatKeyboardOpen] = useState(false)
   const hiddenRoutes = ['/', '/login', '/register']
   const shouldHide =
     hiddenRoutes.includes(pathname) || pathname.startsWith('/auth')
 
-  if (shouldHide) return null
+  useEffect(() => {
+    function handleChatKeyboardVisibility(event: Event) {
+      const keyboardOpen =
+        event instanceof CustomEvent &&
+        typeof event.detail?.keyboardOpen === 'boolean'
+          ? event.detail.keyboardOpen
+          : false
+
+      setIsChatKeyboardOpen(keyboardOpen)
+    }
+
+    window.addEventListener(CHAT_KEYBOARD_VISIBILITY_EVENT, handleChatKeyboardVisibility)
+
+    return () => {
+      window.removeEventListener(CHAT_KEYBOARD_VISIBILITY_EVENT, handleChatKeyboardVisibility)
+    }
+  }, [])
+
+  if (shouldHide || pathname === '/chat' || isChatKeyboardOpen) return null
 
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const tabs: TabItem[] = [

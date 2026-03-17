@@ -78,6 +78,22 @@ body {
   overflow-x: hidden;
 }
 
+@media (max-width: 767px) {
+  html[data-chat-isolated-route='true'],
+  body[data-chat-isolated-route='true'] {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body[data-chat-isolated-route='true'] .app-shell {
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+}
+
 *,
 *::before,
 *::after {
