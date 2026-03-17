@@ -25,6 +25,7 @@ type ChatSectionProps = {
 }
 
 const LONG_PRESS_MS = 450
+const INITIAL_CHAT_MESSAGE_LIMIT = 10
 
 function AvatarFallback() {
   return (
@@ -292,7 +293,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           return
         }
 
-        const initialMessages = await loadRecentChatMessages(50)
+        const initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT)
         let nextLastReadAt: string | null = null
 
         try {
@@ -341,33 +342,19 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     let nestedAnimationFrameId: number | null = null
     const animationFrameId = window.requestAnimationFrame(() => {
       nestedAnimationFrameId = window.requestAnimationFrame(() => {
-        if (firstUnreadMessageId) {
-          const targetMessage = messageRefs.current[firstUnreadMessageId]
+        const bottomSentinel = bottomSentinelRef.current
 
-          if (!targetMessage) {
-            return
-          }
-
-          const nextTop = targetMessage.getBoundingClientRect().top + window.scrollY
-          window.scrollTo({
-            top: Math.max(0, nextTop),
-            behavior: 'auto',
-          })
-        } else {
-          const bottomSentinel = bottomSentinelRef.current
-
-          if (!bottomSentinel) {
-            return
-          }
-
-          const nextTop =
-            bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
-
-          window.scrollTo({
-            top: Math.max(0, nextTop),
-            behavior: 'auto',
-          })
+        if (!bottomSentinel) {
+          return
         }
+
+        const nextTop =
+          bottomSentinel.getBoundingClientRect().top + window.scrollY - window.innerHeight + bottomSentinel.offsetHeight
+
+        window.scrollTo({
+          top: Math.max(0, nextTop),
+          behavior: 'auto',
+        })
 
         setPendingInitialScroll(false)
       })
