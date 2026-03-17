@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
@@ -20,6 +21,8 @@ type ChatSectionProps = {
   showTitle?: boolean
   showBackLink?: boolean
 }
+
+const LONG_PRESS_MS = 450
 
 function AvatarFallback() {
   return (
@@ -87,6 +90,7 @@ function removeMessageById(messages: ChatMessageItem[], messageId: string) {
 export default function ChatSection({ showTitle = true, showBackLink = false }: ChatSectionProps) {
   const router = useRouter()
   const messagesRef = useRef<ChatMessageItem[]>([])
+  const longPressTimeoutRef = useRef<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -96,6 +100,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
+  const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
@@ -103,6 +109,25 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimeoutRef.current !== null) {
+        window.clearTimeout(longPressTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedMessage) {
+      return
+    }
+
+    if (!messages.some((message) => message.id === selectedMessage.id)) {
+      setSelectedMessage(null)
+      setIsActionSheetOpen(false)
+    }
+  }, [messages, selectedMessage])
 
   useEffect(() => {
     let isMounted = true
@@ -292,6 +317,30 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
   }
 
+  function handleActionSheetOpenChange(open: boolean) {
+    setIsActionSheetOpen(open)
+
+    if (!open) {
+      setSelectedMessage(null)
+    }
+  }
+
+  function clearLongPressTimeout() {
+    if (longPressTimeoutRef.current !== null) {
+      window.clearTimeout(longPressTimeoutRef.current)
+      longPressTimeoutRef.current = null
+    }
+  }
+
+  function startLongPress(message: ChatMessageItem) {
+    clearLongPressTimeout()
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      setSelectedMessage(message)
+      setIsActionSheetOpen(true)
+      longPressTimeoutRef.current = null
+    }, LONG_PRESS_MS)
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-none md:p-4">
@@ -401,22 +450,25 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 ) : (
                   <AvatarFallback />
                 )}
-                <div className="min-w-0 flex-1">
+                <div
+                  className="min-w-0 flex-1 rounded-2xl"
+                  onTouchStart={() => startLongPress(message)}
+                  onTouchEnd={clearLongPressTimeout}
+                  onTouchCancel={clearLongPressTimeout}
+                  onTouchMove={clearLongPressTimeout}
+                  onMouseDown={() => startLongPress(message)}
+                  onMouseUp={clearLongPressTimeout}
+                  onMouseLeave={clearLongPressTimeout}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    clearLongPressTimeout()
+                    setSelectedMessage(message)
+                    setIsActionSheetOpen(true)
+                  }}
+                >
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
                     <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
-                    {currentUserId === message.userId && !message.isDeleted ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleDeleteMessage(message)
-                        }}
-                        disabled={deletingMessageId === message.id}
-                        className="app-text-secondary text-xs underline disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {deletingMessageId === message.id ? 'Удаляем...' : 'Удалить'}
-                      </button>
-                    ) : null}
                   </div>
                   <p
                     className={[
@@ -440,6 +492,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </Link>
         </div>
       ) : null}
+      <ChatMessageActions
+        message={selectedMessage}
+        currentUserId={currentUserId}
+        open={isActionSheetOpen}
+        onOpenChange={handleActionSheetOpenChange}
+        onDelete={handleDeleteMessage}
+      />
     </div>
   )
 }
