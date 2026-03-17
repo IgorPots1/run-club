@@ -51,18 +51,18 @@ export default function ChatMessageActions({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/30 md:items-center md:justify-center md:p-4">
+    <div className="chat-no-select fixed inset-0 z-50 flex items-end bg-black/30 md:items-center md:justify-center md:p-4">
       <button
         type="button"
         aria-label="Закрыть действия сообщения"
-        className="absolute inset-0"
+        className="chat-no-select absolute inset-0"
         onClick={() => onOpenChange(false)}
       />
-      <div className="app-card relative w-full rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-md md:rounded-3xl md:pb-4">
+      <div className="chat-no-select app-card relative w-full rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-md md:rounded-3xl md:pb-4">
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
-        <div className="mb-4">
+        <div className="chat-no-select mb-4">
           <p className="app-text-primary text-base font-semibold">Действия</p>
-          <p className="app-text-secondary mt-1 truncate text-sm">&quot;{messagePreview}&quot;</p>
+          <p className="chat-no-select app-text-secondary mt-1 truncate text-sm">&quot;{messagePreview}&quot;</p>
         </div>
         <div className="space-y-1.5">
           <button

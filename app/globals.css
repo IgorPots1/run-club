@@ -251,7 +251,7 @@ textarea {
   color: var(--bottom-nav-inactive);
 }
 
-.chat-message {
+.chat-no-select {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
