@@ -93,10 +93,20 @@ function removeMessageById(messages: ChatMessageItem[], messageId: string) {
   return messages.filter((message) => message.id !== messageId)
 }
 
-function ChatMessageBody({ message }: { message: ChatMessageItem }) {
+function ChatMessageBody({
+  message,
+  isOwnMessage = false,
+}: {
+  message: ChatMessageItem
+  isOwnMessage?: boolean
+}) {
   return (
     <>
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <div
+        className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 ${
+          isOwnMessage ? 'justify-end text-right' : ''
+        }`}
+      >
         <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
         <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
       </div>
@@ -106,7 +116,11 @@ function ChatMessageBody({ message }: { message: ChatMessageItem }) {
           <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
         </div>
       ) : null}
-      <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-6">
+      <p
+        className={`app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-6 ${
+          isOwnMessage ? 'text-right' : ''
+        }`}
+      >
         {message.text}
       </p>
     </>
@@ -853,8 +867,11 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         ) : (
           <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-20 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-24">
             <div className="mt-auto space-y-4">
-              {messages.map((message) => (
-                <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
+              {messages.map((message) => {
+                const isOwnMessage = currentUserId === message.userId
+
+                return (
+                  <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
                   {message.id === firstUnreadMessageId ? (
                     <div className="mb-4 flex items-center gap-3">
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
@@ -862,8 +879,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
                     </div>
                   ) : null}
-                  <article className="flex items-start gap-3">
-                    {message.avatarUrl ? (
+                  <article className={`flex items-start gap-3 ${isOwnMessage ? 'justify-end' : ''}`}>
+                    {isOwnMessage ? null : message.avatarUrl ? (
                       <Image
                         src={message.avatarUrl}
                         alt=""
@@ -875,7 +892,11 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                       <AvatarFallback />
                     )}
                     <div
-                      className="chat-no-select min-w-0 flex-1 rounded-2xl"
+                      className={`chat-no-select min-w-0 rounded-2xl ${
+                        isOwnMessage
+                          ? 'app-surface-muted ml-auto w-full max-w-[85%] px-4 py-3'
+                          : 'flex-1'
+                      }`}
                       onTouchStart={() => startLongPress(message)}
                       onTouchEnd={clearLongPressTimeout}
                       onTouchCancel={clearLongPressTimeout}
@@ -890,11 +911,12 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                         setIsActionSheetOpen(true)
                       }}
                     >
-                      <ChatMessageBody message={message} />
+                      <ChatMessageBody message={message} isOwnMessage={isOwnMessage} />
                     </div>
                   </article>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
             <div ref={bottomSentinelRef} className="h-px w-full" aria-hidden="true" />
           </section>
