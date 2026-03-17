@@ -851,7 +851,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card rounded-2xl border p-4 pb-[calc(10rem+env(safe-area-inset-bottom))] shadow-sm md:pb-32">
+          <section className="app-card rounded-2xl border p-4 pb-[calc(9rem+4.75rem+env(safe-area-inset-bottom))] shadow-sm md:pb-32">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
@@ -900,7 +900,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         )}
 
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 px-4 pb-2 pt-2 md:bottom-0 md:pb-4 md:pt-0">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-4 pb-2 pt-2 md:bottom-0 md:pb-4 md:pt-0">
           <div className="mx-auto w-full max-w-xl pointer-events-auto bg-[color:var(--background)]/95 backdrop-blur md:max-w-7xl md:bg-transparent md:backdrop-blur-0">
             {pendingNewMessagesCount > 0 ? (
               <div className="mb-2 flex justify-center md:justify-end">
