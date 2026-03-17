@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import type { ChatMessageItem } from '@/lib/chat'
 
 type ChatMessageActionsProps = {
-  message: ChatMessageItem | null
+  message: ChatMessageItem
   currentUserId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -19,10 +19,6 @@ export default function ChatMessageActions({
   onDelete,
 }: ChatMessageActionsProps) {
   const router = useRouter()
-
-  if (!open || !message) {
-    return null
-  }
 
   const isOwnMessage = currentUserId === message.userId
 

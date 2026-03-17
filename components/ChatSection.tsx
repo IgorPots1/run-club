@@ -492,13 +492,15 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </Link>
         </div>
       ) : null}
-      <ChatMessageActions
-        message={selectedMessage}
-        currentUserId={currentUserId}
-        open={isActionSheetOpen}
-        onOpenChange={handleActionSheetOpenChange}
-        onDelete={handleDeleteMessage}
-      />
+      {selectedMessage ? (
+        <ChatMessageActions
+          message={selectedMessage}
+          currentUserId={currentUserId}
+          open={isActionSheetOpen}
+          onOpenChange={handleActionSheetOpenChange}
+          onDelete={handleDeleteMessage}
+        />
+      ) : null}
     </div>
   )
 }
