@@ -851,7 +851,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card rounded-2xl border p-4 pb-[calc(12rem+env(safe-area-inset-bottom))] shadow-sm md:pb-36">
+          <section className="app-card rounded-2xl border p-4 pb-[calc(10rem+env(safe-area-inset-bottom))] shadow-sm md:pb-32">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div key={message.id} ref={(node) => setMessageRef(message.id, node)}>
@@ -916,52 +916,65 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 </button>
               </div>
             ) : null}
-            <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <section className="rounded-[28px] border bg-[color:var(--surface)] px-3 py-2 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
               <form onSubmit={handleSubmit}>
-              {replyingToMessage ? (
-                <div className="mb-3 flex items-start justify-between gap-3 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-                  <div className="min-w-0">
-                    <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
-                    <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
+                {replyingToMessage ? (
+                  <div className="mb-2 flex items-start justify-between gap-3 rounded-2xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                    <div className="min-w-0">
+                      <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
+                      <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyingToMessage(null)}
+                      className="app-text-secondary shrink-0 rounded-full p-2 text-sm"
+                      aria-label="Отменить ответ"
+                    >
+                      X
+                    </button>
                   </div>
+                ) : null}
+                <div className="flex items-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setReplyingToMessage(null)}
-                    className="app-text-secondary shrink-0 rounded-lg px-2 py-1 text-sm"
-                    aria-label="Отменить ответ"
+                    className="app-button-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-lg font-medium"
+                    aria-label="Скоро: вложения"
                   >
-                    X
+                    +
+                  </button>
+                  <div className="app-input flex min-w-0 flex-1 items-end rounded-full border px-4 py-2">
+                    <label htmlFor="chat-message" className="sr-only">
+                      Сообщение
+                    </label>
+                    <textarea
+                      id="chat-message"
+                      value={draftMessage}
+                      onChange={(event) => {
+                        setDraftMessage(event.target.value)
+                        setSubmitError('')
+                      }}
+                      placeholder="Сообщение"
+                      disabled={submitting}
+                      maxLength={CHAT_MESSAGE_MAX_LENGTH}
+                      rows={1}
+                      className="min-h-[28px] max-h-32 w-full resize-none bg-transparent py-1 text-sm leading-6 outline-none placeholder:app-text-secondary"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
+                    className="app-button-primary flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting ? '...' : '>'
+                    }
                   </button>
                 </div>
-              ) : null}
-              <label htmlFor="chat-message" className="sr-only">
-                Сообщение
-              </label>
-              <textarea
-                id="chat-message"
-                value={draftMessage}
-                onChange={(event) => {
-                  setDraftMessage(event.target.value)
-                  setSubmitError('')
-                }}
-                placeholder="Сообщение"
-                disabled={submitting}
-                maxLength={CHAT_MESSAGE_MAX_LENGTH}
-                className="app-input min-h-24 w-full rounded-lg border px-3 py-2"
-              />
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <p className="app-text-secondary text-xs">
-                  {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
-                </p>
-                <button
-                  type="submit"
-                  disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
-                  className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {submitting ? 'Отправляем...' : 'Отправить'}
-                </button>
-              </div>
-              {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
+                <div className="mt-2 flex items-center justify-between gap-3 px-1">
+                  <p className="app-text-secondary text-xs">
+                    {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+                  </p>
+                  {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
+                </div>
               </form>
             </section>
           </div>
