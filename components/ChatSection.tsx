@@ -147,8 +147,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
-  const layoutViewportHeightRef = useRef(0)
-  const composerViewportOffsetRef = useRef(0)
   const longPressTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
@@ -171,7 +169,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
-  const [composerViewportOffset, setComposerViewportOffset] = useState(0)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
@@ -221,15 +218,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     delete messageRefs.current[messageId]
   }, [])
 
-  const getViewportMetrics = useCallback(() => {
-    const visualViewport = window.visualViewport
-
-    return {
-      height: visualViewport?.height ?? window.innerHeight,
-      offsetTop: visualViewport?.offsetTop ?? 0,
-    }
-  }, [])
-
   const isNearBottom = useCallback(() => {
     if (typeof window === 'undefined') {
       return false
@@ -241,12 +229,11 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       return true
     }
 
-    const viewportMetrics = getViewportMetrics()
     const distanceFromBottom =
-      scrollingElement.scrollHeight - (window.scrollY + viewportMetrics.offsetTop + viewportMetrics.height)
+      scrollingElement.scrollHeight - (window.scrollY + window.innerHeight)
 
     return distanceFromBottom <= 100
-  }, [getViewportMetrics])
+  }, [])
 
   const scrollPageToBottom = useCallback(() => {
     const bottomSentinel = bottomSentinelRef.current
@@ -330,62 +317,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const visualViewport = window.visualViewport
-
-    if (!visualViewport) {
-      return
-    }
-
-    let lastWindowWidth = window.innerWidth
-
-    function updateComposerViewportOffset() {
-      const nextVisualViewport = window.visualViewport
-
-      if (!nextVisualViewport) {
-        return
-      }
-
-      const viewportBottom = nextVisualViewport.height + nextVisualViewport.offsetTop
-
-      if (layoutViewportHeightRef.current === 0 || window.innerWidth !== lastWindowWidth) {
-        lastWindowWidth = window.innerWidth
-        layoutViewportHeightRef.current = Math.max(window.innerHeight, viewportBottom)
-      } else {
-        layoutViewportHeightRef.current = Math.max(
-          layoutViewportHeightRef.current,
-          window.innerHeight,
-          viewportBottom,
-        )
-      }
-
-      const nextOffset = Math.max(0, Math.round(layoutViewportHeightRef.current - viewportBottom))
-
-      if (composerViewportOffsetRef.current === nextOffset) {
-        return
-      }
-
-      composerViewportOffsetRef.current = nextOffset
-      setComposerViewportOffset(nextOffset)
-    }
-
-    updateComposerViewportOffset()
-
-    visualViewport.addEventListener('resize', updateComposerViewportOffset)
-    visualViewport.addEventListener('scroll', updateComposerViewportOffset)
-    window.addEventListener('resize', updateComposerViewportOffset)
-
-    return () => {
-      visualViewport.removeEventListener('resize', updateComposerViewportOffset)
-      visualViewport.removeEventListener('scroll', updateComposerViewportOffset)
-      window.removeEventListener('resize', updateComposerViewportOffset)
-    }
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -952,7 +883,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
             </p>
           </section>
         ) : (
-          <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-14 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-16">
+          <section className="app-card flex min-h-[calc(100svh-15rem)] flex-col justify-end rounded-2xl border p-4 pb-6 shadow-sm md:min-h-[calc(100vh-12rem)] md:pb-8">
             <div className="mt-auto flex flex-col">
               {messages.map((message, index) => {
                 const isOwnMessage = currentUserId === message.userId
@@ -1025,13 +956,8 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         )}
 
-        <div
-          className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0"
-          style={{
-            transform: composerViewportOffset > 0 ? `translateY(-${composerViewportOffset}px)` : undefined,
-          }}
-        >
-          <div className="mx-auto w-full max-w-xl pointer-events-auto md:max-w-7xl">
+        <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0">
+          <div className="mx-auto w-full max-w-xl md:max-w-7xl">
             {pendingNewMessagesCount > 0 ? (
               <div className="mb-2 flex justify-center md:justify-end">
                 <button
