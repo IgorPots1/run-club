@@ -877,7 +877,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                 const isOwnMessage = currentUserId === message.userId
                 const previousMessage = index > 0 ? messages[index - 1] : null
                 const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
-                const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1.5' : 'mt-3.5'
+                const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
 
                 return (
                   <div
@@ -886,7 +886,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                     className={messageSpacingClass}
                   >
                   {message.id === firstUnreadMessageId ? (
-                    <div className="mb-3 flex items-center gap-3">
+                    <div className="mb-3.5 flex items-center gap-3">
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
                       <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
                       <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
