@@ -87,6 +87,26 @@ function removeMessageById(messages: ChatMessageItem[], messageId: string) {
   return messages.filter((message) => message.id !== messageId)
 }
 
+function ChatMessageBody({ message }: { message: ChatMessageItem }) {
+  return (
+    <>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
+        <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
+      </div>
+      {message.replyTo ? (
+        <div className="mt-1 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+          <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
+          <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
+        </div>
+      ) : null}
+      <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-6">
+        {message.text}
+      </p>
+    </>
+  )
+}
+
 export default function ChatSection({ showTitle = true, showBackLink = false }: ChatSectionProps) {
   const router = useRouter()
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -461,13 +481,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="space-y-4">
             {messages.map((message) => (
-              <article
-                key={message.id}
-                className={[
-                  'flex items-start gap-3',
-                  isActionSheetOpen && selectedMessage?.id === message.id ? 'relative z-[60]' : '',
-                ].join(' ')}
-              >
+              <article key={message.id} className="flex items-start gap-3">
                 {message.avatarUrl ? (
                   <Image
                     src={message.avatarUrl}
@@ -480,12 +494,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   <AvatarFallback />
                 )}
                 <div
-                  className={[
-                    'chat-message min-w-0 flex-1 rounded-2xl transition duration-150',
-                    isActionSheetOpen && selectedMessage?.id === message.id
-                      ? 'scale-[1.01] bg-black/[0.04] ring-1 ring-black/10 dark:bg-white/[0.05] dark:ring-white/10'
-                      : '',
-                  ].join(' ')}
+                  className="chat-message min-w-0 flex-1 rounded-2xl"
                   onTouchStart={() => startLongPress(message)}
                   onTouchEnd={clearLongPressTimeout}
                   onTouchCancel={clearLongPressTimeout}
@@ -500,24 +509,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                     setIsActionSheetOpen(true)
                   }}
                 >
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <p className="app-text-primary truncate font-semibold">{message.displayName}</p>
-                    <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
-                  </div>
-                  {message.replyTo ? (
-                    <div className="mt-1 rounded-xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-                      <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
-                      <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
-                    </div>
-                  ) : null}
-                  <p
-                    className={[
-                      'mt-1 break-words whitespace-pre-wrap text-sm leading-6',
-                      message.isDeleted ? 'app-text-secondary italic' : 'app-text-primary',
-                    ].join(' ')}
-                  >
-                    {message.text}
-                  </p>
+                  <ChatMessageBody message={message} />
                 </div>
               </article>
             ))}
@@ -530,6 +522,28 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           <Link href="/dashboard" className="app-text-secondary text-sm underline">
             Назад на главную
           </Link>
+        </div>
+      ) : null}
+      {selectedMessage && isActionSheetOpen ? (
+        <div className="pointer-events-none fixed inset-x-4 bottom-[calc(15.5rem+env(safe-area-inset-bottom))] z-[60] mx-auto max-w-xl md:bottom-auto md:left-1/2 md:top-24 md:w-full md:max-w-md md:-translate-x-1/2">
+          <div className="app-card rounded-2xl border px-4 py-3 shadow-2xl ring-1 ring-black/10 dark:ring-white/10">
+            <div className="flex items-start gap-3">
+              {selectedMessage.avatarUrl ? (
+                <Image
+                  src={selectedMessage.avatarUrl}
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="h-10 w-10 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <AvatarFallback />
+              )}
+              <div className="min-w-0 flex-1 rounded-2xl bg-black/[0.04] px-3 py-2 dark:bg-white/[0.05]">
+                <ChatMessageBody message={selectedMessage} />
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
       {selectedMessage ? (
