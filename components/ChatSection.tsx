@@ -180,6 +180,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const useKeyboardOpenComposerLayout = !useIsolatedChatLayout && isKeyboardOpen
+  const renderComposerInsideScrollContainer = useIsolatedChatLayout && isKeyboardOpen
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -633,6 +634,20 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   }, [messages, scrollPageToBottom])
 
   useEffect(() => {
+    if (!renderComposerInsideScrollContainer || !isComposerFocused) {
+      return
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      scrollPageToBottom()
+    })
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+    }
+  }, [isComposerFocused, renderComposerInsideScrollContainer, scrollPageToBottom])
+
+  useEffect(() => {
     const pendingRestore = prependScrollRestoreRef.current
 
     if (!pendingRestore) {
@@ -989,6 +1004,90 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
     }
   }
 
+  function renderComposer({ insideScrollContainer = false }: { insideScrollContainer?: boolean } = {}) {
+    return (
+      <div className={insideScrollContainer ? 'mt-3' : ''}>
+        {pendingNewMessagesCount > 0 ? (
+          <div className="mb-2 flex justify-center md:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setPendingNewMessagesCount(0)
+                scrollPageToBottom()
+              }}
+              className="app-button-secondary min-h-11 rounded-full border px-4 py-2 text-sm font-medium shadow-sm"
+            >
+              {getNewMessagesLabel(pendingNewMessagesCount)}
+            </button>
+          </div>
+        ) : null}
+        <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/82 px-2 py-1.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[color:var(--background)]/78">
+          <form onSubmit={handleSubmit}>
+            {replyingToMessage ? (
+              <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                <div className="min-w-0">
+                  <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
+                  <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyingToMessage(null)}
+                  className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
+                  aria-label="Отменить ответ"
+                >
+                  X
+                </button>
+              </div>
+            ) : null}
+            <div className="flex items-end gap-1.5">
+              <button
+                type="button"
+                className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
+                aria-label="Скоро: вложения"
+              >
+                +
+              </button>
+              <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 py-1.5 shadow-none">
+                <label htmlFor="chat-message" className="sr-only">
+                  Сообщение
+                </label>
+                <textarea
+                  ref={composerTextareaRef}
+                  id="chat-message"
+                  value={draftMessage}
+                  onChange={(event) => {
+                    setDraftMessage(event.target.value)
+                    setSubmitError('')
+                  }}
+                  onFocus={() => setIsComposerFocused(true)}
+                  onBlur={() => setIsComposerFocused(false)}
+                  placeholder="Сообщение"
+                  disabled={submitting}
+                  maxLength={CHAT_MESSAGE_MAX_LENGTH}
+                  rows={1}
+                  className="min-h-0 max-h-24 w-full resize-none bg-transparent py-0.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
+                className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? '...' : '>'}
+              </button>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
+              <p className="app-text-secondary text-xs">
+                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+              </p>
+              {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
+            </div>
+          </form>
+        </section>
+      </div>
+    )
+  }
+
   function startLongPress(message: ChatMessageItem) {
     clearLongPressTimeout()
     longPressTimeoutRef.current = window.setTimeout(() => {
@@ -1157,105 +1256,31 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   </div>
                 )
               })}
+              {renderComposerInsideScrollContainer ? renderComposer({ insideScrollContainer: true }) : null}
               <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
             </div>
           </section>
         )}
 
-        <div
-          className={
-            useIsolatedChatLayout
-              ? 'mt-3'
-              : useKeyboardOpenComposerLayout
-              ? '-mx-4 mt-2 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2'
-              : 'pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0'
-          }
-        >
+        {renderComposerInsideScrollContainer ? null : (
           <div
-            className={`mx-auto w-full max-w-xl md:max-w-7xl ${
-              useIsolatedChatLayout || useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'
-            }`}
+            className={
+              useIsolatedChatLayout
+                ? 'mt-3'
+                : useKeyboardOpenComposerLayout
+                ? '-mx-4 mt-2 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2'
+                : 'pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0'
+            }
           >
-            {pendingNewMessagesCount > 0 ? (
-              <div className="mb-2 flex justify-center md:justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingNewMessagesCount(0)
-                    scrollPageToBottom()
-                  }}
-                  className="app-button-secondary min-h-11 rounded-full border px-4 py-2 text-sm font-medium shadow-sm"
-                >
-                  {getNewMessagesLabel(pendingNewMessagesCount)}
-                </button>
-              </div>
-            ) : null}
-            <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/82 px-2 py-1.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[color:var(--background)]/78">
-              <form onSubmit={handleSubmit}>
-                {replyingToMessage ? (
-                  <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-                    <div className="min-w-0">
-                      <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
-                      <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setReplyingToMessage(null)}
-                      className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
-                      aria-label="Отменить ответ"
-                    >
-                      X
-                    </button>
-                  </div>
-                ) : null}
-                <div className="flex items-end gap-1.5">
-                  <button
-                    type="button"
-                    className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
-                    aria-label="Скоро: вложения"
-                  >
-                    +
-                  </button>
-                  <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 py-1.5 shadow-none">
-                    <label htmlFor="chat-message" className="sr-only">
-                      Сообщение
-                    </label>
-                    <textarea
-                      ref={composerTextareaRef}
-                      id="chat-message"
-                      value={draftMessage}
-                      onChange={(event) => {
-                        setDraftMessage(event.target.value)
-                        setSubmitError('')
-                      }}
-                      onFocus={() => setIsComposerFocused(true)}
-                      onBlur={() => setIsComposerFocused(false)}
-                      placeholder="Сообщение"
-                      disabled={submitting}
-                      maxLength={CHAT_MESSAGE_MAX_LENGTH}
-                      rows={1}
-                      className="min-h-0 max-h-24 w-full resize-none bg-transparent py-0.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
-                    className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submitting ? '...' : '>'
-                    }
-                  </button>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
-                  <p className="app-text-secondary text-xs">
-                    {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
-                  </p>
-                  {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
-                </div>
-              </form>
-            </section>
+            <div
+              className={`mx-auto w-full max-w-xl md:max-w-7xl ${
+                useIsolatedChatLayout || useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'
+              }`}
+            >
+              {renderComposer()}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {showBackLink && !useIsolatedChatLayout ? (
