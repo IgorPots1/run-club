@@ -280,6 +280,11 @@ async function syncRunDetailSeriesForActivity(
   const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
 
   try {
+    console.info('[strava-webhook-debug] fetch_streams_start', {
+      runId,
+      activityId,
+    })
+
     if (shouldDebug) {
       console.info('[run-detail-debug] before_fetch_streams', {
         runId,
@@ -300,6 +305,15 @@ async function syncRunDetailSeriesForActivity(
         streamLengths,
       })
     }
+
+    console.info('[strava-webhook-debug] fetch_streams_success', {
+      runId,
+      activityId,
+      streamKeys: Object.entries(streamLengths)
+        .filter(([, length]) => length > 0)
+        .map(([key]) => key),
+      streamLengths,
+    })
 
     const pacePoints = buildPaceSeriesPoints(streams)
     const heartratePoints = buildHeartrateSeriesPoints(streams)
@@ -352,6 +366,12 @@ async function syncRunDetailSeriesForActivity(
         error: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
       })
     }
+
+    console.warn('[strava-webhook-debug] fetch_streams_failure', {
+      runId,
+      activityId,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
+    })
 
     console.warn('Strava run detail series sync skipped', {
       runId,
@@ -668,11 +688,26 @@ async function ensureFreshStravaConnection(connection: StravaConnectionRow): Pro
   let refreshedToken
 
   try {
+    console.info('[strava-webhook-debug] refresh_token_start', {
+      connectionId: connection.id,
+      athleteId: connection.strava_athlete_id,
+    })
+
     // #region agent log
     fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: `refresh-${connection.id}`, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:ensureFreshStravaConnection:refresh_attempt', message: 'Refreshing Strava token', data: { connectionId: connection.id, athleteId: connection.strava_athlete_id, expiresAt: connection.expires_at }, timestamp: Date.now() }) }).catch(() => {})
     // #endregion
     refreshedToken = await refreshStravaAccessToken(connection.refresh_token)
+    console.info('[strava-webhook-debug] refresh_token_success', {
+      connectionId: connection.id,
+      athleteId: connection.strava_athlete_id,
+    })
   } catch (caughtError) {
+    console.warn('[strava-webhook-debug] refresh_token_failure', {
+      connectionId: connection.id,
+      athleteId: connection.strava_athlete_id,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown refresh token error',
+    })
+
     if (isStravaAuthError(caughtError)) {
       // #region agent log
       fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: `refresh-${connection.id}`, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:ensureFreshStravaConnection:refresh_auth_failure', message: 'Strava token refresh auth failure', data: { connectionId: connection.id, athleteId: connection.strava_athlete_id }, timestamp: Date.now() }) }).catch(() => {})
@@ -756,6 +791,12 @@ export async function importStravaActivityForUser(
   }
 
   if (!existingRun) {
+    console.info('[strava-webhook-debug] insert_branch', {
+      userId,
+      activityId: activity.id,
+      externalId: payload.external_id,
+    })
+
     const { data: insertedRun, error: insertError } = await supabase
       .from('runs')
       .insert(payload)
@@ -794,6 +835,14 @@ export async function importStravaActivityForUser(
   }
 
   const requiresOwnerRepair = existingRun.user_id !== userId
+
+  console.info('[strava-webhook-debug] update_branch', {
+    userId,
+    runId: existingRun.id,
+    activityId: activity.id,
+    externalId: payload.external_id,
+    requiresOwnerRepair,
+  })
 
   if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
     console.info('[run-detail-debug] target_run_selected_for_processing', {

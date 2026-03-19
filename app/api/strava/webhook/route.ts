@@ -84,6 +84,12 @@ export async function POST(request: Request) {
     ownerId: event.owner_id ?? null,
     objectId: event.object_id ?? null,
   })
+  console.info('[strava-webhook-debug] event_received', {
+    objectType: event.object_type ?? null,
+    aspectType: event.aspect_type ?? null,
+    ownerId: event.owner_id ?? null,
+    activityId: event.object_id ?? null,
+  })
 
   const isActivityCreateOrUpdate = (
     event.object_type === 'activity' &&
@@ -98,10 +104,20 @@ export async function POST(request: Request) {
     })
 
     void (async () => {
+      let step = 'load_connection'
+
       try {
+        console.info('[strava-webhook-debug] load_connection_start', {
+          ownerId: event.owner_id,
+          activityId,
+        })
         const connection = await getStravaConnectionForAthlete(event.owner_id)
 
         if (!connection) {
+          console.warn('[strava-webhook-debug] load_connection_missing', {
+            ownerId: event.owner_id,
+            activityId,
+          })
           console.warn('Webhook import skipped: missing connection', {
             ownerId: event.owner_id,
             activityId,
@@ -109,13 +125,44 @@ export async function POST(request: Request) {
           return
         }
 
-        const activity = await fetchStravaActivityById(connection.access_token, activityId)
+        console.info('[strava-webhook-debug] load_connection_success', {
+          ownerId: event.owner_id,
+          activityId,
+          userId: connection.user_id,
+          connectionId: connection.id,
+        })
 
+        step = 'fetch_activity'
+        console.info('[strava-webhook-debug] fetch_activity_start', {
+          ownerId: event.owner_id,
+          activityId,
+        })
+        const activity = await fetchStravaActivityById(connection.access_token, activityId)
+        console.info('[strava-webhook-debug] fetch_activity_success', {
+          activityId,
+          activityType: activity.type ?? null,
+          startDate: activity.start_date ?? null,
+        })
+
+        step = 'import_run'
+        console.info('[strava-webhook-debug] import_run_start', {
+          activityId,
+          userId: connection.user_id,
+        })
         await importStravaActivityForUser(connection.user_id, activity, {
           updateExisting: true,
           accessToken: connection.access_token,
         })
+        console.info('[strava-webhook-debug] import_run_success', {
+          activityId,
+          userId: connection.user_id,
+        })
       } catch (caughtError) {
+        console.error('[strava-webhook-debug] webhook_import_failed', {
+          activityId,
+          step,
+          error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
+        })
         console.error('Webhook import failed', {
           activityId,
           error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
