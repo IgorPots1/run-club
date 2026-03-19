@@ -192,6 +192,15 @@ export default function ActivityPage() {
     activeBarIndex === null || !summary.chartData[activeBarIndex]
       ? null
       : { ...summary.chartData[activeBarIndex], index: activeBarIndex }
+  const weekTapTargetsStyle =
+    period === 'week'
+      ? {
+          top: chartConfig.chartMargin.top,
+          right: chartConfig.chartMargin.right + chartConfig.xPadding.right,
+          bottom: xAxisHeight,
+          left: chartConfig.chartMargin.left + chartConfig.yAxisWidth + chartConfig.xPadding.left,
+        }
+      : null
 
   useEffect(() => {
     if (!user) return
@@ -232,7 +241,10 @@ export default function ActivityPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+    <main
+      className="min-h-screen select-none pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0"
+      style={{ WebkitTapHighlightColor: 'transparent' }}
+    >
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-7xl md:px-8 md:py-6">
         <div className="mb-5 md:mb-8">
           <h1 className="app-text-primary text-2xl font-bold">Активность</h1>
@@ -359,6 +371,21 @@ export default function ActivityPage() {
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
+                      {period === 'week' && weekTapTargetsStyle ? (
+                        <div className="absolute z-10 grid grid-cols-7" style={weekTapTargetsStyle}>
+                          {summary.chartData.map((entry, index) => (
+                            <button
+                              key={`${entry.label}-tap-${index}`}
+                              type="button"
+                              className="h-full min-h-0 w-full bg-transparent"
+                              aria-label={`Показать активность за ${entry.label}: ${formatDistance(entry.distance)} км`}
+                              onClick={() => {
+                                setActiveBarIndex((current) => (current === index ? null : index))
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
