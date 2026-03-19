@@ -38,6 +38,13 @@ export type StravaActivitySummary = {
   } | null
 }
 
+export type StravaActivityStreams = {
+  time?: number[]
+  distance?: number[]
+  heartrate?: number[]
+  velocity_smooth?: number[]
+}
+
 export type StravaInitialSyncResult =
   | {
       ok: true

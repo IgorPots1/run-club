@@ -1,12 +1,17 @@
 import 'server-only'
 
-import type { StravaActivitySummary, StravaTokenExchangeResponse } from './strava-types'
+import type { StravaActivityStreams, StravaActivitySummary, StravaTokenExchangeResponse } from './strava-types'
 
 const STRAVA_AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
 const STRAVA_ACTIVITIES_URL = 'https://www.strava.com/api/v3/athlete/activities'
 const STRAVA_ACTIVITY_URL = 'https://www.strava.com/api/v3/activities'
+const STRAVA_ACTIVITY_STREAM_KEYS = 'time,distance,heartrate,velocity_smooth'
 const STRAVA_MVP_SCOPE = 'read,activity:read_all'
+
+type StravaActivityStreamEnvelope = {
+  data?: unknown
+}
 
 export class StravaApiError extends Error {
   status: number
@@ -175,4 +180,48 @@ export async function fetchStravaActivityById(
   const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
 
   return JSON.parse(responseText) as StravaActivitySummary
+}
+
+export async function fetchActivityStreams(
+  activityId: number,
+  accessToken: string
+): Promise<StravaActivityStreams> {
+  const params = new URLSearchParams({
+    keys: STRAVA_ACTIVITY_STREAM_KEYS,
+    key_by_type: 'true',
+  })
+
+  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}/streams?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw buildStravaApiError('Strava activity streams fetch failed', response.status, await readErrorBody(response))
+  }
+
+  const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
+  const parsed = JSON.parse(responseText) as Record<string, StravaActivityStreamEnvelope> | null
+
+  const streams: StravaActivityStreams = {
+    time: Array.isArray(parsed?.time?.data) ? parsed.time.data.filter((value): value is number => typeof value === 'number') : undefined,
+    distance: Array.isArray(parsed?.distance?.data) ? parsed.distance.data.filter((value): value is number => typeof value === 'number') : undefined,
+    heartrate: Array.isArray(parsed?.heartrate?.data) ? parsed.heartrate.data.filter((value): value is number => typeof value === 'number') : undefined,
+    velocity_smooth: Array.isArray(parsed?.velocity_smooth?.data)
+      ? parsed.velocity_smooth.data.filter((value): value is number => typeof value === 'number')
+      : undefined,
+  }
+
+  const receivedStreams = Object.entries(streams)
+    .filter(([, values]) => Array.isArray(values) && values.length > 0)
+    .map(([key]) => key)
+
+  console.info('Strava activity streams received', {
+    activityId,
+    streams: receivedStreams,
+  })
+
+  return streams
 }
