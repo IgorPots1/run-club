@@ -80,6 +80,7 @@ type StravaSyncMode = 'incremental' | 'backfill'
 
 type SyncStravaRunsOptions = {
   mode?: StravaSyncMode
+  debugRunId?: string
 }
 
 type RunDetailSeriesPoint = {
@@ -284,7 +285,11 @@ async function syncRunDetailSeriesForActivity(
   }
 }
 
-async function backfillMissingRunDetailSeriesForUser(userId: string, accessToken: string) {
+async function backfillMissingRunDetailSeriesForUser(
+  userId: string,
+  accessToken: string,
+  debugRunId?: string
+) {
   const supabase = createSupabaseAdminClient()
   const { data: stravaRuns, error: runsError } = await supabase
     .from('runs')
@@ -327,20 +332,30 @@ async function backfillMissingRunDetailSeriesForUser(userId: string, accessToken
       .filter((runId): runId is string => typeof runId === 'string' && runId.length > 0)
   )
 
-  const missingRuns = candidateRuns
-    .filter((run) => !existingRunIds.has(run.id))
-    .slice(0, RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE)
+  const missingRuns = candidateRuns.filter((run) => !existingRunIds.has(run.id))
 
-  if (missingRuns.length === 0) {
+  const selectedRuns = debugRunId
+    ? missingRuns.filter((run) => run.id === debugRunId).slice(0, 1)
+    : missingRuns.slice(0, RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE)
+
+  if (selectedRuns.length === 0) {
     return
   }
 
-  console.info('Strava run detail series historical backfill queued', {
-    userId,
-    batchSize: missingRuns.length,
-  })
+  if (debugRunId) {
+    console.info('Strava run detail series targeted fallback selected', {
+      userId,
+      runId: debugRunId,
+      batchSize: selectedRuns.length,
+    })
+  } else {
+    console.info('Strava run detail series historical backfill queued', {
+      userId,
+      batchSize: selectedRuns.length,
+    })
+  }
 
-  for (const run of missingRuns) {
+  for (const run of selectedRuns) {
     const activityId = Number(run.external_id)
 
     if (!Number.isFinite(activityId) || activityId <= 0) {
@@ -926,7 +941,7 @@ export async function syncStravaRuns(
     }
   }
 
-  await backfillMissingRunDetailSeriesForUser(userId, connection.access_token)
+  await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, options.debugRunId)
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:before_touch_connection', message: 'About to update last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0 }, timestamp: Date.now() }) }).catch(() => {})
