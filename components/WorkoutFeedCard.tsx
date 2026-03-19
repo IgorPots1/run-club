@@ -202,8 +202,8 @@ function WorkoutFeedCard({
       </div>
 
       {showMapPreview && mapPreviewUrl ? (
-        <div className="mt-4 overflow-hidden rounded-xl border ring-1 ring-black/5 dark:ring-white/10">
-          <div className="aspect-[2/1] w-full bg-[var(--surface-muted)]">
+        <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+          <div className="aspect-[2.15/1] w-full">
             <img
               src={mapPreviewUrl}
               alt="Предпросмотр маршрута"
