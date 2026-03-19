@@ -42,6 +42,21 @@ type ProfileRow = {
   avatar_url?: string | null
 }
 
+type RunDetailSeriesPoint = {
+  x: number
+  y: number
+}
+
+type RunDetailSeriesRow = {
+  pace_points: RunDetailSeriesPoint[] | null
+  heartrate_points: RunDetailSeriesPoint[] | null
+}
+
+const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
+  pace_points: null,
+  heartrate_points: null,
+}
+
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
   'id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
@@ -90,6 +105,22 @@ async function loadRunDetailsRow(runId: string) {
     .select(RUN_DETAILS_SELECT_LEGACY)
     .eq('id', runId)
     .maybeSingle()
+}
+
+function normalizeRunDetailSeriesPoints(value: unknown): RunDetailSeriesPoint[] | null {
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  const points = value
+    .filter((point): point is { x?: unknown; y?: unknown } => typeof point === 'object' && point !== null)
+    .map((point) => ({
+      x: Number(point.x),
+      y: Number(point.y),
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+
+  return points.length > 0 ? points : null
 }
 
 function StravaIcon() {
@@ -169,6 +200,7 @@ export default function RunDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [run, setRun] = useState<RunDetailsRow | null>(null)
+  const [runSeries, setRunSeries] = useState<RunDetailSeriesRow>(EMPTY_RUN_DETAIL_SERIES)
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [likesCount, setLikesCount] = useState(0)
   const [comments, setComments] = useState<RunCommentItem[]>([])
@@ -243,6 +275,7 @@ export default function RunDetailsPage() {
       if (!user) {
         if (isMounted) {
           setRun(null)
+          setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setLoading(false)
         }
         return
@@ -251,6 +284,7 @@ export default function RunDetailsPage() {
       if (!runId) {
         if (isMounted) {
           setError('Тренировка не найдена')
+          setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setLoading(false)
         }
         return
@@ -267,6 +301,7 @@ export default function RunDetailsPage() {
           if (isMounted) {
             setError('Не удалось загрузить тренировку')
             setRun(null)
+            setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           }
           return
         }
@@ -275,11 +310,12 @@ export default function RunDetailsPage() {
           if (isMounted) {
             setError('Тренировка не найдена')
             setRun(null)
+            setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           }
           return
         }
 
-        const [profileResult, likesResult] = await Promise.all([
+        const [profileResult, likesResult, seriesResult] = await Promise.all([
           supabase
             .from('profiles')
             .select('id, name, nickname, email, avatar_url')
@@ -289,6 +325,11 @@ export default function RunDetailsPage() {
             .from('run_likes')
             .select('id', { count: 'exact', head: true })
             .eq('run_id', runData.id),
+          supabase
+            .from('run_detail_series')
+            .select('pace_points, heartrate_points')
+            .eq('run_id', runData.id)
+            .maybeSingle(),
         ])
 
         let runComments: RunCommentItem[] = []
@@ -304,7 +345,15 @@ export default function RunDetailsPage() {
           return
         }
 
+        const normalizedRunSeries = seriesResult.error
+          ? EMPTY_RUN_DETAIL_SERIES
+          : {
+              pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
+              heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
+            }
+
         setRun(runData as RunDetailsRow)
+        setRunSeries(normalizedRunSeries)
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
         setLikesCount(Number(likesResult.count ?? 0))
         setComments(runComments)
@@ -313,6 +362,7 @@ export default function RunDetailsPage() {
         if (isMounted) {
           setError('Не удалось загрузить тренировку')
           setRun(null)
+          setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setComments([])
         }
       } finally {
@@ -545,6 +595,14 @@ export default function RunDetailsPage() {
               ) : (
                 <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
               )}
+            </div>
+            <div className="mt-3 rounded-xl border px-3 py-2 text-xs">
+              <p className="app-text-secondary">
+                pace_points: {runSeries.pace_points ? `yes (${runSeries.pace_points.length})` : 'no'}
+              </p>
+              <p className="app-text-secondary mt-1">
+                heartrate_points: {runSeries.heartrate_points ? `yes (${runSeries.heartrate_points.length})` : 'no'}
+              </p>
             </div>
           </section>
         ) : null}
