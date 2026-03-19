@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { memo, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
@@ -100,13 +101,13 @@ function WorkoutFeedCard({
   profileHref = null,
 }: WorkoutFeedCardProps) {
   const router = useRouter()
-  void mapPolyline
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
   const displayTitle = buildDisplayTitle(rawTitle)
   const displayUserName = displayName.trim() || 'Бегун'
+  const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
     : '—'
@@ -197,6 +198,21 @@ function WorkoutFeedCard({
         <span className="app-text-secondary">•</span>
         <span className="font-semibold">{movingTimeLabel}</span>
       </div>
+
+      {mapPreviewUrl ? (
+        <div className="mt-4 overflow-hidden rounded-xl border ring-1 ring-black/5 dark:ring-white/10">
+          <div className="aspect-[2/1] w-full bg-[var(--surface-muted)]">
+            <img
+              src={mapPreviewUrl}
+              alt="Предпросмотр маршрута"
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="app-text-secondary mt-4 text-sm">
         <RunLikeControl
