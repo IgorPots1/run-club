@@ -11,6 +11,9 @@ const INITIAL_SYNC_CUTOFF_MS = new Date(INITIAL_SYNC_CUTOFF).getTime()
 const INITIAL_SYNC_CUTOFF_UNIX_SECONDS = Math.floor(INITIAL_SYNC_CUTOFF_MS / 1000)
 const MAX_SYNC_ERROR_DETAILS = 10
 const RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE = 5
+const HEARTRATE_BACKFILL_WINDOW_DAYS = 45
+const HEARTRATE_BACKFILL_LOOKUP_LIMIT = 20
+const HEARTRATE_BACKFILL_BATCH_SIZE = 5
 const RUN_DETAIL_SERIES_DEBUG_RUN_ID = '586eec1e-41cc-4553-9e90-1c8f048bbbda'
 const RUN_DETAIL_SERIES_DEBUG_ACTIVITY_ID = 17777010725
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
@@ -61,6 +64,11 @@ type StravaSyncRowErrorDetail = {
 }
 
 type MissingRunDetailSeriesRow = {
+  id: string
+  external_id: string | null
+}
+
+type MissingHeartrateBackfillRunRow = {
   id: string
   external_id: string | null
 }
@@ -585,6 +593,130 @@ async function backfillMissingRunDetailSeriesForUser(
     })
 
     await syncRunDetailSeriesForActivity(supabase, run.id, activityId, accessToken)
+  }
+}
+
+async function backfillMissingHeartratePointsForUser(userId: string, accessToken: string) {
+  const recentWindowStartIso = new Date(
+    Date.now() - HEARTRATE_BACKFILL_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString()
+
+  const supabase = createSupabaseAdminClient()
+  const { data: recentRuns, error: recentRunsError } = await supabase
+    .from('runs')
+    .select('id, external_id')
+    .eq('user_id', userId)
+    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+    .gte('created_at', recentWindowStartIso)
+    .order('created_at', { ascending: false })
+    .limit(HEARTRATE_BACKFILL_LOOKUP_LIMIT)
+
+  if (recentRunsError) {
+    console.warn('Strava heartrate backfill recent runs lookup failed', {
+      userId,
+      error: recentRunsError.message,
+    })
+    return
+  }
+
+  const candidateRuns = ((recentRuns as MissingHeartrateBackfillRunRow[] | null) ?? [])
+    .filter((run) => typeof run.id === 'string' && run.id.length > 0)
+
+  if (candidateRuns.length === 0) {
+    return
+  }
+
+  const { data: missingHeartrateRows, error: missingHeartrateRowsError } = await supabase
+    .from('run_detail_series')
+    .select('run_id')
+    .in('run_id', candidateRuns.map((run) => run.id))
+    .is('heartrate_points', null)
+
+  if (missingHeartrateRowsError) {
+    console.warn('Strava heartrate backfill missing-series lookup failed', {
+      userId,
+      error: missingHeartrateRowsError.message,
+    })
+    return
+  }
+
+  const missingHeartrateRunIds = new Set(
+    (missingHeartrateRows ?? [])
+      .map((row) => row.run_id)
+      .filter((runId): runId is string => typeof runId === 'string' && runId.length > 0)
+  )
+
+  const selectedRuns = candidateRuns
+    .filter((run) => missingHeartrateRunIds.has(run.id))
+    .slice(0, HEARTRATE_BACKFILL_BATCH_SIZE)
+
+  if (selectedRuns.length === 0) {
+    return
+  }
+
+  console.info('Strava heartrate backfill queued', {
+    userId,
+    batchSize: selectedRuns.length,
+    windowDays: HEARTRATE_BACKFILL_WINDOW_DAYS,
+  })
+
+  for (const run of selectedRuns) {
+    const activityId = Number(run.external_id)
+
+    if (!Number.isFinite(activityId) || activityId <= 0) {
+      console.warn('Strava heartrate backfill skipped invalid external id', {
+        userId,
+        runId: run.id,
+        externalId: run.external_id,
+      })
+      continue
+    }
+
+    try {
+      const streams = await fetchActivityStreams(activityId, accessToken)
+      const heartratePoints = buildHeartrateSeriesPoints(streams, activityId)
+
+      if (!heartratePoints) {
+        console.info('Strava heartrate backfill skipped missing normalized heartrate', {
+          runId: run.id,
+          activityId,
+        })
+        continue
+      }
+
+      const { error: updateError } = await supabase
+        .from('run_detail_series')
+        .update({
+          heartrate_points: heartratePoints,
+        })
+        .eq('run_id', run.id)
+        .is('heartrate_points', null)
+
+      if (updateError) {
+        throw new Error(updateError.message)
+      }
+
+      console.info('Strava heartrate backfill updated', {
+        runId: run.id,
+        activityId,
+        heartratePointsCount: heartratePoints.length,
+      })
+    } catch (caughtError) {
+      if (isStravaNotFoundError(caughtError)) {
+        console.info('Strava heartrate backfill streams not ready yet', {
+          runId: run.id,
+          activityId,
+          status: caughtError.status,
+        })
+        continue
+      }
+
+      console.warn('Strava heartrate backfill failed', {
+        runId: run.id,
+        activityId,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown heartrate backfill error',
+      })
+    }
   }
 }
 
@@ -1213,6 +1345,7 @@ export async function syncStravaRuns(
   }
 
   await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, options.debugRunId)
+  await backfillMissingHeartratePointsForUser(userId, connection.access_token)
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:before_touch_connection', message: 'About to update last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0 }, timestamp: Date.now() }) }).catch(() => {})
