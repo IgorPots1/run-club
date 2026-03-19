@@ -261,14 +261,50 @@ function buildPaceSeriesPoints(streams: StravaActivityStreams) {
   })
 }
 
-function buildHeartrateSeriesPoints(streams: StravaActivityStreams) {
-  return buildBucketedSeries(streams.heartrate, (heartrate) => {
+function buildHeartrateSeriesPoints(
+  streams: StravaActivityStreams,
+  activityId?: number
+) {
+  const heartrateValues = Array.isArray(streams.heartrate) ? streams.heartrate : undefined
+  const totalInputPoints = heartrateValues?.length ?? 0
+  const validHeartrateValues = (heartrateValues ?? []).filter(
+    (heartrate) => Number.isFinite(heartrate) && heartrate >= 40 && heartrate <= 240
+  )
+
+  let producedBucketCount = 0
+  const points = buildBucketedSeries(heartrateValues, (heartrate) => {
     if (!Number.isFinite(heartrate) || heartrate < 40 || heartrate > 240) {
       return null
     }
 
     return heartrate
   })
+
+  if (Array.isArray(heartrateValues) && heartrateValues.length > 0) {
+    const bucketCount = Math.min(MAX_SERIES_POINTS, heartrateValues.length)
+
+    for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
+      const start = Math.floor((bucketIndex * heartrateValues.length) / bucketCount)
+      const end = Math.floor(((bucketIndex + 1) * heartrateValues.length) / bucketCount)
+      const bucketValues = heartrateValues
+        .slice(start, Math.max(start + 1, end))
+        .filter((heartrate) => Number.isFinite(heartrate) && heartrate >= 40 && heartrate <= 240)
+
+      if (bucketValues.length > 0) {
+        producedBucketCount += 1
+      }
+    }
+  }
+
+  console.info('[strava-hr-debug] normalization_result', {
+    activityId: activityId ?? null,
+    totalInputPoints,
+    survivingPoints: validHeartrateValues.length,
+    producedBucketCount,
+    finalResultNull: points == null,
+  })
+
+  return points
 }
 
 async function syncRunDetailSeriesForActivity(
@@ -295,6 +331,13 @@ async function syncRunDetailSeriesForActivity(
     const streams = await fetchActivityStreams(activityId, accessToken)
     const streamLengths = getStreamLengths(streams)
 
+    console.info('[strava-hr-debug] after_fetch_streams', {
+      activityId,
+      heartrateExists: Array.isArray(streams.heartrate),
+      heartrateLength: streams.heartrate?.length ?? 0,
+      heartrateFirst10: streams.heartrate?.slice(0, 10) ?? [],
+    })
+
     if (shouldDebug) {
       console.info('[run-detail-debug] after_fetch_streams', {
         runId,
@@ -316,7 +359,29 @@ async function syncRunDetailSeriesForActivity(
     })
 
     const pacePoints = buildPaceSeriesPoints(streams)
-    const heartratePoints = buildHeartrateSeriesPoints(streams)
+    const heartratePoints = buildHeartrateSeriesPoints(streams, activityId)
+
+    if (heartratePoints == null && pacePoints != null) {
+      const heartrateValues = Array.isArray(streams.heartrate) ? streams.heartrate : undefined
+      const validHeartrateCount = (heartrateValues ?? []).filter(
+        (heartrate) => Number.isFinite(heartrate) && heartrate >= 40 && heartrate <= 240
+      ).length
+      const heartrateReason = !heartrateValues
+        ? 'missing_heartrate_stream'
+        : heartrateValues.length === 0
+          ? 'empty_heartrate_stream'
+          : validHeartrateCount === 0
+            ? 'all_heartrate_values_filtered'
+            : 'insufficient_heartrate_buckets'
+
+      console.info('[strava-hr-debug] heartrate_missing_while_pace_present', {
+        activityId,
+        reason: heartrateReason,
+        heartrateLength: heartrateValues?.length ?? 0,
+        validHeartrateCount,
+        pacePointsLength: pacePoints.length,
+      })
+    }
 
     if (shouldDebug) {
       console.info('[run-detail-debug] before_run_detail_series_upsert', {
