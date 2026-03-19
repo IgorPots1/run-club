@@ -156,6 +156,9 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const pendingAutoScrollToBottomRef = useRef(false)
   const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollY: number | null; scrollTop: number | null } | null>(null)
   const isLoadingOlderMessagesRef = useRef(false)
+  const focusedGestureStartScrollTopRef = useRef<number | null>(null)
+  const focusedGestureStartClientYRef = useRef<number | null>(null)
+  const focusedGestureBlurredRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -634,20 +637,6 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   }, [messages, scrollPageToBottom])
 
   useEffect(() => {
-    if (!renderComposerInsideScrollContainer || !isComposerFocused) {
-      return
-    }
-
-    const animationFrameId = window.requestAnimationFrame(() => {
-      scrollPageToBottom()
-    })
-
-    return () => {
-      window.cancelAnimationFrame(animationFrameId)
-    }
-  }, [isComposerFocused, renderComposerInsideScrollContainer, scrollPageToBottom])
-
-  useEffect(() => {
     const pendingRestore = prependScrollRestoreRef.current
 
     if (!pendingRestore) {
@@ -815,6 +804,82 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       }
     }
   }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages, useIsolatedChatLayout])
+
+  useEffect(() => {
+    if (!useIsolatedChatLayout || typeof window === 'undefined') {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    function resetFocusedGestureTracking() {
+      focusedGestureStartScrollTopRef.current = null
+      focusedGestureStartClientYRef.current = null
+      focusedGestureBlurredRef.current = false
+    }
+
+    function handleTouchStart(event: TouchEvent) {
+      if (!isComposerFocused || window.innerWidth >= 768) {
+        resetFocusedGestureTracking()
+        return
+      }
+
+      const activeScrollContainer = scrollContainerRef.current
+      const touch = event.touches[0]
+
+      if (!touch || !activeScrollContainer) {
+        resetFocusedGestureTracking()
+        return
+      }
+
+      focusedGestureStartScrollTopRef.current = activeScrollContainer.scrollTop
+      focusedGestureStartClientYRef.current = touch.clientY
+      focusedGestureBlurredRef.current = false
+    }
+
+    function handleTouchMove(event: TouchEvent) {
+      if (!isComposerFocused || focusedGestureBlurredRef.current) {
+        return
+      }
+
+      const activeScrollContainer = scrollContainerRef.current
+      const touch = event.touches[0]
+      const gestureStartScrollTop = focusedGestureStartScrollTopRef.current
+      const gestureStartClientY = focusedGestureStartClientYRef.current
+      const textarea = composerTextareaRef.current
+
+      if (!touch || !activeScrollContainer || gestureStartScrollTop === null || gestureStartClientY === null || !textarea) {
+        return
+      }
+
+      const dragDistance = touch.clientY - gestureStartClientY
+      const scrollDelta = gestureStartScrollTop - activeScrollContainer.scrollTop
+      const isIntentionalUpwardScroll = dragDistance > 18 && scrollDelta > 24
+
+      if (!isIntentionalUpwardScroll) {
+        return
+      }
+
+      focusedGestureBlurredRef.current = true
+      textarea.blur()
+    }
+
+    scrollContainer.addEventListener('touchstart', handleTouchStart, { passive: true })
+    scrollContainer.addEventListener('touchmove', handleTouchMove, { passive: true })
+    scrollContainer.addEventListener('touchend', resetFocusedGestureTracking, { passive: true })
+    scrollContainer.addEventListener('touchcancel', resetFocusedGestureTracking, { passive: true })
+
+    return () => {
+      scrollContainer.removeEventListener('touchstart', handleTouchStart)
+      scrollContainer.removeEventListener('touchmove', handleTouchMove)
+      scrollContainer.removeEventListener('touchend', resetFocusedGestureTracking)
+      scrollContainer.removeEventListener('touchcancel', resetFocusedGestureTracking)
+    }
+  }, [isComposerFocused, useIsolatedChatLayout])
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
@@ -1159,12 +1224,105 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
       ) : null}
 
       <div className={`relative ${useIsolatedChatLayout ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
-        {error ? (
-          <section className={`app-card rounded-2xl border p-4 shadow-sm ${useIsolatedChatLayout ? 'flex-1' : ''}`}>
+        {useIsolatedChatLayout ? (
+          <div
+            ref={scrollContainerRef}
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
+          >
+            <div className="flex min-h-full flex-col">
+              {error ? (
+                <section className="app-card flex flex-1 rounded-2xl border p-4 shadow-sm">
+                  <p className="text-sm text-red-600">{error}</p>
+                </section>
+              ) : messages.length === 0 ? (
+                <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
+                  <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
+                  <p className="app-text-secondary mt-2 text-sm">
+                    Когда в базе появятся сообщения, они отобразятся здесь.
+                  </p>
+                </section>
+              ) : (
+                <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
+                  <div className="mt-auto flex flex-col">
+                    {messages.map((message, index) => {
+                      const isOwnMessage = currentUserId === message.userId
+                      const previousMessage = index > 0 ? messages[index - 1] : null
+                      const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
+                      const isFirstInAuthorRun = !isSameAuthorAsPrevious
+                      const showAvatar = !isOwnMessage && isFirstInAuthorRun
+                      const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
+                      const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
+
+                      return (
+                        <div
+                          key={message.id}
+                          ref={(node) => setMessageRef(message.id, node)}
+                          className={messageSpacingClass}
+                        >
+                        {message.id === firstUnreadMessageId ? (
+                          <div className="mb-3.5 flex items-center gap-3">
+                            <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                            <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
+                            <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                          </div>
+                        ) : null}
+                        <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
+                          {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
+                            <Image
+                              src={message.avatarUrl}
+                              alt=""
+                              width={40}
+                              height={40}
+                              className="h-10 w-10 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <AvatarFallback />
+                          ) : (
+                            <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+                          )}
+                          <div
+                            className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
+                              isOwnMessage
+                                ? 'ml-auto border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
+                                : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
+                            }`}
+                            onTouchStart={() => startLongPress(message)}
+                            onTouchEnd={clearLongPressTimeout}
+                            onTouchCancel={clearLongPressTimeout}
+                            onTouchMove={clearLongPressTimeout}
+                            onMouseDown={() => startLongPress(message)}
+                            onMouseUp={clearLongPressTimeout}
+                            onMouseLeave={clearLongPressTimeout}
+                            onContextMenu={(event) => {
+                              event.preventDefault()
+                              clearLongPressTimeout()
+                              setSelectedMessage(message)
+                              setIsActionSheetOpen(true)
+                            }}
+                          >
+                            <ChatMessageBody
+                              message={message}
+                              isOwnMessage={isOwnMessage}
+                              showSenderName={showSenderName}
+                            />
+                          </div>
+                        </article>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+              {renderComposer({ insideScrollContainer: true })}
+              <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
+            </div>
+          </div>
+        ) : error ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error}</p>
           </section>
         ) : messages.length === 0 ? (
-          <section className={`app-card rounded-2xl border p-4 shadow-sm ${useIsolatedChatLayout ? 'flex-1' : ''}`}>
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
             <p className="app-text-secondary mt-2 text-sm">
               Когда в базе появятся сообщения, они отобразятся здесь.
@@ -1172,24 +1330,13 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
           </section>
         ) : (
           <section
-            className={`app-card flex flex-col rounded-2xl border shadow-sm ${
-              useIsolatedChatLayout
-                ? 'min-h-0 flex-1 overflow-hidden'
-                : `min-h-[calc(100svh-15rem)] p-4 md:min-h-[calc(100vh-12rem)] ${
-                    useKeyboardOpenComposerLayout
-                      ? 'pb-4 md:pb-24'
-                      : 'pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-24'
-                  }`
+            className={`app-card flex min-h-[calc(100svh-15rem)] flex-col rounded-2xl border p-4 shadow-sm md:min-h-[calc(100vh-12rem)] ${
+              useKeyboardOpenComposerLayout
+                ? 'pb-4 md:pb-24'
+                : 'pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-24'
             }`}
           >
-            <div
-              ref={useIsolatedChatLayout ? scrollContainerRef : undefined}
-              className={`flex flex-col ${
-                useIsolatedChatLayout
-                  ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 [WebkitOverflowScrolling:touch]'
-                  : 'mt-auto'
-              }`}
-            >
+            <div className="mt-auto flex flex-col">
               {messages.map((message, index) => {
                 const isOwnMessage = currentUserId === message.userId
                 const previousMessage = index > 0 ? messages[index - 1] : null
@@ -1256,26 +1403,21 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
                   </div>
                 )
               })}
-              {renderComposerInsideScrollContainer ? renderComposer({ insideScrollContainer: true }) : null}
               <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
             </div>
           </section>
         )}
 
-        {renderComposerInsideScrollContainer ? null : (
+        {useIsolatedChatLayout ? null : (
           <div
             className={
-              useIsolatedChatLayout
-                ? 'mt-3'
-                : useKeyboardOpenComposerLayout
+              useKeyboardOpenComposerLayout
                 ? '-mx-4 mt-2 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2'
                 : 'pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 px-3 pb-1.5 pt-1.5 md:bottom-0 md:px-4 md:pb-3 md:pt-0'
             }
           >
             <div
-              className={`mx-auto w-full max-w-xl md:max-w-7xl ${
-                useIsolatedChatLayout || useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'
-              }`}
+              className={`mx-auto w-full max-w-xl md:max-w-7xl ${useKeyboardOpenComposerLayout ? '' : 'pointer-events-auto'}`}
             >
               {renderComposer()}
             </div>
