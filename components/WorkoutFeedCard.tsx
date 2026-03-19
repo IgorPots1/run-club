@@ -193,14 +193,6 @@ function WorkoutFeedCard({
         </p>
       </div>
 
-      <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
-        <span className="font-semibold">{distanceLabel}</span>
-        <span className="app-text-secondary">•</span>
-        <span className="font-semibold">{paceWithUnit}</span>
-        <span className="app-text-secondary">•</span>
-        <span className="font-semibold">{movingTimeLabel}</span>
-      </div>
-
       {showMapPreview && mapPreviewUrl ? (
         <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
           <div className="relative aspect-[2.15/1] w-full">
@@ -217,9 +209,26 @@ function WorkoutFeedCard({
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/14 via-black/5 to-transparent"
             />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                <span>{distanceLabel}</span>
+                <span className="text-white/75">•</span>
+                <span>{paceWithUnit}</span>
+                <span className="text-white/75">•</span>
+                <span>{movingTimeLabel}</span>
+              </div>
+            </div>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
+          <span className="font-semibold">{distanceLabel}</span>
+          <span className="app-text-secondary">•</span>
+          <span className="font-semibold">{paceWithUnit}</span>
+          <span className="app-text-secondary">•</span>
+          <span className="font-semibold">{movingTimeLabel}</span>
+        </div>
+      )}
 
       <div className="app-text-secondary mt-4 text-sm">
         <RunLikeControl
