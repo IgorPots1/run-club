@@ -201,6 +201,12 @@ export default function ActivityPage() {
           left: chartConfig.chartMargin.left + chartConfig.yAxisWidth + chartConfig.xPadding.left,
         }
       : null
+  const chartInteractionStyle = {
+    userSelect: 'none' as const,
+    WebkitUserSelect: 'none' as const,
+    WebkitTouchCallout: 'none' as const,
+    WebkitTapHighlightColor: 'transparent',
+  }
 
   useEffect(() => {
     if (!user) return
@@ -241,10 +247,7 @@ export default function ActivityPage() {
   }
 
   return (
-    <main
-      className="min-h-screen select-none pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0"
-      style={{ WebkitTapHighlightColor: 'transparent' }}
-    >
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-7xl md:px-8 md:py-6">
         <div className="mb-5 md:mb-8">
           <h1 className="app-text-primary text-2xl font-bold">Активность</h1>
@@ -311,7 +314,7 @@ export default function ActivityPage() {
                   </div>
                 ) : (
                   <div className="mt-3 h-[220px] w-full md:mt-3.5 md:h-[300px]">
-                    <div className="relative h-full w-full">
+                    <div className="relative h-full w-full select-none touch-manipulation" style={chartInteractionStyle}>
                       <div className="pointer-events-none absolute left-2 top-2 z-10">
                         <ActivityChartTooltip point={activeBar} />
                       </div>
@@ -372,16 +375,17 @@ export default function ActivityPage() {
                         </BarChart>
                       </ResponsiveContainer>
                       {period === 'week' && weekTapTargetsStyle ? (
-                        <div className="absolute z-10 grid grid-cols-7" style={weekTapTargetsStyle}>
+                        <div className="absolute z-10 grid h-full w-full grid-cols-7" style={weekTapTargetsStyle}>
                           {summary.chartData.map((entry, index) => (
                             <button
                               key={`${entry.label}-tap-${index}`}
                               type="button"
-                              className="h-full min-h-0 w-full bg-transparent"
+                              className="h-full min-h-0 w-full appearance-none bg-transparent p-0"
                               aria-label={`Показать активность за ${entry.label}: ${formatDistance(entry.distance)} км`}
                               onClick={() => {
                                 setActiveBarIndex((current) => (current === index ? null : index))
                               }}
+                              style={chartInteractionStyle}
                             />
                           ))}
                         </div>
