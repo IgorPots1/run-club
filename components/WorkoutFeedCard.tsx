@@ -207,7 +207,7 @@ function WorkoutFeedCard({
             />
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/50 to-transparent"
+              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
