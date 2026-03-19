@@ -52,6 +52,11 @@ export async function GET(request: Request) {
     userId: user.id,
   })
   // #endregion
+  console.info('[run-detail-debug] sync_route_start', {
+    userId: user.id,
+    targetRunId: '586eec1e-41cc-4553-9e90-1c8f048bbbda',
+    targetActivityId: 17777010725,
+  })
 
   try {
     const result = await syncStravaRuns(user.id, { mode: 'backfill' })

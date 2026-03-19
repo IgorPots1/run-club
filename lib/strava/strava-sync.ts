@@ -11,6 +11,8 @@ const INITIAL_SYNC_CUTOFF_MS = new Date(INITIAL_SYNC_CUTOFF).getTime()
 const INITIAL_SYNC_CUTOFF_UNIX_SECONDS = Math.floor(INITIAL_SYNC_CUTOFF_MS / 1000)
 const MAX_SYNC_ERROR_DETAILS = 10
 const RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE = 5
+const RUN_DETAIL_SERIES_DEBUG_RUN_ID = '586eec1e-41cc-4553-9e90-1c8f048bbbda'
+const RUN_DETAIL_SERIES_DEBUG_ACTIVITY_ID = 17777010725
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
 const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run']
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
@@ -86,6 +88,27 @@ type SyncStravaRunsOptions = {
 type RunDetailSeriesPoint = {
   x: number
   y: number
+}
+
+function shouldDebugRunDetailSeries(input: {
+  runId?: string | null
+  activityId?: number | string | null
+  externalId?: string | null
+}) {
+  const normalizedActivityId = Number(input.activityId ?? input.externalId ?? NaN)
+  return (
+    input.runId === RUN_DETAIL_SERIES_DEBUG_RUN_ID ||
+    normalizedActivityId === RUN_DETAIL_SERIES_DEBUG_ACTIVITY_ID
+  )
+}
+
+function getStreamLengths(streams: StravaActivityStreams) {
+  return {
+    time: streams.time?.length ?? 0,
+    distance: streams.distance?.length ?? 0,
+    velocity_smooth: streams.velocity_smooth?.length ?? 0,
+    heartrate: streams.heartrate?.length ?? 0,
+  }
 }
 
 export class StravaReconnectRequiredError extends Error {
@@ -254,10 +277,41 @@ async function syncRunDetailSeriesForActivity(
   activityId: number,
   accessToken: string
 ) {
+  const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
+
   try {
+    if (shouldDebug) {
+      console.info('[run-detail-debug] before_fetch_streams', {
+        runId,
+        activityId,
+      })
+    }
+
     const streams = await fetchActivityStreams(activityId, accessToken)
+    const streamLengths = getStreamLengths(streams)
+
+    if (shouldDebug) {
+      console.info('[run-detail-debug] after_fetch_streams', {
+        runId,
+        activityId,
+        streamKeys: Object.entries(streamLengths)
+          .filter(([, length]) => length > 0)
+          .map(([key]) => key),
+        streamLengths,
+      })
+    }
+
     const pacePoints = buildPaceSeriesPoints(streams)
     const heartratePoints = buildHeartrateSeriesPoints(streams)
+
+    if (shouldDebug) {
+      console.info('[run-detail-debug] before_run_detail_series_upsert', {
+        runId,
+        activityId,
+        pacePointsLength: pacePoints?.length ?? 0,
+        heartratePointsLength: heartratePoints?.length ?? 0,
+      })
+    }
 
     const { error } = await supabase
       .from('run_detail_series')
@@ -274,9 +328,31 @@ async function syncRunDetailSeriesForActivity(
       )
 
     if (error) {
+      if (shouldDebug) {
+        console.error('[run-detail-debug] run_detail_series_upsert_failed', {
+          runId,
+          activityId,
+          error: error.message,
+        })
+      }
       throw new Error(error.message)
     }
+
+    if (shouldDebug) {
+      console.info('[run-detail-debug] run_detail_series_upsert_succeeded', {
+        runId,
+        activityId,
+      })
+    }
   } catch (caughtError) {
+    if (shouldDebug) {
+      console.warn('[run-detail-debug] run_detail_series_sync_failed', {
+        runId,
+        activityId,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
+      })
+    }
+
     console.warn('Strava run detail series sync skipped', {
       runId,
       activityId,
@@ -313,6 +389,14 @@ async function backfillMissingRunDetailSeriesForUser(
     return
   }
 
+  if (shouldDebugRunDetailSeries({ runId: RUN_DETAIL_SERIES_DEBUG_RUN_ID })) {
+    console.info('[run-detail-debug] fallback_candidates_loaded', {
+      userId,
+      candidateRunsCount: candidateRuns.length,
+      targetRunPresent: candidateRuns.some((run) => run.id === RUN_DETAIL_SERIES_DEBUG_RUN_ID),
+    })
+  }
+
   const { data: existingSeriesRows, error: existingSeriesError } = await supabase
     .from('run_detail_series')
     .select('run_id')
@@ -339,6 +423,14 @@ async function backfillMissingRunDetailSeriesForUser(
     : missingRuns.slice(0, RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE)
 
   if (selectedRuns.length === 0) {
+    if (shouldDebugRunDetailSeries({ runId: debugRunId ?? RUN_DETAIL_SERIES_DEBUG_RUN_ID })) {
+      console.info('[run-detail-debug] target_run_not_selected_for_fallback', {
+        userId,
+        debugRunId: debugRunId ?? null,
+        targetRunId: RUN_DETAIL_SERIES_DEBUG_RUN_ID,
+        targetMissingSeries: missingRuns.some((run) => run.id === RUN_DETAIL_SERIES_DEBUG_RUN_ID),
+      })
+    }
     return
   }
 
@@ -358,7 +450,22 @@ async function backfillMissingRunDetailSeriesForUser(
   for (const run of selectedRuns) {
     const activityId = Number(run.external_id)
 
+    if (shouldDebugRunDetailSeries({ runId: run.id, activityId })) {
+      console.info('[run-detail-debug] target_run_selected_for_fallback', {
+        runId: run.id,
+        activityId,
+        externalId: run.external_id,
+      })
+    }
+
     if (!Number.isFinite(activityId) || activityId <= 0) {
+      if (shouldDebugRunDetailSeries({ runId: run.id, externalId: run.external_id })) {
+        console.warn('[run-detail-debug] target_run_skipped', {
+          runId: run.id,
+          externalId: run.external_id,
+          reason: 'invalid_external_id',
+        })
+      }
       console.warn('Strava run detail series historical backfill skipped invalid external id', {
         userId,
         runId: run.id,
@@ -620,7 +727,15 @@ export async function importStravaActivityForUser(
   activity: StravaActivitySummary,
   options: ImportStravaActivityOptions = {}
 ): Promise<StravaImportResult> {
+  const activityMatchesDebugRun = shouldDebugRunDetailSeries({ activityId: activity.id })
+
   if (!isValidStravaRun(activity)) {
+    if (activityMatchesDebugRun) {
+      console.warn('[run-detail-debug] target_run_skipped', {
+        activityId: activity.id,
+        reason: 'invalid_strava_run',
+      })
+    }
     return {
       status: 'skipped_invalid',
       activityId: String(activity.id),
@@ -680,7 +795,24 @@ export async function importStravaActivityForUser(
 
   const requiresOwnerRepair = existingRun.user_id !== userId
 
+  if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
+    console.info('[run-detail-debug] target_run_selected_for_processing', {
+      runId: existingRun.id,
+      activityId: activity.id,
+      path: !options.updateExisting && !requiresOwnerRepair ? 'skipped_existing_branch' : 'update_existing_branch',
+      accessTokenPresent: Boolean(options.accessToken),
+      requiresOwnerRepair,
+    })
+  }
+
   if (!options.updateExisting && !requiresOwnerRepair) {
+    if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
+      console.warn('[run-detail-debug] target_run_skipped', {
+        runId: existingRun.id,
+        activityId: activity.id,
+        reason: 'existing_run_without_update',
+      })
+    }
     // #region agent log
     options.debugRunId
       ? fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:duplicate_skip', message: 'Skipping existing Strava run', data: { userId, externalId: payload.external_id, existingRunUserId: existingRun.user_id }, timestamp: Date.now() }) }).catch(() => {})
@@ -742,6 +874,12 @@ export async function importStravaActivityForUser(
     }
 
     await syncRunDetailSeriesForActivity(supabase, existingRun.id, activity.id, options.accessToken)
+  } else if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
+    console.warn('[run-detail-debug] target_run_skipped', {
+      runId: existingRun.id,
+      activityId: activity.id,
+      reason: 'missing_access_token',
+    })
   }
 
   return {
