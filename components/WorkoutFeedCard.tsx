@@ -14,6 +14,7 @@ type WorkoutFeedCardProps = {
   distanceKm?: number | null
   pace?: string | number | null
   movingTime?: string | null
+  mapPolyline?: string | null
   xp: number
   createdAt: string
   displayName: string
@@ -86,6 +87,7 @@ function WorkoutFeedCard({
   distanceKm,
   pace,
   movingTime = null,
+  mapPolyline = null,
   xp,
   createdAt,
   displayName,
@@ -98,6 +100,7 @@ function WorkoutFeedCard({
   profileHref = null,
 }: WorkoutFeedCardProps) {
   const router = useRouter()
+  void mapPolyline
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null

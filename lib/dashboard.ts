@@ -24,6 +24,7 @@ type RunRow = {
   duration_seconds?: number | null
   moving_time_seconds?: number | null
   elapsed_time_seconds?: number | null
+  map_polyline?: string | null
   xp: number | null
   created_at: string
 }
@@ -36,6 +37,7 @@ export type DashboardRunItem = {
   distance_km: number
   pace: string | number | null
   movingTime: string | null
+  map_polyline?: string | null
   xp: number
   created_at: string
   displayName: string
@@ -318,7 +320,7 @@ export async function loadFeedRuns(
   const end = start + limit - 1
   let runsQuery = supabase
     .from('runs')
-    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, xp, created_at')
+    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, map_polyline, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
@@ -361,6 +363,7 @@ export async function loadFeedRuns(
         distance_km: Number(run.distance_km ?? 0),
         pace: formatPace(Number(run.distance_km ?? 0), resolvedDurationSeconds),
         movingTime: formatMovingTime(resolvedDurationSeconds),
+        map_polyline: run.map_polyline ?? null,
         xp: Number(run.xp ?? 0),
         created_at: run.created_at,
         displayName: getProfileDisplayName(profile, 'Бегун'),
