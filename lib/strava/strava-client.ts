@@ -56,6 +56,10 @@ export function isStravaAuthError(error: unknown): error is StravaApiError {
   return error instanceof StravaApiError && error.authFailure
 }
 
+export function isStravaNotFoundError(error: unknown): error is StravaApiError {
+  return error instanceof StravaApiError && error.status === 404
+}
+
 function getRequiredEnv(
   name:
     | 'STRAVA_CLIENT_ID'

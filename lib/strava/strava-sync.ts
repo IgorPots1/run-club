@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { fetchActivityStreams, fetchStravaActivities, isStravaAuthError, refreshStravaAccessToken } from './strava-client'
+import { fetchActivityStreams, fetchStravaActivities, isStravaAuthError, isStravaNotFoundError, refreshStravaAccessToken } from './strava-client'
 import type { StravaActivityStreams, StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
@@ -424,6 +424,20 @@ async function syncRunDetailSeriesForActivity(
       })
     }
   } catch (caughtError) {
+    if (isStravaNotFoundError(caughtError)) {
+      console.info('Strava activity streams not ready yet', {
+        runId,
+        activityId,
+        status: caughtError.status,
+      })
+      console.info('[strava-webhook-debug] fetch_streams_not_ready_yet', {
+        runId,
+        activityId,
+        status: caughtError.status,
+      })
+      return
+    }
+
     if (shouldDebug) {
       console.warn('[run-detail-debug] run_detail_series_sync_failed', {
         runId,
@@ -473,6 +487,11 @@ async function backfillMissingRunDetailSeriesForUser(
   if (candidateRuns.length === 0) {
     return
   }
+
+  console.info('Strava run detail series backfill scanning recent missing runs first', {
+    userId,
+    batchSize: RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE,
+  })
 
   if (shouldDebugRunDetailSeries({ runId: RUN_DETAIL_SERIES_DEBUG_RUN_ID })) {
     console.info('[run-detail-debug] fallback_candidates_loaded', {
