@@ -203,7 +203,7 @@ function WorkoutFeedCard({
 
       {showMapPreview && mapPreviewUrl ? (
         <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-          <div className="aspect-[2.15/1] w-full">
+          <div className="relative aspect-[2.15/1] w-full">
             <img
               src={mapPreviewUrl}
               alt="Предпросмотр маршрута"
@@ -212,6 +212,10 @@ function WorkoutFeedCard({
               decoding="async"
               draggable={false}
               onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
+            />
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/14 via-black/5 to-transparent"
             />
           </div>
         </div>
