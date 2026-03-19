@@ -10,6 +10,7 @@ const INITIAL_SYNC_CUTOFF = '2026-01-01T00:00:00Z'
 const INITIAL_SYNC_CUTOFF_MS = new Date(INITIAL_SYNC_CUTOFF).getTime()
 const INITIAL_SYNC_CUTOFF_UNIX_SECONDS = Math.floor(INITIAL_SYNC_CUTOFF_MS / 1000)
 const MAX_SYNC_ERROR_DETAILS = 10
+const RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE = 5
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
 const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run']
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
@@ -55,6 +56,11 @@ type StravaSyncRowErrorDetail = {
   field?: string
   value?: number | string | null
   error: string
+}
+
+type MissingRunDetailSeriesRow = {
+  id: string
+  external_id: string | null
 }
 
 type StravaImportOutcome = 'imported' | 'updated' | 'skipped_existing' | 'skipped_invalid'
@@ -275,6 +281,84 @@ async function syncRunDetailSeriesForActivity(
       activityId,
       error: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
     })
+  }
+}
+
+async function backfillMissingRunDetailSeriesForUser(userId: string, accessToken: string) {
+  const supabase = createSupabaseAdminClient()
+  const { data: stravaRuns, error: runsError } = await supabase
+    .from('runs')
+    .select('id, external_id')
+    .eq('user_id', userId)
+    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+    .order('created_at', { ascending: false })
+
+  if (runsError) {
+    console.warn('Strava run detail series batch lookup failed', {
+      userId,
+      error: runsError.message,
+    })
+    return
+  }
+
+  const candidateRuns = ((stravaRuns as MissingRunDetailSeriesRow[] | null) ?? [])
+    .filter((run) => typeof run.id === 'string' && run.id.length > 0)
+
+  if (candidateRuns.length === 0) {
+    return
+  }
+
+  const { data: existingSeriesRows, error: existingSeriesError } = await supabase
+    .from('run_detail_series')
+    .select('run_id')
+    .in('run_id', candidateRuns.map((run) => run.id))
+
+  if (existingSeriesError) {
+    console.warn('Strava run detail series existing rows lookup failed', {
+      userId,
+      error: existingSeriesError.message,
+    })
+    return
+  }
+
+  const existingRunIds = new Set(
+    (existingSeriesRows ?? [])
+      .map((row) => row.run_id)
+      .filter((runId): runId is string => typeof runId === 'string' && runId.length > 0)
+  )
+
+  const missingRuns = candidateRuns
+    .filter((run) => !existingRunIds.has(run.id))
+    .slice(0, RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE)
+
+  if (missingRuns.length === 0) {
+    return
+  }
+
+  console.info('Strava run detail series historical backfill queued', {
+    userId,
+    batchSize: missingRuns.length,
+  })
+
+  for (const run of missingRuns) {
+    const activityId = Number(run.external_id)
+
+    if (!Number.isFinite(activityId) || activityId <= 0) {
+      console.warn('Strava run detail series historical backfill skipped invalid external id', {
+        userId,
+        runId: run.id,
+        externalId: run.external_id,
+      })
+      continue
+    }
+
+    console.info('Strava run detail series fallback sync triggered', {
+      runId: run.id,
+      activityId,
+      fallback_reason: 'historical_missing_detail_series',
+    })
+
+    await syncRunDetailSeriesForActivity(supabase, run.id, activityId, accessToken)
   }
 }
 
@@ -841,6 +925,8 @@ export async function syncStravaRuns(
       // #endregion
     }
   }
+
+  await backfillMissingRunDetailSeriesForUser(userId, connection.access_token)
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: debugRunId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:before_touch_connection', message: 'About to update last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0 }, timestamp: Date.now() }) }).catch(() => {})
