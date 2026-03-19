@@ -1,6 +1,6 @@
 const MAPBOX_STYLE = 'mapbox/light-v11'
-const MAPBOX_IMAGE_SIZE = '600x300'
-const MAPBOX_ROUTE_STYLE = 'path-4+2563eb-0.85'
+const MAPBOX_IMAGE_SIZE = '600x300@2x'
+const MAPBOX_ROUTE_STYLE = 'path-5+2563eb-0.9'
 
 function hasRenderablePolyline(encoded: string) {
   let index = 0
@@ -59,5 +59,5 @@ export function getStaticMapUrl(polyline: string): string | null {
   }
 
   const encodedPolyline = encodeURIComponent(trimmedPolyline)
-  return `https://api.mapbox.com/styles/v1/${MAPBOX_STYLE}/static/${MAPBOX_ROUTE_STYLE}(${encodedPolyline})/auto/${MAPBOX_IMAGE_SIZE}?padding=24&access_token=${accessToken}`
+  return `https://api.mapbox.com/styles/v1/${MAPBOX_STYLE}/static/${MAPBOX_ROUTE_STYLE}(${encodedPolyline})/auto/${MAPBOX_IMAGE_SIZE}?padding=28&logo=false&attribution=false&access_token=${accessToken}`
 }
