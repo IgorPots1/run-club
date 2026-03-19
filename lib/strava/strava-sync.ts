@@ -1,8 +1,8 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { fetchStravaActivities, isStravaAuthError, refreshStravaAccessToken } from './strava-client'
-import type { StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
+import { fetchActivityStreams, fetchStravaActivities, isStravaAuthError, refreshStravaAccessToken } from './strava-client'
+import type { StravaActivityStreams, StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
@@ -13,6 +13,8 @@ const MAX_SYNC_ERROR_DETAILS = 10
 const MOJIBAKE_PATTERN = /(?:Ð.|Ñ.|Ã.|Â.)/
 const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run']
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
+const MAX_SERIES_POINTS = 48
+const MIN_SERIES_POINTS = 4
 
 type StravaRunInsertPayload = {
   user_id: string
@@ -65,12 +67,18 @@ type StravaImportResult = {
 type ImportStravaActivityOptions = {
   updateExisting?: boolean
   debugRunId?: string
+  accessToken?: string
 }
 
 type StravaSyncMode = 'incremental' | 'backfill'
 
 type SyncStravaRunsOptions = {
   mode?: StravaSyncMode
+}
+
+type RunDetailSeriesPoint = {
+  x: number
+  y: number
 }
 
 export class StravaReconnectRequiredError extends Error {
@@ -172,6 +180,102 @@ function normalizeIntegerField(field: string, value: number) {
 
 function toXp(distanceKm: number) {
   return Math.max(0, normalizeIntegerField('xp', 50 + distanceKm * 10))
+}
+
+function buildBucketedSeries(
+  values: number[] | undefined,
+  toYValue: (value: number) => number | null
+): RunDetailSeriesPoint[] | null {
+  if (!Array.isArray(values) || values.length === 0) {
+    return null
+  }
+
+  const bucketCount = Math.min(MAX_SERIES_POINTS, values.length)
+  const points: RunDetailSeriesPoint[] = []
+
+  for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
+    const start = Math.floor((bucketIndex * values.length) / bucketCount)
+    const end = Math.floor(((bucketIndex + 1) * values.length) / bucketCount)
+    const bucketValues = values
+      .slice(start, Math.max(start + 1, end))
+      .map(toYValue)
+      .filter((value): value is number => Number.isFinite(value))
+
+    if (bucketValues.length === 0) {
+      continue
+    }
+
+    const averageValue = bucketValues.reduce((sum, value) => sum + value, 0) / bucketValues.length
+    points.push({
+      x: points.length,
+      y: Math.round(averageValue),
+    })
+  }
+
+  return points.length >= MIN_SERIES_POINTS ? points : null
+}
+
+function buildPaceSeriesPoints(streams: StravaActivityStreams) {
+  return buildBucketedSeries(streams.velocity_smooth, (velocityMetersPerSecond) => {
+    if (!Number.isFinite(velocityMetersPerSecond) || velocityMetersPerSecond <= 0) {
+      return null
+    }
+
+    const paceSecondsPerKm = 1000 / velocityMetersPerSecond
+
+    if (paceSecondsPerKm < 120 || paceSecondsPerKm > 1200) {
+      return null
+    }
+
+    return paceSecondsPerKm
+  })
+}
+
+function buildHeartrateSeriesPoints(streams: StravaActivityStreams) {
+  return buildBucketedSeries(streams.heartrate, (heartrate) => {
+    if (!Number.isFinite(heartrate) || heartrate < 40 || heartrate > 240) {
+      return null
+    }
+
+    return heartrate
+  })
+}
+
+async function syncRunDetailSeriesForActivity(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  runId: string,
+  activityId: number,
+  accessToken: string
+) {
+  try {
+    const streams = await fetchActivityStreams(activityId, accessToken)
+    const pacePoints = buildPaceSeriesPoints(streams)
+    const heartratePoints = buildHeartrateSeriesPoints(streams)
+
+    const { error } = await supabase
+      .from('run_detail_series')
+      .upsert(
+        {
+          run_id: runId,
+          pace_points: pacePoints,
+          heartrate_points: heartratePoints,
+          source: STRAVA_EXTERNAL_SOURCE,
+        },
+        {
+          onConflict: 'run_id',
+        }
+      )
+
+    if (error) {
+      throw new Error(error.message)
+    }
+  } catch (caughtError) {
+    console.warn('Strava run detail series sync skipped', {
+      runId,
+      activityId,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
+    })
+  }
 }
 
 function normalizeImportedRunName(rawName: string) {
@@ -438,7 +542,11 @@ export async function importStravaActivityForUser(
   }
 
   if (!existingRun) {
-    const { error: insertError } = await supabase.from('runs').insert(payload)
+    const { data: insertedRun, error: insertError } = await supabase
+      .from('runs')
+      .insert(payload)
+      .select('id')
+      .single()
 
     if (insertError) {
       // #region agent log
@@ -459,6 +567,10 @@ export async function importStravaActivityForUser(
       }
 
       throw new Error(insertError.message)
+    }
+
+    if (insertedRun?.id && options.accessToken) {
+      await syncRunDetailSeriesForActivity(supabase, insertedRun.id, activity.id, options.accessToken)
     }
 
     return {
@@ -507,6 +619,10 @@ export async function importStravaActivityForUser(
 
   if (updateError) {
     throw new Error(updateError.message)
+  }
+
+  if (options.accessToken) {
+    await syncRunDetailSeriesForActivity(supabase, existingRun.id, activity.id, options.accessToken)
   }
 
   return {
@@ -659,6 +775,7 @@ export async function syncStravaRuns(
       const result = await importStravaActivityForUser(userId, activity, {
         updateExisting: true,
         debugRunId,
+        accessToken: connection.access_token,
       })
 
       if (result.status === 'imported') {

@@ -113,6 +113,7 @@ export async function POST(request: Request) {
 
         await importStravaActivityForUser(connection.user_id, activity, {
           updateExisting: true,
+          accessToken: connection.access_token,
         })
       } catch (caughtError) {
         console.error('Webhook import failed', {
