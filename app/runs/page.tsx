@@ -474,6 +474,7 @@ export default function RunsPage() {
   const [activeStravaHintRunId, setActiveStravaHintRunId] = useState<string | null>(null)
   const lastRunsFetchAtRef = useRef(0)
   const runsRequestPromiseRef = useRef<Promise<void> | null>(null)
+  const suppressNextRunsUpdatedRefreshRef = useRef(false)
   const parsedDistanceKm = parseDistanceInput(distanceInput)
   const selectedDistanceKm = parsedDistanceKm ?? 0
   const compactDistanceLabel = selectedDistanceKm > 0 ? formatCompactDistanceLabel(selectedDistanceKm) : '0'
@@ -690,6 +691,11 @@ export default function RunsPage() {
     const currentUser = user
 
     function handleRunsUpdated() {
+      if (suppressNextRunsUpdatedRefreshRef.current) {
+        suppressNextRunsUpdatedRefreshRef.current = false
+        return
+      }
+
       void fetchRuns(currentUser, { force: true })
     }
 
@@ -795,6 +801,7 @@ export default function RunsPage() {
 
   async function handleDelete(id: string) {
     if (deletingRunIds.includes(id)) return
+    if (typeof window !== 'undefined' && !window.confirm('Удалить тренировку?')) return
 
     setError('')
     setDeletingRunIds((prev) => [...prev, id])
@@ -808,6 +815,10 @@ export default function RunsPage() {
       }
 
       setRuns((prev) => prev.filter((r) => r.id !== id))
+      if (activeStravaHintRunId === id) {
+        setActiveStravaHintRunId(null)
+      }
+      suppressNextRunsUpdatedRefreshRef.current = true
       dispatchRunsUpdatedEvent()
     } catch {
       setError('Не удалось удалить тренировку')
