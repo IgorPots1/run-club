@@ -137,7 +137,24 @@ export async function POST(request: Request) {
           ownerId: event.owner_id,
           activityId,
         })
-        const activity = await fetchStravaActivityById(connection.access_token, activityId)
+        let activity
+
+        try {
+          activity = await fetchStravaActivityById(connection.access_token, activityId)
+        } catch (caughtError) {
+          console.warn('[strava-webhook-debug] fetch_activity_failure', {
+            activityId,
+            ownerId: event.owner_id,
+            step,
+            error: caughtError instanceof Error ? caughtError.message : 'Unknown fetch activity error',
+          })
+          console.info('[strava-webhook-debug] activity_not_ready_yet_will_be_picked_up_by_sync', {
+            activityId,
+            ownerId: event.owner_id,
+          })
+          return
+        }
+
         console.info('[strava-webhook-debug] fetch_activity_success', {
           activityId,
           activityType: activity.type ?? null,
