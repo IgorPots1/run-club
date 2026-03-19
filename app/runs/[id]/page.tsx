@@ -6,9 +6,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Map } from 'lucide-react'
 import RunCommentsSection from '@/components/RunCommentsSection'
-import RunRouteMapPreview, { hasRenderableRoutePolyline } from '@/components/RunRouteMapPreview'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createRunComment, loadRunComments, type RunCommentItem } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
@@ -360,7 +360,7 @@ export default function RunDetailsPage() {
       xpValue: Number.isFinite(run.xp) && (run.xp ?? 0) > 0
         ? Math.round(run.xp ?? 0)
         : Math.max(0, Math.round(50 + distanceKm * 10)),
-      hasMap: Boolean(run.map_polyline?.trim() && hasRenderableRoutePolyline(run.map_polyline)),
+      mapPreviewUrl: run.map_polyline ? getStaticMapUrl(run.map_polyline) : null,
     }
   }, [run])
 
@@ -520,7 +520,7 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
-        {details.hasMap && run.map_polyline ? (
+        {details.mapPreviewUrl ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary inline-flex items-center gap-2 text-base font-semibold">
               <Map className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
@@ -530,7 +530,16 @@ export default function RunDetailsPage() {
               </span>
             </h2>
             <div className="mt-3 rounded-2xl p-1 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-              <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
+              <div className="h-[210px] w-full overflow-hidden rounded-2xl border bg-[var(--surface-muted)]">
+                <img
+                  src={details.mapPreviewUrl}
+                  alt="Маршрут тренировки"
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                />
+              </div>
             </div>
           </section>
         ) : null}
