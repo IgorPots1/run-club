@@ -622,6 +622,26 @@ export async function importStravaActivityForUser(
   }
 
   if (options.accessToken) {
+    const { data: existingSeriesRow, error: existingSeriesError } = await supabase
+      .from('run_detail_series')
+      .select('run_id')
+      .eq('run_id', existingRun.id)
+      .maybeSingle()
+
+    if (existingSeriesError) {
+      console.warn('Strava run detail series existence check failed', {
+        runId: existingRun.id,
+        activityId: activity.id,
+        error: existingSeriesError.message,
+      })
+    } else if (!existingSeriesRow) {
+      console.info('Strava run detail series fallback sync triggered', {
+        runId: existingRun.id,
+        activityId: activity.id,
+        fallback_reason: 'missing_detail_series',
+      })
+    }
+
     await syncRunDetailSeriesForActivity(supabase, existingRun.id, activity.id, options.accessToken)
   }
 

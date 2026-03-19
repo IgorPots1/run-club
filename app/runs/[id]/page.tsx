@@ -21,6 +21,7 @@ type RunDetailsRow = {
   name: string | null
   title?: string | null
   external_source?: string | null
+  external_id?: string | null
   distance_km: number | null
   duration_minutes: number | null
   duration_seconds?: number | null
@@ -48,20 +49,22 @@ type RunDetailSeriesPoint = {
 }
 
 type RunDetailSeriesRow = {
+  exists: boolean
   pace_points: RunDetailSeriesPoint[] | null
   heartrate_points: RunDetailSeriesPoint[] | null
 }
 
 const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
+  exists: false,
   pace_points: null,
   heartrate_points: null,
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
-  'id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
+  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
 
 type QueryErrorLike = {
   code?: string | null
@@ -84,6 +87,7 @@ function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefin
     message.includes('max_heartrate') ||
     message.includes('xp') ||
     message.includes('map_polyline') ||
+    message.includes('external_id') ||
     message.includes('calories') ||
     message.includes('average_cadence')
   )
@@ -348,6 +352,7 @@ export default function RunDetailsPage() {
         const normalizedRunSeries = seriesResult.error
           ? EMPTY_RUN_DETAIL_SERIES
           : {
+              exists: Boolean(seriesResult.data),
               pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
               heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
             }
@@ -597,6 +602,10 @@ export default function RunDetailsPage() {
               )}
             </div>
             <div className="mt-3 rounded-xl border px-3 py-2 text-xs">
+              <p className="app-text-secondary">run.id: {run.id}</p>
+              <p className="app-text-secondary mt-1">source: {run.external_source ?? 'none'}</p>
+              <p className="app-text-secondary mt-1">external_id: {run.external_id ?? 'none'}</p>
+              <p className="app-text-secondary mt-1">series_row_exists: {runSeries.exists ? 'yes' : 'no'}</p>
               <p className="app-text-secondary">
                 pace_points: {runSeries.pace_points ? `yes (${runSeries.pace_points.length})` : 'no'}
               </p>
