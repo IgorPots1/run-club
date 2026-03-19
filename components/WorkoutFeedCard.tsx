@@ -102,12 +102,14 @@ function WorkoutFeedCard({
 }: WorkoutFeedCardProps) {
   const router = useRouter()
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
+  const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
   const displayTitle = buildDisplayTitle(rawTitle)
   const displayUserName = displayName.trim() || 'Бегун'
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
+  const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
     : '—'
@@ -199,7 +201,7 @@ function WorkoutFeedCard({
         <span className="font-semibold">{movingTimeLabel}</span>
       </div>
 
-      {mapPreviewUrl ? (
+      {showMapPreview && mapPreviewUrl ? (
         <div className="mt-4 overflow-hidden rounded-xl border ring-1 ring-black/5 dark:ring-white/10">
           <div className="aspect-[2/1] w-full bg-[var(--surface-muted)]">
             <img
@@ -209,6 +211,7 @@ function WorkoutFeedCard({
               loading="lazy"
               decoding="async"
               draggable={false}
+              onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
             />
           </div>
         </div>
