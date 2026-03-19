@@ -59,5 +59,5 @@ export function getStaticMapUrl(polyline: string): string | null {
   }
 
   const encodedPolyline = encodeURIComponent(trimmedPolyline)
-  return `https://api.mapbox.com/styles/v1/${MAPBOX_STYLE}/static/${MAPBOX_ROUTE_STYLE}(${encodedPolyline})/auto/${MAPBOX_IMAGE_SIZE}?padding=28&logo=false&attribution=false&access_token=${accessToken}`
+  return `https://api.mapbox.com/styles/v1/${MAPBOX_STYLE}/static/${MAPBOX_ROUTE_STYLE}(${encodedPolyline})/auto/${MAPBOX_IMAGE_SIZE}?padding=80&logo=false&attribution=false&access_token=${accessToken}`
 }
