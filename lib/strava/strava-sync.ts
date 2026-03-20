@@ -388,17 +388,6 @@ async function syncRunDetailSeriesForActivity(
 
     const pacePoints = buildPaceSeriesPoints(streams)
     const heartratePoints = buildHeartrateSeriesPoints(streams, activityId)
-    const timeStreamExists = Array.isArray(streams.time) && streams.time.length > 0
-    const heartrateStoredUsingElapsedSeconds =
-      timeStreamExists &&
-      Array.isArray(streams.heartrate) &&
-      streams.time!.length === streams.heartrate.length &&
-      Array.isArray(heartratePoints)
-    const paceStoredUsingElapsedSeconds =
-      timeStreamExists &&
-      Array.isArray(streams.velocity_smooth) &&
-      streams.time!.length === streams.velocity_smooth.length &&
-      Array.isArray(pacePoints)
 
     if (heartratePoints == null && pacePoints != null) {
       const heartrateValues = Array.isArray(streams.heartrate) ? streams.heartrate : undefined
@@ -422,59 +411,16 @@ async function syncRunDetailSeriesForActivity(
       })
     }
 
-    let existingSeriesRow:
-      | {
-          run_id: string
-          pace_points: RunDetailSeriesPoint[] | null
-          heartrate_points: RunDetailSeriesPoint[] | null
-        }
-      | null
-      | undefined
-
     if (shouldDebug) {
-      const { data: existingSeriesData, error: existingSeriesLookupError } = await supabase
-        .from('run_detail_series')
-        .select('run_id, pace_points, heartrate_points')
-        .eq('run_id', runId)
-        .maybeSingle()
-
-      if (existingSeriesLookupError) {
-        console.warn('[run-detail-debug] run_detail_series_existing_lookup_failed', {
-          runId,
-          activityId,
-          error: existingSeriesLookupError.message,
-        })
-      } else {
-        existingSeriesRow = (existingSeriesData as typeof existingSeriesRow) ?? null
-      }
-
-      console.info('[run-detail-debug] mapped_series_preview', {
-        runId,
-        activityId,
-        timeStreamExists,
-        timeFirst5: streams.time?.slice(0, 5) ?? [],
-        heartratePointsFirst5: heartratePoints?.slice(0, 5) ?? [],
-        pacePointsFirst5: pacePoints?.slice(0, 5) ?? [],
-        heartrateStoredRealElapsedSeconds: heartrateStoredUsingElapsedSeconds,
-        paceStoredRealElapsedSeconds: paceStoredUsingElapsedSeconds,
-      })
       console.info('[run-detail-debug] before_run_detail_series_upsert', {
         runId,
         activityId,
-        existingRowExists: Boolean(existingSeriesRow),
-        persistenceOperation: existingSeriesRow ? 'update-via-upsert' : 'insert-via-upsert',
         pacePointsLength: pacePoints?.length ?? 0,
         heartratePointsLength: heartratePoints?.length ?? 0,
-        existingHeartratePointsFirst5: existingSeriesRow?.heartrate_points?.slice(0, 5) ?? [],
-        existingPacePointsFirst5: existingSeriesRow?.pace_points?.slice(0, 5) ?? [],
-        preparedHeartratePointsFirst5: heartratePoints?.slice(0, 5) ?? [],
-        preparedPacePointsFirst5: pacePoints?.slice(0, 5) ?? [],
-        preparedHeartratePointsUseRealElapsedSeconds: heartrateStoredUsingElapsedSeconds,
-        preparedPacePointsUseRealElapsedSeconds: paceStoredUsingElapsedSeconds,
       })
     }
 
-    const { data: persistedSeriesRow, error } = await supabase
+    const { error } = await supabase
       .from('run_detail_series')
       .upsert(
         {
@@ -487,8 +433,6 @@ async function syncRunDetailSeriesForActivity(
           onConflict: 'run_id',
         }
       )
-      .select('run_id, pace_points, heartrate_points')
-      .maybeSingle()
 
     if (error) {
       if (shouldDebug) {
@@ -505,18 +449,6 @@ async function syncRunDetailSeriesForActivity(
       console.info('[run-detail-debug] run_detail_series_upsert_succeeded', {
         runId,
         activityId,
-        persistenceOperation: existingSeriesRow ? 'update-via-upsert' : 'insert-via-upsert',
-        persistedRowId: persistedSeriesRow?.run_id ?? null,
-        persistedHeartratePointsFirst5:
-          ((persistedSeriesRow?.heartrate_points as RunDetailSeriesPoint[] | null | undefined) ?? []).slice(0, 5),
-        persistedPacePointsFirst5:
-          ((persistedSeriesRow?.pace_points as RunDetailSeriesPoint[] | null | undefined) ?? []).slice(0, 5),
-        persistedHeartratePointsLookIndexLike:
-          Array.isArray(persistedSeriesRow?.heartrate_points) &&
-          (persistedSeriesRow.heartrate_points as RunDetailSeriesPoint[]).slice(0, 5).every((point, index) => point.time === index),
-        persistedPacePointsLookIndexLike:
-          Array.isArray(persistedSeriesRow?.pace_points) &&
-          (persistedSeriesRow.pace_points as RunDetailSeriesPoint[]).slice(0, 5).every((point, index) => point.time === index),
       })
     }
 
@@ -1445,14 +1377,6 @@ export async function syncStravaRuns(
     const normalizedAuthUserId = userId.trim().toLowerCase()
     const normalizedConnectionUserId = connection.user_id.trim().toLowerCase()
 
-    console.info('[run-detail-debug] target_run_mode_enter', {
-      userId,
-      connectionUserId: connection.user_id,
-      sessionDebugId,
-      targetDebugRunId,
-      connectionId: connection.id,
-    })
-
     const { data: targetRun, error: targetRunError } = await supabase
       .from('runs')
       .select('id, user_id, external_source, external_id')
@@ -1463,15 +1387,6 @@ export async function syncStravaRuns(
     if (targetRunError) {
       throw new Error(targetRunError.message)
     }
-
-    console.info('[run-detail-debug] target_run_found', {
-      userId,
-      runId: targetDebugRunId,
-      found: Boolean(targetRun),
-      ownerUserId: targetRun?.user_id ?? null,
-      externalSource: targetRun?.external_source ?? null,
-      externalId: targetRun?.external_id ?? null,
-    })
 
     if (!targetRun) {
       return {
@@ -1502,18 +1417,6 @@ export async function syncStravaRuns(
           targetedSyncSucceeded: false,
           targetedOwnerMismatch: false,
           targetedRunOwnerUserId: null,
-        targetedAuthUserExists: true,
-        targetedAuthUserId: userId,
-        targetedRunFound: false,
-        targetedResolvedRunId: null,
-        targetedResolvedRunUserId: null,
-        targetedResolvedRunSource: null,
-        targetedResolvedRunExternalId: null,
-        targetedResolvedRunStravaActivityId: null,
-        targetedComparisonUserId: connection.user_id,
-        targetedOwnerComparisonResult: false,
-        targetedOwnerCheckPassed: false,
-        targetedStopReason: 'run_not_found_or_not_strava',
         },
       }
     }
@@ -1522,14 +1425,6 @@ export async function syncStravaRuns(
     const ownerCheckPassed =
       normalizedRunOwnerUserId === normalizedConnectionUserId ||
       normalizedRunOwnerUserId === normalizedAuthUserId
-
-    console.info('[run-detail-debug] target_run_owner_check', {
-      runId: targetDebugRunId,
-      authUserId: userId,
-      connectionUserId: connection.user_id,
-      resolvedRunUserId: targetRun.user_id,
-      comparisonResult: ownerCheckPassed,
-    })
 
     if (!ownerCheckPassed) {
       console.warn('[run-detail-debug] target_run_owner_mismatch', {
@@ -1569,20 +1464,6 @@ export async function syncStravaRuns(
           targetedSyncSucceeded: false,
           targetedOwnerMismatch: true,
           targetedRunOwnerUserId: targetRun.user_id,
-        targetedAuthUserExists: true,
-        targetedAuthUserId: userId,
-        targetedRunFound: true,
-        targetedResolvedRunId: targetRun.id,
-        targetedResolvedRunUserId: targetRun.user_id,
-        targetedResolvedRunSource: targetRun.external_source,
-        targetedResolvedRunExternalId: targetRun.external_id,
-        targetedResolvedRunStravaActivityId: Number.isFinite(Number(targetRun.external_id))
-          ? Number(targetRun.external_id)
-          : null,
-        targetedComparisonUserId: connection.user_id,
-        targetedOwnerComparisonResult: ownerCheckPassed,
-        targetedOwnerCheckPassed: false,
-        targetedStopReason: 'owner_mismatch',
         },
       }
     }
@@ -1624,27 +1505,9 @@ export async function syncStravaRuns(
           targetedSyncSucceeded: false,
           targetedOwnerMismatch: false,
           targetedRunOwnerUserId: targetRun.user_id,
-        targetedAuthUserExists: true,
-        targetedAuthUserId: userId,
-        targetedRunFound: true,
-        targetedResolvedRunId: targetRun.id,
-        targetedResolvedRunUserId: targetRun.user_id,
-        targetedResolvedRunSource: targetRun.external_source,
-        targetedResolvedRunExternalId: targetRun.external_id,
-        targetedResolvedRunStravaActivityId: null,
-        targetedComparisonUserId: connection.user_id,
-        targetedOwnerComparisonResult: true,
-        targetedOwnerCheckPassed: true,
-        targetedStopReason: 'invalid_external_id',
         },
       }
     }
-
-    console.info('[run-detail-debug] target_run_sync_start', {
-      runId: targetDebugRunId,
-      activityId: targetedActivityId,
-      path: 'targeted_mode',
-    })
 
     const targetedSyncSucceeded = await syncRunDetailSeriesForActivity(
       supabase,
@@ -1682,18 +1545,6 @@ export async function syncStravaRuns(
         targetedSyncSucceeded,
         targetedOwnerMismatch: false,
         targetedRunOwnerUserId: targetRun.user_id,
-      targetedAuthUserExists: true,
-      targetedAuthUserId: userId,
-      targetedRunFound: true,
-      targetedResolvedRunId: targetRun.id,
-      targetedResolvedRunUserId: targetRun.user_id,
-      targetedResolvedRunSource: targetRun.external_source,
-      targetedResolvedRunExternalId: targetRun.external_id,
-      targetedResolvedRunStravaActivityId: targetedActivityId,
-      targetedComparisonUserId: connection.user_id,
-      targetedOwnerComparisonResult: true,
-      targetedOwnerCheckPassed: true,
-      targetedStopReason: targetedSyncSucceeded ? null : 'sync_attempt_failed',
       },
     }
   }

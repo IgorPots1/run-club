@@ -222,20 +222,6 @@ function formatHeartRateTick(value: number) {
   return `${Math.round(value)}`
 }
 
-function getChartTimeRange(points: Array<{ time: number }>) {
-  if (points.length === 0) {
-    return null
-  }
-
-  return points.reduce(
-    (range, point) => ({
-      min: Math.min(range.min, point.time),
-      max: Math.max(range.max, point.time),
-    }),
-    { min: points[0].time, max: points[0].time }
-  )
-}
-
 function getChartDurationSeconds(
   run: Pick<RunDetailsRow, 'moving_time_seconds' | 'elapsed_time_seconds' | 'duration_seconds'> | null
 ) {
@@ -298,7 +284,6 @@ function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
 }
 
 export default function RunDetailsPage() {
-  const isDevelopment = process.env.NODE_ENV === 'development'
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const runId = typeof params?.id === 'string' ? params.id : ''
@@ -515,54 +500,8 @@ export default function RunDetailsPage() {
       })),
     [heartRateSeriesForChart.data]
   )
-  const heartRateTimeRange = useMemo(() => getChartTimeRange(heartRateChartData), [heartRateChartData])
-  const paceTimeRange = useMemo(() => getChartTimeRange(paceChartData), [paceChartData])
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
-
-  useEffect(() => {
-    if (!isDevelopment) {
-      return
-    }
-
-    console.debug('[RunDetailsPage] raw heartrate_points sample', {
-      length: runSeries.heartrate_points?.length ?? 0,
-      sample: (runSeries.heartrate_points ?? []).slice(0, 5),
-    })
-    console.debug('[RunDetailsPage] raw pace_points sample', {
-      length: runSeries.pace_points?.length ?? 0,
-      sample: (runSeries.pace_points ?? []).slice(0, 5),
-    })
-    console.debug('[RunDetailsPage] mapped HR chart sample', {
-      sample: heartRateChartData.slice(0, 5),
-      minTime: heartRateTimeRange?.min ?? null,
-      maxTime: heartRateTimeRange?.max ?? null,
-      usedFallbackApproximation: heartRateSeriesForChart.usedFallbackApproximation,
-      totalDurationSecondsUsed: chartDurationSeconds,
-      rendered: shouldRenderHeartRateChart,
-    })
-    console.debug('[RunDetailsPage] mapped pace chart sample', {
-      sample: paceChartData.slice(0, 5),
-      minTime: paceTimeRange?.min ?? null,
-      maxTime: paceTimeRange?.max ?? null,
-      usedFallbackApproximation: paceSeriesForChart.usedFallbackApproximation,
-      totalDurationSecondsUsed: chartDurationSeconds,
-      rendered: shouldRenderPaceChart,
-    })
-  }, [
-    chartDurationSeconds,
-    heartRateChartData,
-    heartRateSeriesForChart.usedFallbackApproximation,
-    heartRateTimeRange,
-    isDevelopment,
-    paceChartData,
-    paceSeriesForChart.usedFallbackApproximation,
-    paceTimeRange,
-    runSeries.heartrate_points,
-    runSeries.pace_points,
-    shouldRenderHeartRateChart,
-    shouldRenderPaceChart,
-  ])
 
   const details = useMemo(() => {
     if (!run) {
@@ -858,29 +797,6 @@ export default function RunDetailsPage() {
             </div>
           </section>
         ) : null}
-
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <h2 className="app-text-primary text-sm font-semibold">Chart Debug</h2>
-          <pre className="app-text-secondary mt-3 overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5">
-            {JSON.stringify(
-              {
-                heartrate_points_length: runSeries.heartrate_points?.length ?? 0,
-                pace_points_length: runSeries.pace_points?.length ?? 0,
-                heartrate_points_first_5: (runSeries.heartrate_points ?? []).slice(0, 5),
-                pace_points_first_5: (runSeries.pace_points ?? []).slice(0, 5),
-                mapped_hr_chart_first_5: heartRateChartData.slice(0, 5),
-                mapped_pace_chart_first_5: paceChartData.slice(0, 5),
-                mapped_hr_time_range: heartRateTimeRange,
-                mapped_pace_time_range: paceTimeRange,
-                hr_uses_fallback_approximation: heartRateSeriesForChart.usedFallbackApproximation,
-                pace_uses_fallback_approximation: paceSeriesForChart.usedFallbackApproximation,
-                total_duration_seconds_used_for_scaling: chartDurationSeconds,
-              },
-              null,
-              2
-            )}
-          </pre>
-        </section>
 
         {run.map_polyline?.trim() ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">

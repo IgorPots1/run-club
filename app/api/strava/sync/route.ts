@@ -8,18 +8,6 @@ type SyncDebugDiagnostics = {
   imported: number
   failed: number
   firstFailure: { activityId: string; error: string; field?: string; value?: number | string | null } | null
-  targetedAuthUserExists?: boolean
-  targetedAuthUserId?: string | null
-  targetedRunFound?: boolean
-  targetedResolvedRunId?: string | null
-  targetedResolvedRunUserId?: string | null
-  targetedResolvedRunSource?: string | null
-  targetedResolvedRunExternalId?: string | null
-  targetedResolvedRunStravaActivityId?: number | null
-  targetedComparisonUserId?: string | null
-  targetedOwnerComparisonResult?: boolean
-  targetedOwnerCheckPassed?: boolean
-  targetedStopReason?: string | null
 }
 
 function buildDebugDiagnostics(source: {
@@ -35,18 +23,6 @@ function buildDebugDiagnostics(source: {
     targetedSyncSucceeded?: boolean
     targetedOwnerMismatch?: boolean
     targetedRunOwnerUserId?: string | null
-    targetedAuthUserExists?: boolean
-    targetedAuthUserId?: string | null
-    targetedRunFound?: boolean
-    targetedResolvedRunId?: string | null
-    targetedResolvedRunUserId?: string | null
-    targetedResolvedRunSource?: string | null
-    targetedResolvedRunExternalId?: string | null
-    targetedResolvedRunStravaActivityId?: number | null
-    targetedComparisonUserId?: string | null
-    targetedOwnerComparisonResult?: boolean
-    targetedOwnerCheckPassed?: boolean
-    targetedStopReason?: string | null
   }
 }): SyncDebugDiagnostics {
   return {
@@ -55,18 +31,6 @@ function buildDebugDiagnostics(source: {
     imported: source.debug?.imported ?? 0,
     failed: source.debug?.failed ?? 0,
     firstFailure: source.debug?.firstFailure ?? null,
-    targetedAuthUserExists: source.debug?.targetedAuthUserExists ?? undefined,
-    targetedAuthUserId: source.debug?.targetedAuthUserId ?? undefined,
-    targetedRunFound: source.debug?.targetedRunFound ?? undefined,
-    targetedResolvedRunId: source.debug?.targetedResolvedRunId ?? undefined,
-    targetedResolvedRunUserId: source.debug?.targetedResolvedRunUserId ?? undefined,
-    targetedResolvedRunSource: source.debug?.targetedResolvedRunSource ?? undefined,
-    targetedResolvedRunExternalId: source.debug?.targetedResolvedRunExternalId ?? undefined,
-    targetedResolvedRunStravaActivityId: source.debug?.targetedResolvedRunStravaActivityId ?? undefined,
-    targetedComparisonUserId: source.debug?.targetedComparisonUserId ?? undefined,
-    targetedOwnerComparisonResult: source.debug?.targetedOwnerComparisonResult ?? undefined,
-    targetedOwnerCheckPassed: source.debug?.targetedOwnerCheckPassed ?? undefined,
-    targetedStopReason: source.debug?.targetedStopReason ?? undefined,
   }
 }
 
@@ -142,42 +106,14 @@ export async function GET(request: Request) {
     // #endregion
 
     if (debugRunId) {
-      console.info('[run-detail-debug] targeted_sync_route_result', {
-        authUserExists: Boolean(user),
-        authUserId: user.id,
-        targetedRunId: result.debug?.targetedRunId ?? debugRunId,
-        targetedRunFound: result.debug?.targetedRunFound ?? null,
-        targetedResolvedRunId: result.debug?.targetedResolvedRunId ?? null,
-        targetedResolvedRunUserId: result.debug?.targetedResolvedRunUserId ?? null,
-        targetedResolvedRunSource: result.debug?.targetedResolvedRunSource ?? null,
-        targetedResolvedRunExternalId: result.debug?.targetedResolvedRunExternalId ?? null,
-        targetedResolvedRunStravaActivityId: result.debug?.targetedResolvedRunStravaActivityId ?? null,
-        targetedComparisonUserId: result.debug?.targetedComparisonUserId ?? null,
-        targetedOwnerComparisonResult: result.debug?.targetedOwnerComparisonResult ?? null,
-        targetedOwnerCheckPassed: result.debug?.targetedOwnerCheckPassed ?? null,
-        targetedStopReason: result.debug?.targetedStopReason ?? null,
-      })
-
       return NextResponse.json({
         ok: true,
-        authUserExists: Boolean(user),
-        authUserId: user.id,
         targetedRunId: result.debug?.targetedRunId ?? debugRunId,
-        targetedRunFound: result.debug?.targetedRunFound ?? false,
-        targetedResolvedRunId: result.debug?.targetedResolvedRunId ?? null,
-        targetedResolvedRunUserId: result.debug?.targetedResolvedRunUserId ?? null,
-        targetedResolvedRunSource: result.debug?.targetedResolvedRunSource ?? null,
-        targetedResolvedRunExternalId: result.debug?.targetedResolvedRunExternalId ?? null,
-        targetedResolvedRunStravaActivityId: result.debug?.targetedResolvedRunStravaActivityId ?? null,
-        targetedComparisonUserId: result.debug?.targetedComparisonUserId ?? null,
-        targetedOwnerComparisonResult: result.debug?.targetedOwnerComparisonResult ?? false,
         targetedActivityId: result.debug?.targetedActivityId ?? null,
-        targetedOwnerCheckPassed: result.debug?.targetedOwnerCheckPassed ?? false,
         targetedSyncAttempted: result.debug?.targetedSyncAttempted ?? false,
         targetedSyncSucceeded: result.debug?.targetedSyncSucceeded ?? false,
         targetedOwnerMismatch: result.debug?.targetedOwnerMismatch ?? false,
         targetedRunOwnerUserId: result.debug?.targetedRunOwnerUserId ?? null,
-        targetedStopReason: result.debug?.targetedStopReason ?? null,
       })
     }
 
