@@ -64,6 +64,14 @@ type RunDetailSeriesRow = {
   heartrate_points: RunDetailSeriesPoint[] | null
 }
 
+type RunLapRow = {
+  lap_index: number
+  distance_meters: number | null
+  elapsed_time_seconds: number | null
+  pace_seconds_per_km: number | null
+  average_heartrate: number | null
+}
+
 const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
   exists: false,
   pace_points: null,
@@ -218,6 +226,10 @@ function formatElapsedMinutesLabel(value: number) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+function formatLapDistanceLabel(distanceMeters: number) {
+  return `${formatDistanceKm(distanceMeters / 1000)} км`
+}
+
 function formatHeartRateTick(value: number) {
   return `${Math.round(value)}`
 }
@@ -293,6 +305,7 @@ export default function RunDetailsPage() {
   const [error, setError] = useState('')
   const [run, setRun] = useState<RunDetailsRow | null>(null)
   const [runSeries, setRunSeries] = useState<RunDetailSeriesRow>(EMPTY_RUN_DETAIL_SERIES)
+  const [runLaps, setRunLaps] = useState<RunLapRow[]>([])
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [likesCount, setLikesCount] = useState(0)
   const [comments, setComments] = useState<RunCommentItem[]>([])
@@ -368,6 +381,7 @@ export default function RunDetailsPage() {
         if (isMounted) {
           setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+            setRunLaps([])
           setLoading(false)
         }
         return
@@ -377,6 +391,7 @@ export default function RunDetailsPage() {
         if (isMounted) {
           setError('Тренировка не найдена')
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+            setRunLaps([])
           setLoading(false)
         }
         return
@@ -394,6 +409,7 @@ export default function RunDetailsPage() {
             setError('Не удалось загрузить тренировку')
             setRun(null)
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+            setRunLaps([])
           }
           return
         }
@@ -403,11 +419,12 @@ export default function RunDetailsPage() {
             setError('Тренировка не найдена')
             setRun(null)
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+            setRunLaps([])
           }
           return
         }
 
-        const [profileResult, likesResult, seriesResult] = await Promise.all([
+        const [profileResult, likesResult, seriesResult, lapsResult] = await Promise.all([
           supabase
             .from('profiles')
             .select('id, name, nickname, email, avatar_url')
@@ -422,6 +439,11 @@ export default function RunDetailsPage() {
             .select('pace_points, heartrate_points')
             .eq('run_id', runData.id)
             .maybeSingle(),
+          supabase
+            .from('run_laps')
+            .select('lap_index, distance_meters, elapsed_time_seconds, pace_seconds_per_km, average_heartrate')
+            .eq('run_id', runData.id)
+            .order('lap_index', { ascending: true }),
         ])
 
         let runComments: RunCommentItem[] = []
@@ -429,7 +451,7 @@ export default function RunDetailsPage() {
 
         try {
           runComments = await loadRunComments(runData.id)
-        } catch (error) {
+        } catch {
           nextCommentsError = 'Не удалось загрузить комментарии'
         }
 
@@ -447,6 +469,7 @@ export default function RunDetailsPage() {
 
         setRun(runData as RunDetailsRow)
         setRunSeries(normalizedRunSeries)
+        setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
         setLikesCount(Number(likesResult.count ?? 0))
         setComments(runComments)
@@ -456,6 +479,7 @@ export default function RunDetailsPage() {
           setError('Не удалось загрузить тренировку')
           setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+          setRunLaps([])
           setComments([])
         }
       } finally {
@@ -503,6 +527,29 @@ export default function RunDetailsPage() {
   )
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
+  const formattedRunLaps = useMemo(
+    () =>
+      runLaps.map((lap) => ({
+        ...lap,
+        distanceLabel:
+          Number.isFinite(lap.distance_meters) && (lap.distance_meters ?? 0) > 0
+            ? formatLapDistanceLabel(lap.distance_meters ?? 0)
+            : '—',
+        durationLabel:
+          Number.isFinite(lap.elapsed_time_seconds) && (lap.elapsed_time_seconds ?? 0) > 0
+            ? formatDurationLabel(lap.elapsed_time_seconds ?? 0)
+            : '—',
+        paceLabel:
+          Number.isFinite(lap.pace_seconds_per_km) && (lap.pace_seconds_per_km ?? 0) > 0
+            ? formatPaceLabel(lap.pace_seconds_per_km ?? 0)
+            : '—',
+        averageHeartrateLabel:
+          Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
+            ? `${Math.round(lap.average_heartrate ?? 0)}`
+            : null,
+      })),
+    [runLaps]
+  )
 
   const details = useMemo(() => {
     if (!run) {
@@ -819,6 +866,35 @@ export default function RunDetailsPage() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          </section>
+        ) : null}
+
+        {formattedRunLaps.length > 0 ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-base font-semibold">Интервалы</h2>
+            <div className="mt-3 overflow-hidden rounded-xl border">
+              <div className="grid grid-cols-[56px_1fr_1fr_1fr_72px] gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary">
+                <span>№</span>
+                <span>Км</span>
+                <span>Время</span>
+                <span>Темп</span>
+                <span>Пульс</span>
+              </div>
+              <div className="divide-y">
+                {formattedRunLaps.map((lap) => (
+                  <div
+                    key={lap.lap_index}
+                    className="grid grid-cols-[56px_1fr_1fr_1fr_72px] gap-3 px-3 py-2.5 text-sm app-text-primary"
+                  >
+                    <span className="font-medium">{lap.lap_index}</span>
+                    <span>{lap.distanceLabel}</span>
+                    <span>{lap.durationLabel}</span>
+                    <span>{lap.paceLabel}</span>
+                    <span>{lap.averageHeartrateLabel ?? '—'}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         ) : null}
