@@ -3,6 +3,8 @@ import { fetchStravaActivityById, getStravaWebhookVerifyToken } from '@/lib/stra
 import { getStravaConnectionForAthlete, importStravaActivityForUser } from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
 
+const STRAVA_WEBHOOK_FETCH_RETRY_DELAYS_MS = [1500, 3000]
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const mode = url.searchParams.get('hub.mode')
@@ -61,6 +63,69 @@ export async function GET(request: Request) {
   return NextResponse.json({
     'hub.challenge': challenge,
   })
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function fetchStravaActivityByIdWithRetry(
+  accessToken: string,
+  activityId: number,
+  ownerId: number
+) {
+  const totalAttempts = STRAVA_WEBHOOK_FETCH_RETRY_DELAYS_MS.length + 1
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      if (attempt > 1) {
+        console.info('[strava-webhook-debug] fetch_activity_retry_attempt', {
+          activityId,
+          ownerId,
+          attempt,
+          totalAttempts,
+        })
+      }
+
+      const activity = await fetchStravaActivityById(accessToken, activityId)
+
+      console.info('[strava-webhook-debug] fetch_activity_retry_success', {
+        activityId,
+        ownerId,
+        attempt,
+        totalAttempts,
+        retried: attempt > 1,
+      })
+
+      return activity
+    } catch (caughtError) {
+      lastError = caughtError
+
+      console.warn('[strava-webhook-debug] fetch_activity_retry_failure', {
+        activityId,
+        ownerId,
+        attempt,
+        totalAttempts,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown fetch activity error',
+      })
+
+      if (attempt >= totalAttempts) {
+        break
+      }
+
+      await sleep(STRAVA_WEBHOOK_FETCH_RETRY_DELAYS_MS[attempt - 1])
+    }
+  }
+
+  console.warn('[strava-webhook-debug] fetch_activity_retry_exhausted', {
+    activityId,
+    ownerId,
+    totalAttempts,
+    error: lastError instanceof Error ? lastError.message : 'Unknown fetch activity error',
+  })
+
+  throw lastError
 }
 
 export async function POST(request: Request) {
@@ -154,7 +219,11 @@ export async function POST(request: Request) {
     let activity
 
     try {
-      activity = await fetchStravaActivityById(connection.access_token, activityId)
+      activity = await fetchStravaActivityByIdWithRetry(
+        connection.access_token,
+        activityId,
+        event.owner_id
+      )
     } catch (caughtError) {
       console.warn('[strava-webhook-debug] fetch_activity_failure', {
         activityId,
