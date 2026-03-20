@@ -35,6 +35,7 @@ type RunDetailsRow = {
   duration_minutes: number | null
   duration_seconds?: number | null
   moving_time_seconds?: number | null
+  elapsed_time_seconds?: number | null
   average_pace_seconds?: number | null
   elevation_gain_meters?: number | null
   average_heartrate?: number | null
@@ -53,8 +54,8 @@ type ProfileRow = {
 }
 
 type RunDetailSeriesPoint = {
-  x: number
-  y: number
+  time: number
+  value: number
 }
 
 type RunDetailSeriesRow = {
@@ -70,10 +71,10 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
-  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
+  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
 
 type QueryErrorLike = {
   code?: string | null
@@ -126,12 +127,15 @@ function normalizeRunDetailSeriesPoints(value: unknown): RunDetailSeriesPoint[] 
   }
 
   const points = value
-    .filter((point): point is { x?: unknown; y?: unknown } => typeof point === 'object' && point !== null)
+    .filter(
+      (point): point is { time?: unknown; value?: unknown; x?: unknown; y?: unknown } =>
+        typeof point === 'object' && point !== null
+    )
     .map((point) => ({
-      x: Number(point.x),
-      y: Number(point.y),
+      time: Number(point.time ?? point.x),
+      value: Number(point.value ?? point.y),
     }))
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
 
   return points.length > 0 ? points : null
 }
@@ -207,8 +211,86 @@ function formatPaceTick(value: number) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+function formatElapsedMinutesLabel(value: number) {
+  const totalSeconds = Math.max(0, Math.round(value * 60))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 function formatHeartRateTick(value: number) {
   return `${Math.round(value)}`
+}
+
+function getChartTimeRange(points: Array<{ time: number }>) {
+  if (points.length === 0) {
+    return null
+  }
+
+  return points.reduce(
+    (range, point) => ({
+      min: Math.min(range.min, point.time),
+      max: Math.max(range.max, point.time),
+    }),
+    { min: points[0].time, max: points[0].time }
+  )
+}
+
+function getChartDurationSeconds(
+  run: Pick<RunDetailsRow, 'moving_time_seconds' | 'elapsed_time_seconds' | 'duration_seconds'> | null
+) {
+  if (!run) {
+    return null
+  }
+
+  if (Number.isFinite(run.moving_time_seconds) && (run.moving_time_seconds ?? 0) > 0) {
+    return Math.round(run.moving_time_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run.elapsed_time_seconds) && (run.elapsed_time_seconds ?? 0) > 0) {
+    return Math.round(run.elapsed_time_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
+    return Math.round(run.duration_seconds ?? 0)
+  }
+
+  return null
+}
+
+function mapSeriesPointsToElapsedMinutes(
+  points: RunDetailSeriesPoint[] | null | undefined,
+  totalDurationSeconds: number | null
+) {
+  const safePoints = points ?? []
+
+  if (safePoints.length === 0) {
+    return {
+      data: [] as RunDetailSeriesPoint[],
+      usedFallbackApproximation: false,
+    }
+  }
+
+  const maxRawTime = safePoints.reduce((maxTime, point) => Math.max(maxTime, point.time), safePoints[0].time)
+  const looksLikeSampleIndex = maxRawTime <= safePoints.length
+  const canApproximateAcrossDuration = looksLikeSampleIndex && safePoints.length > 1 && totalDurationSeconds != null
+
+  return {
+    data: safePoints.map((point, index) => {
+      if (canApproximateAcrossDuration) {
+        return {
+          time: ((index / (safePoints.length - 1)) * totalDurationSeconds) / 60,
+          value: point.value,
+        }
+      }
+
+      return {
+        time: point.time / 60,
+        value: point.value,
+      }
+    }),
+    usedFallbackApproximation: canApproximateAcrossDuration,
+  }
 }
 
 function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
@@ -216,6 +298,7 @@ function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
 }
 
 export default function RunDetailsPage() {
+  const isDevelopment = process.env.NODE_ENV === 'development'
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const runId = typeof params?.id === 'string' ? params.id : ''
@@ -407,27 +490,79 @@ export default function RunDetailsPage() {
   const avatarSrc = author?.avatar_url?.trim() || null
   const authorName = getProfileDisplayName(author, 'Бегун')
   const commentsCount = comments.length
+  const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
+  const paceSeriesForChart = useMemo(
+    () => mapSeriesPointsToElapsedMinutes(runSeries.pace_points, chartDurationSeconds),
+    [chartDurationSeconds, runSeries.pace_points]
+  )
+  const heartRateSeriesForChart = useMemo(
+    () => mapSeriesPointsToElapsedMinutes(runSeries.heartrate_points, chartDurationSeconds),
+    [chartDurationSeconds, runSeries.heartrate_points]
+  )
   const paceChartData = useMemo(
-    () => (runSeries.pace_points ?? []).map((point) => ({ index: point.x + 1, paceSeconds: point.y })),
-    [runSeries.pace_points]
+    () =>
+      paceSeriesForChart.data.map((point) => ({
+        time: point.time,
+        paceSeconds: point.value,
+      })),
+    [paceSeriesForChart.data]
   )
   const heartRateChartData = useMemo(
-    () => (runSeries.heartrate_points ?? []).map((point) => ({ index: point.x + 1, heartRate: point.y })),
-    [runSeries.heartrate_points]
+    () =>
+      heartRateSeriesForChart.data.map((point) => ({
+        time: point.time,
+        heartRate: point.value,
+      })),
+    [heartRateSeriesForChart.data]
   )
+  const heartRateTimeRange = useMemo(() => getChartTimeRange(heartRateChartData), [heartRateChartData])
+  const paceTimeRange = useMemo(() => getChartTimeRange(paceChartData), [paceChartData])
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') {
+    if (!isDevelopment) {
       return
     }
 
-    console.debug('[RunDetailsPage] pace chart', {
-      pacePointsCount: runSeries.pace_points?.length ?? 0,
+    console.debug('[RunDetailsPage] raw heartrate_points sample', {
+      length: runSeries.heartrate_points?.length ?? 0,
+      sample: (runSeries.heartrate_points ?? []).slice(0, 5),
+    })
+    console.debug('[RunDetailsPage] raw pace_points sample', {
+      length: runSeries.pace_points?.length ?? 0,
+      sample: (runSeries.pace_points ?? []).slice(0, 5),
+    })
+    console.debug('[RunDetailsPage] mapped HR chart sample', {
+      sample: heartRateChartData.slice(0, 5),
+      minTime: heartRateTimeRange?.min ?? null,
+      maxTime: heartRateTimeRange?.max ?? null,
+      usedFallbackApproximation: heartRateSeriesForChart.usedFallbackApproximation,
+      totalDurationSecondsUsed: chartDurationSeconds,
+      rendered: shouldRenderHeartRateChart,
+    })
+    console.debug('[RunDetailsPage] mapped pace chart sample', {
+      sample: paceChartData.slice(0, 5),
+      minTime: paceTimeRange?.min ?? null,
+      maxTime: paceTimeRange?.max ?? null,
+      usedFallbackApproximation: paceSeriesForChart.usedFallbackApproximation,
+      totalDurationSecondsUsed: chartDurationSeconds,
       rendered: shouldRenderPaceChart,
     })
-  }, [runSeries.pace_points, shouldRenderPaceChart])
+  }, [
+    chartDurationSeconds,
+    heartRateChartData,
+    heartRateSeriesForChart.usedFallbackApproximation,
+    heartRateTimeRange,
+    isDevelopment,
+    paceChartData,
+    paceSeriesForChart.usedFallbackApproximation,
+    paceTimeRange,
+    runSeries.heartrate_points,
+    runSeries.pace_points,
+    shouldRenderHeartRateChart,
+    shouldRenderPaceChart,
+  ])
 
   const details = useMemo(() => {
     if (!run) {
@@ -630,11 +765,15 @@ export default function RunDetailsPage() {
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
-                    dataKey="index"
+                    dataKey="time"
+                    type="number"
+                    domain={['dataMin', 'dataMax']}
+                    tickCount={6}
                     tickLine={false}
                     axisLine={false}
                     minTickGap={24}
                     tickMargin={8}
+                    tickFormatter={formatElapsedMinutesLabel}
                     tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
                   />
                   <YAxis
@@ -651,7 +790,7 @@ export default function RunDetailsPage() {
                       const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
                       return [`${Math.round(numericValue)} уд/мин`, 'Пульс']
                     }}
-                    labelFormatter={() => ''}
+                    labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
                   />
                   <Line
                     type="monotone"
@@ -679,11 +818,15 @@ export default function RunDetailsPage() {
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
-                    dataKey="index"
+                    dataKey="time"
+                    type="number"
+                    domain={['dataMin', 'dataMax']}
+                    tickCount={6}
                     tickLine={false}
                     axisLine={false}
                     minTickGap={24}
                     tickMargin={8}
+                    tickFormatter={formatElapsedMinutesLabel}
                     tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
                   />
                   <YAxis
@@ -700,7 +843,7 @@ export default function RunDetailsPage() {
                       const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
                       return [formatPaceLabel(numericValue), 'Темп']
                     }}
-                    labelFormatter={() => ''}
+                    labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
                   />
                   <Line
                     type="monotone"
@@ -715,6 +858,29 @@ export default function RunDetailsPage() {
             </div>
           </section>
         ) : null}
+
+        <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <h2 className="app-text-primary text-sm font-semibold">Chart Debug</h2>
+          <pre className="app-text-secondary mt-3 overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5">
+            {JSON.stringify(
+              {
+                heartrate_points_length: runSeries.heartrate_points?.length ?? 0,
+                pace_points_length: runSeries.pace_points?.length ?? 0,
+                heartrate_points_first_5: (runSeries.heartrate_points ?? []).slice(0, 5),
+                pace_points_first_5: (runSeries.pace_points ?? []).slice(0, 5),
+                mapped_hr_chart_first_5: heartRateChartData.slice(0, 5),
+                mapped_pace_chart_first_5: paceChartData.slice(0, 5),
+                mapped_hr_time_range: heartRateTimeRange,
+                mapped_pace_time_range: paceTimeRange,
+                hr_uses_fallback_approximation: heartRateSeriesForChart.usedFallbackApproximation,
+                pace_uses_fallback_approximation: paceSeriesForChart.usedFallbackApproximation,
+                total_duration_seconds_used_for_scaling: chartDurationSeconds,
+              },
+              null,
+              2
+            )}
+          </pre>
+        </section>
 
         {run.map_polyline?.trim() ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
