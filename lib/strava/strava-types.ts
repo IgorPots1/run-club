@@ -71,6 +71,18 @@ export type StravaSyncDebugInfo = {
   targetedSyncSucceeded?: boolean
   targetedOwnerMismatch?: boolean
   targetedRunOwnerUserId?: string | null
+  targetedAuthUserExists?: boolean
+  targetedAuthUserId?: string | null
+  targetedRunFound?: boolean
+  targetedResolvedRunId?: string | null
+  targetedResolvedRunUserId?: string | null
+  targetedResolvedRunSource?: string | null
+  targetedResolvedRunExternalId?: string | null
+  targetedResolvedRunStravaActivityId?: number | null
+  targetedComparisonUserId?: string | null
+  targetedOwnerComparisonResult?: boolean
+  targetedOwnerCheckPassed?: boolean
+  targetedStopReason?: string | null
 }
 
 export type StravaInitialSyncResult =
