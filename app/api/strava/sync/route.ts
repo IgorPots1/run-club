@@ -68,6 +68,7 @@ export async function GET(request: Request) {
     const result = await syncStravaRuns(user.id, {
       mode: 'backfill',
       ...(debugRunId ? { debugRunId } : {}),
+      ...(debugMode && debugRunId ? { allowTargetedDebugOwnerBypass: true } : {}),
     })
 
     if (!result.ok) {

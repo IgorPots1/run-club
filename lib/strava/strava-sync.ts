@@ -1,8 +1,21 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { fetchActivityStreams, fetchStravaActivities, isStravaAuthError, isStravaNotFoundError, refreshStravaAccessToken } from './strava-client'
-import type { StravaActivityStreams, StravaActivitySummary, StravaActivityType, StravaInitialSyncResult } from './strava-types'
+import {
+  fetchActivityLaps,
+  fetchActivityStreams,
+  fetchStravaActivities,
+  isStravaAuthError,
+  isStravaNotFoundError,
+  refreshStravaAccessToken,
+} from './strava-client'
+import type {
+  StravaActivityStreams,
+  StravaActivitySummary,
+  StravaActivityType,
+  StravaInitialSyncResult,
+  StravaLapSummary,
+} from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const FALLBACK_RUN_NAME = 'Бег'
@@ -91,11 +104,31 @@ type StravaSyncMode = 'incremental' | 'backfill'
 type SyncStravaRunsOptions = {
   mode?: StravaSyncMode
   debugRunId?: string
+  allowTargetedDebugOwnerBypass?: boolean
 }
 
 type RunDetailSeriesPoint = {
   time: number
   value: number
+}
+
+type RunLapUpsertPayload = {
+  run_id: string
+  strava_activity_id: number
+  lap_index: number
+  name: string | null
+  distance_meters: number | null
+  elapsed_time_seconds: number | null
+  moving_time_seconds: number | null
+  average_speed: number | null
+  max_speed: number | null
+  average_heartrate: number | null
+  max_heartrate: number | null
+  total_elevation_gain: number | null
+  start_date: string | null
+  start_index: number | null
+  end_index: number | null
+  pace_seconds_per_km: number | null
 }
 
 function shouldDebugRunDetailSeries(input: {
@@ -222,6 +255,92 @@ function normalizeIntegerField(field: string, value: number) {
 
 function toXp(distanceKm: number) {
   return Math.max(0, normalizeIntegerField('xp', 50 + distanceKm * 10))
+}
+
+function toNullableFiniteNumber(value: number | null | undefined) {
+  return Number.isFinite(value) ? Number(value) : null
+}
+
+function toNullableInteger(value: number | null | undefined) {
+  return Number.isFinite(value) ? Math.round(value) : null
+}
+
+function toNormalizedLapIndex(value: number | null | undefined, fallbackLapIndex: number) {
+  if (Number.isFinite(value) && Number(value) > 0) {
+    return Math.round(Number(value))
+  }
+
+  return fallbackLapIndex
+}
+
+function toNullableIsoTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return null
+  }
+
+  const parsedTimestamp = new Date(value)
+
+  if (Number.isNaN(parsedTimestamp.getTime())) {
+    return null
+  }
+
+  return parsedTimestamp.toISOString()
+}
+
+function roundToTwoDecimals(value: number) {
+  return Number(value.toFixed(2))
+}
+
+function computeLapPaceSecondsPerKm(lap: StravaLapSummary) {
+  const averageSpeed = toNullableFiniteNumber(lap.average_speed)
+
+  if (averageSpeed && averageSpeed > 0) {
+    return roundToTwoDecimals(1000 / averageSpeed)
+  }
+
+  const distanceMeters = toNullableFiniteNumber(lap.distance)
+  const movingTimeSeconds = toNullableInteger(lap.moving_time)
+  const elapsedTimeSeconds = toNullableInteger(lap.elapsed_time)
+
+  if (distanceMeters && distanceMeters > 0 && movingTimeSeconds && movingTimeSeconds > 0) {
+    return roundToTwoDecimals(movingTimeSeconds / (distanceMeters / 1000))
+  }
+
+  if (distanceMeters && distanceMeters > 0 && elapsedTimeSeconds && elapsedTimeSeconds > 0) {
+    return roundToTwoDecimals(elapsedTimeSeconds / (distanceMeters / 1000))
+  }
+
+  return null
+}
+
+function buildRunLapUpsertPayloads(
+  runId: string,
+  activityId: number,
+  laps: StravaLapSummary[]
+): RunLapUpsertPayload[] {
+  return laps.map((lap, index) => {
+    const fallbackLapIndex = index + 1
+    const lapName = typeof lap.name === 'string' ? lap.name.trim() : ''
+
+    return {
+      run_id: runId,
+      strava_activity_id: activityId,
+      lap_index: toNormalizedLapIndex(lap.lap_index, fallbackLapIndex),
+      name: lapName.length > 0 ? lapName : null,
+      distance_meters: toNullableFiniteNumber(lap.distance),
+      elapsed_time_seconds: toNullableInteger(lap.elapsed_time),
+      moving_time_seconds: toNullableInteger(lap.moving_time),
+      average_speed: toNullableFiniteNumber(lap.average_speed),
+      max_speed: toNullableFiniteNumber(lap.max_speed),
+      average_heartrate: toNullableFiniteNumber(lap.average_heartrate),
+      max_heartrate: toNullableFiniteNumber(lap.max_heartrate),
+      total_elevation_gain: toNullableFiniteNumber(lap.total_elevation_gain),
+      start_date: toNullableIsoTimestamp(lap.start_date),
+      start_index: toNullableInteger(lap.start_index),
+      end_index: toNullableInteger(lap.end_index),
+      pace_seconds_per_km: computeLapPaceSecondsPerKm(lap),
+    }
+  })
 }
 
 function buildBucketedSeries(
@@ -492,6 +611,114 @@ async function syncRunDetailSeriesForActivity(
   }
 }
 
+async function syncRunLapsForActivity(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  runId: string,
+  activityId: number,
+  accessToken: string,
+  debugRunId?: string
+): Promise<boolean> {
+  const shouldDebug =
+    shouldDebugRunDetailSeries({ runId, activityId }) || matchesDebugRunId(runId, debugRunId)
+
+  try {
+    const laps = await fetchActivityLaps(activityId, accessToken)
+    const lapRows = buildRunLapUpsertPayloads(runId, activityId, laps)
+
+    if (lapRows.length === 0) {
+      if (shouldDebug) {
+        console.info('[run-detail-debug] run_laps_sync_empty', {
+          runId,
+          activityId,
+        })
+      }
+
+      console.info('Strava run laps sync completed with no laps', {
+        runId,
+        activityId,
+      })
+
+      return true
+    }
+
+    const { error } = await supabase
+      .from('run_laps')
+      .upsert(lapRows, {
+        onConflict: 'run_id,lap_index',
+      })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (shouldDebug) {
+      console.info('[run-detail-debug] run_laps_sync_succeeded', {
+        runId,
+        activityId,
+        lapsCount: lapRows.length,
+      })
+    }
+
+    console.info('Strava run laps synced', {
+      runId,
+      activityId,
+      lapsCount: lapRows.length,
+    })
+
+    return true
+  } catch (caughtError) {
+    if (isStravaNotFoundError(caughtError)) {
+      console.info('Strava run laps not ready yet', {
+        runId,
+        activityId,
+        status: caughtError.status,
+      })
+      return false
+    }
+
+    console.warn('Strava run laps sync skipped', {
+      runId,
+      activityId,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown laps sync error',
+    })
+
+    if (shouldDebug) {
+      console.warn('[run-detail-debug] run_laps_sync_failed', {
+        runId,
+        activityId,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown laps sync error',
+      })
+    }
+
+    return false
+  }
+}
+
+async function syncRunSupplementalStravaDataForActivity(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  runId: string,
+  activityId: number,
+  accessToken: string,
+  debugRunId?: string
+) {
+  const detailSeriesSynced = await syncRunDetailSeriesForActivity(
+    supabase,
+    runId,
+    activityId,
+    accessToken,
+    debugRunId
+  )
+  const lapsSynced = await syncRunLapsForActivity(
+    supabase,
+    runId,
+    activityId,
+    accessToken,
+    debugRunId
+  )
+
+  return detailSeriesSynced || lapsSynced
+}
+
 async function backfillMissingRunDetailSeriesForUser(
   userId: string,
   accessToken: string,
@@ -551,7 +778,13 @@ async function backfillMissingRunDetailSeriesForUser(
       path: 'forced_historical_detail_series_backfill',
     })
 
-    await syncRunDetailSeriesForActivity(supabase, targetRun.id, activityId, accessToken, debugRunId)
+    await syncRunSupplementalStravaDataForActivity(
+      supabase,
+      targetRun.id,
+      activityId,
+      accessToken,
+      debugRunId
+    )
     return
   }
 
@@ -673,7 +906,7 @@ async function backfillMissingRunDetailSeriesForUser(
       fallback_reason: 'historical_missing_detail_series',
     })
 
-    await syncRunDetailSeriesForActivity(supabase, run.id, activityId, accessToken)
+    await syncRunSupplementalStravaDataForActivity(supabase, run.id, activityId, accessToken)
   }
 }
 
@@ -1170,7 +1403,7 @@ export async function importStravaActivityForUser(
     }
 
     if (insertedRun?.id && options.accessToken) {
-      await syncRunDetailSeriesForActivity(
+      await syncRunSupplementalStravaDataForActivity(
         supabase,
         insertedRun.id,
         activity.id,
@@ -1273,7 +1506,7 @@ export async function importStravaActivityForUser(
       })
     }
 
-    await syncRunDetailSeriesForActivity(
+    await syncRunSupplementalStravaDataForActivity(
       supabase,
       existingRun.id,
       activity.id,
@@ -1299,6 +1532,9 @@ export async function syncStravaRuns(
   options: SyncStravaRunsOptions = {}
 ): Promise<StravaInitialSyncResult> {
   const targetDebugRunId = options.debugRunId?.trim() || undefined
+  const allowTargetedDebugOwnerBypass = Boolean(
+    targetDebugRunId && options.allowTargetedDebugOwnerBypass
+  )
   const sessionDebugId = `sync-${Date.now()}-${userId.slice(0, 8)}`
   const syncMode: StravaSyncMode = options.mode ?? 'incremental'
   let connection: StravaConnectionRow | null = null
@@ -1426,7 +1662,7 @@ export async function syncStravaRuns(
       normalizedRunOwnerUserId === normalizedConnectionUserId ||
       normalizedRunOwnerUserId === normalizedAuthUserId
 
-    if (!ownerCheckPassed) {
+    if (!ownerCheckPassed && !allowTargetedDebugOwnerBypass) {
       console.warn('[run-detail-debug] target_run_owner_mismatch', {
         runId: targetDebugRunId,
         currentUserId: userId,
@@ -1466,6 +1702,17 @@ export async function syncStravaRuns(
           targetedRunOwnerUserId: targetRun.user_id,
         },
       }
+    }
+
+    if (!ownerCheckPassed && allowTargetedDebugOwnerBypass) {
+      console.info('[run-detail-debug] target_run_owner_mismatch_bypassed', {
+        runId: targetDebugRunId,
+        currentUserId: userId,
+        connectionUserId: connection.user_id,
+        ownerUserId: targetRun.user_id,
+        externalSource: targetRun.external_source,
+        externalId: targetRun.external_id,
+      })
     }
 
     const targetedActivityId = Number(targetRun.external_id)
@@ -1509,7 +1756,7 @@ export async function syncStravaRuns(
       }
     }
 
-    const targetedSyncSucceeded = await syncRunDetailSeriesForActivity(
+    const targetedSyncSucceeded = await syncRunSupplementalStravaDataForActivity(
       supabase,
       targetRun.id,
       targetedActivityId,

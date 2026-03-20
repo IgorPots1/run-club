@@ -38,6 +38,23 @@ export type StravaActivitySummary = {
   } | null
 }
 
+export type StravaLapSummary = {
+  id?: number
+  name?: string | null
+  elapsed_time?: number | null
+  moving_time?: number | null
+  distance?: number | null
+  average_speed?: number | null
+  max_speed?: number | null
+  average_heartrate?: number | null
+  max_heartrate?: number | null
+  total_elevation_gain?: number | null
+  start_date?: string | null
+  start_index?: number | null
+  end_index?: number | null
+  lap_index?: number | null
+}
+
 export type StravaActivityStreams = {
   time?: number[]
   distance?: number[]

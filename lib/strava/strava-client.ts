@@ -1,6 +1,11 @@
 import 'server-only'
 
-import type { StravaActivityStreams, StravaActivitySummary, StravaTokenExchangeResponse } from './strava-types'
+import type {
+  StravaActivityStreams,
+  StravaActivitySummary,
+  StravaLapSummary,
+  StravaTokenExchangeResponse,
+} from './strava-types'
 
 const STRAVA_AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -233,4 +238,35 @@ export async function fetchActivityStreams(
   })
 
   return streams
+}
+
+export async function fetchActivityLaps(
+  activityId: number,
+  accessToken: string
+): Promise<StravaLapSummary[]> {
+  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}/laps`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw buildStravaApiError('Strava activity laps fetch failed', response.status, await readErrorBody(response))
+  }
+
+  const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
+  const parsed = JSON.parse(responseText)
+  const laps = Array.isArray(parsed) ? parsed : []
+
+  const safeLaps = laps.filter(
+    (lap): lap is StravaLapSummary => typeof lap === 'object' && lap !== null
+  )
+
+  console.info('Strava activity laps received', {
+    activityId,
+    lapsCount: safeLaps.length,
+  })
+
+  return safeLaps
 }
