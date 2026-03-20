@@ -67,7 +67,7 @@ function formatClubJoinedLabel(dateString: string | null | undefined) {
   if (!dateString) return 'дата неизвестна'
   const date = new Date(dateString)
   if (Number.isNaN(date.getTime())) return 'дата неизвестна'
-  const monthLabels = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+  const monthLabels = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
   return `${monthLabels[date.getMonth()] ?? ''} ${date.getFullYear()}`.trim()
 }
 
