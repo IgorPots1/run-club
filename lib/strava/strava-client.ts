@@ -116,6 +116,11 @@ export async function exchangeStravaCodeForToken(code: string): Promise<StravaTo
 }
 
 export async function refreshStravaAccessToken(refreshToken: string): Promise<StravaTokenExchangeResponse> {
+  console.info('[strava-config-debug] refresh_token_env_check', {
+    stravaClientId: process.env.STRAVA_CLIENT_ID ?? null,
+    hasStravaClientSecret: Boolean(process.env.STRAVA_CLIENT_SECRET),
+  })
+
   const response = await fetch(STRAVA_TOKEN_URL, {
     method: 'POST',
     headers: {

@@ -17,6 +17,12 @@ function buildDebugDiagnostics(source: {
     imported?: number
     failed?: number
     firstFailure?: { activityId: string; error: string; field?: string; value?: number | string | null } | null
+    targetedRunId?: string | null
+    targetedActivityId?: number | null
+    targetedSyncAttempted?: boolean
+    targetedSyncSucceeded?: boolean
+    targetedOwnerMismatch?: boolean
+    targetedRunOwnerUserId?: string | null
   }
 }): SyncDebugDiagnostics {
   return {
@@ -31,6 +37,7 @@ function buildDebugDiagnostics(source: {
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const debugMode = url.searchParams.get('debug') === '1'
+  const debugRunId = url.searchParams.get('debugRunId')?.trim() || null
   const { user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
@@ -54,12 +61,14 @@ export async function GET(request: Request) {
   // #endregion
   console.info('[run-detail-debug] sync_route_start', {
     userId: user.id,
-    targetRunId: '586eec1e-41cc-4553-9e90-1c8f048bbbda',
-    targetActivityId: 17777010725,
+    debugRunId,
   })
 
   try {
-    const result = await syncStravaRuns(user.id, { mode: 'backfill' })
+    const result = await syncStravaRuns(user.id, {
+      mode: 'backfill',
+      ...(debugRunId ? { debugRunId } : {}),
+    })
 
     if (!result.ok) {
       // #region agent log
@@ -95,6 +104,18 @@ export async function GET(request: Request) {
       debug: result.debug ?? null,
     })
     // #endregion
+
+    if (debugRunId) {
+      return NextResponse.json({
+        ok: true,
+        targetedRunId: result.debug?.targetedRunId ?? debugRunId,
+        targetedActivityId: result.debug?.targetedActivityId ?? null,
+        targetedSyncAttempted: result.debug?.targetedSyncAttempted ?? false,
+        targetedSyncSucceeded: result.debug?.targetedSyncSucceeded ?? false,
+        targetedOwnerMismatch: result.debug?.targetedOwnerMismatch ?? false,
+        targetedRunOwnerUserId: result.debug?.targetedRunOwnerUserId ?? null,
+      })
+    }
 
     return NextResponse.json({
       ok: true,

@@ -45,6 +45,34 @@ export type StravaActivityStreams = {
   velocity_smooth?: number[]
 }
 
+export type StravaSyncDebugInfo = {
+  step: string
+  userId: string
+  athleteId: number | null
+  connectionId: string | null
+  totalActivitiesFetched: number
+  firstFetchedActivityId: string | null
+  firstFetchedActivityType: string | null
+  runActivitiesCount: number
+  imported: number
+  skipped: number
+  failed: number
+  firstFailure: {
+    activityId: string
+    field?: string
+    value?: number | string | null
+    error: string
+  } | null
+  afterParamUsed: number | null
+  latestExistingStravaRunAt: string | null
+  targetedRunId?: string | null
+  targetedActivityId?: number | null
+  targetedSyncAttempted?: boolean
+  targetedSyncSucceeded?: boolean
+  targetedOwnerMismatch?: boolean
+  targetedRunOwnerUserId?: string | null
+}
+
 export type StravaInitialSyncResult =
   | {
       ok: true
@@ -58,77 +86,17 @@ export type StravaInitialSyncResult =
         value?: number | string | null
         error: string
       }>
-      debug?: {
-        step: string
-        userId: string
-        athleteId: number | null
-        connectionId: string | null
-        totalActivitiesFetched: number
-        firstFetchedActivityId: string | null
-        firstFetchedActivityType: string | null
-        runActivitiesCount: number
-        imported: number
-        skipped: number
-        failed: number
-        firstFailure: {
-          activityId: string
-          field?: string
-          value?: number | string | null
-          error: string
-        } | null
-        afterParamUsed: number | null
-        latestExistingStravaRunAt: string | null
-      }
+      debug?: StravaSyncDebugInfo
     }
   | {
       ok: false
       step: 'missing_connection'
-      debug?: {
-        step: string
-        userId: string
-        athleteId: number | null
-        connectionId: string | null
-        totalActivitiesFetched: number
-        firstFetchedActivityId: string | null
-        firstFetchedActivityType: string | null
-        runActivitiesCount: number
-        imported: number
-        skipped: number
-        failed: number
-        firstFailure: {
-          activityId: string
-          field?: string
-          value?: number | string | null
-          error: string
-        } | null
-        afterParamUsed: number | null
-        latestExistingStravaRunAt: string | null
-      }
+      debug?: StravaSyncDebugInfo
     }
   | {
       ok: false
       step: 'reconnect_required'
-      debug?: {
-        step: string
-        userId: string
-        athleteId: number | null
-        connectionId: string | null
-        totalActivitiesFetched: number
-        firstFetchedActivityId: string | null
-        firstFetchedActivityType: string | null
-        runActivitiesCount: number
-        imported: number
-        skipped: number
-        failed: number
-        firstFailure: {
-          activityId: string
-          field?: string
-          value?: number | string | null
-          error: string
-        } | null
-        afterParamUsed: number | null
-        latestExistingStravaRunAt: string | null
-      }
+      debug?: StravaSyncDebugInfo
     }
 
 export type StravaWebhookEvent = {
