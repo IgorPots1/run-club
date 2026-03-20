@@ -6,9 +6,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Map } from 'lucide-react'
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -698,13 +698,19 @@ export default function RunDetailsPage() {
             <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
             <div className="mt-3 h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart
+                <AreaChart
                   data={heartRateChartData}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   accessibilityLayer={false}
                   syncId="run-detail-series"
                   syncMethod="value"
                 >
+                  <defs>
+                    <linearGradient id="heart-rate-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="time"
@@ -734,15 +740,17 @@ export default function RunDetailsPage() {
                     }}
                     labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
                   />
-                  <Line
+                  <Area
                     type="monotone"
                     dataKey="heartRate"
                     stroke="var(--accent-strong)"
                     strokeWidth={2.5}
+                    fill="url(#heart-rate-fill)"
+                    fillOpacity={1}
                     dot={false}
                     activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
                   />
-                </LineChart>
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </section>
@@ -753,13 +761,19 @@ export default function RunDetailsPage() {
             <h2 className="app-text-primary text-base font-semibold">Темп</h2>
             <div className="mt-3 h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart
+                <AreaChart
                   data={paceChartData}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   accessibilityLayer={false}
                   syncId="run-detail-series"
                   syncMethod="value"
                 >
+                  <defs>
+                    <linearGradient id="pace-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.16} />
+                      <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="time"
@@ -792,15 +806,18 @@ export default function RunDetailsPage() {
                     }}
                     labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
                   />
-                  <Line
+                  <Area
                     type="monotone"
                     dataKey="chartPace"
+                    baseValue="dataMin"
                     stroke="var(--accent-strong)"
                     strokeWidth={2.5}
+                    fill="url(#pace-fill)"
+                    fillOpacity={1}
                     dot={false}
                     activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
                   />
-                </LineChart>
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </section>
