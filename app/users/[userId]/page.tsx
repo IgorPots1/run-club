@@ -6,10 +6,10 @@ import { redirect } from 'next/navigation'
 import BackNavigationButton from '@/components/BackNavigationButton'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import { buildActivityWindowStats } from '@/lib/activity'
-import { formatDistanceKm } from '@/lib/format'
+import { formatDistanceKm, formatDurationCompact, formatMonthYearLabel } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
-import { getLevelFromXP } from '@/lib/xp'
+import { getLevelProgressFromXP } from '@/lib/xp'
 
 type PageProps = {
   params: Promise<{
@@ -22,6 +22,7 @@ type PublicProfileRow = {
   name: string | null
   nickname: string | null
   avatar_url: string | null
+  created_at: string
 }
 
 type PublicRunStatRow = {
@@ -62,23 +63,6 @@ function buildRecent7DayActivity(runs: PublicRunStatRow[], now = new Date()) {
   })
 }
 
-function formatMovingTime(totalSeconds: number) {
-  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
-    return '0:00'
-  }
-
-  const safeSeconds = Math.max(0, Math.round(totalSeconds))
-  const hours = Math.floor(safeSeconds / 3600)
-  const minutes = Math.floor((safeSeconds % 3600) / 60)
-  const seconds = safeSeconds % 60
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }
-
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-}
-
 export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ user, error, supabase }, { userId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -89,7 +73,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ data: profile, error: profileError }, { data: runs, error: runsError }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, name, nickname, avatar_url')
+      .select('id, name, nickname, avatar_url, created_at')
       .eq('id', userId)
       .maybeSingle(),
     supabase
@@ -136,7 +120,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const totalXp = publicRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0)
   const totalDistance = publicRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0)
   const totalRuns = publicRuns.length
-  const level = getLevelFromXP(totalXp).level
+  const levelProgress = getLevelProgressFromXP(totalXp)
   const displayName = getProfileDisplayName(
     {
       name: publicProfile?.name ?? null,
@@ -147,13 +131,14 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   )
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
   const activity30Days = buildActivityWindowStats(publicRuns)
+  const memberSinceLabel = formatMonthYearLabel(publicProfile?.created_at ?? '')
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <BackNavigationButton className="mb-4" />
         <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
-        <section className="app-card mb-5 rounded-3xl border px-5 py-5 shadow-sm sm:px-6 sm:py-6">
+        <section className="app-card mb-7 rounded-3xl border px-5 py-6 shadow-sm sm:px-6 sm:py-7">
           <div className="flex flex-col items-center text-center">
             <span className="relative inline-flex h-32 w-32 items-center justify-center rounded-full ring-1 ring-black/10 shadow-[0_8px_24px_rgba(0,0,0,0.08)] sm:h-36 sm:w-36 dark:ring-white/15 dark:shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
               {publicProfile?.avatar_url ? (
@@ -174,14 +159,30 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               <h2 className="app-text-primary truncate text-[1.5rem] font-semibold leading-tight sm:text-[1.7rem]">
                 {displayName}
               </h2>
-              <p className="app-text-secondary mt-2 text-sm font-medium sm:text-[15px]">
-                Уровень {level}
+              <p className="app-text-secondary mt-2 text-sm sm:text-[15px]">
+                В клубе с {memberSinceLabel}
               </p>
-              <p className="app-text-primary mt-1 text-[1.6rem] font-semibold leading-none tracking-tight sm:text-[1.9rem]">
+              <p className="app-text-secondary mt-3 text-sm font-medium sm:text-[15px]">
+                Уровень {levelProgress.level}
+              </p>
+              <p className="app-text-primary mt-1 text-[2rem] font-bold leading-none tracking-tight sm:text-[2.35rem]">
                 {totalXp} XP
               </p>
-              <div className="mt-3">
-                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">
+              <div className="mt-4 w-full max-w-xs">
+                <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
+                  <div
+                    className="app-accent-bg h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                    style={{ width: `${levelProgress.progressPercent}%` }}
+                  />
+                </div>
+                <p className="app-text-secondary mt-2 text-sm">
+                  {levelProgress.nextLevelXP === null
+                    ? 'Максимальный уровень'
+                    : `${levelProgress.xpToNextLevel} XP до уровня ${levelProgress.level + 1}`}
+                </p>
+              </div>
+              <div className="mt-4">
+                <p className="app-text-secondary text-xs font-medium">
                   Последние 7 дней
                 </p>
                 <div className="mt-2 flex items-center justify-center gap-1.5">
@@ -218,48 +219,48 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                 </div>
               </div>
             </div>
-            <div className="mt-4 grid w-full max-w-xs grid-cols-2 gap-2.5">
-              <div className="app-surface-muted rounded-2xl px-3 py-2.5">
-                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Км</p>
-                <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+            <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
+              <div className="app-surface-muted rounded-2xl px-3 py-3">
+                <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
                   {formatDistanceKm(totalDistance)}
                 </p>
+                <p className="app-text-secondary mt-2 text-sm">км</p>
               </div>
-              <div className="app-surface-muted rounded-2xl px-3 py-2.5">
-                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Тренировки</p>
-                <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+              <div className="app-surface-muted rounded-2xl px-3 py-3">
+                <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
                   {totalRuns}
                 </p>
+                <p className="app-text-secondary mt-2 text-sm">тренировок</p>
               </div>
             </div>
           </div>
         </section>
-        <section className="app-card mb-5 rounded-2xl border p-4 shadow-sm">
+        <section className="app-card mb-7 rounded-2xl border p-4 shadow-sm sm:p-5">
           <h2 className="app-text-primary text-base font-semibold">Активность за 30 дней</h2>
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
-              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Дистанция</p>
-              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="app-surface-muted rounded-2xl px-3 py-3">
+              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {formatDistanceKm(activity30Days.totalDistanceKm)} км
               </p>
+              <p className="app-text-secondary mt-1.5 text-sm">Дистанция</p>
             </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
-              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Тренировки</p>
-              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+            <div className="app-surface-muted rounded-2xl px-3 py-3">
+              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {activity30Days.runsCount}
               </p>
+              <p className="app-text-secondary mt-1.5 text-sm">Тренировки</p>
             </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
-              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Активные дни</p>
-              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+            <div className="app-surface-muted rounded-2xl px-3 py-3">
+              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {activity30Days.activeDaysCount}
               </p>
+              <p className="app-text-secondary mt-1.5 text-sm">Активные дни</p>
             </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
-              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Время</p>
-              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
-                {formatMovingTime(activity30Days.totalMovingTimeSeconds)}
+            <div className="app-surface-muted rounded-2xl px-3 py-3">
+              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
+                {formatDurationCompact(activity30Days.totalMovingTimeSeconds)}
               </p>
+              <p className="app-text-secondary mt-1.5 text-sm">Время</p>
             </div>
           </div>
         </section>

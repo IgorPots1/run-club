@@ -2,6 +2,8 @@ export function formatDistanceKm(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
+const RUSSIAN_SHORT_MONTH_LABELS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'] as const
+
 function parseRunDate(dateString: string) {
   const runDate = new Date(dateString)
 
@@ -66,4 +68,30 @@ export function formatRunTimestampLabel(dateString: string, externalSource?: str
   }
 
   return formatRunDateLabel(dateString)
+}
+
+export function formatMonthYearLabel(dateString: string) {
+  const date = parseRunDate(dateString)
+
+  if (!date) {
+    return 'дата неизвестна'
+  }
+
+  return `${RUSSIAN_SHORT_MONTH_LABELS[date.getMonth()] ?? ''} ${date.getFullYear()}`.trim()
+}
+
+export function formatDurationCompact(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return '0 мин'
+  }
+
+  const safeSeconds = Math.max(0, Math.round(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`
+  }
+
+  return `${Math.max(minutes, 1)} мин`
 }
