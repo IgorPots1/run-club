@@ -31,42 +31,35 @@ type PublicRunStatRow = {
   moving_time_seconds: number | null
 }
 
-function formatUtcDateKey(date: Date) {
-  return date.toISOString().slice(0, 10)
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function getTrainingStreak(runs: PublicRunStatRow[]) {
-  const runDateKeys = new Set(
-    runs
-      .map((run) => run.created_at?.slice(0, 10))
-      .filter((value): value is string => Boolean(value))
-  )
-
-  if (runDateKeys.size === 0) {
-    return 0
-  }
-
-  const cursor = new Date()
-  let currentDateKey = formatUtcDateKey(cursor)
-
-  if (!runDateKeys.has(currentDateKey)) {
-    cursor.setUTCDate(cursor.getUTCDate() - 1)
-    currentDateKey = formatUtcDateKey(cursor)
-
-    if (!runDateKeys.has(currentDateKey)) {
-      return 0
+function buildRecent7DayActivity(runs: PublicRunStatRow[], now = new Date()) {
+  const runsCountByDate = runs.reduce<Record<string, number>>((counts, run) => {
+    const createdAt = new Date(run.created_at)
+    if (Number.isNaN(createdAt.getTime())) {
+      return counts
     }
-  }
 
-  let streak = 0
+    const dateKey = formatDateKey(createdAt)
+    counts[dateKey] = (counts[dateKey] ?? 0) + 1
+    return counts
+  }, {})
 
-  while (runDateKeys.has(currentDateKey)) {
-    streak += 1
-    cursor.setUTCDate(cursor.getUTCDate() - 1)
-    currentDateKey = formatUtcDateKey(cursor)
-  }
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
 
-  return streak
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today)
+    date.setDate(today.getDate() - (6 - index))
+
+    return {
+      dateKey: formatDateKey(date),
+      runsCount: runsCountByDate[formatDateKey(date)] ?? 0,
+      isToday: index === 6,
+    }
+  })
 }
 
 function formatMovingTime(totalSeconds: number) {
@@ -152,7 +145,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     },
     'Бегун'
   )
-  const trainingStreak = getTrainingStreak(publicRuns)
+  const recent7DayActivity = buildRecent7DayActivity(publicRuns)
   const activity30Days = buildActivityWindowStats(publicRuns)
 
   return (
@@ -187,11 +180,43 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               <p className="app-text-primary mt-1 text-[1.6rem] font-semibold leading-none tracking-tight sm:text-[1.9rem]">
                 {totalXp} XP
               </p>
-              {trainingStreak > 0 ? (
-                <p className="app-text-secondary mt-2 text-sm font-medium sm:text-[15px]">
-                  🔥 {trainingStreak} дней подряд
+              <div className="mt-3">
+                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">
+                  Последние 7 дней
                 </p>
-              ) : null}
+                <div className="mt-2 flex items-center justify-center gap-1.5">
+                  {recent7DayActivity.map((day) => {
+                    const visibleDotsCount = Math.min(day.runsCount, 3)
+
+                    return (
+                      <div
+                        key={day.dateKey}
+                        className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                          day.isToday
+                            ? 'border border-black/15 bg-black/[0.04] dark:border-white/15 dark:bg-white/[0.08]'
+                            : 'app-surface-muted'
+                        }`}
+                        aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${day.runsCount} тренировок`}
+                      >
+                        {visibleDotsCount === 0 ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-black/20 dark:bg-white/20" aria-hidden="true" />
+                        ) : (
+                          <div className="flex items-center gap-1" aria-hidden="true">
+                            {Array.from({ length: visibleDotsCount }, (_, index) => (
+                              <span
+                                key={`${day.dateKey}-dot-${index}`}
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  day.isToday ? 'bg-black dark:bg-white' : 'bg-black/65 dark:bg-white/75'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
             <div className="mt-4 grid w-full max-w-xs grid-cols-2 gap-2.5">
               <div className="app-surface-muted rounded-2xl px-3 py-2.5">
