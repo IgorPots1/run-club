@@ -489,6 +489,7 @@ export default function RunDetailsPage() {
       paceSeriesForChart.data.map((point) => ({
         time: point.time,
         paceSeconds: point.value,
+        chartPace: -point.value,
       })),
     [paceSeriesForChart.data]
   )
@@ -772,21 +773,24 @@ export default function RunDetailsPage() {
                     tickLine={false}
                     axisLine={false}
                     width={44}
-                    tickFormatter={formatPaceTick}
+                    tickFormatter={(value) => {
+                      const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                      return formatPaceTick(Math.abs(numericValue))
+                    }}
                     tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
                     domain={['dataMin - 10', 'dataMax + 10']}
                   />
                   <Tooltip
                     cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
-                    formatter={(value) => {
-                      const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                    formatter={(_value, _name, item) => {
+                      const numericValue = Number(item?.payload?.paceSeconds ?? 0)
                       return [formatPaceLabel(numericValue), 'Темп']
                     }}
                     labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
                   />
                   <Line
                     type="monotone"
-                    dataKey="paceSeconds"
+                    dataKey="chartPace"
                     stroke="var(--accent-strong)"
                     strokeWidth={2.5}
                     dot={false}
