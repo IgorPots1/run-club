@@ -7,6 +7,12 @@ type ActivityRunRow = {
   created_at: string
 }
 
+export type ActivityWindowRun = {
+  distance_km: number | null
+  created_at: string
+  moving_time_seconds?: number | null
+}
+
 export type ActivityChartPoint = {
   label: string
   distance: number
@@ -16,6 +22,13 @@ export type ActivitySummary = {
   totalDistance: number
   totalWorkouts: number
   chartData: ActivityChartPoint[]
+}
+
+export type ActivityWindowStats = {
+  totalDistanceKm: number
+  runsCount: number
+  activeDaysCount: number
+  totalMovingTimeSeconds: number
 }
 
 function startOfDay(date: Date) {
@@ -52,6 +65,10 @@ function addDays(date: Date, days: number) {
   const next = new Date(date)
   next.setDate(next.getDate() + days)
   return next
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 function addMonths(date: Date, months: number) {
@@ -193,5 +210,30 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       label: formatYearLabel(year),
       distance: distanceByYear[year.getFullYear()] ?? 0,
     })),
+  }
+}
+
+export function buildActivityWindowStats(
+  runs: ActivityWindowRun[],
+  options: { days?: number; now?: Date } = {}
+): ActivityWindowStats {
+  const { days = 30, now = new Date() } = options
+  const safeDays = Math.max(1, Math.floor(days))
+  const end = addDays(startOfDay(now), 1)
+  const start = addDays(end, -safeDays)
+  const filteredRuns = runs.filter((run) => {
+    const createdAt = new Date(run.created_at)
+    return !Number.isNaN(createdAt.getTime()) && createdAt >= start && createdAt < end
+  })
+
+  const activeDateKeys = new Set(
+    filteredRuns.map((run) => formatDateKey(new Date(run.created_at)))
+  )
+
+  return {
+    totalDistanceKm: filteredRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0),
+    runsCount: filteredRuns.length,
+    activeDaysCount: activeDateKeys.size,
+    totalMovingTimeSeconds: filteredRuns.reduce((sum, run) => sum + Math.max(0, Number(run.moving_time_seconds ?? 0)), 0),
   }
 }

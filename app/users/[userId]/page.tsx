@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import BackNavigationButton from '@/components/BackNavigationButton'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
+import { buildActivityWindowStats } from '@/lib/activity'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -27,6 +28,7 @@ type PublicRunStatRow = {
   xp: number | null
   distance_km: number | null
   created_at: string
+  moving_time_seconds: number | null
 }
 
 function formatUtcDateKey(date: Date) {
@@ -67,6 +69,23 @@ function getTrainingStreak(runs: PublicRunStatRow[]) {
   return streak
 }
 
+function formatMovingTime(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return '0:00'
+  }
+
+  const safeSeconds = Math.max(0, Math.round(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const seconds = safeSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ user, error, supabase }, { userId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -82,7 +101,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .maybeSingle(),
     supabase
       .from('runs')
-      .select('xp, distance_km, created_at')
+      .select('xp, distance_km, created_at, moving_time_seconds')
       .eq('user_id', userId),
   ])
 
@@ -134,6 +153,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     'Бегун'
   )
   const trainingStreak = getTrainingStreak(publicRuns)
+  const activity30Days = buildActivityWindowStats(publicRuns)
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
@@ -186,6 +206,35 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                   {totalRuns}
                 </p>
               </div>
+            </div>
+          </div>
+        </section>
+        <section className="app-card mb-5 rounded-2xl border p-4 shadow-sm">
+          <h2 className="app-text-primary text-base font-semibold">Активность за 30 дней</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
+              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Дистанция</p>
+              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+                {formatDistanceKm(activity30Days.totalDistanceKm)} км
+              </p>
+            </div>
+            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
+              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Тренировки</p>
+              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+                {activity30Days.runsCount}
+              </p>
+            </div>
+            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
+              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Активные дни</p>
+              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+                {activity30Days.activeDaysCount}
+              </p>
+            </div>
+            <div className="app-surface-muted rounded-2xl px-3 py-2.5">
+              <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Время</p>
+              <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+                {formatMovingTime(activity30Days.totalMovingTimeSeconds)}
+              </p>
             </div>
           </div>
         </section>
