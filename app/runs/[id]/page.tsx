@@ -5,6 +5,15 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Map } from 'lucide-react'
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
 import { getBootstrapUser } from '@/lib/auth'
@@ -189,6 +198,10 @@ function formatPaceLabel(averagePaceSeconds: number) {
   const minutes = Math.floor(safePace / 60)
   const seconds = safePace % 60
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
+}
+
+function formatHeartRateTick(value: number) {
+  return `${Math.round(value)}`
 }
 
 function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
@@ -387,6 +400,10 @@ export default function RunDetailsPage() {
   const avatarSrc = author?.avatar_url?.trim() || null
   const authorName = getProfileDisplayName(author, 'Бегун')
   const commentsCount = comments.length
+  const heartRateChartData = useMemo(
+    () => (runSeries.heartrate_points ?? []).map((point) => ({ index: point.x + 1, heartRate: point.y })),
+    [runSeries.heartrate_points]
+  )
   const details = useMemo(() => {
     if (!run) {
       return null
@@ -576,6 +593,55 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
+        {(runSeries?.heartrate_points?.length ?? 0) > 1 ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
+            <div className="mt-3 h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={heartRateChartData}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  accessibilityLayer={false}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis
+                    dataKey="index"
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={24}
+                    tickMargin={8}
+                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                    tickFormatter={formatHeartRateTick}
+                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                    domain={['dataMin - 5', 'dataMax + 5']}
+                  />
+                  <Tooltip
+                    cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                    formatter={(value) => {
+                      const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                      return [`${Math.round(numericValue)} уд/мин`, 'Пульс']
+                    }}
+                    labelFormatter={() => ''}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="heartRate"
+                    stroke="var(--accent-strong)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        ) : null}
+
         {run.map_polyline?.trim() ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary inline-flex items-center gap-2 text-base font-semibold">
@@ -600,18 +666,6 @@ export default function RunDetailsPage() {
               ) : (
                 <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
               )}
-            </div>
-            <div className="mt-3 rounded-xl border px-3 py-2 text-xs">
-              <p className="app-text-secondary">run.id: {run.id}</p>
-              <p className="app-text-secondary mt-1">source: {run.external_source ?? 'none'}</p>
-              <p className="app-text-secondary mt-1">external_id: {run.external_id ?? 'none'}</p>
-              <p className="app-text-secondary mt-1">series_row_exists: {runSeries.exists ? 'yes' : 'no'}</p>
-              <p className="app-text-secondary">
-                pace_points: {runSeries.pace_points ? `yes (${runSeries.pace_points.length})` : 'no'}
-              </p>
-              <p className="app-text-secondary mt-1">
-                heartrate_points: {runSeries.heartrate_points ? `yes (${runSeries.heartrate_points.length})` : 'no'}
-              </p>
             </div>
           </section>
         ) : null}
