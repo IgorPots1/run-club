@@ -736,11 +736,11 @@ export default function RunDetailsPage() {
     }
 
     let cancelled = false
-    setLapsBackfillAttemptedRunId(run.id)
+    setLapsBackfillAttemptedRunId(runId)
 
     async function backfillRunLaps() {
       try {
-        const response = await fetch(`/api/runs/${run.id}/strava-backfill`, {
+        const response = await fetch(`/api/runs/${runId}/strava-backfill`, {
           method: 'POST',
         })
 

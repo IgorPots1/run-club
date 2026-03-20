@@ -96,100 +96,128 @@ export async function POST(request: Request) {
     (event.aspect_type === 'create' || event.aspect_type === 'update')
   )
 
-  if (isActivityCreateOrUpdate) {
-    const activityId = event.object_id
-
-    console.info('Webhook importing activity', {
-      activityId,
+  if (!isActivityCreateOrUpdate) {
+    return NextResponse.json({
+      ok: true,
+      step: 'event_ignored',
     })
-
-    void (async () => {
-      let step = 'load_connection'
-
-      try {
-        console.info('[strava-webhook-debug] load_connection_start', {
-          ownerId: event.owner_id,
-          activityId,
-        })
-        const connection = await getStravaConnectionForAthlete(event.owner_id)
-
-        if (!connection) {
-          console.warn('[strava-webhook-debug] load_connection_missing', {
-            ownerId: event.owner_id,
-            activityId,
-          })
-          console.warn('Webhook import skipped: missing connection', {
-            ownerId: event.owner_id,
-            activityId,
-          })
-          return
-        }
-
-        console.info('[strava-webhook-debug] load_connection_success', {
-          ownerId: event.owner_id,
-          activityId,
-          userId: connection.user_id,
-          connectionId: connection.id,
-        })
-
-        step = 'fetch_activity'
-        console.info('[strava-webhook-debug] fetch_activity_start', {
-          ownerId: event.owner_id,
-          activityId,
-        })
-        let activity
-
-        try {
-          activity = await fetchStravaActivityById(connection.access_token, activityId)
-        } catch (caughtError) {
-          console.warn('[strava-webhook-debug] fetch_activity_failure', {
-            activityId,
-            ownerId: event.owner_id,
-            step,
-            error: caughtError instanceof Error ? caughtError.message : 'Unknown fetch activity error',
-          })
-          console.info('[strava-webhook-debug] activity_not_ready_yet_will_be_picked_up_by_sync', {
-            activityId,
-            ownerId: event.owner_id,
-          })
-          return
-        }
-
-        console.info('[strava-webhook-debug] fetch_activity_success', {
-          activityId,
-          activityType: activity.type ?? null,
-          startDate: activity.start_date ?? null,
-        })
-
-        step = 'import_run'
-        console.info('[strava-webhook-debug] import_run_start', {
-          activityId,
-          userId: connection.user_id,
-        })
-        await importStravaActivityForUser(connection.user_id, activity, {
-          updateExisting: true,
-          accessToken: connection.access_token,
-        })
-        console.info('[strava-webhook-debug] import_run_success', {
-          activityId,
-          userId: connection.user_id,
-        })
-      } catch (caughtError) {
-        console.error('[strava-webhook-debug] webhook_import_failed', {
-          activityId,
-          step,
-          error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
-        })
-        console.error('Webhook import failed', {
-          activityId,
-          error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
-        })
-      }
-    })()
   }
 
-  return NextResponse.json({
-    ok: true,
-    step: isActivityCreateOrUpdate ? 'event_scheduled' : 'event_ignored',
+  const activityId = event.object_id
+  let step = 'load_connection'
+
+  console.info('Webhook importing activity', {
+    activityId,
   })
+
+  try {
+    console.info('[strava-webhook-debug] load_connection_start', {
+      ownerId: event.owner_id,
+      activityId,
+      step,
+    })
+    const connection = await getStravaConnectionForAthlete(event.owner_id)
+
+    if (!connection) {
+      console.warn('[strava-webhook-debug] load_connection_missing', {
+        ownerId: event.owner_id,
+        activityId,
+        step,
+      })
+      console.warn('Webhook import skipped: missing connection', {
+        ownerId: event.owner_id,
+        activityId,
+        step,
+      })
+
+      return NextResponse.json({
+        ok: true,
+        step: 'event_processed',
+      })
+    }
+
+    console.info('[strava-webhook-debug] load_connection_success', {
+      ownerId: event.owner_id,
+      activityId,
+      userId: connection.user_id,
+      connectionId: connection.id,
+      step,
+    })
+
+    step = 'fetch_activity'
+    console.info('[strava-webhook-debug] fetch_activity_start', {
+      ownerId: event.owner_id,
+      activityId,
+      step,
+    })
+
+    let activity
+
+    try {
+      activity = await fetchStravaActivityById(connection.access_token, activityId)
+    } catch (caughtError) {
+      console.warn('[strava-webhook-debug] fetch_activity_failure', {
+        activityId,
+        ownerId: event.owner_id,
+        step,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown fetch activity error',
+      })
+      console.info('[strava-webhook-debug] activity_not_ready_yet_will_be_picked_up_by_sync', {
+        activityId,
+        ownerId: event.owner_id,
+        step,
+      })
+
+      return NextResponse.json({
+        ok: true,
+        step: 'event_processed',
+      })
+    }
+
+    console.info('[strava-webhook-debug] fetch_activity_success', {
+      activityId,
+      activityType: activity.type ?? null,
+      startDate: activity.start_date ?? null,
+      step,
+    })
+
+    step = 'import_run'
+    console.info('[strava-webhook-debug] import_run_start', {
+      activityId,
+      userId: connection.user_id,
+      step,
+    })
+    await importStravaActivityForUser(connection.user_id, activity, {
+      updateExisting: true,
+      accessToken: connection.access_token,
+    })
+    console.info('[strava-webhook-debug] import_run_success', {
+      activityId,
+      userId: connection.user_id,
+      step,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      step: 'event_processed',
+    })
+  } catch (caughtError) {
+    console.error('[strava-webhook-debug] webhook_import_failed', {
+      activityId,
+      step,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
+    })
+    console.error('Webhook import failed', {
+      activityId,
+      step,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
+    })
+
+    return NextResponse.json({
+      ok: false,
+      step: 'webhook_import_failed',
+      activityId,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook import error',
+    }, { status: 500 })
+  }
 }

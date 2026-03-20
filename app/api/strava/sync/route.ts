@@ -23,6 +23,11 @@ function buildDebugDiagnostics(source: {
     targetedSyncSucceeded?: boolean
     targetedOwnerMismatch?: boolean
     targetedRunOwnerUserId?: string | null
+    targetedLapsFetchedCount?: number
+    targetedLapsSavedCount?: number
+    targetedLapsStatus?: 'fetched_and_saved' | 'fetched_but_not_saved' | 'no_laps_returned' | 'laps_fetch_failed'
+    targetedLapsErrorMessage?: string | null
+    targetedLapsHttpStatus?: number | null
   }
 }): SyncDebugDiagnostics {
   return {
@@ -115,6 +120,11 @@ export async function GET(request: Request) {
         targetedSyncSucceeded: result.debug?.targetedSyncSucceeded ?? false,
         targetedOwnerMismatch: result.debug?.targetedOwnerMismatch ?? false,
         targetedRunOwnerUserId: result.debug?.targetedRunOwnerUserId ?? null,
+        targetedLapsFetchedCount: result.debug?.targetedLapsFetchedCount ?? 0,
+        targetedLapsSavedCount: result.debug?.targetedLapsSavedCount ?? 0,
+        targetedLapsStatus: result.debug?.targetedLapsStatus ?? 'laps_fetch_failed',
+        targetedLapsErrorMessage: result.debug?.targetedLapsErrorMessage ?? null,
+        targetedLapsHttpStatus: result.debug?.targetedLapsHttpStatus ?? null,
       })
     }
 

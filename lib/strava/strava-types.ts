@@ -36,6 +36,7 @@ export type StravaActivitySummary = {
     summary_polyline?: string | null
     polyline?: string | null
   } | null
+  laps?: StravaLapSummary[] | null
 }
 
 export type StravaLapSummary = {
@@ -88,6 +89,11 @@ export type StravaSyncDebugInfo = {
   targetedSyncSucceeded?: boolean
   targetedOwnerMismatch?: boolean
   targetedRunOwnerUserId?: string | null
+  targetedLapsFetchedCount?: number
+  targetedLapsSavedCount?: number
+  targetedLapsStatus?: 'fetched_and_saved' | 'fetched_but_not_saved' | 'no_laps_returned' | 'laps_fetch_failed'
+  targetedLapsErrorMessage?: string | null
+  targetedLapsHttpStatus?: number | null
 }
 
 export type StravaInitialSyncResult =
