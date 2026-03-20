@@ -262,7 +262,9 @@ function toNullableFiniteNumber(value: number | null | undefined) {
 }
 
 function toNullableInteger(value: number | null | undefined) {
-  return Number.isFinite(value) ? Math.round(value) : null
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.round(value)
+    : null
 }
 
 function toNormalizedLapIndex(value: number | null | undefined, fallbackLapIndex: number) {
