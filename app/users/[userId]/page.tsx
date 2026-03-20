@@ -22,7 +22,7 @@ type PublicProfileRow = {
   name: string | null
   nickname: string | null
   avatar_url: string | null
-  created_at: string
+  club_joined_at: string | null
 }
 
 type PublicRunStatRow = {
@@ -63,6 +63,14 @@ function buildRecent7DayActivity(runs: PublicRunStatRow[], now = new Date()) {
   })
 }
 
+function formatClubJoinedLabel(dateString: string | null | undefined) {
+  if (!dateString) return 'дата неизвестна'
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return 'дата неизвестна'
+  const monthLabels = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+  return `${monthLabels[date.getMonth()] ?? ''} ${date.getFullYear()}`.trim()
+}
+
 export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ user, error, supabase }, { userId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -73,7 +81,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ data: profile, error: profileError }, { data: runs, error: runsError }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, name, nickname, avatar_url, created_at')
+      .select('id, name, nickname, avatar_url, club_joined_at')
       .eq('id', userId)
       .maybeSingle(),
     supabase
@@ -131,7 +139,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   )
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
   const activity30Days = buildActivityWindowStats(publicRuns)
-  const memberSinceLabel = formatMonthYearLabel(publicProfile?.created_at ?? '')
+  const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
