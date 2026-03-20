@@ -530,6 +530,8 @@ export default function RunDetailsPage() {
   const [likesCount, setLikesCount] = useState(0)
   const [comments, setComments] = useState<RunCommentItem[]>([])
   const [commentsError, setCommentsError] = useState('')
+  const [lapsBackfillAttemptedRunId, setLapsBackfillAttemptedRunId] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   function handleBackNavigation() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -714,7 +716,48 @@ export default function RunDetailsPage() {
     return () => {
       isMounted = false
     }
-  }, [authLoading, runId, user])
+  }, [authLoading, reloadKey, runId, user])
+
+  useEffect(() => {
+    if (loading || !user || !run) {
+      return
+    }
+
+    const shouldAttemptLapsBackfill =
+      run.id !== lapsBackfillAttemptedRunId &&
+      run.user_id === user.id &&
+      run.external_source === 'strava' &&
+      typeof run.external_id === 'string' &&
+      run.external_id.trim().length > 0 &&
+      runLaps.length === 0
+
+    if (!shouldAttemptLapsBackfill) {
+      return
+    }
+
+    let cancelled = false
+    setLapsBackfillAttemptedRunId(run.id)
+
+    async function backfillRunLaps() {
+      try {
+        const response = await fetch(`/api/runs/${run.id}/strava-backfill`, {
+          method: 'POST',
+        })
+
+        if (!cancelled && response.ok) {
+          setReloadKey((currentValue) => currentValue + 1)
+        }
+      } catch {
+        // Keep the existing fallback breakdown UI when backfill fails.
+      }
+    }
+
+    void backfillRunLaps()
+
+    return () => {
+      cancelled = true
+    }
+  }, [lapsBackfillAttemptedRunId, loading, run, runLaps.length, user])
 
   const avatarSrc = author?.avatar_url?.trim() || null
   const authorName = getProfileDisplayName(author, 'Бегун')

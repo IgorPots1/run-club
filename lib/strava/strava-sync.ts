@@ -2,12 +2,13 @@ import 'server-only'
 
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import {
-  fetchActivityLaps,
+  fetchStravaActivityById,
   fetchActivityStreams,
   fetchStravaActivities,
   isStravaAuthError,
   isStravaNotFoundError,
   refreshStravaAccessToken,
+  StravaApiError,
 } from './strava-client'
 import type {
   StravaActivityStreams,
@@ -129,6 +130,21 @@ type RunLapUpsertPayload = {
   start_index: number | null
   end_index: number | null
   pace_seconds_per_km: number | null
+}
+
+type RunLapsSyncStatus =
+  | 'fetched_and_saved'
+  | 'fetched_but_not_saved'
+  | 'no_laps_returned'
+  | 'laps_fetch_failed'
+
+type RunLapsSyncResult = {
+  synced: boolean
+  fetchedCount: number
+  savedCount: number
+  status: RunLapsSyncStatus
+  errorMessage: string | null
+  httpStatus: number | null
 }
 
 function shouldDebugRunDetailSeries(input: {
@@ -619,12 +635,16 @@ async function syncRunLapsForActivity(
   activityId: number,
   accessToken: string,
   debugRunId?: string
-): Promise<boolean> {
+): Promise<RunLapsSyncResult> {
   const shouldDebug =
     shouldDebugRunDetailSeries({ runId, activityId }) || matchesDebugRunId(runId, debugRunId)
+  let fetchedCount = 0
 
   try {
-    const laps = await fetchActivityLaps(activityId, accessToken)
+    const detailedActivity = await fetchStravaActivityById(accessToken, activityId)
+    const laps = Array.isArray(detailedActivity.laps) ? detailedActivity.laps : []
+
+    fetchedCount = laps.length
     const lapRows = buildRunLapUpsertPayloads(runId, activityId, laps)
 
     if (lapRows.length === 0) {
@@ -640,7 +660,14 @@ async function syncRunLapsForActivity(
         activityId,
       })
 
-      return true
+      return {
+        synced: true,
+        fetchedCount: 0,
+        savedCount: 0,
+        status: 'no_laps_returned',
+        errorMessage: null,
+        httpStatus: null,
+      }
     }
 
     const { error } = await supabase
@@ -667,7 +694,14 @@ async function syncRunLapsForActivity(
       lapsCount: lapRows.length,
     })
 
-    return true
+    return {
+      synced: true,
+      fetchedCount,
+      savedCount: lapRows.length,
+      status: 'fetched_and_saved',
+      errorMessage: null,
+      httpStatus: null,
+    }
   } catch (caughtError) {
     if (isStravaNotFoundError(caughtError)) {
       console.info('Strava run laps not ready yet', {
@@ -675,7 +709,14 @@ async function syncRunLapsForActivity(
         activityId,
         status: caughtError.status,
       })
-      return false
+      return {
+        synced: false,
+        fetchedCount: 0,
+        savedCount: 0,
+        status: 'laps_fetch_failed',
+        errorMessage: caughtError.message,
+        httpStatus: caughtError.status,
+      }
     }
 
     console.warn('Strava run laps sync skipped', {
@@ -692,7 +733,14 @@ async function syncRunLapsForActivity(
       })
     }
 
-    return false
+    return {
+      synced: false,
+      fetchedCount,
+      savedCount: 0,
+      status: fetchedCount > 0 ? 'fetched_but_not_saved' : 'laps_fetch_failed',
+      errorMessage: caughtError instanceof Error ? caughtError.message : 'Unknown laps sync error',
+      httpStatus: caughtError instanceof StravaApiError ? caughtError.status : null,
+    }
   }
 }
 
@@ -710,7 +758,7 @@ async function syncRunSupplementalStravaDataForActivity(
     accessToken,
     debugRunId
   )
-  const lapsSynced = await syncRunLapsForActivity(
+  const lapsSyncResult = await syncRunLapsForActivity(
     supabase,
     runId,
     activityId,
@@ -718,7 +766,7 @@ async function syncRunSupplementalStravaDataForActivity(
     debugRunId
   )
 
-  return detailSeriesSynced || lapsSynced
+  return detailSeriesSynced || lapsSyncResult.synced
 }
 
 async function backfillMissingRunDetailSeriesForUser(
@@ -1758,13 +1806,21 @@ export async function syncStravaRuns(
       }
     }
 
-    const targetedSyncSucceeded = await syncRunSupplementalStravaDataForActivity(
+    const targetedDetailSeriesSynced = await syncRunDetailSeriesForActivity(
       supabase,
       targetRun.id,
       targetedActivityId,
       connection.access_token,
       targetDebugRunId
     )
+    const targetedLapsSyncResult = await syncRunLapsForActivity(
+      supabase,
+      targetRun.id,
+      targetedActivityId,
+      connection.access_token,
+      targetDebugRunId
+    )
+    const targetedSyncSucceeded = targetedDetailSeriesSynced || targetedLapsSyncResult.synced
 
     return {
       ok: true,
@@ -1794,6 +1850,11 @@ export async function syncStravaRuns(
         targetedSyncSucceeded,
         targetedOwnerMismatch: false,
         targetedRunOwnerUserId: targetRun.user_id,
+        targetedLapsFetchedCount: targetedLapsSyncResult.fetchedCount,
+        targetedLapsSavedCount: targetedLapsSyncResult.savedCount,
+        targetedLapsStatus: targetedLapsSyncResult.status,
+        targetedLapsErrorMessage: targetedLapsSyncResult.errorMessage,
+        targetedLapsHttpStatus: targetedLapsSyncResult.httpStatus,
       },
     }
   }
@@ -1970,4 +2031,13 @@ export async function syncStravaRuns(
       latestExistingStravaRunAt: latestImportedRun?.created_at ?? null,
     },
   }
+}
+
+export async function backfillStravaSupplementalDataForRun(userId: string, runId: string) {
+  const result = await syncStravaRuns(userId, {
+    mode: 'backfill',
+    debugRunId: runId,
+  })
+
+  return Boolean(result.ok && result.debug?.targetedSyncSucceeded)
 }
