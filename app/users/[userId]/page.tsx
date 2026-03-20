@@ -26,6 +26,45 @@ type PublicProfileRow = {
 type PublicRunStatRow = {
   xp: number | null
   distance_km: number | null
+  created_at: string
+}
+
+function formatUtcDateKey(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function getTrainingStreak(runs: PublicRunStatRow[]) {
+  const runDateKeys = new Set(
+    runs
+      .map((run) => run.created_at?.slice(0, 10))
+      .filter((value): value is string => Boolean(value))
+  )
+
+  if (runDateKeys.size === 0) {
+    return 0
+  }
+
+  const cursor = new Date()
+  let currentDateKey = formatUtcDateKey(cursor)
+
+  if (!runDateKeys.has(currentDateKey)) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1)
+    currentDateKey = formatUtcDateKey(cursor)
+
+    if (!runDateKeys.has(currentDateKey)) {
+      return 0
+    }
+  }
+
+  let streak = 0
+
+  while (runDateKeys.has(currentDateKey)) {
+    streak += 1
+    cursor.setUTCDate(cursor.getUTCDate() - 1)
+    currentDateKey = formatUtcDateKey(cursor)
+  }
+
+  return streak
 }
 
 export default async function PublicUserProfilePage({ params }: PageProps) {
@@ -43,7 +82,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .maybeSingle(),
     supabase
       .from('runs')
-      .select('xp, distance_km')
+      .select('xp, distance_km, created_at')
       .eq('user_id', userId),
   ])
 
@@ -94,6 +133,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     },
     'Бегун'
   )
+  const trainingStreak = getTrainingStreak(publicRuns)
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
@@ -127,6 +167,11 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               <p className="app-text-primary mt-1 text-[1.6rem] font-semibold leading-none tracking-tight sm:text-[1.9rem]">
                 {totalXp} XP
               </p>
+              {trainingStreak > 0 ? (
+                <p className="app-text-secondary mt-2 text-sm font-medium sm:text-[15px]">
+                  🔥 {trainingStreak} дней подряд
+                </p>
+              ) : null}
             </div>
             <div className="mt-4 grid w-full max-w-xs grid-cols-2 gap-2.5">
               <div className="app-surface-muted rounded-2xl px-3 py-2.5">
