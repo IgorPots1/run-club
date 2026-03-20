@@ -200,6 +200,13 @@ function formatPaceLabel(averagePaceSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
 }
 
+function formatPaceTick(value: number) {
+  const safePace = Math.max(1, Math.round(value))
+  const minutes = Math.floor(safePace / 60)
+  const seconds = safePace % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 function formatHeartRateTick(value: number) {
   return `${Math.round(value)}`
 }
@@ -400,10 +407,28 @@ export default function RunDetailsPage() {
   const avatarSrc = author?.avatar_url?.trim() || null
   const authorName = getProfileDisplayName(author, 'Бегун')
   const commentsCount = comments.length
+  const paceChartData = useMemo(
+    () => (runSeries.pace_points ?? []).map((point) => ({ index: point.x + 1, paceSeconds: point.y })),
+    [runSeries.pace_points]
+  )
   const heartRateChartData = useMemo(
     () => (runSeries.heartrate_points ?? []).map((point) => ({ index: point.x + 1, heartRate: point.y })),
     [runSeries.heartrate_points]
   )
+  const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
+  const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') {
+      return
+    }
+
+    console.debug('[RunDetailsPage] pace chart', {
+      pacePointsCount: runSeries.pace_points?.length ?? 0,
+      rendered: shouldRenderPaceChart,
+    })
+  }, [runSeries.pace_points, shouldRenderPaceChart])
+
   const details = useMemo(() => {
     if (!run) {
       return null
@@ -593,7 +618,7 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
-        {(runSeries?.heartrate_points?.length ?? 0) > 1 ? (
+        {shouldRenderHeartRateChart ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
             <div className="mt-3 h-[220px] w-full">
@@ -631,6 +656,55 @@ export default function RunDetailsPage() {
                   <Line
                     type="monotone"
                     dataKey="heartRate"
+                    stroke="var(--accent-strong)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        ) : null}
+
+        {shouldRenderPaceChart ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-base font-semibold">Темп</h2>
+            <div className="mt-3 h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={paceChartData}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  accessibilityLayer={false}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis
+                    dataKey="index"
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={24}
+                    tickMargin={8}
+                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={44}
+                    tickFormatter={formatPaceTick}
+                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                    domain={['dataMin - 10', 'dataMax + 10']}
+                  />
+                  <Tooltip
+                    cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                    formatter={(value) => {
+                      const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                      return [formatPaceLabel(numericValue), 'Темп']
+                    }}
+                    labelFormatter={() => ''}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="paceSeconds"
                     stroke="var(--accent-strong)"
                     strokeWidth={2.5}
                     dot={false}
