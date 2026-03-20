@@ -72,6 +72,14 @@ type RunLapRow = {
   average_heartrate: number | null
 }
 
+type BreakdownRow = {
+  index: number
+  distanceMeters: number
+  elapsedTimeSeconds: number
+  paceSecondsPerKm: number | null
+  averageHeartrate: number | null
+}
+
 const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
   exists: false,
   pace_points: null,
@@ -226,12 +234,224 @@ function formatElapsedMinutesLabel(value: number) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
-function formatLapDistanceLabel(distanceMeters: number) {
-  return `${formatDistanceKm(distanceMeters / 1000)} км`
+function formatBreakdownDistanceLabel(distanceMeters: number) {
+  return `${(distanceMeters / 1000).toFixed(2)} км`
+}
+
+function formatBreakdownPaceLabel(averagePaceSeconds: number) {
+  const safePace = Math.max(1, Math.round(averagePaceSeconds))
+  const minutes = Math.floor(safePace / 60)
+  const seconds = safePace % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}/км`
 }
 
 function formatHeartRateTick(value: number) {
   return `${Math.round(value)}`
+}
+
+function buildSeriesAnchors(
+  points: RunDetailSeriesPoint[] | null | undefined,
+  totalDurationSeconds: number
+) {
+  if (!Array.isArray(points) || points.length === 0 || totalDurationSeconds <= 0) {
+    return [] as RunDetailSeriesPoint[]
+  }
+
+  const sortedPoints = points
+    .map((point) => ({
+      time: Math.max(0, Math.min(totalDurationSeconds, point.time)),
+      value: point.value,
+    }))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
+    .sort((left, right) => left.time - right.time)
+
+  if (sortedPoints.length === 0) {
+    return []
+  }
+
+  const anchors: RunDetailSeriesPoint[] = []
+
+  if (sortedPoints[0].time > 0) {
+    anchors.push({ time: 0, value: sortedPoints[0].value })
+  }
+
+  for (const point of sortedPoints) {
+    const previousPoint = anchors[anchors.length - 1]
+
+    if (previousPoint && previousPoint.time === point.time) {
+      previousPoint.value = point.value
+      continue
+    }
+
+    anchors.push(point)
+  }
+
+  const lastPoint = anchors[anchors.length - 1]
+
+  if (!lastPoint) {
+    return []
+  }
+
+  if (lastPoint.time < totalDurationSeconds) {
+    anchors.push({
+      time: totalDurationSeconds,
+      value: lastPoint.value,
+    })
+  } else if (lastPoint.time > totalDurationSeconds) {
+    lastPoint.time = totalDurationSeconds
+  }
+
+  return anchors.length >= 2 ? anchors : []
+}
+
+function getAverageSeriesValueForInterval(
+  anchors: RunDetailSeriesPoint[],
+  startTimeSeconds: number,
+  endTimeSeconds: number
+) {
+  if (anchors.length < 2 || endTimeSeconds <= startTimeSeconds) {
+    return null
+  }
+
+  let weightedValueSum = 0
+  let totalCoveredSeconds = 0
+
+  for (let index = 0; index < anchors.length - 1; index += 1) {
+    const segmentStart = anchors[index].time
+    const segmentEnd = anchors[index + 1].time
+    const overlapStart = Math.max(startTimeSeconds, segmentStart)
+    const overlapEnd = Math.min(endTimeSeconds, segmentEnd)
+
+    if (overlapEnd <= overlapStart) {
+      continue
+    }
+
+    const overlapDuration = overlapEnd - overlapStart
+    weightedValueSum += anchors[index].value * overlapDuration
+    totalCoveredSeconds += overlapDuration
+  }
+
+  return totalCoveredSeconds > 0 ? weightedValueSum / totalCoveredSeconds : null
+}
+
+function buildFallbackBreakdownRows(params: {
+  pacePoints: RunDetailSeriesPoint[] | null | undefined
+  heartratePoints: RunDetailSeriesPoint[] | null | undefined
+  totalDurationSeconds: number | null
+  totalDistanceKm: number | null
+}) {
+  const totalDurationSeconds = params.totalDurationSeconds ?? 0
+  const paceAnchors = buildSeriesAnchors(params.pacePoints, totalDurationSeconds)
+
+  if (paceAnchors.length < 2 || totalDurationSeconds <= 0) {
+    return [] as BreakdownRow[]
+  }
+
+  const heartrateAnchors = buildSeriesAnchors(params.heartratePoints, totalDurationSeconds)
+  const rawSegments = paceAnchors
+    .slice(0, -1)
+    .map((point, index) => {
+      const nextPoint = paceAnchors[index + 1]
+      const durationSeconds = nextPoint.time - point.time
+
+      if (!Number.isFinite(point.value) || point.value <= 0 || durationSeconds <= 0) {
+        return null
+      }
+
+      return {
+        startTimeSeconds: point.time,
+        endTimeSeconds: nextPoint.time,
+        durationSeconds,
+        distanceKm: durationSeconds / point.value,
+      }
+    })
+    .filter((segment): segment is {
+      startTimeSeconds: number
+      endTimeSeconds: number
+      durationSeconds: number
+      distanceKm: number
+    } => segment != null && Number.isFinite(segment.distanceKm) && segment.distanceKm > 0)
+
+  if (rawSegments.length === 0) {
+    return []
+  }
+
+  const derivedDistanceKm = rawSegments.reduce((sum, segment) => sum + segment.distanceKm, 0)
+  const targetDistanceKm =
+    Number.isFinite(params.totalDistanceKm) && (params.totalDistanceKm ?? 0) > 0
+      ? Number(params.totalDistanceKm)
+      : null
+  const distanceScale =
+    targetDistanceKm && derivedDistanceKm > 0
+      ? targetDistanceKm / derivedDistanceKm
+      : 1
+
+  const rows: BreakdownRow[] = []
+  let currentTimeSeconds = rawSegments[0].startTimeSeconds
+  let currentSplitStartTimeSeconds = currentTimeSeconds
+  let currentSplitDistanceKm = 0
+  let currentSplitDurationSeconds = 0
+
+  for (const segment of rawSegments) {
+    const distancePerSecondKm = (segment.distanceKm * distanceScale) / segment.durationSeconds
+
+    if (!Number.isFinite(distancePerSecondKm) || distancePerSecondKm <= 0) {
+      currentTimeSeconds = segment.endTimeSeconds
+      continue
+    }
+
+    let remainingSegmentDurationSeconds = segment.durationSeconds
+
+    while (remainingSegmentDurationSeconds > 1e-6) {
+      const remainingSplitDistanceKm = Math.max(0, 1 - currentSplitDistanceKm)
+      const durationToCompleteSplitSeconds = remainingSplitDistanceKm / distancePerSecondKm
+      const consumedDurationSeconds = Math.min(remainingSegmentDurationSeconds, durationToCompleteSplitSeconds)
+      const consumedDistanceKm = distancePerSecondKm * consumedDurationSeconds
+
+      currentSplitDistanceKm += consumedDistanceKm
+      currentSplitDurationSeconds += consumedDurationSeconds
+      currentTimeSeconds += consumedDurationSeconds
+      remainingSegmentDurationSeconds -= consumedDurationSeconds
+
+      if (currentSplitDistanceKm >= 1 - 1e-6) {
+        const splitAverageHeartrate = getAverageSeriesValueForInterval(
+          heartrateAnchors,
+          currentSplitStartTimeSeconds,
+          currentTimeSeconds
+        )
+
+        rows.push({
+          index: rows.length + 1,
+          distanceMeters: currentSplitDistanceKm * 1000,
+          elapsedTimeSeconds: currentSplitDurationSeconds,
+          paceSecondsPerKm: currentSplitDurationSeconds / currentSplitDistanceKm,
+          averageHeartrate: splitAverageHeartrate,
+        })
+
+        currentSplitStartTimeSeconds = currentTimeSeconds
+        currentSplitDistanceKm = 0
+        currentSplitDurationSeconds = 0
+      }
+    }
+  }
+
+  if (currentSplitDistanceKm > 1e-6) {
+    const splitAverageHeartrate = getAverageSeriesValueForInterval(
+      heartrateAnchors,
+      currentSplitStartTimeSeconds,
+      currentTimeSeconds
+    )
+
+    rows.push({
+      index: rows.length + 1,
+      distanceMeters: currentSplitDistanceKm * 1000,
+      elapsedTimeSeconds: currentSplitDurationSeconds,
+      paceSecondsPerKm: currentSplitDurationSeconds / currentSplitDistanceKm,
+      averageHeartrate: splitAverageHeartrate,
+    })
+  }
+
+  return rows
 }
 
 function getChartDurationSeconds(
@@ -527,28 +747,70 @@ export default function RunDetailsPage() {
   )
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
-  const formattedRunLaps = useMemo(
+  const breakdownRows = useMemo(() => {
+    if (runLaps.length > 0) {
+      return runLaps
+        .filter(
+          (lap) =>
+            Number.isFinite(lap.lap_index) &&
+            Number.isFinite(lap.distance_meters) &&
+            (lap.distance_meters ?? 0) > 0 &&
+            Number.isFinite(lap.elapsed_time_seconds) &&
+            (lap.elapsed_time_seconds ?? 0) > 0
+        )
+        .map((lap) => ({
+          index: Math.round(lap.lap_index),
+          distanceMeters: Number(lap.distance_meters ?? 0),
+          elapsedTimeSeconds: Number(lap.elapsed_time_seconds ?? 0),
+          paceSecondsPerKm:
+            Number.isFinite(lap.pace_seconds_per_km) && (lap.pace_seconds_per_km ?? 0) > 0
+              ? Number(lap.pace_seconds_per_km)
+              : Number(lap.elapsed_time_seconds ?? 0) / (Number(lap.distance_meters ?? 0) / 1000),
+          averageHeartrate:
+            Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
+              ? Number(lap.average_heartrate)
+              : null,
+        }))
+    }
+
+    return buildFallbackBreakdownRows({
+      pacePoints: paceSeriesForChart.data.map((point) => ({
+        time: point.time * 60,
+        value: point.value,
+      })),
+      heartratePoints: heartRateSeriesForChart.data.map((point) => ({
+        time: point.time * 60,
+        value: point.value,
+      })),
+      totalDurationSeconds: chartDurationSeconds,
+      totalDistanceKm: run?.distance_km ?? null,
+    })
+  }, [
+    chartDurationSeconds,
+    heartRateSeriesForChart.data,
+    paceSeriesForChart.data,
+    run?.distance_km,
+    runLaps,
+  ])
+  const shouldShowBreakdownHeartRate = breakdownRows.some(
+    (row) => Number.isFinite(row.averageHeartrate) && (row.averageHeartrate ?? 0) > 0
+  )
+  const formattedBreakdownRows = useMemo(
     () =>
-      runLaps.map((lap) => ({
-        ...lap,
-        distanceLabel:
-          Number.isFinite(lap.distance_meters) && (lap.distance_meters ?? 0) > 0
-            ? formatLapDistanceLabel(lap.distance_meters ?? 0)
-            : '—',
-        durationLabel:
-          Number.isFinite(lap.elapsed_time_seconds) && (lap.elapsed_time_seconds ?? 0) > 0
-            ? formatDurationLabel(lap.elapsed_time_seconds ?? 0)
-            : '—',
+      breakdownRows.map((row) => ({
+        ...row,
+        distanceLabel: formatBreakdownDistanceLabel(row.distanceMeters),
+        durationLabel: formatDurationLabel(row.elapsedTimeSeconds),
         paceLabel:
-          Number.isFinite(lap.pace_seconds_per_km) && (lap.pace_seconds_per_km ?? 0) > 0
-            ? formatPaceLabel(lap.pace_seconds_per_km ?? 0)
+          Number.isFinite(row.paceSecondsPerKm) && (row.paceSecondsPerKm ?? 0) > 0
+            ? formatBreakdownPaceLabel(row.paceSecondsPerKm ?? 0)
             : '—',
         averageHeartrateLabel:
-          Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
-            ? `${Math.round(lap.average_heartrate ?? 0)}`
+          Number.isFinite(row.averageHeartrate) && (row.averageHeartrate ?? 0) > 0
+            ? `${Math.round(row.averageHeartrate ?? 0)}`
             : null,
       })),
-    [runLaps]
+    [breakdownRows]
   )
 
   const details = useMemo(() => {
@@ -870,28 +1132,38 @@ export default function RunDetailsPage() {
           </section>
         ) : null}
 
-        {formattedRunLaps.length > 0 ? (
+        {formattedBreakdownRows.length > 0 ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-base font-semibold">Интервалы</h2>
+            <h2 className="app-text-primary text-base font-semibold">Разбивка</h2>
             <div className="mt-3 overflow-hidden rounded-xl border">
-              <div className="grid grid-cols-[56px_1fr_1fr_1fr_72px] gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary">
+              <div
+                className={`grid gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary ${
+                  shouldShowBreakdownHeartRate
+                    ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                    : 'grid-cols-[56px_1fr_1fr_1fr]'
+                }`}
+              >
                 <span>№</span>
                 <span>Км</span>
                 <span>Время</span>
                 <span>Темп</span>
-                <span>Пульс</span>
+                {shouldShowBreakdownHeartRate ? <span>Пульс</span> : null}
               </div>
               <div className="divide-y">
-                {formattedRunLaps.map((lap) => (
+                {formattedBreakdownRows.map((row) => (
                   <div
-                    key={lap.lap_index}
-                    className="grid grid-cols-[56px_1fr_1fr_1fr_72px] gap-3 px-3 py-2.5 text-sm app-text-primary"
+                    key={`${row.index}-${row.distanceMeters}-${row.elapsedTimeSeconds}`}
+                    className={`grid gap-3 px-3 py-2.5 text-sm app-text-primary ${
+                      shouldShowBreakdownHeartRate
+                        ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                        : 'grid-cols-[56px_1fr_1fr_1fr]'
+                    }`}
                   >
-                    <span className="font-medium">{lap.lap_index}</span>
-                    <span>{lap.distanceLabel}</span>
-                    <span>{lap.durationLabel}</span>
-                    <span>{lap.paceLabel}</span>
-                    <span>{lap.averageHeartrateLabel ?? '—'}</span>
+                    <span className="font-medium">{row.index}</span>
+                    <span>{row.distanceLabel}</span>
+                    <span>{row.durationLabel}</span>
+                    <span>{row.paceLabel}</span>
+                    {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
                   </div>
                 ))}
               </div>
