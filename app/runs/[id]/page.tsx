@@ -14,14 +14,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
+import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
-import { getProfileDisplayName } from '@/lib/profiles'
 import { createRunComment, loadRunComments, type RunCommentItem } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
+import { getLevelFromXP } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type RunDetailsRow = {
@@ -169,26 +171,6 @@ function StravaIcon() {
       <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
       <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
     </svg>
-  )
-}
-
-function AvatarFallback() {
-  return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 20a6 6 0 0 0-12 0" />
-        <circle cx="12" cy="8" r="4" />
-      </svg>
-    </span>
   )
 }
 
@@ -527,6 +509,7 @@ export default function RunDetailsPage() {
   const [runSeries, setRunSeries] = useState<RunDetailSeriesRow>(EMPTY_RUN_DETAIL_SERIES)
   const [runLaps, setRunLaps] = useState<RunLapRow[]>([])
   const [author, setAuthor] = useState<ProfileRow | null>(null)
+  const [authorLevel, setAuthorLevel] = useState(1)
   const [likesCount, setLikesCount] = useState(0)
   const [comments, setComments] = useState<RunCommentItem[]>([])
   const [commentsError, setCommentsError] = useState('')
@@ -646,7 +629,7 @@ export default function RunDetailsPage() {
           return
         }
 
-        const [profileResult, likesResult, seriesResult, lapsResult] = await Promise.all([
+        const [profileResult, likesResult, seriesResult, lapsResult, totalXpByUser] = await Promise.all([
           supabase
             .from('profiles')
             .select('id, name, nickname, email, avatar_url')
@@ -666,6 +649,7 @@ export default function RunDetailsPage() {
             .select('lap_index, distance_meters, elapsed_time_seconds, pace_seconds_per_km, average_heartrate')
             .eq('run_id', runData.id)
             .order('lap_index', { ascending: true }),
+          loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
         ])
 
         let runComments: RunCommentItem[] = []
@@ -693,6 +677,7 @@ export default function RunDetailsPage() {
         setRunSeries(normalizedRunSeries)
         setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
+        setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
         setLikesCount(Number(likesResult.count ?? 0))
         setComments(runComments)
         setCommentsError(nextCommentsError)
@@ -759,8 +744,6 @@ export default function RunDetailsPage() {
     }
   }, [lapsBackfillAttemptedRunId, loading, run, runLaps.length, user])
 
-  const avatarSrc = author?.avatar_url?.trim() || null
-  const authorName = getProfileDisplayName(author, 'Бегун')
   const commentsCount = comments.length
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
@@ -992,31 +975,24 @@ export default function RunDetailsPage() {
 
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
-            <Link href={`/users/${run.user_id}`} className="flex min-w-0 items-center gap-3">
-              {avatarSrc ? (
-                <Image
-                  src={avatarSrc}
-                  alt=""
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 rounded-full object-cover"
-                />
-              ) : (
-                <AvatarFallback />
-              )}
-              <div className="min-w-0">
-                <p className="app-text-primary truncate font-semibold">{authorName}</p>
-                <p className="app-text-secondary truncate text-sm">
-                  {formatRunTimestampLabel(run.created_at, run.external_source)}
-                </p>
-              </div>
-            </Link>
-            {run.external_source === 'strava' ? (
-              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
-                <StravaIcon />
-                Strava
-              </span>
-            ) : null}
+            <ParticipantIdentity
+              avatarUrl={author?.avatar_url ?? null}
+              displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
+              level={authorLevel}
+              href={`/users/${run.user_id}`}
+              size="md"
+            />
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
+                {formatRunTimestampLabel(run.created_at, run.external_source)}
+              </p>
+              {run.external_source === 'strava' ? (
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
+                  <StravaIcon />
+                  Strava
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>

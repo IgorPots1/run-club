@@ -256,7 +256,7 @@ export default function InfiniteWorkoutFeed({
             createdAt={item.created_at}
             displayName={item.displayName}
             avatarUrl={item.avatar_url}
-            subtitle={showLevelSubtitle ? `Уровень ${getLevelFromXP(item.totalXp).level}` : null}
+            level={getLevelFromXP(item.totalXp).level}
             likesCount={item.likesCount}
             likedByMe={item.likedByMe}
             pending={pendingRunIds.includes(item.id)}

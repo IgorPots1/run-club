@@ -184,7 +184,7 @@ async function loadProfilesByUserIds(userIds: string[]) {
   return profileById
 }
 
-async function loadTotalXpByUserIds(userIds: string[]) {
+export async function loadTotalXpByUserIds(userIds: string[]) {
   if (userIds.length === 0) {
     return {} as Record<string, number>
   }

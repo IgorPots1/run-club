@@ -1,9 +1,8 @@
 'use client'
 
-import Link from 'next/link'
-import Image from 'next/image'
 import { memo, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import ParticipantIdentity from '@/components/ParticipantIdentity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import RunLikeControl from '@/components/RunLikeControl'
@@ -20,11 +19,11 @@ type WorkoutFeedCardProps = {
   createdAt: string
   displayName: string
   avatarUrl: string | null
+  level: number
   likesCount: number
   likedByMe: boolean
   pending: boolean
   onToggleLike: (runId: string) => void
-  subtitle?: string | null
   profileHref?: string | null
 }
 
@@ -41,26 +40,6 @@ function StravaIcon() {
       <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
       <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
     </svg>
-  )
-}
-
-function AvatarFallback() {
-  return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 20a6 6 0 0 0-12 0" />
-        <circle cx="12" cy="8" r="4" />
-      </svg>
-    </span>
   )
 }
 
@@ -93,21 +72,17 @@ function WorkoutFeedCard({
   createdAt,
   displayName,
   avatarUrl,
+  level,
   likesCount,
   likedByMe,
   pending,
   onToggleLike,
-  subtitle,
   profileHref = null,
 }: WorkoutFeedCardProps) {
   const router = useRouter()
-  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
-  const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
-  const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
   const displayTitle = buildDisplayTitle(rawTitle)
-  const displayUserName = displayName.trim() || 'Бегун'
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
@@ -131,27 +106,6 @@ function WorkoutFeedCard({
     }
   }, [showStravaHint])
 
-  const profileIdentity = (
-    <>
-      {showAvatarImage && avatarSrc ? (
-        <Image
-          src={avatarSrc}
-          alt=""
-          width={40}
-          height={40}
-          className="h-10 w-10 rounded-full object-cover"
-          onError={() => setFailedAvatarUrl(avatarSrc)}
-        />
-      ) : (
-        <AvatarFallback />
-      )}
-      <div className="min-w-0">
-        <p className="app-text-primary truncate font-semibold">{displayUserName}</p>
-        {subtitle ? <p className="app-text-secondary truncate text-sm">{subtitle}</p> : null}
-      </div>
-    </>
-  )
-
   return (
     <div
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
@@ -173,15 +127,13 @@ function WorkoutFeedCard({
       }}
     >
       <div className="flex items-start justify-between gap-3">
-        {profileHref ? (
-          <Link href={profileHref} className="flex min-w-0 items-center gap-3">
-            {profileIdentity}
-          </Link>
-        ) : (
-          <div className="flex min-w-0 items-center gap-3">
-            {profileIdentity}
-          </div>
-        )}
+        <ParticipantIdentity
+          avatarUrl={avatarUrl}
+          displayName={displayName}
+          level={level}
+          href={profileHref}
+          size="sm"
+        />
         <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
           {formatRunTimestampLabel(createdAt, externalSource)}
         </p>
