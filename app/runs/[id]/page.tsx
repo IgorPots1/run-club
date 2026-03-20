@@ -702,6 +702,8 @@ export default function RunDetailsPage() {
                   data={heartRateChartData}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   accessibilityLayer={false}
+                  syncId="run-detail-series"
+                  syncMethod="value"
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
@@ -755,6 +757,8 @@ export default function RunDetailsPage() {
                   data={paceChartData}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   accessibilityLayer={false}
+                  syncId="run-detail-series"
+                  syncMethod="value"
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
