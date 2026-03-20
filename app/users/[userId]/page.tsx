@@ -102,7 +102,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
         <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
         <section className="app-card mb-5 rounded-3xl border px-5 py-5 shadow-sm sm:px-6 sm:py-6">
           <div className="flex flex-col items-center text-center">
-            <span className="relative inline-flex h-32 w-32 items-center justify-center rounded-full sm:h-36 sm:w-36">
+            <span className="relative inline-flex h-32 w-32 items-center justify-center rounded-full ring-1 ring-black/10 shadow-[0_8px_24px_rgba(0,0,0,0.08)] sm:h-36 sm:w-36 dark:ring-white/15 dark:shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
               {publicProfile?.avatar_url ? (
                 <Image
                   src={publicProfile.avatar_url}
@@ -118,17 +118,29 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               )}
             </span>
             <div className="mt-3 min-w-0">
-              <h2 className="app-text-primary truncate text-[1.35rem] font-semibold leading-tight sm:text-[1.5rem]">
+              <h2 className="app-text-primary truncate text-[1.5rem] font-semibold leading-tight sm:text-[1.7rem]">
                 {displayName}
               </h2>
-              <p className="app-text-secondary mt-1 text-sm sm:text-[15px]">
-                Уровень {level} · {totalXp} XP
+              <p className="app-text-secondary mt-2 text-sm font-medium sm:text-[15px]">
+                Уровень {level}
+              </p>
+              <p className="app-text-primary mt-1 text-[1.6rem] font-semibold leading-none tracking-tight sm:text-[1.9rem]">
+                {totalXp} XP
               </p>
             </div>
-            <div className="app-text-primary mt-3 inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-medium sm:text-[15px]">
-              <span>{formatDistanceKm(totalDistance)} км</span>
-              <span className="app-text-secondary">·</span>
-              <span>{totalRuns} тренировок</span>
+            <div className="mt-4 grid w-full max-w-xs grid-cols-2 gap-2.5">
+              <div className="app-surface-muted rounded-2xl px-3 py-2.5">
+                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Км</p>
+                <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+                  {formatDistanceKm(totalDistance)}
+                </p>
+              </div>
+              <div className="app-surface-muted rounded-2xl px-3 py-2.5">
+                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.04em]">Тренировки</p>
+                <p className="app-text-primary mt-1 text-base font-semibold sm:text-[1.05rem]">
+                  {totalRuns}
+                </p>
+              </div>
             </div>
           </div>
         </section>
