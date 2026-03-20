@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import BackNavigationButton from '@/components/BackNavigationButton'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
-import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -95,70 +94,45 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     },
     'Бегун'
   )
-  const profileName = publicProfile?.name?.trim() || null
-  const profileNickname = publicProfile?.nickname?.trim() || null
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <BackNavigationButton className="mb-4" />
         <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
-        <div className="mb-6 flex flex-col items-center gap-4">
-          <span className="relative inline-flex h-28 w-28 items-center justify-center rounded-full sm:h-32 sm:w-32">
-            {publicProfile?.avatar_url ? (
-              <Image
-                src={publicProfile.avatar_url}
-                alt="Аватар участника"
-                width={112}
-                height={112}
-                className="h-28 w-28 rounded-full object-cover sm:h-32 sm:w-32"
-              />
-            ) : (
-              <span className="app-card app-text-secondary flex h-28 w-28 items-center justify-center rounded-full border text-sm sm:h-32 sm:w-32">
-                Аватар
-              </span>
-            )}
-          </span>
-          <UserIdentitySummary
-            loadingIdentity={false}
-            loadingLevel={false}
-            displayName={displayName}
-            levelLabel={`Уровень ${level}`}
-            className="w-full text-center"
-          />
-          <div className="w-full max-w-sm space-y-2 text-center">
-            <div className="app-card rounded-2xl border p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-4 border-b py-2">
-                <span className="app-text-secondary min-w-0">Имя</span>
-                <span className="app-text-primary shrink-0 text-right font-semibold">{profileName ?? 'Не указано'}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-2">
-                <span className="app-text-secondary min-w-0">Никнейм</span>
-                <span className="app-text-primary shrink-0 text-right font-semibold">{profileNickname ?? 'Не указан'}</span>
-              </div>
+        <section className="app-card mb-5 rounded-3xl border px-5 py-5 shadow-sm sm:px-6 sm:py-6">
+          <div className="flex flex-col items-center text-center">
+            <span className="relative inline-flex h-32 w-32 items-center justify-center rounded-full sm:h-36 sm:w-36">
+              {publicProfile?.avatar_url ? (
+                <Image
+                  src={publicProfile.avatar_url}
+                  alt="Аватар участника"
+                  width={144}
+                  height={144}
+                  className="h-32 w-32 rounded-full object-cover sm:h-36 sm:w-36"
+                />
+              ) : (
+                <span className="app-card app-text-secondary flex h-32 w-32 items-center justify-center rounded-full border text-sm sm:h-36 sm:w-36">
+                  Аватар
+                </span>
+              )}
+            </span>
+            <div className="mt-3 min-w-0">
+              <h2 className="app-text-primary truncate text-[1.35rem] font-semibold leading-tight sm:text-[1.5rem]">
+                {displayName}
+              </h2>
+              <p className="app-text-secondary mt-1 text-sm sm:text-[15px]">
+                Уровень {level} · {totalXp} XP
+              </p>
+            </div>
+            <div className="app-text-primary mt-3 inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-medium sm:text-[15px]">
+              <span>{formatDistanceKm(totalDistance)} км</span>
+              <span className="app-text-secondary">·</span>
+              <span>{totalRuns} тренировок</span>
             </div>
           </div>
-        </div>
-        <div className="app-card overflow-hidden rounded-2xl border p-4 shadow-sm">
-          <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
-          <div className="flex items-center justify-between gap-4 border-b py-2">
-            <span className="app-text-secondary min-w-0">Уровень</span>
-            <span className="app-text-primary shrink-0 text-right font-semibold">{level}</span>
-          </div>
-          <div className="flex items-center justify-between gap-4 border-b py-2">
-            <span className="app-text-secondary min-w-0">Всего XP</span>
-            <span className="app-text-primary shrink-0 text-right font-semibold">{totalXp}</span>
-          </div>
-          <div className="flex items-center justify-between gap-4 border-b py-2">
-            <span className="app-text-secondary min-w-0">Всего км</span>
-            <span className="app-text-primary shrink-0 text-right font-semibold">{formatDistanceKm(totalDistance)}</span>
-          </div>
-          <div className="flex items-center justify-between gap-4 py-2">
-            <span className="app-text-secondary min-w-0">Тренировки</span>
-            <span className="app-text-primary shrink-0 text-right font-semibold">{totalRuns}</span>
-          </div>
-        </div>
-        <div className="mt-6">
+        </section>
+        <div>
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Тренировки</h2>
           <InfiniteWorkoutFeed
             currentUserId={user.id}
