@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunCommentItem } from '@/lib/run-comments'
 
@@ -39,20 +40,38 @@ function formatCommentTimestamp(dateString: string) {
   const date = new Date(dateString)
 
   if (Number.isNaN(date.getTime())) {
-    return 'сейчас'
+    return 'только что'
   }
 
   const now = new Date()
-  const isSameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
+  const diffMs = now.getTime() - date.getTime()
 
-  if (isSameDay) {
-    return date.toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+  if (diffMs < 60 * 1000) {
+    return 'только что'
+  }
+
+  const diffMinutes = Math.floor(diffMs / (60 * 1000))
+
+  if (diffMinutes < 60) {
+    if (diffMinutes === 1) {
+      return '1 мин назад'
+    }
+
+    if (diffMinutes >= 2 && diffMinutes <= 4) {
+      return `${diffMinutes} мин назад`
+    }
+
+    return `${diffMinutes} мин назад`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+
+  if (diffHours < 24) {
+    if (diffHours === 1) {
+      return '1 ч назад'
+    }
+
+    return `${diffHours} ч назад`
   }
 
   const yesterday = new Date(now)
@@ -123,9 +142,38 @@ export default function CommentsSheet({
 }: CommentsSheetProps) {
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const previousSubmittingRef = useRef(false)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
+
+  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior,
+      })
+      return
+    }
+
+    bottomRef.current?.scrollIntoView({
+      block: 'end',
+      behavior,
+    })
+  }
+
+  function focusComposer() {
+    const textarea = textareaRef.current
+
+    if (!textarea) {
+      return
+    }
+
+    textarea.focus()
+    const nextCursorPosition = textarea.value.length
+    textarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
+  }
 
   useEffect(() => {
     if (!open) {
@@ -157,9 +205,45 @@ export default function CommentsSheet({
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({
-        block: 'end',
-      })
+      focusComposer()
+      scrollToBottom('auto')
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) {
+      previousSubmittingRef.current = submitting
+      return
+    }
+
+    const justFinishedSubmitting = previousSubmittingRef.current && !submitting
+    previousSubmittingRef.current = submitting
+
+    if (!justFinishedSubmitting) {
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      focusComposer()
+      scrollToBottom('smooth')
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [open, submitting])
+
+  useEffect(() => {
+    if (!open || loading) {
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollToBottom(comments.length > 0 ? 'smooth' : 'auto')
     })
 
     return () => {
@@ -194,6 +278,9 @@ export default function CommentsSheet({
       setSubmitError('')
       await onSubmitComment(trimmedDraft)
       setDraft('')
+      window.requestAnimationFrame(() => {
+        focusComposer()
+      })
     } catch {
       setSubmitError('Не удалось отправить комментарий')
     }
@@ -217,7 +304,9 @@ export default function CommentsSheet({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="app-text-primary text-base font-semibold">Комментарии</h2>
-              <p className="app-text-secondary mt-1 text-sm">{comments.length} сообщений</p>
+              <p className="app-text-secondary mt-1 text-sm">
+                {loading ? 'Загружаем беседу...' : `${comments.length} сообщений`}
+              </p>
             </div>
             <button
               type="button"
@@ -229,9 +318,16 @@ export default function CommentsSheet({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-4">
+        <div
+          ref={scrollContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-4 scroll-smooth [overscroll-behavior-y:contain]"
+        >
           {loading ? (
             <div className="space-y-4">
+              <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
+                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                <span>Подтягиваем комментарии...</span>
+              </div>
               <div className="flex items-start gap-3">
                 <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
                 <div className="min-w-0 flex-1 space-y-2">
@@ -262,8 +358,9 @@ export default function CommentsSheet({
               ) : null}
             </div>
           ) : comments.length === 0 ? (
-            <div className="rounded-2xl border border-black/5 px-4 py-8 text-center dark:border-white/10">
+            <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
               <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
+              <p className="app-text-secondary mt-1 text-sm">Можно начать разговор первым.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -277,7 +374,7 @@ export default function CommentsSheet({
 
         <form
           onSubmit={handleSubmit}
-          className="border-t border-black/5 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
+          className="border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
         >
           <div className="flex items-end gap-2">
             <label htmlFor="feed-run-comment" className="sr-only">Сообщение</label>
@@ -292,6 +389,8 @@ export default function CommentsSheet({
               }}
               placeholder="Сообщение"
               disabled={submitting}
+              autoFocus
+              enterKeyHint="send"
               className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-5"
             />
             <button
@@ -299,7 +398,12 @@ export default function CommentsSheet({
               disabled={submitting || !trimmedDraft}
               className="app-button-secondary min-h-11 shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? '...' : 'Отпр.'}
+              {submitting ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                  <span>...</span>
+                </span>
+              ) : 'Отпр.'}
             </button>
           </div>
           {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
