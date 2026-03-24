@@ -73,41 +73,29 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-function getLikesLabel(likesCount: number) {
-  if (likesCount === 1) {
-    return 'лайк'
-  }
-
-  if (likesCount >= 2 && likesCount <= 4) {
-    return 'лайка'
-  }
-
-  return 'лайков'
-}
-
 type FeedActionButtonProps = {
-  label: string
   count: number
   icon: ReactNode
   onClick: () => void
   active?: boolean
   disabled?: boolean
+  showCount?: boolean
 }
 
 function FeedActionButton({
-  label,
   count,
   icon,
   onClick,
   active = false,
   disabled = false,
+  showCount = true,
 }: FeedActionButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium leading-none transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-11 ${
+      className={`inline-flex min-h-12 min-w-[4.75rem] items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium leading-none transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-11 ${
         active
           ? 'app-like-button-active shadow-sm'
           : 'border-black/5 bg-black/[0.02] text-[var(--text-primary)] dark:border-white/10 dark:bg-white/[0.04]'
@@ -116,16 +104,44 @@ function FeedActionButton({
       <span aria-hidden="true" className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
         {icon}
       </span>
-      <span className="truncate">{label}</span>
-      <span
-        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-          active
-            ? 'bg-[rgba(255,77,109,0.16)] text-[var(--like-active)]'
-            : 'bg-black/5 text-[var(--text-secondary)] dark:bg-white/10'
-        }`}
-      >
-        {count}
-      </span>
+      {showCount ? (
+        <span
+          className={`text-sm font-semibold ${
+            active
+              ? 'text-[var(--like-active)]'
+              : 'text-[var(--text-primary)]'
+          }`}
+        >
+          {count}
+        </span>
+      ) : null}
+    </button>
+  )
+}
+
+type FeedCountButtonProps = {
+  count: number
+  onClick: () => void
+  active?: boolean
+  disabled?: boolean
+}
+
+function FeedCountButton({
+  count,
+  onClick,
+  active = false,
+  disabled = false,
+}: FeedCountButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex min-h-12 min-w-[3.5rem] items-center justify-center rounded-2xl px-3 py-3 text-sm font-semibold leading-none transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-11 ${
+        active ? 'text-[var(--like-active)]' : 'text-[var(--text-primary)]'
+      }`}
+    >
+      {count}
     </button>
   )
 }
@@ -279,23 +295,30 @@ function WorkoutFeedCard({
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5">
+              <FeedActionButton
+                count={0}
+                active={likedByMe}
+                disabled={pending || !runId}
+                showCount={false}
+                onClick={() => onToggleLike(runId)}
+                icon={
+                  pending ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                  ) : (
+                    <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
+                  )
+                }
+              />
+              <FeedCountButton
+                count={likesCount}
+                active={likedByMe}
+                disabled={!runId}
+                onClick={() => onOpenLikes?.()}
+              />
+            </div>
             <FeedActionButton
-              label="Лайк"
-              count={likesCount}
-              active={likedByMe}
-              disabled={pending || !runId}
-              onClick={() => onToggleLike(runId)}
-              icon={
-                pending ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-                ) : (
-                  <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
-                )
-              }
-            />
-            <FeedActionButton
-              label="Комменты"
               count={commentsCount}
               disabled={!runId}
               onClick={() => onCommentClick?.(runId)}
@@ -304,17 +327,7 @@ function WorkoutFeedCard({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={onOpenLikes}
-                disabled={!runId}
-                className="app-text-secondary min-h-8 rounded-full px-0 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {likesCount} {getLikesLabel(likesCount)}
-              </button>
-              <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
-            </div>
+            <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
             {externalSource === 'strava' ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {showStravaHint ? (
