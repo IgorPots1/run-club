@@ -156,6 +156,7 @@ export default function ChatSection({
   const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerContainerRef = useRef<HTMLDivElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -187,6 +188,7 @@ export default function ChatSection({
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const [composerHeight, setComposerHeight] = useState(0)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
 
@@ -523,6 +525,52 @@ export default function ChatSection({
   useLayoutEffect(() => {
     resizeComposerTextarea()
   }, [draftMessage, resizeComposerTextarea])
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const composerContainer = composerContainerRef.current
+
+    if (!composerContainer) {
+      return
+    }
+
+    let frameId: number | null = null
+
+    const updateComposerHeight = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        const nextHeight = Math.ceil(composerContainer.getBoundingClientRect().height)
+        setComposerHeight((currentHeight) => (currentHeight === nextHeight ? currentHeight : nextHeight))
+      })
+    }
+
+    updateComposerHeight()
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            updateComposerHeight()
+          })
+        : null
+
+    resizeObserver?.observe(composerContainer)
+    window.addEventListener('resize', updateComposerHeight)
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', updateComposerHeight)
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1260,11 +1308,19 @@ export default function ChatSection({
         </div>
       ) : null}
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex h-full min-h-0 flex-1 flex-col">
         <>
           <div
             ref={scrollContainerRef}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
+            style={
+              composerHeight > 0
+                ? {
+                    paddingBottom: `${composerHeight}px`,
+                    scrollPaddingBottom: `${composerHeight}px`,
+                  }
+                : undefined
+            }
           >
             <div className="flex min-h-full flex-col">
               {error ? (
@@ -1354,9 +1410,8 @@ export default function ChatSection({
             </div>
           </div>
           <div
-            className={`shrink-0 pt-3 ${
-              isKeyboardOpen ? 'pb-0' : 'pb-[env(safe-area-inset-bottom)] md:pb-[max(0.75rem,env(safe-area-inset-bottom))]'
-            }`}
+            ref={composerContainerRef}
+            className="absolute inset-x-0 bottom-0 z-10 pt-3 pb-[env(safe-area-inset-bottom)]"
           >
             {renderComposer()}
           </div>
