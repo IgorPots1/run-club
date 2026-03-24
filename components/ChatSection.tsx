@@ -29,6 +29,7 @@ const INITIAL_CHAT_MESSAGE_LIMIT = 10
 const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
+const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
 
 function AvatarFallback() {
   return (
@@ -218,6 +219,20 @@ export default function ChatSection({
     }
   }, [keepLatestRenderedMessages])
 
+  const resizeComposerTextarea = useCallback(() => {
+    const textarea = composerTextareaRef.current
+
+    if (!textarea) {
+      return
+    }
+
+    textarea.style.height = 'auto'
+    const nextHeight = Math.min(textarea.scrollHeight, CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT)
+    textarea.style.height = `${nextHeight}px`
+    textarea.style.overflowY =
+      textarea.scrollHeight > CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
+  }, [])
+
   const setMessageRef = useCallback((messageId: string, node: HTMLElement | null) => {
     if (node) {
       messageRefs.current[messageId] = node
@@ -353,9 +368,8 @@ export default function ChatSection({
     function applyChatAppHeight() {
       const visualViewport = window.visualViewport
       const viewportHeight = visualViewport?.height ?? window.innerHeight
-      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
       const isMobileViewport = window.innerWidth < 768
-      const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
+      const effectiveViewportHeight = Math.round(viewportHeight)
 
       rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
       setIsKeyboardOpen(isMobileViewport && window.innerHeight - effectiveViewportHeight > 120)
@@ -407,6 +421,10 @@ export default function ChatSection({
       rootStyle.removeProperty(CHAT_APP_HEIGHT_CSS_VAR)
     }
   }, [])
+
+  useLayoutEffect(() => {
+    resizeComposerTextarea()
+  }, [draftMessage, resizeComposerTextarea])
 
   useEffect(() => {
     return () => {
@@ -920,6 +938,9 @@ export default function ChatSection({
       setMessages(keepLatestRenderedMessages(recentMessages))
       setDraftMessage('')
       setReplyingToMessage(null)
+      window.requestAnimationFrame(() => {
+        resizeComposerTextarea()
+      })
     } catch {
       setSubmitError('Не удалось отправить сообщение')
     } finally {
@@ -1024,7 +1045,7 @@ export default function ChatSection({
               >
                 +
               </button>
-              <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 py-1.5 shadow-none">
+              <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 shadow-none">
                 <label htmlFor="chat-message" className="sr-only">
                   Сообщение
                 </label>
@@ -1042,7 +1063,7 @@ export default function ChatSection({
                   disabled={submitting}
                   maxLength={CHAT_MESSAGE_MAX_LENGTH}
                   rows={1}
-                  className="min-h-0 max-h-24 w-full resize-none bg-transparent py-0.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
+                  className="min-h-11 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
                 />
               </div>
               <button
