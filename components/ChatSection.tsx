@@ -188,7 +188,6 @@ export default function ChatSection({
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const useKeyboardOpenComposerLayout = !useIsolatedChatLayout && isKeyboardOpen
-  const renderComposerInsideScrollContainer = useIsolatedChatLayout && isKeyboardOpen
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -1074,9 +1073,9 @@ export default function ChatSection({
     }
   }
 
-  function renderComposer({ insideScrollContainer = false }: { insideScrollContainer?: boolean } = {}) {
+  function renderComposer() {
     return (
-      <div className={insideScrollContainer ? 'mt-3' : ''}>
+      <div>
         {pendingNewMessagesCount > 0 ? (
           <div className="mb-2 flex justify-center md:justify-end">
             <button
@@ -1230,98 +1229,102 @@ export default function ChatSection({
 
       <div className={`relative ${useIsolatedChatLayout ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
         {useIsolatedChatLayout ? (
-          <div
-            ref={scrollContainerRef}
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
-          >
-            <div className="flex min-h-full flex-col">
-              {error ? (
-                <section className="app-card flex flex-1 rounded-2xl border p-4 shadow-sm">
-                  <p className="text-sm text-red-600">{error}</p>
-                </section>
-              ) : messages.length === 0 ? (
-                <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
-                  <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
-                  <p className="app-text-secondary mt-2 text-sm">
-                    Когда в базе появятся сообщения, они отобразятся здесь.
-                  </p>
-                </section>
-              ) : (
-                <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
-                  <div className="mt-auto flex flex-col">
-                    {messages.map((message, index) => {
-                      const isOwnMessage = currentUserId === message.userId
-                      const previousMessage = index > 0 ? messages[index - 1] : null
-                      const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
-                      const isFirstInAuthorRun = !isSameAuthorAsPrevious
-                      const showAvatar = !isOwnMessage && isFirstInAuthorRun
-                      const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
-                      const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
+          <>
+            <div
+              ref={scrollContainerRef}
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
+            >
+              <div className="flex min-h-full flex-col">
+                {error ? (
+                  <section className="app-card flex flex-1 rounded-2xl border p-4 shadow-sm">
+                    <p className="text-sm text-red-600">{error}</p>
+                  </section>
+                ) : messages.length === 0 ? (
+                  <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
+                    <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
+                    <p className="app-text-secondary mt-2 text-sm">
+                      Когда в базе появятся сообщения, они отобразятся здесь.
+                    </p>
+                  </section>
+                ) : (
+                  <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
+                    <div className="mt-auto flex flex-col">
+                      {messages.map((message, index) => {
+                        const isOwnMessage = currentUserId === message.userId
+                        const previousMessage = index > 0 ? messages[index - 1] : null
+                        const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
+                        const isFirstInAuthorRun = !isSameAuthorAsPrevious
+                        const showAvatar = !isOwnMessage && isFirstInAuthorRun
+                        const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
+                        const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
 
-                      return (
-                        <div
-                          key={message.id}
-                          ref={(node) => setMessageRef(message.id, node)}
-                          className={messageSpacingClass}
-                        >
-                        {message.id === firstUnreadMessageId ? (
-                          <div className="mb-3.5 flex items-center gap-3">
-                            <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                            <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
-                            <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                          </div>
-                        ) : null}
-                        <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
-                          {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
-                            <Image
-                              src={message.avatarUrl}
-                              alt=""
-                              width={40}
-                              height={40}
-                              className="h-10 w-10 shrink-0 rounded-full object-cover"
-                            />
-                          ) : (
-                            <AvatarFallback />
-                          ) : (
-                            <div className="h-10 w-10 shrink-0" aria-hidden="true" />
-                          )}
+                        return (
                           <div
-                            className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
-                              isOwnMessage
-                                ? 'ml-auto border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
-                                : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
-                            }`}
-                            onTouchStart={() => startLongPress(message)}
-                            onTouchEnd={clearLongPressTimeout}
-                            onTouchCancel={clearLongPressTimeout}
-                            onTouchMove={clearLongPressTimeout}
-                            onMouseDown={() => startLongPress(message)}
-                            onMouseUp={clearLongPressTimeout}
-                            onMouseLeave={clearLongPressTimeout}
-                            onContextMenu={(event) => {
-                              event.preventDefault()
-                              clearLongPressTimeout()
-                              setSelectedMessage(message)
-                              setIsActionSheetOpen(true)
-                            }}
+                            key={message.id}
+                            ref={(node) => setMessageRef(message.id, node)}
+                            className={messageSpacingClass}
                           >
-                            <ChatMessageBody
-                              message={message}
-                              isOwnMessage={isOwnMessage}
-                              showSenderName={showSenderName}
-                            />
+                          {message.id === firstUnreadMessageId ? (
+                            <div className="mb-3.5 flex items-center gap-3">
+                              <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                              <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
+                              <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                            </div>
+                          ) : null}
+                          <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
+                            {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
+                              <Image
+                                src={message.avatarUrl}
+                                alt=""
+                                width={40}
+                                height={40}
+                                className="h-10 w-10 shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <AvatarFallback />
+                            ) : (
+                              <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+                            )}
+                            <div
+                              className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
+                                isOwnMessage
+                                  ? 'ml-auto border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
+                                  : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
+                              }`}
+                              onTouchStart={() => startLongPress(message)}
+                              onTouchEnd={clearLongPressTimeout}
+                              onTouchCancel={clearLongPressTimeout}
+                              onTouchMove={clearLongPressTimeout}
+                              onMouseDown={() => startLongPress(message)}
+                              onMouseUp={clearLongPressTimeout}
+                              onMouseLeave={clearLongPressTimeout}
+                              onContextMenu={(event) => {
+                                event.preventDefault()
+                                clearLongPressTimeout()
+                                setSelectedMessage(message)
+                                setIsActionSheetOpen(true)
+                              }}
+                            >
+                              <ChatMessageBody
+                                message={message}
+                                isOwnMessage={isOwnMessage}
+                                showSenderName={showSenderName}
+                              />
+                            </div>
+                          </article>
                           </div>
-                        </article>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              )}
-              {renderComposer({ insideScrollContainer: true })}
-              <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
+                <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
+              </div>
             </div>
-          </div>
+            <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+              {renderComposer()}
+            </div>
+          </>
         ) : error ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error}</p>
