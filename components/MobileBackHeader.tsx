@@ -18,7 +18,7 @@ export default function MobileBackHeader({
   const layoutClassName = [
     sticky ? 'sticky top-0 z-30' : 'shrink-0',
     fullBleedOnMobile ? '-mx-4 px-4 md:mx-0 md:px-4' : 'px-4 md:px-4',
-    'mb-4 border-b border-black/5 bg-[color:var(--background)]/95 pb-3 pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/10',
+    'mb-4 border-b border-black/5 bg-[color:var(--background)]/98 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_1px_0_rgba(17,24,39,0.04)] dark:border-white/10 dark:shadow-[0_1px_0_rgba(255,255,255,0.03)]',
     sticky ? 'backdrop-blur' : '',
     'md:mb-6 md:rounded-2xl md:border md:pt-3',
     className,
@@ -28,7 +28,7 @@ export default function MobileBackHeader({
 
   return (
     <header className={layoutClassName}>
-      <div className="grid min-h-11 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3">
+      <div className="grid min-h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3">
         <BackNavigationButton fallbackHref={fallbackHref} variant="icon" />
         <h1 className="app-text-primary truncate text-center text-base font-semibold">
           {title}

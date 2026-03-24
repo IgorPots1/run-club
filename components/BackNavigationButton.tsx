@@ -29,7 +29,7 @@ export default function BackNavigationButton({
 
   const baseClassName =
     variant === 'icon'
-      ? 'app-text-primary inline-flex h-11 w-11 items-center justify-center rounded-full border bg-[color:var(--surface)]/90 shadow-sm backdrop-blur'
+      ? 'app-text-primary inline-flex h-11 w-11 items-center justify-center self-center rounded-full border border-black/5 bg-[color:var(--surface)]/96 shadow-sm dark:border-white/10'
       : 'app-text-secondary inline-flex min-h-11 items-center gap-1 rounded-xl px-2 py-2 text-sm font-medium'
 
   return (

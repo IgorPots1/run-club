@@ -22,15 +22,15 @@ export default function WorkoutDetailShell({
 }: WorkoutDetailShellProps) {
   const scrollLayoutClassName = [
     'min-h-0 flex-1 overflow-y-auto px-4 [overscroll-behavior-y:contain]',
-    footer ? 'pb-4 pt-2' : 'pb-[calc(96px+env(safe-area-inset-bottom))] pt-4',
-    'md:overflow-visible md:px-4 md:pb-4 md:pt-4',
+    footer ? 'pb-5 pt-3' : 'pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5',
+    'md:overflow-visible md:px-4 md:pb-5 md:pt-5',
     scrollContentClassName,
   ]
     .filter(Boolean)
     .join(' ')
 
   return (
-    <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden md:h-auto md:min-h-screen md:overflow-visible">
+    <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-[color:var(--background)] md:h-auto md:min-h-screen md:overflow-visible">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col md:h-auto md:min-h-screen">
         <MobileBackHeader
           title={title}
@@ -40,7 +40,7 @@ export default function WorkoutDetailShell({
           className="mb-0 md:mt-4"
         />
         {topContent ? (
-          <div className="shrink-0 px-4 pb-3 pt-4">
+          <div className="shrink-0 px-4 pb-3 pt-3 md:pt-4">
             {topContent}
           </div>
         ) : null}
