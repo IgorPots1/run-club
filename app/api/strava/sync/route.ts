@@ -125,6 +125,7 @@ export async function GET(request: Request) {
         targetedLapsStatus: result.debug?.targetedLapsStatus ?? 'laps_fetch_failed',
         targetedLapsErrorMessage: result.debug?.targetedLapsErrorMessage ?? null,
         targetedLapsHttpStatus: result.debug?.targetedLapsHttpStatus ?? null,
+        detailedActivityDebug: result.debug?.detailedActivityDebug ?? null,
       })
     }
 
