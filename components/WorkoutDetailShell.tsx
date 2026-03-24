@@ -20,6 +20,8 @@ export default function WorkoutDetailShell({
   scrollContainerRef,
   scrollContentClassName = '',
 }: WorkoutDetailShellProps) {
+  const mobileShellHeightClassName =
+    'h-[calc(100dvh-(5.75rem+env(safe-area-inset-bottom)))] min-h-[calc(100dvh-(5.75rem+env(safe-area-inset-bottom)))]'
   const scrollLayoutClassName = [
     'min-h-0 flex-1 overflow-y-auto px-4 [overscroll-behavior-y:contain]',
     footer ? 'pb-5 pt-3' : 'pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5',
@@ -30,7 +32,9 @@ export default function WorkoutDetailShell({
     .join(' ')
 
   return (
-    <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-[color:var(--background)] md:h-auto md:min-h-screen md:overflow-visible">
+    <main
+      className={`flex ${mobileShellHeightClassName} flex-col overflow-hidden bg-[color:var(--background)] md:h-auto md:min-h-screen md:overflow-visible`}
+    >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col md:h-auto md:min-h-screen">
         <MobileBackHeader
           title={title}
