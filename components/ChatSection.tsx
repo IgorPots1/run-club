@@ -177,6 +177,7 @@ export default function ChatSection({
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
@@ -348,7 +349,10 @@ export default function ChatSection({
 
     function updateChatAppHeight() {
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      const isMobileViewport = window.innerWidth < 768
+
       rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${Math.round(viewportHeight)}px`)
+      setIsKeyboardOpen(isMobileViewport && window.innerHeight - viewportHeight > 120)
     }
 
     updateChatAppHeight()
@@ -1071,7 +1075,7 @@ export default function ChatSection({
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-0 max-w-xl flex-col overflow-hidden px-4 pb-4 pt-4 md:max-w-none md:p-4">
+    <div className="mx-auto flex h-full min-h-0 max-w-xl flex-col overflow-hidden px-4 pt-4 md:max-w-none md:p-4">
       {showTitle ? (
         <div className="mb-4 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Чат клуба</h1>
@@ -1172,7 +1176,11 @@ export default function ChatSection({
               <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
             </div>
           </div>
-          <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+          <div
+            className={`shrink-0 pt-3 ${
+              isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+            }`}
+          >
             {renderComposer()}
           </div>
         </>
