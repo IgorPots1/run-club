@@ -1,11 +1,12 @@
 'use client'
 
-import { Activity, Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
+import { Activity, Footprints, Heart, MessageCircle, Route, Target, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { getBootstrapUser } from '@/lib/auth'
+import { COACH_USER_ID } from '@/lib/constants'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
@@ -155,6 +156,10 @@ export default function DashboardPage() {
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
     : 0
+  const isCoach = user?.id === COACH_USER_ID
+  const messagesDescription = isCoach
+    ? 'Общий чат, личные чаты и список учеников'
+    : 'Общий чат клуба и связь с тренером'
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
@@ -175,6 +180,23 @@ export default function DashboardPage() {
           >
             + Добавить тренировку
           </Link>
+          <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                  <MessageCircle className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                  <span>Сообщения</span>
+                </p>
+                <p className="app-text-secondary mt-2 text-sm">{messagesDescription}</p>
+              </div>
+              <Link
+                href="/messages"
+                className="app-button-secondary inline-flex min-h-10 shrink-0 items-center rounded-lg border px-3 py-2 text-sm"
+              >
+                Открыть сообщения
+              </Link>
+            </div>
+          </div>
           {showOverviewSkeleton ? (
             <>
               <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
