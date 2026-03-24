@@ -70,6 +70,46 @@ export function formatRunTimestampLabel(dateString: string, externalSource?: str
   return formatRunDateLabel(dateString)
 }
 
+export function formatChatThreadActivityLabel(dateString: string) {
+  const messageDate = parseRunDate(dateString)
+
+  if (!messageDate) {
+    return ''
+  }
+
+  const now = new Date()
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+
+  const messageDayKey = `${messageDate.getFullYear()}-${messageDate.getMonth()}-${messageDate.getDate()}`
+  const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`
+  const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`
+
+  if (messageDayKey === todayKey) {
+    return messageDate.toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  if (messageDayKey === yesterdayKey) {
+    return 'вчера'
+  }
+
+  if (messageDate.getFullYear() === now.getFullYear()) {
+    return messageDate.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+    })
+  }
+
+  return messageDate.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'numeric',
+    year: '2-digit',
+  })
+}
+
 export function formatMonthYearLabel(dateString: string) {
   const date = parseRunDate(dateString)
 

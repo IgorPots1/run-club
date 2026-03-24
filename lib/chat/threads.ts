@@ -1,4 +1,5 @@
 import { COACH_USER_ID } from '../constants'
+import { getProfileDisplayName } from '../profiles'
 import { supabase } from '../supabase'
 
 type ChatThreadRow = {
@@ -17,11 +18,34 @@ type ProfileRow = {
   avatar_url: string | null
 }
 
-export type ClubThread = ChatThreadRow
+type ChatThreadLastMessageRow = {
+  id: string
+  thread_id: string
+  user_id: string
+  text: string
+  created_at: string
+}
+
+export type ChatThreadLastMessage = {
+  id: string
+  threadId: string
+  userId: string
+  text: string
+  createdAt: string
+  senderDisplayName: string
+}
+
+export type ClubThread = ChatThreadRow & {
+  lastMessage: ChatThreadLastMessage | null
+}
 
 export type DirectCoachThread = ChatThreadRow
 
-export type CoachDirectThreadItem = DirectCoachThread & {
+export type DirectCoachThreadItem = DirectCoachThread & {
+  lastMessage: ChatThreadLastMessage | null
+}
+
+export type CoachDirectThreadItem = DirectCoachThreadItem & {
   student: ProfileRow | null
 }
 
@@ -68,8 +92,91 @@ async function findDirectCoachThread(ownerUserId: string) {
   return (data as DirectCoachThread | null) ?? null
 }
 
-export async function getDirectCoachThread(ownerUserId: string): Promise<DirectCoachThread | null> {
-  return findDirectCoachThread(ownerUserId)
+async function loadProfilesByUserIds(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {}
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, name, nickname, avatar_url')
+    .in('id', userIds)
+
+  if (error) {
+    throw error
+  }
+
+  return Object.fromEntries(
+    ((data as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])
+  ) as Record<string, ProfileRow>
+}
+
+async function loadLastMessageByThreadId(threadIds: string[]) {
+  if (threadIds.length === 0) {
+    return {}
+  }
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id, thread_id, user_id, text, created_at')
+    .eq('is_deleted', false)
+    .in('thread_id', threadIds)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  const latestMessageRowByThreadId: Record<string, ChatThreadLastMessageRow> = {}
+
+  for (const row of (data as ChatThreadLastMessageRow[] | null) ?? []) {
+    if (!latestMessageRowByThreadId[row.thread_id]) {
+      latestMessageRowByThreadId[row.thread_id] = row
+    }
+  }
+
+  const profileById = await loadProfilesByUserIds(
+    Array.from(new Set(Object.values(latestMessageRowByThreadId).map((row) => row.user_id)))
+  )
+
+  return Object.fromEntries(
+    Object.entries(latestMessageRowByThreadId).map(([threadId, row]) => [
+      threadId,
+      {
+        id: row.id,
+        threadId: row.thread_id,
+        userId: row.user_id,
+        text: row.text,
+        createdAt: row.created_at,
+        senderDisplayName: getProfileDisplayName(profileById[row.user_id], 'Бегун'),
+      } satisfies ChatThreadLastMessage,
+    ])
+  ) as Record<string, ChatThreadLastMessage>
+}
+
+async function withLastMessages<T extends ChatThreadRow>(threads: T[]) {
+  const lastMessageByThreadId = await loadLastMessageByThreadId(threads.map((thread) => thread.id))
+
+  return threads.map((thread) => ({
+    ...thread,
+    lastMessage: lastMessageByThreadId[thread.id] ?? null,
+  }))
+}
+
+function getThreadActivityTimestamp(thread: { created_at: string; lastMessage: ChatThreadLastMessage | null }) {
+  return new Date(thread.lastMessage?.createdAt ?? thread.created_at).getTime()
+}
+
+export async function getDirectCoachThread(ownerUserId: string): Promise<DirectCoachThreadItem | null> {
+  const thread = await findDirectCoachThread(ownerUserId)
+
+  if (!thread) {
+    return null
+  }
+
+  const [threadWithLastMessage] = await withLastMessages([thread])
+
+  return threadWithLastMessage ?? null
 }
 
 export async function getClubThread(): Promise<ClubThread> {
@@ -83,7 +190,9 @@ export async function getClubThread(): Promise<ClubThread> {
     throw error
   }
 
-  return data as ClubThread
+  const [threadWithLastMessage] = await withLastMessages([data as ChatThreadRow])
+
+  return threadWithLastMessage as ClubThread
 }
 
 export async function getChatThreadById(threadId: string): Promise<ChatThreadRow> {
@@ -135,38 +244,25 @@ export async function getCoachDirectThreads(): Promise<CoachDirectThreadItem[]> 
     .select('id, type, title, owner_user_id, coach_user_id, created_at')
     .eq('type', 'direct_coach')
     .eq('coach_user_id', COACH_USER_ID)
-    .order('created_at', { ascending: false })
 
   if (threadsError) {
     throw threadsError
   }
 
   const threadRows = (threads as DirectCoachThread[] | null) ?? []
+  const threadRowsWithLastMessages = await withLastMessages(threadRows)
   const studentIds = Array.from(
-    new Set(threadRows.map((thread) => thread.owner_user_id).filter((userId): userId is string => Boolean(userId)))
+    new Set(threadRowsWithLastMessages.map((thread) => thread.owner_user_id).filter((userId): userId is string => Boolean(userId)))
   )
 
-  let profileById: Record<string, ProfileRow> = {}
+  const profileById = await loadProfilesByUserIds(studentIds)
 
-  if (studentIds.length > 0) {
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, name, nickname, avatar_url')
-      .in('id', studentIds)
-
-    if (profilesError) {
-      throw profilesError
-    }
-
-    profileById = Object.fromEntries(
-      ((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])
-    ) as Record<string, ProfileRow>
-  }
-
-  return threadRows.map((thread) => ({
-    ...thread,
-    student: thread.owner_user_id ? profileById[thread.owner_user_id] ?? null : null,
-  }))
+  return threadRowsWithLastMessages
+    .map((thread) => ({
+      ...thread,
+      student: thread.owner_user_id ? profileById[thread.owner_user_id] ?? null : null,
+    }))
+    .sort((left, right) => getThreadActivityTimestamp(right) - getThreadActivityTimestamp(left))
 }
 
 export async function getStudents(): Promise<StudentProfile[]> {

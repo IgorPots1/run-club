@@ -2,15 +2,19 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
 import { getUnreadCountsByThread, type UnreadCountsByThread } from '@/lib/chat/reads'
 import { COACH_USER_ID } from '@/lib/constants'
+import { formatChatThreadActivityLabel } from '@/lib/format'
 import {
+  type ChatThreadLastMessage,
+  type ClubThread,
   getClubThread,
+  type DirectCoachThreadItem,
   getCoachDirectThreads,
   getDirectCoachThread,
   getOrCreateCoachDirectThreadForStudent,
@@ -61,22 +65,86 @@ function StudentAvatar({
   return <AvatarFallback />
 }
 
-function DirectThreadSummary({
-  thread,
+function ThreadAvatar({
+  children,
 }: {
-  thread: CoachDirectThreadItem
+  children: ReactNode
 }) {
-  const displayName = getProfileDisplayName(thread.student, 'Ученик')
-  const secondaryText =
-    thread.student?.nickname?.trim() && thread.student.nickname.trim() !== displayName
-      ? thread.student.nickname.trim()
-      : 'Личный чат'
-
   return (
-    <div className="min-w-0">
-      <p className="app-text-primary truncate text-sm font-medium">{displayName}</p>
-      <p className="app-text-secondary truncate text-xs">{secondaryText}</p>
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-base font-semibold dark:bg-white/[0.08]">
+      {children}
     </div>
+  )
+}
+
+type MessageThreadListItem = {
+  id: string
+  href: string
+  title: string
+  preview: string
+  timeLabel: string
+  unreadCount: number
+  lastActivityAt: number
+  avatar: ReactNode
+}
+
+function getLastMessagePreview(
+  lastMessage: ChatThreadLastMessage | null,
+  fallbackText: string,
+  {
+    currentUserId = null,
+    prefixSender = false,
+  }: {
+    currentUserId?: string | null
+    prefixSender?: boolean
+  } = {}
+) {
+  if (!lastMessage) {
+    return fallbackText
+  }
+
+  const previewText = lastMessage.text.trim() || 'Новое сообщение'
+
+  if (!prefixSender) {
+    return previewText
+  }
+
+  const senderLabel =
+    currentUserId && lastMessage.userId === currentUserId
+      ? 'Вы'
+      : lastMessage.senderDisplayName
+
+  return `${senderLabel}: ${previewText}`
+}
+
+function ThreadListRow({ item }: { item: MessageThreadListItem }) {
+  return (
+    <Link
+      href={item.href}
+      className="app-card flex items-center gap-3 rounded-2xl border p-4 shadow-sm"
+    >
+      {item.avatar}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="app-text-primary truncate text-sm font-medium">{item.title}</p>
+            <p
+              className={`truncate text-xs ${
+                item.unreadCount > 0 ? 'app-text-primary font-medium' : 'app-text-secondary'
+              }`}
+            >
+              {item.preview}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {item.timeLabel ? (
+              <span className="app-text-secondary text-[11px]">{item.timeLabel}</span>
+            ) : null}
+            <UnreadBadge count={item.unreadCount} />
+          </div>
+        </div>
+      </div>
+    </Link>
   )
 }
 
@@ -84,8 +152,8 @@ export default function MessagesPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [clubThreadId, setClubThreadId] = useState<string | null>(null)
-  const [coachThreadId, setCoachThreadId] = useState<string | null>(null)
+  const [clubThread, setClubThread] = useState<ClubThread | null>(null)
+  const [coachThread, setCoachThread] = useState<DirectCoachThreadItem | null>(null)
   const [directThreads, setDirectThreads] = useState<CoachDirectThreadItem[]>([])
   const [students, setStudents] = useState<StudentProfile[]>([])
   const [unreadCountsByThread, setUnreadCountsByThread] = useState<UnreadCountsByThread>({})
@@ -104,6 +172,72 @@ export default function MessagesPage() {
       ) as Record<string, CoachDirectThreadItem>,
     [directThreads]
   )
+
+  const threadListItems = useMemo(() => {
+    const items: MessageThreadListItem[] = []
+
+    if (clubThread) {
+      items.push({
+        id: clubThread.id,
+        href: `/messages/${clubThread.id}`,
+        title: 'Общий чат',
+        preview: getLastMessagePreview(
+          clubThread.lastMessage,
+          'Пока нет сообщений',
+          {
+            currentUserId,
+            prefixSender: true,
+          }
+        ),
+        timeLabel: clubThread.lastMessage?.createdAt
+          ? formatChatThreadActivityLabel(clubThread.lastMessage.createdAt)
+          : '',
+        unreadCount: unreadCountsByThread[clubThread.id] ?? 0,
+        lastActivityAt: new Date(clubThread.lastMessage?.createdAt ?? clubThread.created_at).getTime(),
+        avatar: <ThreadAvatar>#</ThreadAvatar>,
+      })
+    }
+
+    if (!isCoach && coachThread) {
+      items.push({
+        id: coachThread.id,
+        href: `/messages/${coachThread.id}`,
+        title: 'Связь с тренером',
+        preview: getLastMessagePreview(coachThread.lastMessage, 'Личный чат со своим тренером'),
+        timeLabel: coachThread.lastMessage?.createdAt
+          ? formatChatThreadActivityLabel(coachThread.lastMessage.createdAt)
+          : '',
+        unreadCount: unreadCountsByThread[coachThread.id] ?? 0,
+        lastActivityAt: new Date(coachThread.lastMessage?.createdAt ?? coachThread.created_at).getTime(),
+        avatar: <ThreadAvatar>C</ThreadAvatar>,
+      })
+    }
+
+    if (isCoach) {
+      directThreads.forEach((thread) => {
+        items.push({
+          id: thread.id,
+          href: `/messages/${thread.id}`,
+          title: getProfileDisplayName(thread.student, 'Ученик'),
+          preview: getLastMessagePreview(thread.lastMessage, 'Личный чат'),
+          timeLabel: thread.lastMessage?.createdAt
+            ? formatChatThreadActivityLabel(thread.lastMessage.createdAt)
+            : '',
+          unreadCount: unreadCountsByThread[thread.id] ?? 0,
+          lastActivityAt: new Date(thread.lastMessage?.createdAt ?? thread.created_at).getTime(),
+          avatar: (
+            <StudentAvatar
+              student={{
+                avatar_url: thread.student?.avatar_url ?? null,
+              }}
+            />
+          ),
+        })
+      })
+    }
+
+    return items.sort((left, right) => right.lastActivityAt - left.lastActivityAt)
+  }, [clubThread, coachThread, currentUserId, directThreads, isCoach, unreadCountsByThread])
 
   useEffect(() => {
     let isMounted = true
@@ -133,7 +267,7 @@ export default function MessagesPage() {
           return
         }
 
-        setClubThreadId(clubThread.id)
+        setClubThread(clubThread)
         setUnreadCountsByThread(unreadCounts)
 
         if (user.id === COACH_USER_ID) {
@@ -149,13 +283,13 @@ export default function MessagesPage() {
           setDirectThreads(coachThreads)
           setStudents(registeredStudents)
         } else {
-          const coachThread = await getDirectCoachThread(user.id)
+          const directCoachThread = await getDirectCoachThread(user.id)
 
           if (!isMounted) {
             return
           }
 
-          setCoachThreadId(coachThread?.id ?? null)
+          setCoachThread(directCoachThread)
         }
 
         setError('')
@@ -182,8 +316,8 @@ export default function MessagesPage() {
       return
     }
 
-    if (coachThreadId) {
-      router.push(`/messages/${coachThreadId}`)
+    if (coachThread) {
+      router.push(`/messages/${coachThread.id}`)
       return
     }
 
@@ -192,7 +326,6 @@ export default function MessagesPage() {
 
     try {
       const thread = await getOrCreateDirectCoachThread(currentUserId)
-      setCoachThreadId(thread.id)
       router.push(`/messages/${thread.id}`)
     } catch {
       setError('Не удалось открыть чат с тренером')
@@ -229,6 +362,7 @@ export default function MessagesPage() {
         return [
           {
             ...thread,
+            lastMessage: null,
             student,
           },
           ...currentThreads,
@@ -278,23 +412,11 @@ export default function MessagesPage() {
         ) : null}
 
         <div className="space-y-3">
-          {clubThreadId ? (
-            <Link
-              href={`/messages/${clubThreadId}`}
-              className="app-card flex items-center gap-3 rounded-2xl border p-4 shadow-sm"
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-base font-semibold dark:bg-white/[0.08]">
-                #
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="app-text-primary text-sm font-medium">Общий чат</p>
-                <p className="app-text-secondary text-xs">Общение для всех участников клуба</p>
-              </div>
-              <UnreadBadge count={unreadCountsByThread[clubThreadId] ?? 0} />
-            </Link>
-          ) : null}
+          {threadListItems.map((item) => (
+            <ThreadListRow key={item.id} item={item} />
+          ))}
 
-          {!isCoach ? (
+          {!isCoach && !coachThread ? (
             <button
               type="button"
               onClick={() => {
@@ -303,50 +425,14 @@ export default function MessagesPage() {
               disabled={openingCoachThread}
               className="app-card flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm disabled:opacity-60"
             >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-base font-semibold dark:bg-white/[0.08]">
-                C
-              </div>
+              <ThreadAvatar>C</ThreadAvatar>
               <div className="min-w-0 flex-1">
                 <p className="app-text-primary text-sm font-medium">Связь с тренером</p>
                 <p className="app-text-secondary text-xs">
                   {openingCoachThread ? 'Открываем чат...' : 'Личный чат со своим тренером'}
                 </p>
               </div>
-              <UnreadBadge count={coachThreadId ? unreadCountsByThread[coachThreadId] ?? 0 : 0} />
             </button>
-          ) : null}
-
-          {isCoach ? (
-            <section className="app-card rounded-2xl border p-4 shadow-sm">
-              <div className="mb-3">
-                <h2 className="app-text-primary text-base font-semibold">Личные чаты</h2>
-                <p className="app-text-secondary mt-1 text-xs">Все диалоги тренера с учениками.</p>
-              </div>
-
-              {directThreads.length === 0 ? (
-                <p className="app-text-secondary text-sm">Пока нет личных чатов.</p>
-              ) : (
-                <div className="space-y-2">
-                  {directThreads.map((thread) => (
-                    <Link
-                      key={thread.id}
-                      href={`/messages/${thread.id}`}
-                      className="flex items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 dark:border-white/[0.08]"
-                    >
-                      <StudentAvatar
-                        student={{
-                          avatar_url: thread.student?.avatar_url ?? null,
-                        }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <DirectThreadSummary thread={thread} />
-                      </div>
-                      <UnreadBadge count={unreadCountsByThread[thread.id] ?? 0} />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </section>
           ) : null}
 
           {isCoach ? (
