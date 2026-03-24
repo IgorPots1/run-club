@@ -883,56 +883,71 @@ export default function RunDetailsPage() {
     }
   }, [run])
 
-  if (authLoading || loading) {
+  function renderScreen(content: React.ReactNode) {
     return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 md:p-4">
-          <MobileBackHeader title="Тренировка" />
-          <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
-                <div className="min-w-0 space-y-2">
-                  <div className="skeleton-line h-4 w-28" />
-                  <div className="skeleton-line h-3 w-24" />
-                </div>
-              </div>
-              <div className="h-6 w-16 rounded-full skeleton-line" />
-            </div>
-
-            <div className="mt-4 skeleton-line h-7 w-44" />
-
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div className="app-surface-muted rounded-xl p-3">
-                <div className="skeleton-line h-3 w-16" />
-                <div className="mt-2 skeleton-line h-5 w-20" />
-              </div>
-              <div className="app-surface-muted rounded-xl p-3">
-                <div className="skeleton-line h-3 w-24" />
-                <div className="mt-2 skeleton-line h-5 w-20" />
-              </div>
-              <div className="app-surface-muted rounded-xl p-3">
-                <div className="skeleton-line h-3 w-20" />
-                <div className="mt-2 skeleton-line h-5 w-24" />
-              </div>
-            </div>
-          </section>
-
-          <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
-            <div className="skeleton-line h-6 w-28" />
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div className="app-surface-muted rounded-xl p-3">
-                <div className="skeleton-line h-3 w-16" />
-                <div className="mt-2 skeleton-line h-5 w-10" />
-              </div>
-              <div className="app-surface-muted rounded-xl p-3">
-                <div className="skeleton-line h-3 w-24" />
-                <div className="mt-2 skeleton-line h-5 w-10" />
-              </div>
-            </div>
-          </section>
+      <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden md:h-auto md:min-h-screen md:overflow-visible">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col md:h-auto md:min-h-screen">
+          <MobileBackHeader
+            title="Тренировка"
+            sticky={false}
+            fullBleedOnMobile={false}
+            className="mb-0 md:mt-4"
+          />
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-4 [overscroll-behavior-y:contain] md:overflow-visible md:px-4 md:pb-4 md:pt-4">
+            {content}
+          </div>
         </div>
       </main>
+    )
+  }
+
+  if (authLoading || loading) {
+    return renderScreen(
+      <div className="space-y-4">
+        <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+              <div className="min-w-0 space-y-2">
+                <div className="skeleton-line h-4 w-28" />
+                <div className="skeleton-line h-3 w-24" />
+              </div>
+            </div>
+            <div className="h-6 w-16 rounded-full skeleton-line" />
+          </div>
+
+          <div className="mt-4 skeleton-line h-7 w-44" />
+
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="app-surface-muted rounded-xl p-3">
+              <div className="skeleton-line h-3 w-16" />
+              <div className="mt-2 skeleton-line h-5 w-20" />
+            </div>
+            <div className="app-surface-muted rounded-xl p-3">
+              <div className="skeleton-line h-3 w-24" />
+              <div className="mt-2 skeleton-line h-5 w-20" />
+            </div>
+            <div className="app-surface-muted rounded-xl p-3">
+              <div className="skeleton-line h-3 w-20" />
+              <div className="mt-2 skeleton-line h-5 w-24" />
+            </div>
+          </div>
+        </section>
+
+        <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
+          <div className="skeleton-line h-6 w-28" />
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div className="app-surface-muted rounded-xl p-3">
+              <div className="skeleton-line h-3 w-16" />
+              <div className="mt-2 skeleton-line h-5 w-10" />
+            </div>
+            <div className="app-surface-muted rounded-xl p-3">
+              <div className="skeleton-line h-3 w-24" />
+              <div className="mt-2 skeleton-line h-5 w-10" />
+            </div>
+          </div>
+        </section>
+      </div>
     )
   }
 
@@ -945,23 +960,16 @@ export default function RunDetailsPage() {
   }
 
   if (!run || !details) {
-    return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
-          <MobileBackHeader title="Тренировка" />
-          <div className="app-card mt-4 rounded-xl border p-4 shadow-sm">
-            <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
-          </div>
-        </div>
-      </main>
+    return renderScreen(
+      <div className="app-card rounded-xl border p-4 shadow-sm">
+        <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
+      </div>
     )
   }
 
-  return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 md:p-4">
-        <MobileBackHeader title="Тренировка" />
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
+  return renderScreen(
+    <div className="space-y-4">
+      <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <ParticipantIdentity
               avatarUrl={author?.avatar_url ?? null}
@@ -1026,70 +1034,70 @@ export default function RunDetailsPage() {
               <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
             </div>
           </div>
-        </section>
+      </section>
 
-        {shouldRenderHeartRateChart ? (
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
-            <div className="mt-3 h-[220px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={heartRateChartData}
-                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                  accessibilityLayer={false}
-                  syncId="run-detail-series"
-                  syncMethod="value"
-                >
-                  <defs>
-                    <linearGradient id="heart-rate-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.18} />
-                      <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
-                  <XAxis
-                    dataKey="time"
-                    type="number"
-                    domain={['dataMin', 'dataMax']}
-                    tickCount={6}
-                    tickLine={false}
-                    axisLine={false}
-                    minTickGap={24}
-                    tickMargin={8}
-                    tickFormatter={formatElapsedMinutesLabel}
-                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={36}
-                    tickFormatter={formatHeartRateTick}
-                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                    domain={['dataMin - 5', 'dataMax + 5']}
-                  />
-                  <Tooltip
-                    cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
-                    formatter={(value) => {
-                      const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
-                      return [`${Math.round(numericValue)} уд/мин`, 'Пульс']
-                    }}
-                    labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="heartRate"
-                    stroke="var(--accent-strong)"
-                    strokeWidth={2.5}
-                    fill="url(#heart-rate-fill)"
-                    fillOpacity={1}
-                    dot={false}
-                    activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
-        ) : null}
+      {shouldRenderHeartRateChart ? (
+        <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
+          <div className="mt-3 h-[220px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={heartRateChartData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                accessibilityLayer={false}
+                syncId="run-detail-series"
+                syncMethod="value"
+              >
+                <defs>
+                  <linearGradient id="heart-rate-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                <XAxis
+                  dataKey="time"
+                  type="number"
+                  domain={['dataMin', 'dataMax']}
+                  tickCount={6}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={24}
+                  tickMargin={8}
+                  tickFormatter={formatElapsedMinutesLabel}
+                  tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  tickFormatter={formatHeartRateTick}
+                  tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                  domain={['dataMin - 5', 'dataMax + 5']}
+                />
+                <Tooltip
+                  cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                  formatter={(value) => {
+                    const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                    return [`${Math.round(numericValue)} уд/мин`, 'Пульс']
+                  }}
+                  labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="heartRate"
+                  stroke="var(--accent-strong)"
+                  strokeWidth={2.5}
+                  fill="url(#heart-rate-fill)"
+                  fillOpacity={1}
+                  dot={false}
+                  activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      ) : null}
 
         {shouldRenderPaceChart ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
@@ -1232,8 +1240,7 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
-        <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
-      </div>
-    </main>
+      <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
+    </div>
   )
 }
