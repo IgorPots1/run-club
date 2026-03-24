@@ -24,6 +24,7 @@ type ChatThreadLastMessageRow = {
   user_id: string
   text: string
   created_at: string
+  is_deleted?: boolean
 }
 
 export type ChatThreadLastMessage = {
@@ -152,6 +153,35 @@ async function loadLastMessageByThreadId(threadIds: string[]) {
       } satisfies ChatThreadLastMessage,
     ])
   ) as Record<string, ChatThreadLastMessage>
+}
+
+export async function loadChatThreadLastMessage(messageId: string): Promise<ChatThreadLastMessage | null> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id, thread_id, user_id, text, created_at, is_deleted')
+    .eq('id', messageId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  const messageRow = (data as ChatThreadLastMessageRow | null) ?? null
+
+  if (!messageRow || messageRow.is_deleted) {
+    return null
+  }
+
+  const profileById = await loadProfilesByUserIds([messageRow.user_id])
+
+  return {
+    id: messageRow.id,
+    threadId: messageRow.thread_id,
+    userId: messageRow.user_id,
+    text: messageRow.text,
+    createdAt: messageRow.created_at,
+    senderDisplayName: getProfileDisplayName(profileById[messageRow.user_id], 'Бегун'),
+  }
 }
 
 async function withLastMessages<T extends ChatThreadRow>(threads: T[]) {

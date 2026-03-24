@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import InnerPageHeader from '@/components/InnerPageHeader'
@@ -17,6 +17,7 @@ import {
   type DirectCoachThreadItem,
   getCoachDirectThreads,
   getDirectCoachThread,
+  loadChatThreadLastMessage,
   getOrCreateCoachDirectThreadForStudent,
   getOrCreateDirectCoachThread,
   getStudents,
@@ -24,6 +25,9 @@ import {
   type StudentProfile,
 } from '@/lib/chat/threads'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
+import { supabase } from '@/lib/supabase'
+
+const CHAT_UNREAD_COUNT_EVENT = 'run-club:chat-unread-count'
 
 function AvatarFallback() {
   return (
@@ -150,6 +154,7 @@ function ThreadListRow({ item }: { item: MessageThreadListItem }) {
 
 export default function MessagesPage() {
   const router = useRouter()
+  const processedInsertedMessageIdsRef = useRef<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [clubThread, setClubThread] = useState<ClubThread | null>(null)
@@ -239,6 +244,16 @@ export default function MessagesPage() {
     return items.sort((left, right) => right.lastActivityAt - left.lastActivityAt)
   }, [clubThread, coachThread, currentUserId, directThreads, isCoach, unreadCountsByThread])
 
+  const knownThreadIdsSignature = useMemo(
+    () =>
+      [
+        ...(clubThread ? [clubThread.id] : []),
+        ...(coachThread ? [coachThread.id] : []),
+        ...directThreads.map((thread) => thread.id),
+      ].join(','),
+    [clubThread?.id, coachThread?.id, directThreads]
+  )
+
   useEffect(() => {
     let isMounted = true
 
@@ -310,6 +325,113 @@ export default function MessagesPage() {
       isMounted = false
     }
   }, [router])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const totalUnreadCount = Object.values(unreadCountsByThread).reduce((total, count) => total + count, 0)
+
+    window.dispatchEvent(
+      new CustomEvent(CHAT_UNREAD_COUNT_EVENT, {
+        detail: {
+          count: totalUnreadCount,
+        },
+      })
+    )
+  }, [unreadCountsByThread])
+
+  useEffect(() => {
+    if (loading || !currentUserId) {
+      return
+    }
+
+    const knownThreadIds = new Set(
+      knownThreadIdsSignature
+        .split(',')
+        .map((threadId) => threadId.trim())
+        .filter(Boolean)
+    )
+
+    const channel = supabase
+      .channel('messages-list:chat-messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        async (payload) => {
+          const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+
+          if (!nextMessageId || processedInsertedMessageIdsRef.current.has(nextMessageId)) {
+            return
+          }
+
+          processedInsertedMessageIdsRef.current.add(nextMessageId)
+
+          if (processedInsertedMessageIdsRef.current.size > 200) {
+            const recentIds = Array.from(processedInsertedMessageIdsRef.current).slice(-100)
+            processedInsertedMessageIdsRef.current = new Set(recentIds)
+          }
+
+          try {
+            const nextMessage = await loadChatThreadLastMessage(nextMessageId)
+
+            if (!nextMessage) {
+              return
+            }
+
+            const isKnownThread = knownThreadIds.has(nextMessage.threadId)
+
+            setClubThread((currentThread) =>
+              currentThread?.id === nextMessage.threadId
+                ? {
+                    ...currentThread,
+                    lastMessage: nextMessage,
+                  }
+                : currentThread
+            )
+
+            setCoachThread((currentThread) =>
+              currentThread?.id === nextMessage.threadId
+                ? {
+                    ...currentThread,
+                    lastMessage: nextMessage,
+                  }
+                : currentThread
+            )
+
+            setDirectThreads((currentThreads) =>
+              currentThreads.map((thread) =>
+                thread.id === nextMessage.threadId
+                  ? {
+                      ...thread,
+                      lastMessage: nextMessage,
+                    }
+                  : thread
+              )
+            )
+
+            if (isKnownThread && nextMessage.userId !== currentUserId) {
+              setUnreadCountsByThread((currentCounts) => ({
+                ...currentCounts,
+                [nextMessage.threadId]: (currentCounts[nextMessage.threadId] ?? 0) + 1,
+              }))
+            }
+          } catch {
+            processedInsertedMessageIdsRef.current.delete(nextMessageId)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [currentUserId, knownThreadIdsSignature, loading])
 
   async function handleOpenCoachChat() {
     if (!currentUserId || openingCoachThread) {
