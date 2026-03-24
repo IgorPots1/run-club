@@ -33,6 +33,8 @@ export type StravaActivitySummary = {
   location_city?: string | null
   location_state?: string | null
   location_country?: string | null
+  start_latlng?: [number, number] | null
+  end_latlng?: [number, number] | null
   average_heartrate?: number | null
   max_heartrate?: number | null
   calories?: number | null
