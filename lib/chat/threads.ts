@@ -27,41 +27,7 @@ export type CoachDirectThreadItem = DirectCoachThread & {
 
 export type StudentProfile = ProfileRow
 
-function isDirectCoachThreadUniqueError(error: { code?: string | null; message?: string | null }) {
-  return (
-    error.code === '23505' ||
-    Boolean(error.message?.includes('chat_threads_direct_coach_unique_idx'))
-  )
-}
-
-async function ensureDirectCoachThreadMembers(threadId: string, ownerUserId: string) {
-  const { error } = await supabase
-    .from('chat_thread_members')
-    .upsert(
-      [
-        {
-          thread_id: threadId,
-          user_id: ownerUserId,
-          role: 'member',
-        },
-        {
-          thread_id: threadId,
-          user_id: COACH_USER_ID,
-          role: 'coach',
-        },
-      ],
-      {
-        onConflict: 'thread_id,user_id',
-        ignoreDuplicates: false,
-      }
-    )
-
-  if (error) {
-    throw error
-  }
-}
-
-async function repairDirectCoachThreadViaApi(studentUserId: string): Promise<DirectCoachThread> {
+async function getOrCreateDirectCoachThreadViaApi(studentUserId: string): Promise<DirectCoachThread> {
   const response = await fetch('/api/chat/direct-thread', {
     method: 'POST',
     headers: {
@@ -80,7 +46,7 @@ async function repairDirectCoachThreadViaApi(studentUserId: string): Promise<Dir
     | null
 
   if (!response.ok || !payload?.thread) {
-    throw new Error(payload?.error ?? 'direct_thread_repair_failed')
+    throw new Error(payload?.error ?? 'direct_thread_request_failed')
   }
 
   return payload.thread
@@ -131,48 +97,7 @@ export async function getChatThreadById(threadId: string): Promise<ChatThreadRow
 }
 
 export async function getOrCreateDirectCoachThread(currentUserId: string): Promise<DirectCoachThread> {
-  const existingThread = await findDirectCoachThread(currentUserId)
-  if (existingThread) {
-    return existingThread
-  }
-
-  const nextThreadId = crypto.randomUUID()
-  const { error: createdThreadError } = await supabase
-    .from('chat_threads')
-    .insert({
-      id: nextThreadId,
-      type: 'direct_coach',
-      owner_user_id: currentUserId,
-      coach_user_id: COACH_USER_ID,
-    })
-
-  if (createdThreadError) {
-    if (isDirectCoachThreadUniqueError(createdThreadError)) {
-      const directThread = await findDirectCoachThread(currentUserId)
-
-      if (directThread) {
-        return directThread
-      }
-
-      console.error('Direct thread recovery triggered', {
-        currentUserId,
-      })
-
-      return repairDirectCoachThreadViaApi(currentUserId)
-    }
-
-    throw createdThreadError
-  }
-
-  await ensureDirectCoachThreadMembers(nextThreadId, currentUserId)
-
-  const createdThread = await findDirectCoachThread(currentUserId)
-
-  if (!createdThread) {
-    throw new Error('direct_thread_not_accessible_after_member_insert')
-  }
-
-  return createdThread
+  return getOrCreateDirectCoachThreadViaApi(currentUserId)
 }
 
 export async function getOrCreateCoachDirectThreadForStudent(studentUserId: string): Promise<DirectCoachThread> {
