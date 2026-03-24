@@ -61,6 +61,31 @@ async function ensureDirectCoachThreadMembers(threadId: string, ownerUserId: str
   }
 }
 
+async function repairDirectCoachThreadViaApi(studentUserId: string): Promise<DirectCoachThread> {
+  const response = await fetch('/api/chat/direct-thread', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      studentUserId,
+    }),
+  })
+
+  const payload = await response.json().catch(() => null) as
+    | {
+        thread?: DirectCoachThread
+        error?: string
+      }
+    | null
+
+  if (!response.ok || !payload?.thread) {
+    throw new Error(payload?.error ?? 'direct_thread_repair_failed')
+  }
+
+  return payload.thread
+}
+
 async function findDirectCoachThread(ownerUserId: string) {
   const { data, error } = await supabase
     .from('chat_threads')
@@ -128,6 +153,12 @@ export async function getOrCreateDirectCoachThread(currentUserId: string): Promi
       if (directThread) {
         return directThread
       }
+
+      console.error('Direct thread recovery triggered', {
+        currentUserId,
+      })
+
+      return repairDirectCoachThreadViaApi(currentUserId)
     }
 
     throw createdThreadError
