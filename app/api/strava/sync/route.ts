@@ -114,6 +114,7 @@ export async function GET(request: Request) {
     if (debugRunId) {
       return NextResponse.json({
         ok: true,
+        debugVersion: 'strava-debug-v2',
         targetedRunId: result.debug?.targetedRunId ?? debugRunId,
         targetedActivityId: result.debug?.targetedActivityId ?? null,
         targetedSyncAttempted: result.debug?.targetedSyncAttempted ?? false,
