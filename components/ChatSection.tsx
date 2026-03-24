@@ -346,22 +346,63 @@ export default function ChatSection({
     }
 
     const rootStyle = document.documentElement.style
+    let frameId: number | null = null
+    let nestedFrameId: number | null = null
+    let timeoutId: number | null = null
+
+    function applyChatAppHeight() {
+      const visualViewport = window.visualViewport
+      const viewportHeight = visualViewport?.height ?? window.innerHeight
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
+      const isMobileViewport = window.innerWidth < 768
+      const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
+
+      rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
+      setIsKeyboardOpen(isMobileViewport && window.innerHeight - effectiveViewportHeight > 120)
+    }
+
+    function clearScheduledViewportSync() {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+        frameId = null
+      }
+
+      if (nestedFrameId !== null) {
+        window.cancelAnimationFrame(nestedFrameId)
+        nestedFrameId = null
+      }
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    }
 
     function updateChatAppHeight() {
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
-      const isMobileViewport = window.innerWidth < 768
+      applyChatAppHeight()
+      clearScheduledViewportSync()
 
-      rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${Math.round(viewportHeight)}px`)
-      setIsKeyboardOpen(isMobileViewport && window.innerHeight - viewportHeight > 120)
+      frameId = window.requestAnimationFrame(() => {
+        nestedFrameId = window.requestAnimationFrame(() => {
+          applyChatAppHeight()
+        })
+      })
+
+      timeoutId = window.setTimeout(() => {
+        applyChatAppHeight()
+      }, 80)
     }
 
     updateChatAppHeight()
 
     window.visualViewport?.addEventListener('resize', updateChatAppHeight)
+    window.visualViewport?.addEventListener('scroll', updateChatAppHeight)
     window.addEventListener('resize', updateChatAppHeight)
 
     return () => {
+      clearScheduledViewportSync()
       window.visualViewport?.removeEventListener('resize', updateChatAppHeight)
+      window.visualViewport?.removeEventListener('scroll', updateChatAppHeight)
       window.removeEventListener('resize', updateChatAppHeight)
       rootStyle.removeProperty(CHAT_APP_HEIGHT_CSS_VAR)
     }
