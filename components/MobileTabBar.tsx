@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Footprints, Home, User, Users } from 'lucide-react'
+import { Activity, Footprints, Home, MessageCircle, User, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type MouseEvent } from 'react'
@@ -59,6 +59,7 @@ export default function MobileTabBar() {
   if (shouldHide || pathname === '/chat' || pathname.startsWith('/messages/') || isChatKeyboardOpen) return null
 
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
+  const isMessagesRoute = pathname === '/messages' || pathname.startsWith('/messages/')
   const tabs: TabItem[] = [
     {
       href: '/dashboard',
@@ -85,6 +86,12 @@ export default function MobileTabBar() {
       icon: <TabIcon><Users className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
+      href: '/messages',
+      label: 'Сообщения',
+      isActive: isMessagesRoute,
+      icon: <TabIcon><MessageCircle className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
+    },
+    {
       href: '/profile',
       label: 'Профиль',
       isActive: pathname === '/profile',
@@ -102,7 +109,7 @@ export default function MobileTabBar() {
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <nav
-        className="app-bottom-nav pointer-events-auto mx-auto grid max-w-xl grid-cols-5 border-t px-2 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
+        className="app-bottom-nav pointer-events-auto mx-auto grid max-w-xl grid-cols-6 border-t px-2 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
       >
         {tabs.map((tab) => (
           <Link

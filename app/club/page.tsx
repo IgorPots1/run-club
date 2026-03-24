@@ -35,10 +35,10 @@ export default function ClubPage() {
             Рейтинг
           </button>
           <Link
-            href="/chat"
+            href="/messages"
             className="min-h-11 rounded-lg px-4 py-3 text-sm font-medium app-text-secondary"
           >
-            Чат
+            Перейти в сообщения
           </Link>
         </div>
       </div>
