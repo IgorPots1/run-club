@@ -22,15 +22,25 @@ export type StravaActivitySummary = {
   id: number
   name: string
   type: string
+  sport_type?: string | null
   distance: number
   moving_time: number
   elapsed_time: number
   total_elevation_gain: number
   start_date: string
+  description?: string | null
+  achievement_count?: number | null
+  location_city?: string | null
+  location_state?: string | null
+  location_country?: string | null
   average_heartrate?: number | null
   max_heartrate?: number | null
   calories?: number | null
   average_cadence?: number | null
+  photos?: {
+    count?: number | null
+    primary?: Record<string, unknown> | null
+  } | null
   map?: {
     id?: string | null
     summary_polyline?: string | null

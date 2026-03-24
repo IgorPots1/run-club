@@ -53,6 +53,15 @@ type StravaRunInsertPayload = {
   map_polyline: string | null
   calories: number | null
   average_cadence: number | null
+  raw_strava_payload: Record<string, unknown> | null
+  description: string | null
+  photo_count: number | null
+  city: string | null
+  region: string | null
+  country: string | null
+  sport_type: string | null
+  achievement_count: number | null
+  strava_synced_at: string
   created_at: string
   external_source: string
   external_id: string
@@ -256,6 +265,82 @@ function toNullableIntegerField(field: string, value: number | null | undefined)
 function toMapPolyline(activity: Pick<StravaActivitySummary, 'map'>) {
   const polyline = activity.map?.summary_polyline?.trim() || activity.map?.polyline?.trim() || null
   return polyline && polyline.length > 0 ? polyline : null
+}
+
+function toNullableTrimmedText(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmedValue = value.trim()
+  return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function toPhotoCount(activity: Pick<StravaActivitySummary, 'photos'>) {
+  const photos = activity.photos
+
+  if (!photos) {
+    return null
+  }
+
+  if (Number.isFinite(photos.count)) {
+    return Math.max(0, Math.round(Number(photos.count)))
+  }
+
+  if (photos.primary && typeof photos.primary === 'object') {
+    return 1
+  }
+
+  return null
+}
+
+function toRawStravaPayload(activity: StravaActivitySummary) {
+  try {
+    const serialized = JSON.stringify(activity)
+
+    if (!serialized) {
+      return null
+    }
+
+    const parsed = JSON.parse(serialized) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function hasStravaSocialSummaryFields(activity: StravaActivitySummary) {
+  return (
+    activity.sport_type !== undefined ||
+    activity.description !== undefined ||
+    activity.achievement_count !== undefined ||
+    activity.location_city !== undefined ||
+    activity.location_state !== undefined ||
+    activity.location_country !== undefined ||
+    activity.photos !== undefined
+  )
+}
+
+async function getStravaActivityForImport(
+  activity: StravaActivitySummary,
+  accessToken?: string
+) {
+  if (!accessToken || hasStravaSocialSummaryFields(activity)) {
+    return activity
+  }
+
+  try {
+    return await fetchStravaActivityById(accessToken, activity.id)
+  } catch (caughtError) {
+    console.warn('Strava detailed activity fetch skipped during import enrichment', {
+      activityId: activity.id,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown detailed activity fetch error',
+    })
+
+    return activity
+  }
 }
 
 function normalizeIntegerField(field: string, value: number) {
@@ -1151,6 +1236,9 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
   const movingTimeSeconds = toMovingTimeSeconds(activity.moving_time)
   const durationSeconds = toDurationSeconds(movingTimeSeconds)
   const elapsedTimeSeconds = toElapsedTimeSeconds(activity.elapsed_time, movingTimeSeconds)
+  const syncedAt = new Date().toISOString()
+  const normalizedDescription = toNullableTrimmedText(activity.description)
+  const normalizedSportType = toNullableTrimmedText(activity.sport_type) ?? toNullableTrimmedText(activity.type)
 
   return {
     user_id: userId,
@@ -1169,6 +1257,15 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
     map_polyline: toMapPolyline(activity),
     calories: toNullableIntegerField('calories', activity.calories),
     average_cadence: toNullableIntegerField('average_cadence', activity.average_cadence),
+    raw_strava_payload: toRawStravaPayload(activity),
+    description: normalizedDescription,
+    photo_count: toPhotoCount(activity),
+    city: toNullableTrimmedText(activity.location_city),
+    region: toNullableTrimmedText(activity.location_state),
+    country: toNullableTrimmedText(activity.location_country),
+    sport_type: normalizedSportType,
+    achievement_count: toNullableIntegerField('achievement_count', activity.achievement_count),
+    strava_synced_at: syncedAt,
     created_at: new Date(activity.start_date).toISOString(),
     external_source: STRAVA_EXTERNAL_SOURCE,
     external_id: String(activity.id),
@@ -1390,23 +1487,24 @@ export async function importStravaActivityForUser(
   activity: StravaActivitySummary,
   options: ImportStravaActivityOptions = {}
 ): Promise<StravaImportResult> {
-  const activityMatchesDebugRun = shouldDebugRunDetailSeries({ activityId: activity.id })
+  const activityForImport = await getStravaActivityForImport(activity, options.accessToken)
+  const activityMatchesDebugRun = shouldDebugRunDetailSeries({ activityId: activityForImport.id })
 
-  if (!isValidStravaRun(activity)) {
+  if (!isValidStravaRun(activityForImport)) {
     if (activityMatchesDebugRun) {
       console.warn('[run-detail-debug] target_run_skipped', {
-        activityId: activity.id,
+        activityId: activityForImport.id,
         reason: 'invalid_strava_run',
       })
     }
     return {
       status: 'skipped_invalid',
-      activityId: String(activity.id),
+      activityId: String(activityForImport.id),
     }
   }
 
   const supabase = createSupabaseAdminClient()
-  const payload = buildRunInsertPayload(userId, activity)
+  const payload = buildRunInsertPayload(userId, activityForImport)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
     .select('id, user_id')
@@ -1421,7 +1519,7 @@ export async function importStravaActivityForUser(
   if (!existingRun) {
     console.info('[strava-webhook-debug] insert_branch', {
       userId,
-      activityId: activity.id,
+      activityId: activityForImport.id,
       externalId: payload.external_id,
     })
 
@@ -1456,7 +1554,7 @@ export async function importStravaActivityForUser(
       await syncRunSupplementalStravaDataForActivity(
         supabase,
         insertedRun.id,
-        activity.id,
+        activityForImport.id,
         options.accessToken,
         options.debugRunId
       )
@@ -1473,15 +1571,15 @@ export async function importStravaActivityForUser(
   console.info('[strava-webhook-debug] update_branch', {
     userId,
     runId: existingRun.id,
-    activityId: activity.id,
+    activityId: activityForImport.id,
     externalId: payload.external_id,
     requiresOwnerRepair,
   })
 
-  if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
+  if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activityForImport.id })) {
     console.info('[run-detail-debug] target_run_selected_for_processing', {
       runId: existingRun.id,
-      activityId: activity.id,
+      activityId: activityForImport.id,
       path: !options.updateExisting && !requiresOwnerRepair ? 'skipped_existing_branch' : 'update_existing_branch',
       accessTokenPresent: Boolean(options.accessToken),
       requiresOwnerRepair,
@@ -1489,10 +1587,10 @@ export async function importStravaActivityForUser(
   }
 
   if (!options.updateExisting && !requiresOwnerRepair) {
-    if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
+    if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activityForImport.id })) {
       console.warn('[run-detail-debug] target_run_skipped', {
         runId: existingRun.id,
-        activityId: activity.id,
+        activityId: activityForImport.id,
         reason: 'existing_run_without_update',
       })
     }
@@ -1526,6 +1624,15 @@ export async function importStravaActivityForUser(
       map_polyline: payload.map_polyline,
       calories: payload.calories,
       average_cadence: payload.average_cadence,
+      raw_strava_payload: payload.raw_strava_payload,
+      description: payload.description,
+      photo_count: payload.photo_count,
+      city: payload.city,
+      region: payload.region,
+      country: payload.country,
+      sport_type: payload.sport_type,
+      achievement_count: payload.achievement_count,
+      strava_synced_at: payload.strava_synced_at,
       created_at: payload.created_at,
       xp: payload.xp,
     })
@@ -1545,13 +1652,13 @@ export async function importStravaActivityForUser(
     if (existingSeriesError) {
       console.warn('Strava run detail series existence check failed', {
         runId: existingRun.id,
-        activityId: activity.id,
+          activityId: activityForImport.id,
         error: existingSeriesError.message,
       })
     } else if (!existingSeriesRow) {
       console.info('Strava run detail series fallback sync triggered', {
         runId: existingRun.id,
-        activityId: activity.id,
+          activityId: activityForImport.id,
         fallback_reason: 'missing_detail_series',
       })
     }
@@ -1559,14 +1666,14 @@ export async function importStravaActivityForUser(
     await syncRunSupplementalStravaDataForActivity(
       supabase,
       existingRun.id,
-      activity.id,
+      activityForImport.id,
       options.accessToken,
       options.debugRunId
     )
-  } else if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activity.id })) {
+  } else if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activityForImport.id })) {
     console.warn('[run-detail-debug] target_run_skipped', {
       runId: existingRun.id,
-      activityId: activity.id,
+      activityId: activityForImport.id,
       reason: 'missing_access_token',
     })
   }
@@ -1805,6 +1912,12 @@ export async function syncStravaRuns(
         },
       }
     }
+
+    const targetedActivity = await fetchStravaActivityById(connection.access_token, targetedActivityId)
+    await importStravaActivityForUser(connection.user_id, targetedActivity, {
+      updateExisting: true,
+      debugRunId: targetDebugRunId,
+    })
 
     const targetedDetailSeriesSynced = await syncRunDetailSeriesForActivity(
       supabase,
