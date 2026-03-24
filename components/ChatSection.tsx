@@ -463,28 +463,31 @@ export default function ChatSection({
   useEffect(() => {
     if (typeof document === 'undefined') return
 
-    let debugEl = document.getElementById('chat-debug')
+    let debugEl = document.getElementById('chat-debug') as HTMLDivElement | null
 
     if (!debugEl) {
-      debugEl = document.createElement('div')
-      debugEl.id = 'chat-debug'
-      debugEl.style.position = 'fixed'
-      debugEl.style.top = '0'
-      debugEl.style.left = '0'
-      debugEl.style.zIndex = '9999'
-      debugEl.style.background = 'rgba(0,0,0,0.8)'
-      debugEl.style.color = 'white'
-      debugEl.style.fontSize = '11px'
-      debugEl.style.padding = '6px'
-      debugEl.style.whiteSpace = 'pre-line'
-      debugEl.style.pointerEvents = 'none'
-      document.body.appendChild(debugEl)
+      const created = document.createElement('div')
+      created.id = 'chat-debug'
+      created.style.position = 'fixed'
+      created.style.top = '0'
+      created.style.left = '0'
+      created.style.zIndex = '9999'
+      created.style.background = 'rgba(0,0,0,0.8)'
+      created.style.color = 'white'
+      created.style.fontSize = '11px'
+      created.style.padding = '6px'
+      created.style.whiteSpace = 'pre-line'
+      created.style.pointerEvents = 'none'
+      document.body.appendChild(created)
+      debugEl = created
     }
+
+    if (!debugEl) return
 
     function updateDebug() {
       const vv = window.visualViewport
 
-      debugEl.innerText =
+      debugEl!.innerText =
         `innerHeight: ${window.innerHeight}\n` +
         `vv.height: ${vv?.height ?? 'null'}\n` +
         `vv.offsetTop: ${vv?.offsetTop ?? 'null'}\n` +
