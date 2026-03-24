@@ -1902,6 +1902,17 @@ export async function syncStravaRuns(
     }
 
     const targetedActivity = await fetchStravaActivityById(connection.access_token, targetedActivityId)
+    const detailedActivityDebug = {
+      id: targetedActivity.id ?? null,
+      type: targetedActivity.type ?? null,
+      sport_type: targetedActivity.sport_type ?? null,
+      description: targetedActivity.description ?? null,
+      location_city: targetedActivity.location_city ?? null,
+      location_state: targetedActivity.location_state ?? null,
+      location_country: targetedActivity.location_country ?? null,
+      start_latlng: targetedActivity.start_latlng ?? null,
+      end_latlng: targetedActivity.end_latlng ?? null,
+    }
     await importStravaActivityForUser(connection.user_id, targetedActivity, {
       updateExisting: true,
       debugRunId: targetDebugRunId,
@@ -1956,6 +1967,7 @@ export async function syncStravaRuns(
         targetedLapsStatus: targetedLapsSyncResult.status,
         targetedLapsErrorMessage: targetedLapsSyncResult.errorMessage,
         targetedLapsHttpStatus: targetedLapsSyncResult.httpStatus,
+        detailedActivityDebug,
       },
     }
   }
