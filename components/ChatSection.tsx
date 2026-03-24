@@ -31,6 +31,7 @@ const INITIAL_CHAT_MESSAGE_LIMIT = 10
 const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
+const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
 
 function AvatarFallback() {
   return (
@@ -372,6 +373,30 @@ export default function ChatSection({
     return () => {
       delete document.documentElement.dataset.chatIsolatedRoute
       delete document.body.dataset.chatIsolatedRoute
+    }
+  }, [useIsolatedChatLayout])
+
+  useEffect(() => {
+    if (!useIsolatedChatLayout || typeof window === 'undefined' || typeof document === 'undefined') {
+      return
+    }
+
+    const rootStyle = document.documentElement.style
+
+    function updateChatAppHeight() {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${Math.round(viewportHeight)}px`)
+    }
+
+    updateChatAppHeight()
+
+    window.visualViewport?.addEventListener('resize', updateChatAppHeight)
+    window.addEventListener('resize', updateChatAppHeight)
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateChatAppHeight)
+      window.removeEventListener('resize', updateChatAppHeight)
+      rootStyle.removeProperty(CHAT_APP_HEIGHT_CSS_VAR)
     }
   }, [useIsolatedChatLayout])
 

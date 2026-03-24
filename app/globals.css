@@ -87,8 +87,8 @@ body {
   }
 
   body[data-chat-isolated-route='true'] .app-shell {
-    min-height: 100dvh;
-    height: 100dvh;
+    min-height: var(--chat-app-height, 100dvh);
+    height: var(--chat-app-height, 100dvh);
     overflow: hidden;
     padding-bottom: 0;
   }
