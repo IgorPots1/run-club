@@ -461,6 +461,46 @@ export default function ChatSection({
   }, [isKeyboardOpen])
 
   useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    let debugEl = document.getElementById('chat-debug')
+
+    if (!debugEl) {
+      debugEl = document.createElement('div')
+      debugEl.id = 'chat-debug'
+      debugEl.style.position = 'fixed'
+      debugEl.style.top = '0'
+      debugEl.style.left = '0'
+      debugEl.style.zIndex = '9999'
+      debugEl.style.background = 'rgba(0,0,0,0.8)'
+      debugEl.style.color = 'white'
+      debugEl.style.fontSize = '11px'
+      debugEl.style.padding = '6px'
+      debugEl.style.whiteSpace = 'pre-line'
+      debugEl.style.pointerEvents = 'none'
+      document.body.appendChild(debugEl)
+    }
+
+    function updateDebug() {
+      const vv = window.visualViewport
+
+      debugEl.innerText =
+        `innerHeight: ${window.innerHeight}\n` +
+        `vv.height: ${vv?.height ?? 'null'}\n` +
+        `vv.offsetTop: ${vv?.offsetTop ?? 'null'}\n` +
+        `keyboard: ${isKeyboardOpen}`
+    }
+
+    updateDebug()
+
+    const interval = setInterval(updateDebug, 300)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [isKeyboardOpen])
+
+  useEffect(() => {
     pendingDeletedMessageIdsRef.current.clear()
     messagesRef.current = []
     setMessages([])
