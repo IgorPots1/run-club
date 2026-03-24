@@ -156,9 +156,9 @@ function WorkoutFeedCard({
   const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
   const movingTimeLabel = movingTime?.trim() || '—'
   const stravaBadge = externalSource === 'strava' ? (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex items-center gap-2 whitespace-nowrap">
       {showStravaHint ? (
-        <span className={`${showMapPreview ? 'text-white/75' : 'app-text-muted'} text-[11px] font-medium`}>
+        <span className="app-text-muted text-[11px] font-medium">
           Импортировано из Strava
         </span>
       ) : null}
@@ -166,11 +166,7 @@ function WorkoutFeedCard({
         type="button"
         aria-label="Показать источник Strava"
         onClick={() => setShowStravaHint((current) => !current)}
-        className={`inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-medium ${
-          showMapPreview
-            ? 'border border-white/20 bg-black/20 text-white/90 backdrop-blur-sm'
-            : 'app-text-muted border border-black/5 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.04]'
-        }`}
+        className="app-text-muted inline-flex min-h-8 items-center gap-1 rounded-full border border-black/5 bg-black/[0.02] px-2.5 py-1.5 text-[11px] font-medium dark:border-white/10 dark:bg-white/[0.04]"
       >
         <StravaIcon />
         <span>Strava</span>
@@ -266,40 +262,29 @@ function WorkoutFeedCard({
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
             />
-            <div className="absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-              <div className="flex items-end justify-between gap-3">
-                <div className="pointer-events-none flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
-                  <span>{distanceLabel}</span>
-                  <span className="text-white/75">•</span>
-                  <span>{paceWithUnit}</span>
-                  <span className="text-white/75">•</span>
-                  <span>{movingTimeLabel}</span>
-                </div>
-                <div className="shrink-0">
-                  {stravaBadge}
-                </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                <span>{distanceLabel}</span>
+                <span className="text-white/75">•</span>
+                <span>{paceWithUnit}</span>
+                <span className="text-white/75">•</span>
+                <span>{movingTimeLabel}</span>
               </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="app-text-primary flex min-w-0 items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
-            <span className="font-semibold">{distanceLabel}</span>
-            <span className="app-text-secondary">•</span>
-            <span className="font-semibold">{paceWithUnit}</span>
-            <span className="app-text-secondary">•</span>
-            <span className="font-semibold">{movingTimeLabel}</span>
-          </div>
-          <div className="shrink-0">
-            {stravaBadge}
-          </div>
+        <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
+          <span className="font-semibold">{distanceLabel}</span>
+          <span className="app-text-secondary">•</span>
+          <span className="font-semibold">{paceWithUnit}</span>
+          <span className="app-text-secondary">•</span>
+          <span className="font-semibold">{movingTimeLabel}</span>
         </div>
       )}
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <FeedActionButton
               count={likesCount}
               active={likedByMe}
@@ -320,11 +305,8 @@ function WorkoutFeedCard({
               onClick={() => onCommentClick?.(runId)}
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
-          </div>
+            {stravaBadge}
         </div>
       </div>
     </div>
