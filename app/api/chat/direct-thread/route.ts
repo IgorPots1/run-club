@@ -42,6 +42,14 @@ async function ensureDirectCoachThreadMembers(threadId: string, studentUserId: s
 export async function POST(request: Request) {
   const { user, error: userError } = await getAuthenticatedUser()
 
+  const body = await request.json().catch(() => null) as
+    | {
+        studentUserId?: string
+      }
+    | null
+
+  const studentUserId = body?.studentUserId?.trim()
+
   if (userError || !user) {
     return NextResponse.json(
       {
@@ -52,7 +60,10 @@ export async function POST(request: Request) {
     )
   }
 
-  if (user.id !== COACH_USER_ID) {
+  if (
+    user.id !== COACH_USER_ID &&
+    user.id !== studentUserId
+  ) {
     return NextResponse.json(
       {
         ok: false,
@@ -61,14 +72,6 @@ export async function POST(request: Request) {
       { status: 403 }
     )
   }
-
-  const body = await request.json().catch(() => null) as
-    | {
-        studentUserId?: string
-      }
-    | null
-
-  const studentUserId = body?.studentUserId?.trim()
 
   if (!studentUserId || studentUserId === COACH_USER_ID) {
     return NextResponse.json(
