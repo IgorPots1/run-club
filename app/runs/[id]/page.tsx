@@ -14,10 +14,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import MobileBackHeader from '@/components/MobileBackHeader'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
+import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -883,26 +883,9 @@ export default function RunDetailsPage() {
     }
   }, [run])
 
-  function renderScreen(content: React.ReactNode) {
-    return (
-      <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden md:h-auto md:min-h-screen md:overflow-visible">
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col md:h-auto md:min-h-screen">
-          <MobileBackHeader
-            title="Тренировка"
-            sticky={false}
-            fullBleedOnMobile={false}
-            className="mb-0 md:mt-4"
-          />
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-4 [overscroll-behavior-y:contain] md:overflow-visible md:px-4 md:pb-4 md:pt-4">
-            {content}
-          </div>
-        </div>
-      </main>
-    )
-  }
-
   if (authLoading || loading) {
-    return renderScreen(
+    return (
+      <WorkoutDetailShell title="Тренировка">
       <div className="space-y-4">
         <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
           <div className="flex items-start justify-between gap-3">
@@ -948,6 +931,7 @@ export default function RunDetailsPage() {
           </div>
         </section>
       </div>
+      </WorkoutDetailShell>
     )
   }
 
@@ -960,14 +944,17 @@ export default function RunDetailsPage() {
   }
 
   if (!run || !details) {
-    return renderScreen(
+    return (
+      <WorkoutDetailShell title="Тренировка">
       <div className="app-card rounded-xl border p-4 shadow-sm">
         <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
       </div>
+      </WorkoutDetailShell>
     )
   }
 
-  return renderScreen(
+  return (
+    <WorkoutDetailShell title="Тренировка">
     <div className="space-y-4">
       <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
@@ -1242,5 +1229,6 @@ export default function RunDetailsPage() {
 
       <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
     </div>
+    </WorkoutDetailShell>
   )
 }

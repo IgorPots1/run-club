@@ -3,8 +3,8 @@
 import { LoaderCircle } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import MobileBackHeader from '@/components/MobileBackHeader'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { getBootstrapUser } from '@/lib/auth'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -586,87 +586,118 @@ export default function RunDiscussionPage() {
     [resolvedDurationSeconds, run?.distance_km]
   )
   const durationLabel = useMemo(() => formatDurationLabel(resolvedDurationSeconds), [resolvedDurationSeconds])
+  const discussionSummary = loadingRun ? (
+    <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+          <div className="min-w-0 space-y-2">
+            <div className="skeleton-line h-4 w-28" />
+            <div className="skeleton-line h-3 w-20" />
+          </div>
+        </div>
+        <div className="skeleton-line h-4 w-20" />
+      </div>
+      <div className="mt-3 skeleton-line h-5 w-40" />
+      <div className="mt-3 flex gap-2">
+        <div className="skeleton-line h-4 w-16" />
+        <div className="skeleton-line h-4 w-14" />
+        <div className="skeleton-line h-4 w-18" />
+      </div>
+    </section>
+  ) : pageError || !run || !author ? (
+    <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
+      <p className="text-sm text-red-600">{pageError || 'Обсуждение не найдено'}</p>
+    </section>
+  ) : (
+    <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <ParticipantIdentity
+          avatarUrl={author.avatarUrl}
+          displayName={author.displayName}
+          level={authorLevel}
+          href={`/users/${run.user_id}`}
+          size="sm"
+        />
+        <p className="app-text-secondary max-w-[7rem] text-right text-xs sm:text-sm">
+          {formatRunTimestampLabel(run.created_at, run.external_source)}
+        </p>
+      </div>
+
+      <p className="app-text-primary mt-3 break-words text-base font-semibold">{runTitle}</p>
+      {runDescription ? (
+        <p className="app-text-secondary mt-1 line-clamp-2 break-words text-sm leading-5">
+          {runDescription}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium">
+        <span className="app-text-primary">{distanceLabel}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="app-text-primary">{paceLabel}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="app-text-primary">{durationLabel}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="app-text-secondary">⚡ +{Math.max(0, Math.round(run.xp ?? 0))} XP</span>
+        {run.external_source === 'strava' ? (
+          <>
+            <span className="app-text-secondary">•</span>
+            <span className="app-text-secondary inline-flex items-center gap-1">
+              <StravaIcon />
+              <span>Strava</span>
+            </span>
+          </>
+        ) : null}
+      </div>
+    </section>
+  )
+  const discussionComposer = (
+    <form
+      onSubmit={handleSubmit}
+      className="shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
+    >
+      <div className="flex items-end gap-2">
+        <label htmlFor="discussion-comment" className="sr-only">Сообщение</label>
+        <textarea
+          id="discussion-comment"
+          ref={textareaRef}
+          rows={1}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setSubmitError('')
+          }}
+          placeholder="Сообщение"
+          disabled={submitting}
+          enterKeyHint="send"
+          className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-5"
+        />
+        <button
+          type="submit"
+          disabled={submitting || !trimmedDraft}
+          className="app-button-secondary min-h-11 shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? (
+            <span className="inline-flex items-center gap-1.5">
+              <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+              <span>...</span>
+            </span>
+          ) : 'Отпр.'}
+        </button>
+      </div>
+      {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
+    </form>
+  )
 
   return (
-    <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
-        <MobileBackHeader
-          title="Обсуждение"
-          fallbackHref={runId ? `/runs/${runId}` : '/dashboard'}
-          className="mb-0 shrink-0"
-        />
-        <div className="shrink-0 px-4 pb-3">
-          {loadingRun ? (
-            <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
-                  <div className="min-w-0 space-y-2">
-                    <div className="skeleton-line h-4 w-28" />
-                    <div className="skeleton-line h-3 w-20" />
-                  </div>
-                </div>
-                <div className="skeleton-line h-4 w-20" />
-              </div>
-              <div className="mt-3 skeleton-line h-5 w-40" />
-              <div className="mt-3 flex gap-2">
-                <div className="skeleton-line h-4 w-16" />
-                <div className="skeleton-line h-4 w-14" />
-                <div className="skeleton-line h-4 w-18" />
-              </div>
-            </section>
-          ) : pageError || !run || !author ? (
-            <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
-              <p className="text-sm text-red-600">{pageError || 'Обсуждение не найдено'}</p>
-            </section>
-          ) : (
-            <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <ParticipantIdentity
-                  avatarUrl={author.avatarUrl}
-                  displayName={author.displayName}
-                  level={authorLevel}
-                  href={`/users/${run.user_id}`}
-                  size="sm"
-                />
-                <p className="app-text-secondary max-w-[7rem] text-right text-xs sm:text-sm">
-                  {formatRunTimestampLabel(run.created_at, run.external_source)}
-                </p>
-              </div>
-
-              <p className="app-text-primary mt-3 break-words text-base font-semibold">{runTitle}</p>
-              {runDescription ? (
-                <p className="app-text-secondary mt-1 line-clamp-2 break-words text-sm leading-5">
-                  {runDescription}
-                </p>
-              ) : null}
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium">
-                <span className="app-text-primary">{distanceLabel}</span>
-                <span className="app-text-secondary">•</span>
-                <span className="app-text-primary">{paceLabel}</span>
-                <span className="app-text-secondary">•</span>
-                <span className="app-text-primary">{durationLabel}</span>
-                <span className="app-text-secondary">•</span>
-                <span className="app-text-secondary">⚡ +{Math.max(0, Math.round(run.xp ?? 0))} XP</span>
-                {run.external_source === 'strava' ? (
-                  <>
-                    <span className="app-text-secondary">•</span>
-                    <span className="app-text-secondary inline-flex items-center gap-1">
-                      <StravaIcon />
-                      <span>Strava</span>
-                    </span>
-                  </>
-                ) : null}
-              </div>
-            </section>
-          )}
-        </div>
-
-        <div
-          ref={scrollContainerRef}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2 scroll-smooth [overscroll-behavior-y:contain]"
-        >
+    <WorkoutDetailShell
+      title="Обсуждение"
+      fallbackHref={runId ? `/runs/${runId}` : '/dashboard'}
+      topContent={discussionSummary}
+      footer={discussionComposer}
+      scrollContainerRef={scrollContainerRef}
+      scrollContentClassName="scroll-smooth"
+    >
           {loadingComments ? (
             <div className="space-y-4 pb-2">
               <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
@@ -706,44 +737,6 @@ export default function RunDiscussionPage() {
             </div>
           )}
           <div ref={bottomRef} />
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
-        >
-          <div className="flex items-end gap-2">
-            <label htmlFor="discussion-comment" className="sr-only">Сообщение</label>
-            <textarea
-              id="discussion-comment"
-              ref={textareaRef}
-              rows={1}
-              value={draft}
-              onChange={(event) => {
-                setDraft(event.target.value)
-                setSubmitError('')
-              }}
-              placeholder="Сообщение"
-              disabled={submitting}
-              enterKeyHint="send"
-              className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-5"
-            />
-            <button
-              type="submit"
-              disabled={submitting || !trimmedDraft}
-              className="app-button-secondary min-h-11 shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-                  <span>...</span>
-                </span>
-              ) : 'Отпр.'}
-            </button>
-          </div>
-          {submitError ? <p className="mt-2 text-sm text-red-600">{submitError}</p> : null}
-        </form>
-      </div>
-    </main>
+    </WorkoutDetailShell>
   )
 }
