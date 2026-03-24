@@ -1,5 +1,5 @@
 import ChatSection from '@/components/ChatSection'
-import MobileBackHeader from '@/components/MobileBackHeader'
+import InnerPageHeader from '@/components/InnerPageHeader'
 
 export default function ChatPage() {
   return (
@@ -12,7 +12,7 @@ export default function ChatPage() {
       }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
-        <MobileBackHeader title="Чат клуба" className="mb-0 shrink-0" />
+        <InnerPageHeader title="Чат клуба" />
         <div className="min-h-0 flex-1">
           <ChatSection showTitle={false} />
         </div>

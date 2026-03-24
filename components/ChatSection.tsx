@@ -1137,7 +1137,11 @@ export default function ChatSection({
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-0 max-w-xl flex-col overflow-hidden px-4 pt-4 md:max-w-none md:p-4">
+    <div
+      className={`mx-auto flex h-full min-h-0 max-w-xl flex-col overflow-hidden px-4 md:max-w-none md:p-4 ${
+        showTitle ? 'pt-4' : 'pt-2'
+      }`}
+    >
       {showTitle ? (
         <div className="mb-4 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">Чат клуба</h1>
@@ -1164,8 +1168,8 @@ export default function ChatSection({
                   </p>
                 </section>
               ) : (
-                <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
-                  <div className="mt-auto flex flex-col">
+                <section className="app-card flex flex-1 flex-col rounded-2xl border px-4 pb-4 pt-3 shadow-sm">
+                  <div className="flex flex-col">
                     {messages.map((message, index) => {
                       const isOwnMessage = currentUserId === message.userId
                       const previousMessage = index > 0 ? messages[index - 1] : null

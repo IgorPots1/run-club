@@ -1,5 +1,5 @@
 import type { ReactNode, Ref } from 'react'
-import MobileBackHeader from '@/components/MobileBackHeader'
+import InnerPageHeader from '@/components/InnerPageHeader'
 
 type WorkoutDetailShellProps = {
   title: string
@@ -36,13 +36,7 @@ export default function WorkoutDetailShell({
       className={`flex ${mobileShellHeightClassName} flex-col overflow-hidden bg-[color:var(--background)] md:h-auto md:min-h-screen md:overflow-visible`}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col md:h-auto md:min-h-screen">
-        <MobileBackHeader
-          title={title}
-          fallbackHref={fallbackHref}
-          sticky={false}
-          fullBleedOnMobile={false}
-          className="mb-0 md:mt-4"
-        />
+        <InnerPageHeader title={title} fallbackHref={fallbackHref} />
         {topContent ? (
           <div className="shrink-0 px-4 pb-3 pt-3 md:pt-4">
             {topContent}
