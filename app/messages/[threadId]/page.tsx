@@ -27,6 +27,20 @@ export default function MessageThreadPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    document.documentElement.dataset.chatIsolatedRoute = 'true'
+    document.body.dataset.chatIsolatedRoute = 'true'
+
+    return () => {
+      delete document.documentElement.dataset.chatIsolatedRoute
+      delete document.body.dataset.chatIsolatedRoute
+    }
+  }, [])
+
+  useEffect(() => {
     let isMounted = true
 
     async function loadThreadPage() {

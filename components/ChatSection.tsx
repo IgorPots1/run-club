@@ -1312,7 +1312,7 @@ export default function ChatSection({
           </div>
           <div
             className={`shrink-0 pt-3 ${
-              isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+              isKeyboardOpen ? 'pb-0' : 'pb-[env(safe-area-inset-bottom)] md:pb-[max(0.75rem,env(safe-area-inset-bottom))]'
             }`}
           >
             {renderComposer()}
