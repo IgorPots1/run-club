@@ -151,6 +151,9 @@ export default function RunCommentsSection({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <p className="app-text-primary truncate font-semibold">{comment.displayName}</p>
+                  {comment.nickname?.trim() ? (
+                    <p className="app-text-secondary truncate text-xs">@{comment.nickname.trim()}</p>
+                  ) : null}
                   <p className="app-text-secondary text-xs">{formatCommentTimestamp(comment.createdAt)}</p>
                 </div>
                 <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-6">

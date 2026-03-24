@@ -6,6 +6,10 @@ import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
 import { loadChallengeXpByUser, loadChallengeXpByUserIds } from './user-challenges'
 
+// #region agent log
+fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b47950'},body:JSON.stringify({sessionId:'b47950',runId:'build-import-graph',hypothesisId:'H1',location:'lib/dashboard.ts:8',message:'dashboard module evaluated',data:{hasWindow:typeof window!=='undefined',supabaseImport:'./supabase',runCommentsImport:'./run-comments',runLikesImport:'./run-likes'},timestamp:Date.now()})}).catch(()=>{});
+// #endregion
+
 type ProfileRow = {
   id: string
   name: string | null

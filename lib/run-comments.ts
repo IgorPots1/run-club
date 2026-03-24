@@ -1,6 +1,10 @@
 import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
+// #region agent log
+fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b47950'},body:JSON.stringify({sessionId:'b47950',runId:'build-import-graph',hypothesisId:'H2',location:'lib/run-comments.ts:3',message:'run-comments module evaluated',data:{hasWindow:typeof window!=='undefined',supabaseImport:'./supabase'},timestamp:Date.now()})}).catch(()=>{});
+// #endregion
+
 type RunCommentRow = {
   id: string
   run_id: string

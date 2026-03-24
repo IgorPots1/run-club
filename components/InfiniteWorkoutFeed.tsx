@@ -3,9 +3,17 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import CommentsSheet from '@/components/CommentsSheet'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
+import {
+  createRunComment,
+  loadRunCommentAuthorProfile,
+  loadRunComments,
+  type RunCommentAuthorIdentity,
+  type RunCommentItem,
+} from '@/lib/run-comments'
 import { loadRunLikedUsers, type RunLikedUserItem } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
@@ -44,6 +52,12 @@ export default function InfiniteWorkoutFeed({
   const router = useRouter()
   const [items, setItems] = useState<FeedRunItem[]>([])
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
+  const [commentsByRunId, setCommentsByRunId] = useState<Record<string, RunCommentItem[]>>({})
+  const [commentsErrorByRunId, setCommentsErrorByRunId] = useState<Record<string, string>>({})
+  const [commentsLoadingRunId, setCommentsLoadingRunId] = useState<string | null>(null)
+  const [submittingCommentRunId, setSubmittingCommentRunId] = useState<string | null>(null)
+  const [activeCommentsRunId, setActiveCommentsRunId] = useState<string | null>(null)
+  const [currentCommentAuthor, setCurrentCommentAuthor] = useState<RunCommentAuthorIdentity | null>(null)
   const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, RunLikedUserItem[]>>({})
   const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
@@ -70,6 +84,12 @@ export default function InfiniteWorkoutFeed({
   useEffect(() => {
     pendingRunIdsRef.current = pendingRunIds
   }, [pendingRunIds])
+
+  const updateRunItem = useCallback((runId: string, updater: (item: FeedRunItem) => FeedRunItem) => {
+    const nextItems = itemsRef.current.map((item) => (item.id === runId ? updater(item) : item))
+    itemsRef.current = nextItems
+    setItems(nextItems)
+  }, [])
 
   const loadFirstPage = useCallback(async () => {
     setInitialLoading(true)
@@ -113,6 +133,11 @@ export default function InfiniteWorkoutFeed({
     setHasMore(true)
     setNextOffset(0)
     setActionError('')
+    setCommentsByRunId({})
+    setCommentsErrorByRunId({})
+    setCommentsLoadingRunId(null)
+    setSubmittingCommentRunId(null)
+    setActiveCommentsRunId(null)
     setActiveLikesRun(null)
     void loadFirstPage()
   }, [loadFirstPage])
@@ -233,6 +258,62 @@ export default function InfiniteWorkoutFeed({
     }
   }, [onSuccessfulLikeToggle, router])
 
+  const ensureCurrentCommentAuthor = useCallback(async () => {
+    if (!currentUserIdRef.current) {
+      return null
+    }
+
+    if (currentCommentAuthor?.userId === currentUserIdRef.current) {
+      return currentCommentAuthor
+    }
+
+    try {
+      const author = await loadRunCommentAuthorProfile(currentUserIdRef.current)
+      setCurrentCommentAuthor(author)
+      return author
+    } catch {
+      const fallbackAuthor = {
+        userId: currentUserIdRef.current,
+        displayName: 'Вы',
+        nickname: null,
+        avatarUrl: null,
+      }
+      setCurrentCommentAuthor(fallbackAuthor)
+      return fallbackAuthor
+    }
+  }, [currentCommentAuthor])
+
+  const loadCommentsForRun = useCallback(async (runId: string, force = false) => {
+    if (!runId) {
+      return
+    }
+
+    if (!force && Object.prototype.hasOwnProperty.call(commentsByRunId, runId)) {
+      return
+    }
+
+    setCommentsLoadingRunId(runId)
+    setCommentsErrorByRunId((prev) => ({
+      ...prev,
+      [runId]: '',
+    }))
+
+    try {
+      const comments = await loadRunComments(runId)
+      setCommentsByRunId((prev) => ({
+        ...prev,
+        [runId]: comments,
+      }))
+    } catch {
+      setCommentsErrorByRunId((prev) => ({
+        ...prev,
+        [runId]: 'Не удалось загрузить комментарии',
+      }))
+    } finally {
+      setCommentsLoadingRunId((currentRunId) => (currentRunId === runId ? null : currentRunId))
+    }
+  }, [commentsByRunId])
+
   const loadLikedUsersForRun = useCallback(async (runId: string, force = false) => {
     if (!runId) {
       return
@@ -274,16 +355,100 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    router.push(`/runs/${runId}`)
-  }, [onCommentClick, router])
+    setActiveLikesRun(null)
+    setActiveCommentsRunId(runId)
+    void loadCommentsForRun(runId)
+  }, [loadCommentsForRun, onCommentClick])
 
   const handleOpenLikes = useCallback((item: FeedRunItem) => {
+    setActiveCommentsRunId(null)
     setActiveLikesRun({
       runId: item.id,
     })
 
     void loadLikedUsersForRun(item.id)
   }, [loadLikedUsersForRun])
+
+  const handleSubmitComment = useCallback(async (comment: string) => {
+    const runId = activeCommentsRunId
+    const activeUserId = currentUserIdRef.current
+    const trimmedComment = comment.trim()
+
+    if (!runId || !trimmedComment) {
+      throw new Error('empty_comment')
+    }
+
+    if (!activeUserId) {
+      router.replace('/login')
+      throw new Error('auth_required')
+    }
+
+    if (submittingCommentRunId === runId) {
+      return
+    }
+
+    const author = await ensureCurrentCommentAuthor()
+
+    if (!author) {
+      throw new Error('missing_author')
+    }
+
+    const optimisticCommentId = `optimistic-${Date.now()}`
+    const optimisticComment: RunCommentItem = {
+      id: optimisticCommentId,
+      runId,
+      userId: activeUserId,
+      comment: trimmedComment,
+      createdAt: new Date().toISOString(),
+      displayName: author.displayName,
+      nickname: author.nickname,
+      avatarUrl: author.avatarUrl,
+    }
+
+    setSubmittingCommentRunId(runId)
+    setCommentsErrorByRunId((prev) => ({
+      ...prev,
+      [runId]: '',
+    }))
+    setCommentsByRunId((prev) => ({
+      ...prev,
+      [runId]: [...(prev[runId] ?? []), optimisticComment],
+    }))
+    updateRunItem(runId, (item) => ({
+      ...item,
+      commentsCount: Math.max(0, item.commentsCount + 1),
+    }))
+
+    try {
+      const { error } = await createRunComment(runId, activeUserId, trimmedComment)
+
+      if (error) {
+        throw error
+      }
+
+      try {
+        const refreshedComments = await loadRunComments(runId)
+        setCommentsByRunId((prev) => ({
+          ...prev,
+          [runId]: refreshedComments,
+        }))
+      } catch {
+        // Keep the optimistic comment visible if the follow-up refresh fails.
+      }
+    } catch {
+      setCommentsByRunId((prev) => ({
+        ...prev,
+        [runId]: (prev[runId] ?? []).filter((item) => item.id !== optimisticCommentId),
+      }))
+      updateRunItem(runId, (item) => ({
+        ...item,
+        commentsCount: Math.max(0, item.commentsCount - 1),
+      }))
+      throw new Error('submit_failed')
+    } finally {
+      setSubmittingCommentRunId((currentRunId) => (currentRunId === runId ? null : currentRunId))
+    }
+  }, [activeCommentsRunId, ensureCurrentCommentAuthor, router, submittingCommentRunId, updateRunItem])
 
   const error = actionError || feedError
   const activeLikesRunId = activeLikesRun?.runId ?? ''
@@ -292,6 +457,8 @@ export default function InfiniteWorkoutFeed({
     : null
   const activeLikedUsers = activeLikesRunId ? likedUsersByRunId[activeLikesRunId] ?? [] : []
   const activeLikesError = activeLikesRunId ? likedUsersErrorByRunId[activeLikesRunId] ?? '' : ''
+  const activeComments = activeCommentsRunId ? commentsByRunId[activeCommentsRunId] ?? [] : []
+  const activeCommentsError = activeCommentsRunId ? commentsErrorByRunId[activeCommentsRunId] ?? '' : ''
 
   return (
     <>
@@ -374,6 +541,20 @@ export default function InfiniteWorkoutFeed({
             void loadLikedUsersForRun(activeLikesRunId, true)
           }
         }}
+      />
+      <CommentsSheet
+        open={Boolean(activeCommentsRunId)}
+        comments={activeComments}
+        loading={commentsLoadingRunId === activeCommentsRunId}
+        error={activeCommentsError}
+        submitting={submittingCommentRunId === activeCommentsRunId}
+        onClose={() => setActiveCommentsRunId(null)}
+        onRetry={() => {
+          if (activeCommentsRunId) {
+            void loadCommentsForRun(activeCommentsRunId, true)
+          }
+        }}
+        onSubmitComment={handleSubmitComment}
       />
     </>
   )
