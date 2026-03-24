@@ -514,16 +514,6 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-function buildRunLocation(run: Pick<RunDetailsRow, 'city' | 'region' | 'country'>) {
-  const parts = [
-    toNullableTrimmedText(run.city),
-    toNullableTrimmedText(run.region),
-    toNullableTrimmedText(run.country),
-  ].filter((value, index, items): value is string => Boolean(value) && items.indexOf(value) === index)
-
-  return parts.length > 0 ? parts.join(', ') : null
-}
-
 export default function RunDetailsPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -866,10 +856,6 @@ export default function RunDetailsPage() {
     [breakdownRows]
   )
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
-  const runLocation = useMemo(
-    () => (run ? buildRunLocation(run) : null),
-    [run]
-  )
 
   const details = useMemo(() => {
     if (!run) {
@@ -1031,11 +1017,6 @@ export default function RunDetailsPage() {
           {runDescription ? (
             <p className="app-text-secondary mt-2 line-clamp-2 break-words text-sm leading-5">
               {runDescription}
-            </p>
-          ) : null}
-          {runLocation ? (
-            <p className="app-text-muted mt-1 break-words text-xs leading-5">
-              {runLocation}
             </p>
           ) : null}
 

@@ -248,7 +248,6 @@ export default function InfiniteWorkoutFeed({
             runId={item.id}
             rawTitle={item.title}
             description={item.description}
-            location={item.location}
             externalSource={item.external_source}
             distanceKm={item.distance_km}
             pace={item.pace}

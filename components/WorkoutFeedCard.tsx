@@ -11,7 +11,6 @@ type WorkoutFeedCardProps = {
   runId?: string
   rawTitle: string | null
   description?: string | null
-  location?: string | null
   externalSource?: string | null
   distanceKm?: number | null
   pace?: string | number | null
@@ -75,7 +74,6 @@ function WorkoutFeedCard({
   runId = '',
   rawTitle,
   description = null,
-  location = null,
   externalSource = null,
   distanceKm,
   pace,
@@ -97,7 +95,6 @@ function WorkoutFeedCard({
   const [showStravaHint, setShowStravaHint] = useState(false)
   const displayTitle = buildDisplayTitle(rawTitle)
   const normalizedDescription = toNullableTrimmedText(description)
-  const normalizedLocation = toNullableTrimmedText(location)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
@@ -161,11 +158,6 @@ function WorkoutFeedCard({
         {normalizedDescription ? (
           <p className="app-text-secondary mt-1 line-clamp-2 break-words text-sm leading-5">
             {normalizedDescription}
-          </p>
-        ) : null}
-        {normalizedLocation ? (
-          <p className="app-text-muted mt-1 break-words text-xs leading-5">
-            {normalizedLocation}
           </p>
         ) : null}
       </div>
