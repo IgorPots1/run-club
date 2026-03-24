@@ -1,11 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
-import ChatSection from '@/components/ChatSection'
 import ChallengesSection from '@/components/ChallengesSection'
 import LeaderboardSection from '@/components/LeaderboardSection'
 
-type ClubTab = 'challenges' | 'leaderboard' | 'chat'
+type ClubTab = 'challenges' | 'leaderboard'
 
 export default function ClubPage() {
   const [activeTab, setActiveTab] = useState<ClubTab>('challenges')
@@ -34,15 +34,12 @@ export default function ClubPage() {
           >
             Рейтинг
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('chat')}
-            className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-              activeTab === 'chat' ? 'app-card shadow-sm' : 'app-text-secondary'
-            }`}
+          <Link
+            href="/chat"
+            className="min-h-11 rounded-lg px-4 py-3 text-sm font-medium app-text-secondary"
           >
             Чат
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -50,9 +47,7 @@ export default function ClubPage() {
         <ChallengesSection showTitle={false} />
       ) : activeTab === 'leaderboard' ? (
         <LeaderboardSection showTitle={false} />
-      ) : (
-        <ChatSection showTitle={false} />
-      )}
+      ) : null}
     </main>
   )
 }

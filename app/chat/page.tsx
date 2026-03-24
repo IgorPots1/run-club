@@ -14,7 +14,7 @@ export default function ChatPage() {
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
         <MobileBackHeader title="Чат клуба" className="mb-0 shrink-0" />
         <div className="min-h-0 flex-1">
-          <ChatSection showTitle={false} isolatedLayout />
+          <ChatSection showTitle={false} />
         </div>
       </div>
     </main>
