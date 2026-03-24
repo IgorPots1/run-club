@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import CommentsSheet from '@/components/CommentsSheet'
 import RunLikesSheet from '@/components/RunLikesSheet'
@@ -11,8 +11,10 @@ import {
   createRunComment,
   loadRunCommentAuthorProfile,
   loadRunComments,
+  subscribeToRunComments,
   type RunCommentAuthorIdentity,
   type RunCommentItem,
+  type RunCommentRealtimeRow,
 } from '@/lib/run-comments'
 import { loadRunLikedUsers, type RunLikedUserItem } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
@@ -71,6 +73,7 @@ export default function InfiniteWorkoutFeed({
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
+  const commentsByRunIdRef = useRef<Record<string, RunCommentItem[]>>({})
   const pendingRunIdsRef = useRef<string[]>([])
 
   useEffect(() => {
@@ -82,6 +85,10 @@ export default function InfiniteWorkoutFeed({
   }, [items])
 
   useEffect(() => {
+    commentsByRunIdRef.current = commentsByRunId
+  }, [commentsByRunId])
+
+  useEffect(() => {
     pendingRunIdsRef.current = pendingRunIds
   }, [pendingRunIds])
 
@@ -90,6 +97,76 @@ export default function InfiniteWorkoutFeed({
     itemsRef.current = nextItems
     setItems(nextItems)
   }, [])
+
+  const mergeRealtimeComment = useCallback(async (commentRow: RunCommentRealtimeRow) => {
+    const runId = commentRow.run_id
+    const existingComments = commentsByRunIdRef.current[runId] ?? []
+
+    if (existingComments.some((comment) => comment.id === commentRow.id)) {
+      return
+    }
+
+    const optimisticCommentIndex = existingComments.findIndex((comment) =>
+      comment.id.startsWith('optimistic-') &&
+      comment.userId === commentRow.user_id &&
+      comment.comment.trim() === commentRow.comment.trim()
+    )
+
+    const author = await loadRunCommentAuthorProfile(commentRow.user_id).catch(() => ({
+      userId: commentRow.user_id,
+      displayName: 'Бегун',
+      nickname: null,
+      avatarUrl: null,
+    }))
+
+    const realtimeComment: RunCommentItem = {
+      id: commentRow.id,
+      runId,
+      userId: commentRow.user_id,
+      comment: commentRow.comment,
+      createdAt: commentRow.created_at,
+      displayName: author.displayName,
+      nickname: author.nickname,
+      avatarUrl: author.avatarUrl,
+    }
+
+    const shouldReplaceOptimisticComment = optimisticCommentIndex >= 0
+
+    setCommentsByRunId((prev) => {
+      const currentComments = prev[runId]
+
+      if (!currentComments) {
+        return prev
+      }
+
+      if (currentComments.some((comment) => comment.id === realtimeComment.id)) {
+        return prev
+      }
+
+      if (shouldReplaceOptimisticComment) {
+        return {
+          ...prev,
+          [runId]: currentComments.map((comment, index) =>
+            index === optimisticCommentIndex ? realtimeComment : comment
+          ),
+        }
+      }
+
+      return {
+        ...prev,
+        [runId]: [...currentComments, realtimeComment],
+      }
+    })
+
+    if (shouldReplaceOptimisticComment) {
+      return
+    }
+
+    updateRunItem(runId, (item) => ({
+      ...item,
+      commentsCount: Math.max(0, item.commentsCount + 1),
+    }))
+  }, [updateRunItem])
 
   const loadFirstPage = useCallback(async () => {
     setInitialLoading(true)
@@ -185,6 +262,30 @@ export default function InfiniteWorkoutFeed({
       observer.disconnect()
     }
   }, [hasMore, initialLoading, loadMoreRuns, loadingMore, items.length])
+
+  const subscribedRunIds = useMemo(
+    () => Array.from(new Set(items.map((item) => item.id).filter(Boolean))),
+    [items]
+  )
+  const subscribedRunIdsKey = subscribedRunIds.join(',')
+
+  useEffect(() => {
+    const runIds = subscribedRunIdsKey ? subscribedRunIdsKey.split(',') : []
+
+    if (runIds.length === 0) {
+      return
+    }
+
+    const unsubscribers = runIds.map((runId) =>
+      subscribeToRunComments(runId, (commentRow) => {
+        void mergeRealtimeComment(commentRow)
+      })
+    )
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe())
+    }
+  }, [mergeRealtimeComment, subscribedRunIdsKey])
 
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current

@@ -13,6 +13,8 @@ type RunCommentRow = {
   created_at: string
 }
 
+export type RunCommentRealtimeRow = RunCommentRow
+
 type RunCommentCountRow = Pick<RunCommentRow, 'run_id'>
 
 type ProfileRow = {
@@ -177,4 +179,33 @@ export async function loadRunComments(runId: string): Promise<RunCommentItem[]> 
       avatarUrl: author.avatarUrl,
     }
   })
+}
+
+export function subscribeToRunComments(
+  runId: string,
+  onInsert: (comment: RunCommentRealtimeRow) => void
+) {
+  if (!runId.trim()) {
+    return () => {}
+  }
+
+  const channel = supabase
+    .channel(`run-comments-${runId}-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'run_comments',
+        filter: `run_id=eq.${runId}`,
+      },
+      (payload) => {
+        onInsert(payload.new as RunCommentRealtimeRow)
+      }
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
+  }
 }
