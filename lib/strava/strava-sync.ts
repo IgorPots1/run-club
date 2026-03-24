@@ -311,15 +311,14 @@ function toRawStravaPayload(activity: StravaActivitySummary) {
   }
 }
 
-function hasStravaSocialSummaryFields(activity: StravaActivitySummary) {
+function hasRequiredStravaSocialSummaryFields(activity: StravaActivitySummary) {
   return (
-    activity.sport_type !== undefined ||
-    activity.description !== undefined ||
-    activity.achievement_count !== undefined ||
-    activity.location_city !== undefined ||
-    activity.location_state !== undefined ||
-    activity.location_country !== undefined ||
-    activity.photos !== undefined
+    activity.description !== undefined &&
+    activity.location_city !== undefined &&
+    activity.location_state !== undefined &&
+    activity.location_country !== undefined &&
+    activity.photos !== undefined &&
+    activity.achievement_count !== undefined
   )
 }
 
@@ -327,7 +326,7 @@ async function getStravaActivityForImport(
   activity: StravaActivitySummary,
   accessToken?: string
 ) {
-  if (!accessToken || hasStravaSocialSummaryFields(activity)) {
+  if (!accessToken || hasRequiredStravaSocialSummaryFields(activity)) {
     return activity
   }
 
