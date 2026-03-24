@@ -1,11 +1,11 @@
 'use client'
 
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useState, type ReactNode } from 'react'
+import { Heart, LoaderCircle, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
-import RunLikeControl from '@/components/RunLikeControl'
 
 type WorkoutFeedCardProps = {
   runId?: string
@@ -22,9 +22,11 @@ type WorkoutFeedCardProps = {
   avatarUrl: string | null
   level: number
   likesCount: number
+  commentsCount?: number
   likedByMe: boolean
   pending: boolean
   onToggleLike: (runId: string) => void
+  onCommentClick?: (runId: string) => void
   profileHref?: string | null
 }
 
@@ -70,6 +72,51 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
+type FeedActionButtonProps = {
+  label: string
+  count: number
+  icon: ReactNode
+  onClick: () => void
+  active?: boolean
+  disabled?: boolean
+}
+
+function FeedActionButton({
+  label,
+  count,
+  icon,
+  onClick,
+  active = false,
+  disabled = false,
+}: FeedActionButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium leading-none transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-11 ${
+        active
+          ? 'app-like-button-active shadow-sm'
+          : 'border-black/5 bg-black/[0.02] text-[var(--text-primary)] dark:border-white/10 dark:bg-white/[0.04]'
+      }`}
+    >
+      <span aria-hidden="true" className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+        {icon}
+      </span>
+      <span className="truncate">{label}</span>
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+          active
+            ? 'bg-[rgba(255,77,109,0.16)] text-[var(--like-active)]'
+            : 'bg-black/5 text-[var(--text-secondary)] dark:bg-white/10'
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  )
+}
+
 function WorkoutFeedCard({
   runId = '',
   rawTitle,
@@ -85,9 +132,11 @@ function WorkoutFeedCard({
   avatarUrl,
   level,
   likesCount,
+  commentsCount = 0,
   likedByMe,
   pending,
   onToggleLike,
+  onCommentClick,
   profileHref = null,
 }: WorkoutFeedCardProps) {
   const router = useRouter()
@@ -214,33 +263,53 @@ function WorkoutFeedCard({
         </div>
       )}
 
-      <div className="app-text-secondary mt-4 text-sm">
-        <RunLikeControl
-          likesCount={likesCount}
-          likedByMe={likedByMe}
-          pending={pending}
-          onToggle={() => onToggleLike(runId)}
-          summaryPrefix={`⚡ +${xp} XP`}
-          variant="inline"
-        />
+      <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
+            <FeedActionButton
+              label="Лайк"
+              count={likesCount}
+              active={likedByMe}
+              disabled={pending || !runId}
+              onClick={() => onToggleLike(runId)}
+              icon={
+                pending ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                ) : (
+                  <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
+                )
+              }
+            />
+            <FeedActionButton
+              label="Комменты"
+              count={commentsCount}
+              disabled={!runId}
+              onClick={() => onCommentClick?.(runId)}
+              icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
+            {externalSource === 'strava' ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {showStravaHint ? (
+                  <span className="app-text-muted text-[11px] font-medium">Импортировано из Strava</span>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label="Показать источник Strava"
+                  onClick={() => setShowStravaHint((current) => !current)}
+                  className="app-text-muted inline-flex min-h-8 items-center gap-1 rounded-full border border-black/5 bg-black/[0.02] px-2.5 py-1.5 text-[11px] font-medium dark:border-white/10 dark:bg-white/[0.04]"
+                >
+                  <StravaIcon />
+                  <span>Strava</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
-      {externalSource === 'strava' ? (
-        <>
-          {showStravaHint ? (
-            <div className="app-text-secondary absolute bottom-12 right-4 z-10 rounded-full border bg-white/95 px-3 py-1.5 text-xs shadow-sm dark:bg-black/90">
-              Импортировано из Strava
-            </div>
-          ) : null}
-          <button
-            type="button"
-            aria-label="Показать источник Strava"
-            onClick={() => setShowStravaHint((current) => !current)}
-            className="absolute bottom-4 right-4 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
-          >
-            <StravaIcon />
-          </button>
-        </>
-      ) : null}
     </div>
   )
 }

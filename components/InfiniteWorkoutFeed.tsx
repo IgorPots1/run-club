@@ -19,6 +19,7 @@ type InfiniteWorkoutFeedProps = {
   emptyCtaLabel?: string
   showLevelSubtitle?: boolean
   onSuccessfulLikeToggle?: () => void
+  onCommentClick?: (runId: string) => void
 }
 
 function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
@@ -36,6 +37,7 @@ export default function InfiniteWorkoutFeed({
   emptyCtaLabel,
   showLevelSubtitle = true,
   onSuccessfulLikeToggle,
+  onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
   const [items, setItems] = useState<FeedRunItem[]>([])
@@ -205,6 +207,19 @@ export default function InfiniteWorkoutFeed({
     }
   }, [onSuccessfulLikeToggle, router])
 
+  const handleCommentClick = useCallback((runId: string) => {
+    if (!runId) {
+      return
+    }
+
+    if (onCommentClick) {
+      onCommentClick(runId)
+      return
+    }
+
+    router.push(`/runs/${runId}`)
+  }, [onCommentClick, router])
+
   const error = actionError || feedError
 
   return (
@@ -259,9 +274,11 @@ export default function InfiniteWorkoutFeed({
             avatarUrl={item.avatar_url}
             level={getLevelFromXP(item.totalXp).level}
             likesCount={item.likesCount}
+            commentsCount={item.commentsCount}
             likedByMe={item.likedByMe}
             pending={pendingRunIds.includes(item.id)}
             onToggleLike={handleLikeToggle}
+            onCommentClick={handleCommentClick}
             profileHref={`/users/${item.user_id}`}
           />
         ))

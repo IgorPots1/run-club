@@ -1,6 +1,7 @@
 import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
 import { loadLikeXpByUser, loadLikeXpByUserIds } from './likes-xp'
 import { getProfileDisplayName } from './profiles'
+import { loadRunCommentCountsForRunIds } from './run-comments'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
 import { loadChallengeXpByUser, loadChallengeXpByUserIds } from './user-challenges'
@@ -49,6 +50,7 @@ export type DashboardRunItem = {
   displayName: string
   avatar_url: string | null
   likesCount: number
+  commentsCount: number
   likedByMe: boolean
 }
 
@@ -368,10 +370,12 @@ export async function loadFeedRuns(
     profileById,
     totalXpByUser,
     likesSummary,
+    commentsCountByRunId,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadTotalXpByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
+    loadRunCommentCountsForRunIds(runIds).catch(() => ({} as Record<string, number>)),
   ])
 
   return {
@@ -397,6 +401,7 @@ export async function loadFeedRuns(
         avatar_url: profile?.avatar_url ?? null,
         totalXp: totalXpByUser[run.user_id] ?? 0,
         likesCount: likesSummary.likesByRunId[run.id] ?? 0,
+        commentsCount: commentsCountByRunId[run.id] ?? 0,
         likedByMe: likesSummary.likedRunIds.has(run.id),
       }
     }),
