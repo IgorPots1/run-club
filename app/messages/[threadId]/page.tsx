@@ -109,6 +109,30 @@ export default function MessageThreadPage() {
     }
   }, [router, threadId])
 
+  if (loading) {
+    return (
+      <main
+        data-chat-isolated-route="true"
+        className="flex flex-col overflow-hidden"
+        style={{
+          height: 'var(--chat-app-height, 100dvh)',
+          minHeight: 'var(--chat-app-height, 100dvh)',
+        }}
+      >
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
+          <InnerPageHeader title="Загрузка..." fallbackHref="/messages" />
+          <div className="min-h-0 flex-1">
+            <ChatSection
+              showTitle={false}
+              threadId={threadId}
+              enableReadState={false}
+            />
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   if (error || !currentUserId || !threadId) {
     return (
       <main className="min-h-screen p-4 pt-[calc(16px+env(safe-area-inset-top))]">
@@ -132,7 +156,7 @@ export default function MessageThreadPage() {
       }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
-        <InnerPageHeader title={loading ? 'Загрузка...' : threadTitle} fallbackHref="/messages" />
+        <InnerPageHeader title={threadTitle} fallbackHref="/messages" />
         <div className="min-h-0 flex-1">
           <ChatSection
             showTitle={false}
