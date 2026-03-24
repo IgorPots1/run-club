@@ -4,9 +4,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
-import MobileBackHeader from '@/components/MobileBackHeader'
+import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { buildActivityWindowStats } from '@/lib/activity'
-import { formatDistanceKm, formatDurationCompact, formatMonthYearLabel } from '@/lib/format'
+import { formatDistanceKm, formatDurationCompact } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP } from '@/lib/xp'
@@ -96,30 +96,24 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
   if (!publicProfile && !hasLoadError) {
     return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
-          <MobileBackHeader title="Профиль участника" />
-          <div className="app-card rounded-2xl border p-4 shadow-sm">
-            <p className="app-text-secondary text-sm">Пользователь не найден.</p>
-            <Link href="/feed" className="app-button-secondary mt-4 inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm">
-              Вернуться в ленту
-            </Link>
-          </div>
+      <WorkoutDetailShell title="Профиль участника">
+        <div className="app-card rounded-2xl border p-4 shadow-sm">
+          <p className="app-text-secondary text-sm">Пользователь не найден.</p>
+          <Link href="/feed" className="app-button-secondary mt-4 inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm">
+            Вернуться в ленту
+          </Link>
         </div>
-      </main>
+      </WorkoutDetailShell>
     )
   }
 
   if (hasLoadError) {
     return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
-          <MobileBackHeader title="Профиль участника" />
-          <div className="app-card rounded-2xl border p-4 shadow-sm">
-            <p className="text-sm text-red-600">Не удалось загрузить профиль.</p>
-          </div>
+      <WorkoutDetailShell title="Профиль участника">
+        <div className="app-card rounded-2xl border p-4 shadow-sm">
+          <p className="text-sm text-red-600">Не удалось загрузить профиль.</p>
         </div>
-      </main>
+      </WorkoutDetailShell>
     )
   }
 
@@ -140,10 +134,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-      <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
-        <MobileBackHeader title="Профиль участника" />
-        <section className="app-card mb-7 rounded-3xl border px-5 py-6 shadow-sm sm:px-6 sm:py-7">
+    <WorkoutDetailShell title="Профиль участника">
+      <div className="space-y-7">
+        <section className="app-card rounded-3xl border px-5 py-6 shadow-sm sm:px-6 sm:py-7">
           <div className="flex flex-col items-center text-center">
             <span className="relative inline-flex h-32 w-32 items-center justify-center rounded-full ring-1 ring-black/10 shadow-[0_8px_24px_rgba(0,0,0,0.08)] sm:h-36 sm:w-36 dark:ring-white/15 dark:shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
               {publicProfile?.avatar_url ? (
@@ -240,7 +233,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             </div>
           </div>
         </section>
-        <section className="app-card mb-7 rounded-2xl border p-4 shadow-sm sm:p-5">
+        <section className="app-card rounded-2xl border p-4 shadow-sm sm:p-5">
           <h2 className="app-text-primary text-base font-semibold">Активность за 30 дней</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="app-surface-muted rounded-2xl px-3 py-3">
@@ -281,6 +274,6 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
           />
         </div>
       </div>
-    </main>
+    </WorkoutDetailShell>
   )
 }
