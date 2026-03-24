@@ -169,7 +169,7 @@ function WorkoutFeedCard({
             <button
               type="button"
               onClick={() => setExpanded((prev) => !prev)}
-              className="app-text-muted mt-1 text-xs"
+              className="app-text-muted mt-0.5 text-xs font-medium"
             >
               {expanded ? 'Скрыть' : 'Читать'}
             </button>
