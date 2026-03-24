@@ -382,8 +382,9 @@ export default function ChatSection({
     function applyChatAppHeight() {
       const visualViewport = window.visualViewport
       const viewportHeight = visualViewport?.height ?? window.innerHeight
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
       const isMobileViewport = window.innerWidth < 768
-      const effectiveViewportHeight = Math.round(viewportHeight)
+      const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
 
       rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
       setIsKeyboardOpen(isMobileViewport && window.innerHeight - effectiveViewportHeight > 120)
