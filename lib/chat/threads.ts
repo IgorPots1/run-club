@@ -68,6 +68,10 @@ async function findDirectCoachThread(ownerUserId: string) {
   return (data as DirectCoachThread | null) ?? null
 }
 
+export async function getDirectCoachThread(ownerUserId: string): Promise<DirectCoachThread | null> {
+  return findDirectCoachThread(ownerUserId)
+}
+
 export async function getClubThread(): Promise<ClubThread> {
   const { data, error } = await supabase
     .from('chat_threads')

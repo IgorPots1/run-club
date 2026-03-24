@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
+import { markThreadAsRead } from '@/lib/chat/reads'
 import { getChatThreadById } from '@/lib/chat/threads'
 import { COACH_USER_ID } from '@/lib/constants'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
@@ -20,6 +21,7 @@ type ProfileRow = {
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
   const router = useRouter()
+  const lastMarkedThreadIdRef = useRef<string | null>(null)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -108,6 +110,24 @@ export default function MessageThreadPage() {
       isMounted = false
     }
   }, [router, threadId])
+
+  useEffect(() => {
+    if (loading || error || !currentUserId || !threadId) {
+      return
+    }
+
+    if (lastMarkedThreadIdRef.current === threadId) {
+      return
+    }
+
+    lastMarkedThreadIdRef.current = threadId
+
+    void markThreadAsRead(threadId).catch(() => {
+      if (lastMarkedThreadIdRef.current === threadId) {
+        lastMarkedThreadIdRef.current = null
+      }
+    })
+  }, [currentUserId, error, loading, threadId])
 
   if (loading) {
     return (

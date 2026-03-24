@@ -4,12 +4,15 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import UnreadBadge from '@/components/chat/UnreadBadge'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
+import { getUnreadCountsByThread, type UnreadCountsByThread } from '@/lib/chat/reads'
 import { COACH_USER_ID } from '@/lib/constants'
 import {
   getClubThread,
   getCoachDirectThreads,
+  getDirectCoachThread,
   getOrCreateCoachDirectThreadForStudent,
   getOrCreateDirectCoachThread,
   getStudents,
@@ -82,8 +85,10 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [clubThreadId, setClubThreadId] = useState<string | null>(null)
+  const [coachThreadId, setCoachThreadId] = useState<string | null>(null)
   const [directThreads, setDirectThreads] = useState<CoachDirectThreadItem[]>([])
   const [students, setStudents] = useState<StudentProfile[]>([])
+  const [unreadCountsByThread, setUnreadCountsByThread] = useState<UnreadCountsByThread>({})
   const [error, setError] = useState('')
   const [openingCoachThread, setOpeningCoachThread] = useState(false)
   const [openingStudentId, setOpeningStudentId] = useState<string | null>(null)
@@ -119,13 +124,17 @@ export default function MessagesPage() {
         setCurrentUserId(user.id)
         void ensureProfileExists(user)
 
-        const clubThread = await getClubThread()
+        const [clubThread, unreadCounts] = await Promise.all([
+          getClubThread(),
+          getUnreadCountsByThread(),
+        ])
 
         if (!isMounted) {
           return
         }
 
         setClubThreadId(clubThread.id)
+        setUnreadCountsByThread(unreadCounts)
 
         if (user.id === COACH_USER_ID) {
           const [coachThreads, registeredStudents] = await Promise.all([
@@ -139,6 +148,14 @@ export default function MessagesPage() {
 
           setDirectThreads(coachThreads)
           setStudents(registeredStudents)
+        } else {
+          const coachThread = await getDirectCoachThread(user.id)
+
+          if (!isMounted) {
+            return
+          }
+
+          setCoachThreadId(coachThread?.id ?? null)
         }
 
         setError('')
@@ -165,11 +182,17 @@ export default function MessagesPage() {
       return
     }
 
+    if (coachThreadId) {
+      router.push(`/messages/${coachThreadId}`)
+      return
+    }
+
     setOpeningCoachThread(true)
     setError('')
 
     try {
       const thread = await getOrCreateDirectCoachThread(currentUserId)
+      setCoachThreadId(thread.id)
       router.push(`/messages/${thread.id}`)
     } catch {
       setError('Не удалось открыть чат с тренером')
@@ -263,10 +286,11 @@ export default function MessagesPage() {
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-base font-semibold dark:bg-white/[0.08]">
                 #
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="app-text-primary text-sm font-medium">Общий чат</p>
                 <p className="app-text-secondary text-xs">Общение для всех участников клуба</p>
               </div>
+              <UnreadBadge count={unreadCountsByThread[clubThreadId] ?? 0} />
             </Link>
           ) : null}
 
@@ -288,6 +312,7 @@ export default function MessagesPage() {
                   {openingCoachThread ? 'Открываем чат...' : 'Личный чат со своим тренером'}
                 </p>
               </div>
+              <UnreadBadge count={coachThreadId ? unreadCountsByThread[coachThreadId] ?? 0 : 0} />
             </button>
           ) : null}
 
@@ -313,7 +338,10 @@ export default function MessagesPage() {
                           avatar_url: thread.student?.avatar_url ?? null,
                         }}
                       />
-                      <DirectThreadSummary thread={thread} />
+                      <div className="min-w-0 flex-1">
+                        <DirectThreadSummary thread={thread} />
+                      </div>
+                      <UnreadBadge count={unreadCountsByThread[thread.id] ?? 0} />
                     </Link>
                   ))}
                 </div>

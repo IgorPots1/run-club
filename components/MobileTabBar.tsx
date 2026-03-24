@@ -4,6 +4,8 @@ import { Activity, Footprints, Home, MessageCircle, User, Users } from 'lucide-r
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type MouseEvent } from 'react'
+import UnreadBadge from '@/components/chat/UnreadBadge'
+import { getTotalUnreadCount } from '@/lib/chat/reads'
 
 const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
 
@@ -34,6 +36,7 @@ function scrollPageToTop() {
 export default function MobileTabBar() {
   const pathname = usePathname()
   const [isChatKeyboardOpen, setIsChatKeyboardOpen] = useState(false)
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0)
   const hiddenRoutes = ['/', '/login', '/register']
   const shouldHide =
     hiddenRoutes.includes(pathname) || pathname.startsWith('/auth')
@@ -55,6 +58,30 @@ export default function MobileTabBar() {
       window.removeEventListener(CHAT_KEYBOARD_VISIBILITY_EVENT, handleChatKeyboardVisibility)
     }
   }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadUnreadCount() {
+      try {
+        const nextTotalUnreadCount = await getTotalUnreadCount()
+
+        if (isMounted) {
+          setTotalUnreadCount(nextTotalUnreadCount)
+        }
+      } catch {
+        if (isMounted) {
+          setTotalUnreadCount(0)
+        }
+      }
+    }
+
+    void loadUnreadCount()
+
+    return () => {
+      isMounted = false
+    }
+  }, [pathname])
 
   if (shouldHide || pathname === '/chat' || pathname.startsWith('/messages/') || isChatKeyboardOpen) return null
 
@@ -120,7 +147,15 @@ export default function MobileTabBar() {
               tab.isActive ? 'app-bottom-nav-active' : 'app-bottom-nav-inactive'
             }`}
           >
-            {tab.icon}
+            <span className="relative">
+              {tab.icon}
+              {tab.href === '/messages' ? (
+                <UnreadBadge
+                  count={totalUnreadCount}
+                  className="absolute -right-3 -top-2 min-w-[1.1rem] px-1"
+                />
+              ) : null}
+            </span>
             <span className={`truncate ${tab.isActive ? 'app-bottom-nav-active' : 'app-bottom-nav-inactive'}`}>{tab.label}</span>
           </Link>
         ))}
