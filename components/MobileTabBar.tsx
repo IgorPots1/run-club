@@ -56,7 +56,7 @@ export default function MobileTabBar() {
     }
   }, [])
 
-  if (shouldHide || pathname === '/chat' || isChatKeyboardOpen) return null
+  if (shouldHide || pathname === '/chat' || pathname.startsWith('/messages/') || isChatKeyboardOpen) return null
 
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const tabs: TabItem[] = [

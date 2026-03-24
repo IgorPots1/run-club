@@ -11,6 +11,7 @@ type ChatMessageRow = {
   created_at: string
   is_deleted: boolean
   reply_to_id: string | null
+  thread_id?: string | null
 }
 
 type ChatReadStateRow = {
@@ -104,15 +105,21 @@ function toChatMessageItem(
   }
 }
 
-async function loadChatReplyRowsByIds(replyIds: string[]) {
+async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | null) {
   if (replyIds.length === 0) {
     return {}
   }
 
-  const { data: replyMessages, error: replyMessagesError } = await supabase
+  const replyMessagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
     .in('id', replyIds)
+
+  if (threadId) {
+    replyMessagesQuery.eq('thread_id', threadId)
+  }
+
+  const { data: replyMessages, error: replyMessagesError } = await replyMessagesQuery
 
   if (replyMessagesError) {
     throw replyMessagesError
@@ -121,7 +128,12 @@ async function loadChatReplyRowsByIds(replyIds: string[]) {
   return Object.fromEntries(((replyMessages as ChatMessageRow[] | null) ?? []).map((message) => [message.id, message])) as Record<string, ChatMessageRow>
 }
 
-export async function createChatMessage(userId: string, text: string, replyToId?: string | null) {
+export async function createChatMessage(
+  userId: string,
+  text: string,
+  replyToId?: string | null,
+  threadId?: string | null
+) {
   const trimmedText = text.trim()
 
   if (!trimmedText) {
@@ -136,6 +148,7 @@ export async function createChatMessage(userId: string, text: string, replyToId?
     user_id: userId,
     text: trimmedText,
     reply_to_id: replyToId ?? null,
+    thread_id: threadId ?? null,
   })
 }
 
@@ -166,22 +179,33 @@ export async function upsertChatReadState(userId: string, lastReadAt: string | n
     )
 }
 
-export async function softDeleteChatMessage(messageId: string, userId: string) {
-  return supabase
+export async function softDeleteChatMessage(messageId: string, userId: string, threadId?: string | null) {
+  const deleteQuery = supabase
     .from('chat_messages')
     .update({
       is_deleted: true,
     })
     .eq('id', messageId)
     .eq('user_id', userId)
+
+  if (threadId) {
+    deleteQuery.eq('thread_id', threadId)
+  }
+
+  return deleteQuery
 }
 
-export async function loadChatMessageItem(messageId: string): Promise<ChatMessageItem | null> {
-  const { data: message, error: messageError } = await supabase
+export async function loadChatMessageItem(messageId: string, threadId?: string | null): Promise<ChatMessageItem | null> {
+  const messageQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
     .eq('id', messageId)
-    .maybeSingle()
+
+  if (threadId) {
+    messageQuery.eq('thread_id', threadId)
+  }
+
+  const { data: message, error: messageError } = await messageQuery.maybeSingle()
 
   if (messageError) {
     throw messageError
@@ -193,7 +217,10 @@ export async function loadChatMessageItem(messageId: string): Promise<ChatMessag
     return null
   }
 
-  const replyById = await loadChatReplyRowsByIds(messageRow.reply_to_id ? [messageRow.reply_to_id] : [])
+  const replyById = await loadChatReplyRowsByIds(
+    messageRow.reply_to_id ? [messageRow.reply_to_id] : [],
+    threadId
+  )
   const replyMessage = messageRow.reply_to_id ? replyById[messageRow.reply_to_id] ?? null : null
   const profileIds = Array.from(
     new Set([
@@ -211,13 +238,19 @@ export async function loadChatMessageItem(messageId: string): Promise<ChatMessag
   )
 }
 
-export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageItem[]> {
-  const { data: messages, error: messagesError } = await supabase
+export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
+  const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (threadId) {
+    messagesQuery.eq('thread_id', threadId)
+  }
+
+  const { data: messages, error: messagesError } = await messagesQuery
 
   if (messagesError) {
     throw messagesError
@@ -227,7 +260,7 @@ export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageIte
   const replyIds = Array.from(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
-  const replyById = await loadChatReplyRowsByIds(replyIds)
+  const replyById = await loadChatReplyRowsByIds(replyIds, threadId)
   const userIds = Array.from(
     new Set([
       ...messageRows.map((message) => message.user_id),
@@ -248,14 +281,24 @@ export async function loadRecentChatMessages(limit = 50): Promise<ChatMessageIte
   })
 }
 
-export async function loadOlderChatMessages(beforeCreatedAt: string, limit = 10): Promise<ChatMessageItem[]> {
-  const { data: messages, error: messagesError } = await supabase
+export async function loadOlderChatMessages(
+  beforeCreatedAt: string,
+  limit = 10,
+  threadId?: string | null
+): Promise<ChatMessageItem[]> {
+  const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id')
+    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .lt('created_at', beforeCreatedAt)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (threadId) {
+    messagesQuery.eq('thread_id', threadId)
+  }
+
+  const { data: messages, error: messagesError } = await messagesQuery
 
   if (messagesError) {
     throw messagesError
@@ -265,7 +308,7 @@ export async function loadOlderChatMessages(beforeCreatedAt: string, limit = 10)
   const replyIds = Array.from(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
-  const replyById = await loadChatReplyRowsByIds(replyIds)
+  const replyById = await loadChatReplyRowsByIds(replyIds, threadId)
   const userIds = Array.from(
     new Set([
       ...messageRows.map((message) => message.user_id),

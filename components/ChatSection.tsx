@@ -22,6 +22,10 @@ import { supabase } from '@/lib/supabase'
 
 type ChatSectionProps = {
   showTitle?: boolean
+  threadId?: string | null
+  title?: string
+  description?: string
+  enableReadState?: boolean
 }
 
 const LONG_PRESS_MS = 450
@@ -144,6 +148,10 @@ function ChatMessageBody({
 
 export default function ChatSection({
   showTitle = true,
+  threadId = null,
+  title,
+  description,
+  enableReadState = true,
 }: ChatSectionProps) {
   const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
@@ -179,12 +187,18 @@ export default function ChatSection({
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const pageTitle = title ?? 'Чат клуба'
+  const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
 
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
+    if (!enableReadState) {
+      return null
+    }
+
     if (messages.length === 0) {
       return null
     }
@@ -209,7 +223,7 @@ export default function ChatSection({
 
   const refreshMessages = useCallback(async () => {
     try {
-      const recentMessages = await loadRecentChatMessages(50)
+      const recentMessages = await loadRecentChatMessages(50, threadId)
       setMessages(keepLatestRenderedMessages(recentMessages))
       setError('')
       return recentMessages
@@ -217,7 +231,7 @@ export default function ChatSection({
       setError('Не удалось загрузить чат')
       return null
     }
-  }, [keepLatestRenderedMessages])
+  }, [keepLatestRenderedMessages, threadId])
 
   const resizeComposerTextarea = useCallback(() => {
     const textarea = composerTextareaRef.current
@@ -422,6 +436,47 @@ export default function ChatSection({
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('run-club:chat-keyboard-visibility', {
+        detail: {
+          keyboardOpen: isKeyboardOpen,
+        },
+      })
+    )
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent('run-club:chat-keyboard-visibility', {
+          detail: {
+            keyboardOpen: false,
+          },
+        })
+      )
+    }
+  }, [isKeyboardOpen])
+
+  useEffect(() => {
+    pendingDeletedMessageIdsRef.current.clear()
+    messagesRef.current = []
+    setMessages([])
+    setLastReadAt(null)
+    setHasLoadedReadState(false)
+    setPendingInitialScroll(false)
+    setPendingNewMessagesCount(0)
+    setHasMoreOlderMessages(true)
+    setError('')
+    setDraftMessage('')
+    setSubmitError('')
+    setReplyingToMessage(null)
+    setSelectedMessage(null)
+    setIsActionSheetOpen(false)
+  }, [threadId])
+
   useLayoutEffect(() => {
     resizeComposerTextarea()
   }, [draftMessage, resizeComposerTextarea])
@@ -471,14 +526,16 @@ export default function ChatSection({
           return
         }
 
-        const initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT)
+        const initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
         let nextLastReadAt: string | null = null
 
-        try {
-          nextLastReadAt = await loadChatReadState(user.id)
-        } catch (readStateError) {
-          console.error('Failed to load chat read state', readStateError)
-          nextLastReadAt = null
+        if (enableReadState) {
+          try {
+            nextLastReadAt = await loadChatReadState(user.id)
+          } catch (readStateError) {
+            console.error('Failed to load chat read state', readStateError)
+            nextLastReadAt = null
+          }
         }
 
         if (!isMounted) {
@@ -507,7 +564,7 @@ export default function ChatSection({
     return () => {
       isMounted = false
     }
-  }, [keepLatestRenderedMessages, router])
+  }, [enableReadState, keepLatestRenderedMessages, router, threadId])
 
   useLayoutEffect(() => {
     if (loading || !hasLoadedReadState || !pendingInitialScroll) {
@@ -550,6 +607,7 @@ export default function ChatSection({
     if (
       loading ||
       !isAuthenticated ||
+      !enableReadState ||
       !hasLoadedReadState ||
       !currentUserId ||
       !latestLoadedMessageCreatedAt ||
@@ -585,6 +643,7 @@ export default function ChatSection({
     }
   }, [
     currentUserId,
+    enableReadState,
     hasLoadedReadState,
     isAuthenticated,
     latestLoadedMessageCreatedAt,
@@ -701,7 +760,7 @@ export default function ChatSection({
       }
 
       try {
-        const olderMessages = await loadOlderChatMessages(oldestCreatedAt, OLDER_CHAT_BATCH_LIMIT)
+        const olderMessages = await loadOlderChatMessages(oldestCreatedAt, OLDER_CHAT_BATCH_LIMIT, threadId)
 
         if (olderMessages.length === 0) {
           prependScrollRestoreRef.current = null
@@ -733,7 +792,7 @@ export default function ChatSection({
     return () => {
       scrollContainer.removeEventListener('scroll', handleScroll)
     }
-  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages])
+  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages, threadId])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -816,14 +875,19 @@ export default function ChatSection({
       return
     }
 
+    const messageChangeConfig = {
+      schema: 'public',
+      table: 'chat_messages',
+      ...(threadId ? { filter: `thread_id=eq.${threadId}` } : {}),
+    }
+
     const channel = supabase
-      .channel('chat-messages')
+      .channel(threadId ? `chat-messages:${threadId}` : 'chat-messages')
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
+          ...messageChangeConfig,
         },
         async (payload) => {
           const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
@@ -842,7 +906,7 @@ export default function ChatSection({
           }
 
           try {
-            const nextMessage = await loadChatMessageItem(nextMessageId)
+            const nextMessage = await loadChatMessageItem(nextMessageId, threadId)
 
             if (!nextMessage) {
               return
@@ -867,8 +931,7 @@ export default function ChatSection({
         'postgres_changes',
         {
           event: 'UPDATE',
-          schema: 'public',
-          table: 'chat_messages',
+          ...messageChangeConfig,
         },
         async (payload) => {
           const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
@@ -878,7 +941,7 @@ export default function ChatSection({
           }
 
           try {
-            const nextMessage = await loadChatMessageItem(nextMessageId)
+            const nextMessage = await loadChatMessageItem(nextMessageId, threadId)
 
             if (!nextMessage) {
               pendingDeletedMessageIdsRef.current.delete(nextMessageId)
@@ -903,7 +966,7 @@ export default function ChatSection({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [isNearBottom, keepLatestRenderedMessages, loading, isAuthenticated, refreshMessages])
+  }, [isNearBottom, keepLatestRenderedMessages, loading, isAuthenticated, refreshMessages, threadId])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -926,13 +989,18 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
-      const { error: insertError } = await createChatMessage(currentUserId, trimmedDraftMessage, replyingToMessage?.id ?? null)
+      const { error: insertError } = await createChatMessage(
+        currentUserId,
+        trimmedDraftMessage,
+        replyingToMessage?.id ?? null,
+        threadId
+      )
 
       if (insertError) {
         throw insertError
       }
 
-      const recentMessages = await loadRecentChatMessages(50)
+      const recentMessages = await loadRecentChatMessages(50, threadId)
       pendingAutoScrollToBottomRef.current = true
       setPendingNewMessagesCount(0)
       setMessages(keepLatestRenderedMessages(recentMessages))
@@ -966,7 +1034,7 @@ export default function ChatSection({
     setMessages((currentMessages) => removeMessageById(currentMessages, message.id))
 
     try {
-      const { error: deleteError } = await softDeleteChatMessage(message.id, currentUserId)
+      const { error: deleteError } = await softDeleteChatMessage(message.id, currentUserId, threadId)
 
       if (deleteError) {
         throw deleteError
@@ -1101,8 +1169,8 @@ export default function ChatSection({
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-none md:p-4">
         {showTitle ? (
           <div className="mb-4 space-y-1">
-            <h1 className="app-text-primary text-2xl font-bold">Чат клуба</h1>
-            <p className="app-text-secondary text-sm">Последние 50 сообщений клуба в хронологическом порядке.</p>
+            <h1 className="app-text-primary text-2xl font-bold">{pageTitle}</h1>
+            <p className="app-text-secondary text-sm">{pageDescription}</p>
           </div>
         ) : null}
         <div className="app-card rounded-2xl border p-4 shadow-sm">
@@ -1144,8 +1212,8 @@ export default function ChatSection({
     >
       {showTitle ? (
         <div className="mb-4 space-y-1">
-          <h1 className="app-text-primary text-2xl font-bold">Чат клуба</h1>
-          <p className="app-text-secondary text-sm">Последние 50 сообщений клуба в хронологическом порядке.</p>
+          <h1 className="app-text-primary text-2xl font-bold">{pageTitle}</h1>
+          <p className="app-text-secondary text-sm">{pageDescription}</p>
         </div>
       ) : null}
 

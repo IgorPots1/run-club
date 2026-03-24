@@ -27,6 +27,29 @@ export type CoachDirectThreadItem = DirectCoachThread & {
 
 export type StudentProfile = ProfileRow
 
+function isDirectCoachThreadUniqueError(error: { code?: string | null; message?: string | null }) {
+  return (
+    error.code === '23505' ||
+    Boolean(error.message?.includes('chat_threads_direct_coach_unique_idx'))
+  )
+}
+
+async function findDirectCoachThread(ownerUserId: string) {
+  const { data, error } = await supabase
+    .from('chat_threads')
+    .select('id, type, title, owner_user_id, coach_user_id, created_at')
+    .eq('type', 'direct_coach')
+    .eq('owner_user_id', ownerUserId)
+    .eq('coach_user_id', COACH_USER_ID)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return (data as DirectCoachThread | null) ?? null
+}
+
 export async function getClubThread(): Promise<ClubThread> {
   const { data, error } = await supabase
     .from('chat_threads')
@@ -41,21 +64,24 @@ export async function getClubThread(): Promise<ClubThread> {
   return data as ClubThread
 }
 
-export async function getOrCreateDirectCoachThread(currentUserId: string): Promise<DirectCoachThread> {
-  const { data: existingThread, error: existingThreadError } = await supabase
+export async function getChatThreadById(threadId: string): Promise<ChatThreadRow> {
+  const { data, error } = await supabase
     .from('chat_threads')
     .select('id, type, title, owner_user_id, coach_user_id, created_at')
-    .eq('type', 'direct_coach')
-    .eq('owner_user_id', currentUserId)
-    .eq('coach_user_id', COACH_USER_ID)
-    .maybeSingle()
+    .eq('id', threadId)
+    .single()
 
-  if (existingThreadError) {
-    throw existingThreadError
+  if (error) {
+    throw error
   }
 
+  return data as ChatThreadRow
+}
+
+export async function getOrCreateDirectCoachThread(currentUserId: string): Promise<DirectCoachThread> {
+  const existingThread = await findDirectCoachThread(currentUserId)
   if (existingThread) {
-    return existingThread as DirectCoachThread
+    return existingThread
   }
 
   const { data: createdThread, error: createdThreadError } = await supabase
@@ -69,6 +95,14 @@ export async function getOrCreateDirectCoachThread(currentUserId: string): Promi
     .single()
 
   if (createdThreadError) {
+    if (isDirectCoachThreadUniqueError(createdThreadError)) {
+      const directThread = await findDirectCoachThread(currentUserId)
+
+      if (directThread) {
+        return directThread
+      }
+    }
+
     throw createdThreadError
   }
 
@@ -98,6 +132,31 @@ export async function getOrCreateDirectCoachThread(currentUserId: string): Promi
   }
 
   return createdThread as DirectCoachThread
+}
+
+export async function getOrCreateCoachDirectThreadForStudent(studentUserId: string): Promise<DirectCoachThread> {
+  const response = await fetch('/api/chat/direct-thread', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      studentUserId,
+    }),
+  })
+
+  const payload = await response.json().catch(() => null) as
+    | {
+        thread?: DirectCoachThread
+        error?: string
+      }
+    | null
+
+  if (!response.ok || !payload?.thread) {
+    throw new Error(payload?.error ?? 'direct_thread_request_failed')
+  }
+
+  return payload.thread
 }
 
 export async function getCoachDirectThreads(): Promise<CoachDirectThreadItem[]> {
