@@ -26,6 +26,7 @@ type WorkoutFeedCardProps = {
   likedByMe: boolean
   pending: boolean
   onToggleLike: (runId: string) => void
+  onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
   profileHref?: string | null
 }
@@ -70,6 +71,18 @@ function toNullableTrimmedText(value: string | null | undefined) {
 
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function getLikesLabel(likesCount: number) {
+  if (likesCount === 1) {
+    return 'лайк'
+  }
+
+  if (likesCount >= 2 && likesCount <= 4) {
+    return 'лайка'
+  }
+
+  return 'лайков'
 }
 
 type FeedActionButtonProps = {
@@ -136,6 +149,7 @@ function WorkoutFeedCard({
   likedByMe,
   pending,
   onToggleLike,
+  onOpenLikes,
   onCommentClick,
   profileHref = null,
 }: WorkoutFeedCardProps) {
@@ -290,7 +304,17 @@ function WorkoutFeedCard({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={onOpenLikes}
+                disabled={!runId}
+                className="app-text-secondary min-h-8 rounded-full px-0 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {likesCount} {getLikesLabel(likesCount)}
+              </button>
+              <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
+            </div>
             {externalSource === 'strava' ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {showStravaHint ? (

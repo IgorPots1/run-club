@@ -9,6 +9,8 @@ type RunCommentRow = {
   created_at: string
 }
 
+type RunCommentCountRow = Pick<RunCommentRow, 'run_id'>
+
 type ProfileRow = {
   id: string
   name: string | null
@@ -35,6 +37,34 @@ export async function createRunComment(runId: string, userId: string, comment: s
   })
 
   return result
+}
+
+export async function loadRunCommentCountsForRunIds(runIds: string[]) {
+  if (runIds.length === 0) {
+    return {} as Record<string, number>
+  }
+
+  const uniqueRunIds = Array.from(new Set(runIds))
+  const { data, error } = await supabase
+    .from('run_comments')
+    .select('run_id')
+    .in('run_id', uniqueRunIds)
+
+  if (error) {
+    throw error
+  }
+
+  const countsByRunId: Record<string, number> = {}
+
+  for (const runId of uniqueRunIds) {
+    countsByRunId[runId] = 0
+  }
+
+  for (const row of (data as RunCommentCountRow[] | null) ?? []) {
+    countsByRunId[row.run_id] = (countsByRunId[row.run_id] ?? 0) + 1
+  }
+
+  return countsByRunId
 }
 
 export async function loadRunComments(runId: string): Promise<RunCommentItem[]> {

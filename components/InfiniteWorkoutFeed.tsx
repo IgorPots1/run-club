@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
+import { loadRunLikedUsers, type RunLikedUserItem } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
 import { getLevelFromXP } from '@/lib/xp'
@@ -42,6 +44,10 @@ export default function InfiniteWorkoutFeed({
   const router = useRouter()
   const [items, setItems] = useState<FeedRunItem[]>([])
   const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
+  const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, RunLikedUserItem[]>>({})
+  const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
+  const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
+  const [activeLikesRun, setActiveLikesRun] = useState<{ runId: string } | null>(null)
   const [actionError, setActionError] = useState('')
   const [feedError, setFeedError] = useState('')
   const [initialLoading, setInitialLoading] = useState(true)
@@ -107,6 +113,7 @@ export default function InfiniteWorkoutFeed({
     setHasMore(true)
     setNextOffset(0)
     setActionError('')
+    setActiveLikesRun(null)
     void loadFirstPage()
   }, [loadFirstPage])
 
@@ -196,6 +203,25 @@ export default function InfiniteWorkoutFeed({
         return
       }
 
+      setLikedUsersByRunId((prev) => {
+        if (!(runId in prev)) {
+          return prev
+        }
+
+        const next = { ...prev }
+        delete next[runId]
+        return next
+      })
+      setLikedUsersErrorByRunId((prev) => {
+        if (!(runId in prev)) {
+          return prev
+        }
+
+        const next = { ...prev }
+        delete next[runId]
+        return next
+      })
+
       onSuccessfulLikeToggle?.()
     } catch {
       setActionError('Не удалось обновить лайк')
@@ -206,6 +232,37 @@ export default function InfiniteWorkoutFeed({
       setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
   }, [onSuccessfulLikeToggle, router])
+
+  const loadLikedUsersForRun = useCallback(async (runId: string, force = false) => {
+    if (!runId) {
+      return
+    }
+
+    if (!force && Object.prototype.hasOwnProperty.call(likedUsersByRunId, runId)) {
+      return
+    }
+
+    setLikedUsersLoadingRunId(runId)
+    setLikedUsersErrorByRunId((prev) => ({
+      ...prev,
+      [runId]: '',
+    }))
+
+    try {
+      const likedUsers = await loadRunLikedUsers(runId)
+      setLikedUsersByRunId((prev) => ({
+        ...prev,
+        [runId]: likedUsers,
+      }))
+    } catch {
+      setLikedUsersErrorByRunId((prev) => ({
+        ...prev,
+        [runId]: 'Не удалось загрузить лайки',
+      }))
+    } finally {
+      setLikedUsersLoadingRunId((currentRunId) => (currentRunId === runId ? null : currentRunId))
+    }
+  }, [likedUsersByRunId])
 
   const handleCommentClick = useCallback((runId: string) => {
     if (!runId) {
@@ -220,73 +277,104 @@ export default function InfiniteWorkoutFeed({
     router.push(`/runs/${runId}`)
   }, [onCommentClick, router])
 
+  const handleOpenLikes = useCallback((item: FeedRunItem) => {
+    setActiveLikesRun({
+      runId: item.id,
+    })
+
+    void loadLikedUsersForRun(item.id)
+  }, [loadLikedUsersForRun])
+
   const error = actionError || feedError
+  const activeLikesRunId = activeLikesRun?.runId ?? ''
+  const activeLikesItem = activeLikesRunId
+    ? items.find((item) => item.id === activeLikesRunId) ?? null
+    : null
+  const activeLikedUsers = activeLikesRunId ? likedUsersByRunId[activeLikesRunId] ?? [] : []
+  const activeLikesError = activeLikesRunId ? likedUsersErrorByRunId[activeLikesRunId] ?? '' : ''
 
   return (
-    <div className="space-y-4 pb-2">
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {initialLoading && items.length === 0 ? (
-        <>
-          <div className="app-card rounded-xl border p-4 shadow-sm">
-            <div className="skeleton-line h-5 w-32" />
-            <div className="mt-2 skeleton-line h-4 w-36" />
-            <div className="mt-3 space-y-2">
-              <div className="skeleton-line h-4 w-20" />
-              <div className="skeleton-line h-4 w-16" />
-              <div className="skeleton-line h-4 w-24" />
+    <>
+      <div className="space-y-4 pb-2">
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {initialLoading && items.length === 0 ? (
+          <>
+            <div className="app-card rounded-xl border p-4 shadow-sm">
+              <div className="skeleton-line h-5 w-32" />
+              <div className="mt-2 skeleton-line h-4 w-36" />
+              <div className="mt-3 space-y-2">
+                <div className="skeleton-line h-4 w-20" />
+                <div className="skeleton-line h-4 w-16" />
+                <div className="skeleton-line h-4 w-24" />
+              </div>
             </div>
-          </div>
-          <div className="app-card rounded-xl border p-4 shadow-sm">
-            <div className="skeleton-line h-5 w-28" />
-            <div className="mt-2 skeleton-line h-4 w-40" />
-            <div className="mt-3 space-y-2">
-              <div className="skeleton-line h-4 w-24" />
-              <div className="skeleton-line h-4 w-16" />
-              <div className="skeleton-line h-4 w-20" />
+            <div className="app-card rounded-xl border p-4 shadow-sm">
+              <div className="skeleton-line h-5 w-28" />
+              <div className="mt-2 skeleton-line h-4 w-40" />
+              <div className="mt-3 space-y-2">
+                <div className="skeleton-line h-4 w-24" />
+                <div className="skeleton-line h-4 w-16" />
+                <div className="skeleton-line h-4 w-20" />
+              </div>
             </div>
+          </>
+        ) : items.length === 0 ? (
+          <div className="app-text-secondary mt-10 text-center">
+            <p>{emptyTitle}</p>
+            {emptyDescription ? <p className="mt-2 text-sm">{emptyDescription}</p> : null}
+            {emptyCtaHref && emptyCtaLabel ? (
+              <Link href={emptyCtaHref} className="app-button-secondary mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
+                {emptyCtaLabel}
+              </Link>
+            ) : null}
           </div>
-        </>
-      ) : items.length === 0 ? (
-        <div className="app-text-secondary mt-10 text-center">
-          <p>{emptyTitle}</p>
-          {emptyDescription ? <p className="mt-2 text-sm">{emptyDescription}</p> : null}
-          {emptyCtaHref && emptyCtaLabel ? (
-            <Link href={emptyCtaHref} className="app-button-secondary mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2">
-              {emptyCtaLabel}
-            </Link>
-          ) : null}
-        </div>
-      ) : (
-        items.map((item) => (
-          <WorkoutFeedCard
-            key={item.id}
-            runId={item.id}
-            rawTitle={item.title}
-            description={item.description}
-            externalSource={item.external_source}
-            distanceKm={item.distance_km}
-            pace={item.pace}
-            movingTime={item.movingTime}
-            mapPolyline={item.map_polyline}
-            xp={item.xp}
-            createdAt={item.created_at}
-            displayName={item.displayName}
-            avatarUrl={item.avatar_url}
-            level={getLevelFromXP(item.totalXp).level}
-            likesCount={item.likesCount}
-            commentsCount={item.commentsCount}
-            likedByMe={item.likedByMe}
-            pending={pendingRunIds.includes(item.id)}
-            onToggleLike={handleLikeToggle}
-            onCommentClick={handleCommentClick}
-            profileHref={`/users/${item.user_id}`}
-          />
-        ))
-      )}
-      {loadingMore ? (
-        <p className="app-text-secondary py-3 text-center text-sm">Загружаем еще...</p>
-      ) : null}
-      {hasMore && items.length > 0 ? <div ref={loadMoreRef} className="h-1" aria-hidden="true" /> : null}
-    </div>
+        ) : (
+          items.map((item) => (
+            <WorkoutFeedCard
+              key={item.id}
+              runId={item.id}
+              rawTitle={item.title}
+              description={item.description}
+              externalSource={item.external_source}
+              distanceKm={item.distance_km}
+              pace={item.pace}
+              movingTime={item.movingTime}
+              mapPolyline={item.map_polyline}
+              xp={item.xp}
+              createdAt={item.created_at}
+              displayName={item.displayName}
+              avatarUrl={item.avatar_url}
+              level={getLevelFromXP(item.totalXp).level}
+              likesCount={item.likesCount}
+              commentsCount={item.commentsCount}
+              likedByMe={item.likedByMe}
+              pending={pendingRunIds.includes(item.id)}
+              onToggleLike={handleLikeToggle}
+              onOpenLikes={() => handleOpenLikes(item)}
+              onCommentClick={handleCommentClick}
+              profileHref={`/users/${item.user_id}`}
+            />
+          ))
+        )}
+        {loadingMore ? (
+          <p className="app-text-secondary py-3 text-center text-sm">Загружаем еще...</p>
+        ) : null}
+        {hasMore && items.length > 0 ? <div ref={loadMoreRef} className="h-1" aria-hidden="true" /> : null}
+      </div>
+
+      <RunLikesSheet
+        open={Boolean(activeLikesRun)}
+        likesCount={activeLikesItem?.likesCount ?? 0}
+        loading={likedUsersLoadingRunId === activeLikesRunId}
+        error={activeLikesError}
+        users={activeLikedUsers}
+        onClose={() => setActiveLikesRun(null)}
+        onRetry={() => {
+          if (activeLikesRunId) {
+            void loadLikedUsersForRun(activeLikesRunId, true)
+          }
+        }}
+      />
+    </>
   )
 }
