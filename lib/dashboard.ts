@@ -18,6 +18,10 @@ type RunRow = {
   user_id: string
   name: string | null
   title?: string | null
+  description?: string | null
+  city?: string | null
+  region?: string | null
+  country?: string | null
   external_source?: string | null
   distance_km: number | null
   duration_minutes: number | null
@@ -33,6 +37,8 @@ export type DashboardRunItem = {
   id: string
   user_id: string
   title: string
+  description: string | null
+  location: string | null
   external_source?: string | null
   distance_km: number
   pace: string | number | null
@@ -112,6 +118,25 @@ function formatMovingTime(totalDurationSeconds: number | null) {
   }
 
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function toNullableTrimmedText(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmedValue = value.trim()
+  return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function buildRunLocation(run: Pick<RunRow, 'city' | 'region' | 'country'>) {
+  const parts = [
+    toNullableTrimmedText(run.city),
+    toNullableTrimmedText(run.region),
+    toNullableTrimmedText(run.country),
+  ].filter((value, index, items): value is string => Boolean(value) && items.indexOf(value) === index)
+
+  return parts.length > 0 ? parts.join(', ') : null
 }
 
 function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
@@ -320,7 +345,7 @@ export async function loadFeedRuns(
   const end = start + limit - 1
   let runsQuery = supabase
     .from('runs')
-    .select('id, user_id, name, title, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, map_polyline, xp, created_at')
+    .select('id, user_id, name, title, description, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, map_polyline, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
@@ -359,6 +384,8 @@ export async function loadFeedRuns(
         id: run.id,
         user_id: run.user_id,
         title: mappedTitle,
+        description: toNullableTrimmedText(run.description),
+        location: buildRunLocation(run),
         external_source: run.external_source ?? null,
         distance_km: Number(run.distance_km ?? 0),
         pace: formatPace(Number(run.distance_km ?? 0), resolvedDurationSeconds),

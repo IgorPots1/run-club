@@ -31,6 +31,10 @@ type RunDetailsRow = {
   user_id: string
   name: string | null
   title?: string | null
+  description?: string | null
+  city?: string | null
+  region?: string | null
+  country?: string | null
   external_source?: string | null
   external_id?: string | null
   distance_km: number | null
@@ -89,7 +93,7 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, description, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
   'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
@@ -117,7 +121,11 @@ function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefin
     message.includes('map_polyline') ||
     message.includes('external_id') ||
     message.includes('calories') ||
-    message.includes('average_cadence')
+    message.includes('average_cadence') ||
+    message.includes('description') ||
+    message.includes('city') ||
+    message.includes('region') ||
+    message.includes('country')
   )
 }
 
@@ -497,6 +505,25 @@ function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
   return run.name?.trim() || run.title?.trim() || 'Тренировка'
 }
 
+function toNullableTrimmedText(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmedValue = value.trim()
+  return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function buildRunLocation(run: Pick<RunDetailsRow, 'city' | 'region' | 'country'>) {
+  const parts = [
+    toNullableTrimmedText(run.city),
+    toNullableTrimmedText(run.region),
+    toNullableTrimmedText(run.country),
+  ].filter((value, index, items): value is string => Boolean(value) && items.indexOf(value) === index)
+
+  return parts.length > 0 ? parts.join(', ') : null
+}
+
 export default function RunDetailsPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -838,6 +865,11 @@ export default function RunDetailsPage() {
       })),
     [breakdownRows]
   )
+  const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
+  const runLocation = useMemo(
+    () => (run ? buildRunLocation(run) : null),
+    [run]
+  )
 
   const details = useMemo(() => {
     if (!run) {
@@ -996,6 +1028,16 @@ export default function RunDetailsPage() {
           </div>
 
           <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
+          {runDescription ? (
+            <p className="app-text-secondary mt-2 line-clamp-2 break-words text-sm leading-5">
+              {runDescription}
+            </p>
+          ) : null}
+          {runLocation ? (
+            <p className="app-text-muted mt-1 break-words text-xs leading-5">
+              {runLocation}
+            </p>
+          ) : null}
 
           <div className="mt-2.5 text-sm">
             <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
