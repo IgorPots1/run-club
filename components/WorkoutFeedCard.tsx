@@ -93,6 +93,7 @@ function WorkoutFeedCard({
   const router = useRouter()
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const displayTitle = buildDisplayTitle(rawTitle)
   const normalizedDescription = toNullableTrimmedText(description)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
@@ -156,9 +157,23 @@ function WorkoutFeedCard({
           {displayTitle}
         </p>
         {normalizedDescription ? (
-          <p className="app-text-secondary mt-1 line-clamp-2 break-words text-sm leading-5">
-            {normalizedDescription}
-          </p>
+          <div className="mt-1">
+            <p
+              className={`app-text-secondary break-words text-sm leading-5 ${
+                expanded ? '' : 'line-clamp-2'
+              }`}
+            >
+              {normalizedDescription}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => !prev)}
+              className="app-text-muted mt-1 text-xs"
+            >
+              {expanded ? 'Скрыть' : 'Читать'}
+            </button>
+          </div>
         ) : null}
       </div>
 
