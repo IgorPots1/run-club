@@ -1,12 +1,18 @@
 import ChatSection from '@/components/ChatSection'
+import MobileBackHeader from '@/components/MobileBackHeader'
 
 export default function ChatPage() {
   return (
     <main
       data-chat-isolated-route="true"
-      className="h-[100dvh] overflow-hidden pt-[env(safe-area-inset-top)] md:min-h-screen md:h-auto md:overflow-visible md:pt-0"
+      className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden"
     >
-      <ChatSection showBackLink />
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
+        <MobileBackHeader title="Чат клуба" className="mb-0 shrink-0" />
+        <div className="min-h-0 flex-1">
+          <ChatSection showTitle={false} isolatedLayout />
+        </div>
+      </div>
     </main>
   )
 }

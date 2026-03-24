@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase'
 type ChatSectionProps = {
   showTitle?: boolean
   showBackLink?: boolean
+  isolatedLayout?: boolean
 }
 
 const LONG_PRESS_MS = 450
@@ -142,7 +143,11 @@ function ChatMessageBody({
   )
 }
 
-export default function ChatSection({ showTitle = true, showBackLink = false }: ChatSectionProps) {
+export default function ChatSection({
+  showTitle = true,
+  showBackLink = false,
+  isolatedLayout,
+}: ChatSectionProps) {
   const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -179,7 +184,7 @@ export default function ChatSection({ showTitle = true, showBackLink = false }: 
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
 
-  const useIsolatedChatLayout = showBackLink
+  const useIsolatedChatLayout = isolatedLayout ?? showBackLink
   const trimmedDraftMessage = draftMessage.trim()
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const useKeyboardOpenComposerLayout = !useIsolatedChatLayout && isKeyboardOpen

@@ -14,6 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import MobileBackHeader from '@/components/MobileBackHeader'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
@@ -534,15 +535,6 @@ export default function RunDetailsPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
-  function handleBackNavigation() {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      router.back()
-      return
-    }
-
-    router.push('/dashboard')
-  }
-
   async function handleCommentSubmit(comment: string) {
     if (!user || !run) {
       throw new Error('missing_context')
@@ -893,17 +885,9 @@ export default function RunDetailsPage() {
 
   if (authLoading || loading) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
-        <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 pt-4 md:p-4">
-          <button
-            type="button"
-            onClick={handleBackNavigation}
-            className="app-text-secondary inline-flex items-center text-sm font-medium"
-            aria-label="Назад"
-          >
-            ← Назад
-          </button>
-
+      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 md:p-4">
+          <MobileBackHeader title="Тренировка" />
           <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
@@ -962,16 +946,9 @@ export default function RunDetailsPage() {
 
   if (!run || !details) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <button
-            type="button"
-            onClick={handleBackNavigation}
-            className="app-text-secondary inline-flex items-center text-sm font-medium"
-            aria-label="Назад"
-          >
-            ← Назад
-          </button>
+      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
+          <MobileBackHeader title="Тренировка" />
           <div className="app-card mt-4 rounded-xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
           </div>
@@ -981,17 +958,9 @@ export default function RunDetailsPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
-      <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 pt-4 md:p-4">
-        <button
-          type="button"
-          onClick={handleBackNavigation}
-          className="app-text-secondary inline-flex items-center text-sm font-medium"
-          aria-label="Назад"
-        >
-          ← Назад
-        </button>
-
+    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="mx-auto max-w-xl space-y-4 px-4 pb-4 md:p-4">
+        <MobileBackHeader title="Тренировка" />
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <ParticipantIdentity

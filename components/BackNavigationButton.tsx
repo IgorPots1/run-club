@@ -1,15 +1,20 @@
 'use client'
 
+import { ChevronLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 type BackNavigationButtonProps = {
   fallbackHref?: string
   className?: string
+  label?: string
+  variant?: 'inline' | 'icon'
 }
 
 export default function BackNavigationButton({
   fallbackHref = '/dashboard',
   className = '',
+  label = 'Назад',
+  variant = 'inline',
 }: BackNavigationButtonProps) {
   const router = useRouter()
 
@@ -22,14 +27,20 @@ export default function BackNavigationButton({
     router.push(fallbackHref)
   }
 
+  const baseClassName =
+    variant === 'icon'
+      ? 'app-text-primary inline-flex h-11 w-11 items-center justify-center rounded-full border bg-[color:var(--surface)]/90 shadow-sm backdrop-blur'
+      : 'app-text-secondary inline-flex min-h-11 items-center gap-1 rounded-xl px-2 py-2 text-sm font-medium'
+
   return (
     <button
       type="button"
       onClick={handleBackNavigation}
-      className={`app-text-secondary inline-flex items-center text-sm font-medium ${className}`.trim()}
-      aria-label="Назад"
+      className={`${baseClassName} ${className}`.trim()}
+      aria-label={label}
     >
-      ← Назад
+      <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden="true" />
+      {variant === 'inline' ? <span>{label}</span> : null}
     </button>
   )
 }

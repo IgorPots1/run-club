@@ -3,8 +3,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import BackNavigationButton from '@/components/BackNavigationButton'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
+import MobileBackHeader from '@/components/MobileBackHeader'
 import { buildActivityWindowStats } from '@/lib/activity'
 import { formatDistanceKm, formatDurationCompact, formatMonthYearLabel } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -96,10 +96,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
   if (!publicProfile && !hasLoadError) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <BackNavigationButton className="mb-4" />
-          <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
+      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
+          <MobileBackHeader title="Профиль участника" />
           <div className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="app-text-secondary text-sm">Пользователь не найден.</p>
             <Link href="/feed" className="app-button-secondary mt-4 inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm">
@@ -113,10 +112,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
   if (hasLoadError) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <BackNavigationButton className="mb-4" />
-          <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
+      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
+          <MobileBackHeader title="Профиль участника" />
           <div className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">Не удалось загрузить профиль.</p>
           </div>
@@ -142,10 +140,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <BackNavigationButton className="mb-4" />
-        <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль участника</h1>
+    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="mx-auto max-w-xl px-4 pb-4 md:p-4">
+        <MobileBackHeader title="Профиль участника" />
         <section className="app-card mb-7 rounded-3xl border px-5 py-6 shadow-sm sm:px-6 sm:py-7">
           <div className="flex flex-col items-center text-center">
             <span className="relative inline-flex h-32 w-32 items-center justify-center rounded-full ring-1 ring-black/10 shadow-[0_8px_24px_rgba(0,0,0,0.08)] sm:h-36 sm:w-36 dark:ring-white/15 dark:shadow-[0_8px_24px_rgba(0,0,0,0.22)]">

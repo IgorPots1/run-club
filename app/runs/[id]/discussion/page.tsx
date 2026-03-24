@@ -3,6 +3,7 @@
 import { LoaderCircle } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import MobileBackHeader from '@/components/MobileBackHeader'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import { getBootstrapUser } from '@/lib/auth'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
@@ -587,17 +588,14 @@ export default function RunDiscussionPage() {
   const durationLabel = useMemo(() => formatDurationLabel(resolvedDurationSeconds), [resolvedDurationSeconds])
 
   return (
-    <main className="h-[100dvh] min-h-[100dvh] overflow-hidden">
-      <div className="mx-auto flex h-full max-w-xl flex-col">
-        <div className="shrink-0 px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="app-text-secondary inline-flex min-h-11 items-center rounded-xl px-2 py-2 text-sm font-medium"
-          >
-            ← Назад
-          </button>
-
+    <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
+        <MobileBackHeader
+          title="Обсуждение"
+          fallbackHref={runId ? `/runs/${runId}` : '/dashboard'}
+          className="mb-0 shrink-0"
+        />
+        <div className="shrink-0 px-4 pb-3">
           {loadingRun ? (
             <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
