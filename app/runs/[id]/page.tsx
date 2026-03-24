@@ -532,6 +532,7 @@ export default function RunDetailsPage() {
   const [commentsError, setCommentsError] = useState('')
   const [lapsBackfillAttemptedRunId, setLapsBackfillAttemptedRunId] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
   function handleBackNavigation() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -1015,9 +1016,23 @@ export default function RunDetailsPage() {
 
           <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
           {runDescription ? (
-            <p className="app-text-secondary mt-2 line-clamp-2 break-words text-sm leading-5">
-              {runDescription}
-            </p>
+            <div className="mt-2">
+              <p
+                className={`app-text-secondary break-words text-sm leading-5 ${
+                  descriptionExpanded ? '' : 'line-clamp-2'
+                }`}
+              >
+                {runDescription}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setDescriptionExpanded((prev) => !prev)}
+                className="app-text-muted mt-0.5 text-xs font-medium"
+              >
+                {descriptionExpanded ? 'Скрыть' : 'Читать'}
+              </button>
+            </div>
           ) : null}
 
           <div className="mt-2.5 text-sm">
