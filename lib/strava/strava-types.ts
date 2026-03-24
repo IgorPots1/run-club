@@ -104,6 +104,17 @@ export type StravaSyncDebugInfo = {
   targetedLapsStatus?: 'fetched_and_saved' | 'fetched_but_not_saved' | 'no_laps_returned' | 'laps_fetch_failed'
   targetedLapsErrorMessage?: string | null
   targetedLapsHttpStatus?: number | null
+  detailedActivityDebug?: {
+    id: number | null
+    type: string | null
+    sport_type: string | null
+    description: string | null
+    location_city: string | null
+    location_state: string | null
+    location_country: string | null
+    start_latlng: number[] | null
+    end_latlng: number[] | null
+  } | null
 }
 
 export type StravaInitialSyncResult =
