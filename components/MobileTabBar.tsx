@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type MouseEvent } from 'react'
 import UnreadBadge from '@/components/chat/UnreadBadge'
-import { getTotalUnreadCount } from '@/lib/chat/reads'
+import useRealtimeTotalUnreadCount from '@/components/chat/useRealtimeTotalUnreadCount'
 
 const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
 
@@ -36,7 +36,7 @@ function scrollPageToTop() {
 export default function MobileTabBar() {
   const pathname = usePathname()
   const [isChatKeyboardOpen, setIsChatKeyboardOpen] = useState(false)
-  const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+  const totalUnreadCount = useRealtimeTotalUnreadCount()
   const hiddenRoutes = ['/', '/login', '/register']
   const shouldHide =
     hiddenRoutes.includes(pathname) || pathname.startsWith('/auth')
@@ -58,30 +58,6 @@ export default function MobileTabBar() {
       window.removeEventListener(CHAT_KEYBOARD_VISIBILITY_EVENT, handleChatKeyboardVisibility)
     }
   }, [])
-
-  useEffect(() => {
-    let isMounted = true
-
-    async function loadUnreadCount() {
-      try {
-        const nextTotalUnreadCount = await getTotalUnreadCount()
-
-        if (isMounted) {
-          setTotalUnreadCount(nextTotalUnreadCount)
-        }
-      } catch {
-        if (isMounted) {
-          setTotalUnreadCount(0)
-        }
-      }
-    }
-
-    void loadUnreadCount()
-
-    return () => {
-      isMounted = false
-    }
-  }, [pathname])
 
   if (shouldHide || pathname === '/chat' || pathname.startsWith('/messages/') || isChatKeyboardOpen) return null
 

@@ -2,48 +2,23 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import UnreadBadge from '@/components/chat/UnreadBadge'
+import useRealtimeTotalUnreadCount from '@/components/chat/useRealtimeTotalUnreadCount'
 import { getBootstrapUser } from '@/lib/auth'
-import { getTotalUnreadCount } from '@/lib/chat/reads'
 import { supabase } from '../lib/supabase'
 
 export default function Navbar() {
   const router = useRouter()
-  const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
-  const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+  const totalUnreadCount = useRealtimeTotalUnreadCount()
 
   useEffect(() => {
     void getBootstrapUser().then((nextUser) => {
       setUser(nextUser)
     })
   }, [])
-
-  useEffect(() => {
-    let isMounted = true
-
-    async function loadUnreadCount() {
-      try {
-        const nextTotalUnreadCount = await getTotalUnreadCount()
-
-        if (isMounted) {
-          setTotalUnreadCount(nextTotalUnreadCount)
-        }
-      } catch {
-        if (isMounted) {
-          setTotalUnreadCount(0)
-        }
-      }
-    }
-
-    void loadUnreadCount()
-
-    return () => {
-      isMounted = false
-    }
-  }, [pathname])
 
   async function handleLogout() {
     await supabase.auth.signOut()
