@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { getBootstrapUser } from '@/lib/auth'
@@ -34,6 +34,9 @@ const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
+const SWIPE_REPLY_TRIGGER_PX = 60
+const SWIPE_REPLY_MAX_OFFSET_PX = 72
+const SWIPE_REPLY_CANCEL_VERTICAL_THRESHOLD_PX = 24
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -172,6 +175,9 @@ export default function ChatSection({
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const longPressTimeoutRef = useRef<number | null>(null)
+  const swipeGestureMessageIdRef = useRef<string | null>(null)
+  const swipeStartXRef = useRef<number | null>(null)
+  const swipeStartYRef = useRef<number | null>(null)
   const highlightedMessageIdRef = useRef<string | null>(null)
   const highlightedMessageTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
@@ -198,6 +204,8 @@ export default function ChatSection({
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
+  const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
+  const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
@@ -512,6 +520,12 @@ export default function ChatSection({
       clearReplyTargetHighlight()
     }
   }, [clearReplyTargetHighlight])
+
+  useEffect(() => {
+    return () => {
+      resetSwipeReplyGesture()
+    }
+  }, [resetSwipeReplyGesture])
 
   useEffect(() => {
     if (!selectedMessage) {
@@ -1094,6 +1108,101 @@ export default function ChatSection({
     }
   }
 
+  const resetSwipeReplyGesture = useCallback(() => {
+    swipeGestureMessageIdRef.current = null
+    swipeStartXRef.current = null
+    swipeStartYRef.current = null
+    setSwipingMessageId(null)
+    setSwipeOffsetX(0)
+  }, [])
+
+  function isMobileSwipeViewport() {
+    return typeof window !== 'undefined' && window.innerWidth < 768
+  }
+
+  function handleMessageTouchStart(message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) {
+    startLongPress(message)
+
+    if (!isMobileSwipeViewport()) {
+      return
+    }
+
+    const touch = event.touches[0]
+
+    if (!touch) {
+      return
+    }
+
+    swipeGestureMessageIdRef.current = message.id
+    swipeStartXRef.current = touch.clientX
+    swipeStartYRef.current = touch.clientY
+    setSwipingMessageId(null)
+    setSwipeOffsetX(0)
+  }
+
+  function handleMessageTouchMove(message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) {
+    if (!isMobileSwipeViewport()) {
+      clearLongPressTimeout()
+      return
+    }
+
+    if (swipeGestureMessageIdRef.current !== message.id) {
+      return
+    }
+
+    const touch = event.touches[0]
+    const startX = swipeStartXRef.current
+    const startY = swipeStartYRef.current
+
+    if (!touch || startX === null || startY === null) {
+      return
+    }
+
+    const deltaX = touch.clientX - startX
+    const deltaY = touch.clientY - startY
+
+    if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+      clearLongPressTimeout()
+    }
+
+    if (deltaX <= 0) {
+      setSwipingMessageId(null)
+      setSwipeOffsetX(0)
+      return
+    }
+
+    if (
+      Math.abs(deltaY) > Math.abs(deltaX) &&
+      Math.abs(deltaY) > SWIPE_REPLY_CANCEL_VERTICAL_THRESHOLD_PX
+    ) {
+      setSwipingMessageId(null)
+      setSwipeOffsetX(0)
+      return
+    }
+
+    setSwipingMessageId(message.id)
+    setSwipeOffsetX(Math.min(deltaX, SWIPE_REPLY_MAX_OFFSET_PX))
+  }
+
+  function handleMessageTouchEnd(message: ChatMessageItem) {
+    const shouldReply =
+      isMobileSwipeViewport() &&
+      swipeGestureMessageIdRef.current === message.id &&
+      swipeOffsetX >= SWIPE_REPLY_TRIGGER_PX
+
+    clearLongPressTimeout()
+    resetSwipeReplyGesture()
+
+    if (shouldReply) {
+      setReplyingToMessage(message)
+    }
+  }
+
+  function handleMessageTouchCancel() {
+    clearLongPressTimeout()
+    resetSwipeReplyGesture()
+  }
+
   function renderComposer() {
     return (
       <div>
@@ -1264,6 +1373,7 @@ export default function ChatSection({
                   <div className="flex flex-col">
                     {messages.map((message, index) => {
                       const isOwnMessage = currentUserId === message.userId
+                      const isSwipeActive = swipingMessageId === message.id
                       const previousMessage = index > 0 ? messages[index - 1] : null
                       const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
                       const isFirstInAuthorRun = !isSameAuthorAsPrevious
@@ -1297,40 +1407,64 @@ export default function ChatSection({
                           ) : (
                             <div className="h-10 w-10 shrink-0" aria-hidden="true" />
                           )}
-                          <div
-                            ref={(node) => {
-                              if (node) {
-                                messageRefs.current[message.id] = node
-                                return
-                              }
+                          <div className={`relative min-w-0 w-full max-w-[85%] ${isOwnMessage ? 'ml-auto' : ''}`}>
+                            <div
+                              aria-hidden="true"
+                              className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
+                                isSwipeActive && swipeOffsetX > 8 ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
+                              }`}
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M9 7 4 12l5 5" />
+                                <path d="M20 12H4" />
+                              </svg>
+                            </div>
+                            <div
+                              ref={(node) => {
+                                if (node) {
+                                  messageRefs.current[message.id] = node
+                                  return
+                                }
 
-                              delete messageRefs.current[message.id]
-                            }}
-                            className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
-                              isOwnMessage
-                                ? 'ml-auto border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
-                                : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
-                            } transition-colors transition-shadow`}
-                            onTouchStart={() => startLongPress(message)}
-                            onTouchEnd={clearLongPressTimeout}
-                            onTouchCancel={clearLongPressTimeout}
-                            onTouchMove={clearLongPressTimeout}
-                            onMouseDown={() => startLongPress(message)}
-                            onMouseUp={clearLongPressTimeout}
-                            onMouseLeave={clearLongPressTimeout}
-                            onContextMenu={(event) => {
-                              event.preventDefault()
-                              clearLongPressTimeout()
-                              setSelectedMessage(message)
-                              setIsActionSheetOpen(true)
-                            }}
-                          >
-                            <ChatMessageBody
-                              message={message}
-                              isOwnMessage={isOwnMessage}
-                              showSenderName={showSenderName}
-                              onReplyPreviewClick={message.replyTo ? () => handleReplyPreviewClick(message.replyTo.id) : undefined}
-                            />
+                                delete messageRefs.current[message.id]
+                              }}
+                              style={{
+                                transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
+                              }}
+                              className={`chat-no-select relative z-[2] min-w-0 w-full rounded-[18px] border px-3 py-2 shadow-none ${
+                                isOwnMessage
+                                  ? 'border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
+                                  : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
+                              } transition-[transform,color,background-color,box-shadow] duration-150`}
+                              onTouchStart={(event) => handleMessageTouchStart(message, event)}
+                              onTouchEnd={() => handleMessageTouchEnd(message)}
+                              onTouchCancel={handleMessageTouchCancel}
+                              onTouchMove={(event) => handleMessageTouchMove(message, event)}
+                              onMouseDown={() => startLongPress(message)}
+                              onMouseUp={clearLongPressTimeout}
+                              onMouseLeave={clearLongPressTimeout}
+                              onContextMenu={(event) => {
+                                event.preventDefault()
+                                clearLongPressTimeout()
+                                setSelectedMessage(message)
+                                setIsActionSheetOpen(true)
+                              }}
+                            >
+                              <ChatMessageBody
+                                message={message}
+                                isOwnMessage={isOwnMessage}
+                                showSenderName={showSenderName}
+                                onReplyPreviewClick={message.replyTo ? () => handleReplyPreviewClick(message.replyTo.id) : undefined}
+                              />
+                            </div>
                           </div>
                         </article>
                         </div>
