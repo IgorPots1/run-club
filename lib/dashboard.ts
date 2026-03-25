@@ -285,7 +285,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
       .order('created_at', { ascending: false }),
     supabase
       .from('challenges')
-      .select('*')
+      .select('id, title, description, goal_km, goal_runs, xp_reward, created_at, kind')
       .order('created_at', { ascending: true }),
     loadChallengeXpByUser(),
     loadLikeXpByUser(),

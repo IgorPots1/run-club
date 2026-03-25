@@ -19,7 +19,7 @@ export async function GET() {
   const supabaseAdmin = createSupabaseAdminClient()
   const { data, error: runsError } = await supabaseAdmin
     .from('runs')
-    .select('*')
+    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, xp, created_at, external_source')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
