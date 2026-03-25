@@ -14,7 +14,7 @@ type ProfileRow = {
   id: string
   name: string | null
   nickname?: string | null
-  email: string | null
+  email?: string | null
   avatar_url?: string | null
 }
 
@@ -161,6 +161,33 @@ function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'durat
   return null
 }
 
+type ProfileFieldSelection = {
+  includeEmail?: boolean
+  includeAvatarUrl?: boolean
+}
+
+function getProfileCacheKey(userId: string, options?: ProfileFieldSelection) {
+  return [
+    userId,
+    options?.includeEmail === false ? 'no-email' : 'email',
+    options?.includeAvatarUrl === false ? 'no-avatar' : 'avatar',
+  ].join(':')
+}
+
+function getProfileSelectClause(options?: ProfileFieldSelection) {
+  const fields = ['id', 'name', 'nickname']
+
+  if (options?.includeEmail !== false) {
+    fields.push('email')
+  }
+
+  if (options?.includeAvatarUrl !== false) {
+    fields.push('avatar_url')
+  }
+
+  return fields.join(', ')
+}
+
 function getFreshCachedValue<T>(cacheEntry: { value: T; expiresAt: number } | undefined) {
   if (!cacheEntry || cacheEntry.expiresAt <= Date.now()) {
     return { found: false as const, value: null as T | null }
@@ -169,7 +196,7 @@ function getFreshCachedValue<T>(cacheEntry: { value: T; expiresAt: number } | un
   return { found: true as const, value: cacheEntry.value }
 }
 
-async function loadProfilesByUserIds(userIds: string[]) {
+async function loadProfilesByUserIds(userIds: string[], options?: ProfileFieldSelection) {
   if (userIds.length === 0) {
     return {} as Record<string, ProfileRow | null>
   }
@@ -179,7 +206,8 @@ async function loadProfilesByUserIds(userIds: string[]) {
   const missingUserIds: string[] = []
 
   for (const userId of uniqueUserIds) {
-    const cachedProfile = getFreshCachedValue(profileCache.get(userId))
+    const cacheKey = getProfileCacheKey(userId, options)
+    const cachedProfile = getFreshCachedValue(profileCache.get(cacheKey))
     if (cachedProfile.found) {
       profileById[userId] = cachedProfile.value
     } else {
@@ -190,17 +218,17 @@ async function loadProfilesByUserIds(userIds: string[]) {
   if (missingUserIds.length > 0) {
     const { data: profiles, error } = await supabase
       .from('profiles')
-      .select('id, name, nickname, email, avatar_url')
+      .select(getProfileSelectClause(options))
       .in('id', missingUserIds)
 
     if (!error) {
-      const fetchedProfiles = (profiles as ProfileRow[] | null) ?? []
+      const fetchedProfiles = (profiles as unknown as ProfileRow[] | null) ?? []
       const fetchedProfileById = Object.fromEntries(fetchedProfiles.map((profile) => [profile.id, profile]))
 
       for (const userId of missingUserIds) {
         const profile = fetchedProfileById[userId] ?? null
         profileById[userId] = profile
-        profileCache.set(userId, {
+        profileCache.set(getProfileCacheKey(userId, options), {
           value: profile,
           expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
         })
@@ -277,7 +305,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
     challengeXpByUser,
     likeXpByUser,
   ] = await Promise.all([
-    loadProfilesByUserIds([userId]),
+    loadProfilesByUserIds([userId], { includeAvatarUrl: false }),
     supabase
       .from('runs')
       .select('distance_km, xp, created_at')
@@ -324,7 +352,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
 }
 
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
-  const profileById = await loadProfilesByUserIds([userId])
+  const profileById = await loadProfilesByUserIds([userId], { includeAvatarUrl: false })
   const data = profileById[userId]
 
   if (!data) {
