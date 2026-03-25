@@ -9,7 +9,7 @@ type ChatMessageRow = {
   id: string
   user_id: string
   text: string
-  image_url?: string | null
+  image_url: string | null
   created_at: string
   is_deleted: boolean
   reply_to_id: string | null
@@ -92,6 +92,13 @@ function toChatReplyPreview(replyToId: string, message: ChatMessageRow | null | 
   }
 }
 
+function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
+  return {
+    ...message,
+    image_url: message.image_url ?? null,
+  }
+}
+
 function toChatMessageItem(
   message: ChatMessageRow,
   profile?: ProfileRow,
@@ -135,7 +142,12 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
     throw replyMessagesError
   }
 
-  return Object.fromEntries(((replyMessages as ChatMessageRow[] | null) ?? []).map((message) => [message.id, message])) as Record<string, ChatMessageRow>
+  return Object.fromEntries(
+    ((replyMessages as ChatMessageRow[] | null) ?? []).map((message) => {
+      const normalizedMessage = normalizeChatMessageRow(message)
+      return [normalizedMessage.id, normalizedMessage]
+    })
+  ) as Record<string, ChatMessageRow>
 }
 
 export async function createChatMessage(
@@ -241,7 +253,7 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     throw messageError
   }
 
-  const messageRow = message as ChatMessageRow | null
+  const messageRow = message ? normalizeChatMessageRow(message as ChatMessageRow) : null
 
   if (!messageRow || messageRow.is_deleted) {
     return null
@@ -290,7 +302,10 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
     throw messagesError
   }
 
-  const messageRows = ((messages as ChatMessageRow[] | null) ?? []).slice().reverse()
+  const messageRows = ((messages as ChatMessageRow[] | null) ?? [])
+    .map(normalizeChatMessageRow)
+    .slice()
+    .reverse()
   const replyIds = Array.from(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
@@ -338,7 +353,10 @@ export async function loadOlderChatMessages(
     throw messagesError
   }
 
-  const messageRows = ((messages as ChatMessageRow[] | null) ?? []).slice().reverse()
+  const messageRows = ((messages as ChatMessageRow[] | null) ?? [])
+    .map(normalizeChatMessageRow)
+    .slice()
+    .reverse()
   const replyIds = Array.from(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
