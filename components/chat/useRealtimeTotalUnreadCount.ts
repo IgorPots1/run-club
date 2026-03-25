@@ -2,20 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getBootstrapUser } from '@/lib/auth'
+import { getTotalUnreadCount } from '@/lib/chat/reads'
+import { CHAT_UNREAD_COUNT_EVENT } from '@/lib/chat/unread-events'
 import { supabase } from '@/lib/supabase'
-import { CHAT_UNREAD_COUNT_EVENT, refreshAndDispatchChatUnreadCount } from '@/lib/chat/unread-events'
 
-export default function useRealtimeTotalUnreadCount() {
+export function useRealtimeTotalUnreadCount() {
   const [totalUnreadCount, setTotalUnreadCount] = useState(0)
   const currentUserIdRef = useRef<string | null>(null)
 
   const refreshTotalUnreadCount = async (isMounted = true) => {
     try {
-      const nextTotalUnreadCount = await refreshAndDispatchChatUnreadCount()
+      const nextTotalUnreadCount = await getTotalUnreadCount()
 
       if (isMounted) {
         setTotalUnreadCount(nextTotalUnreadCount)
       }
+
+      return nextTotalUnreadCount
     } catch {
       try {
         if (isMounted) {
@@ -24,6 +27,8 @@ export default function useRealtimeTotalUnreadCount() {
       } catch {
         // Keep unread badge refresh non-blocking.
       }
+
+      return 0
     }
   }
 
@@ -78,3 +83,5 @@ export default function useRealtimeTotalUnreadCount() {
     refreshTotalUnreadCount,
   }
 }
+
+export default useRealtimeTotalUnreadCount
