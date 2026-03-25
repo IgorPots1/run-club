@@ -15,6 +15,7 @@ import {
   loadOlderChatMessages,
   loadRecentChatMessages,
   softDeleteChatMessage,
+  toggleChatMessageReaction,
   type ChatMessageItem,
   updateChatMessage,
   uploadChatImage,
@@ -111,18 +112,101 @@ function removeMessageById(messages: ChatMessageItem[], messageId: string) {
   return messages.filter((message) => message.id !== messageId)
 }
 
+function toggleReactionOnMessage(
+  message: ChatMessageItem,
+  userId: string,
+  emoji: string,
+  shouldActivate?: boolean
+) {
+  const existingReaction = message.reactions.find((reaction) => reaction.emoji === emoji) ?? null
+  const hasReacted = existingReaction?.userIds.includes(userId) ?? false
+  const nextIsActive = shouldActivate ?? !hasReacted
+
+  if (nextIsActive === hasReacted) {
+    return message
+  }
+
+  let nextReactions = message.reactions.map((reaction) => ({
+    ...reaction,
+    userIds: [...reaction.userIds],
+  }))
+
+  if (nextIsActive) {
+    if (existingReaction) {
+      nextReactions = nextReactions.map((reaction) =>
+        reaction.emoji === emoji
+          ? {
+              ...reaction,
+              count: reaction.count + 1,
+              userIds: reaction.userIds.includes(userId) ? reaction.userIds : [...reaction.userIds, userId],
+            }
+          : reaction
+      )
+    } else {
+      nextReactions = [...nextReactions, { emoji, count: 1, userIds: [userId] }]
+    }
+  } else {
+    nextReactions = nextReactions
+      .map((reaction) =>
+        reaction.emoji === emoji
+          ? {
+              ...reaction,
+              count: Math.max(0, reaction.count - 1),
+              userIds: reaction.userIds.filter((currentUserId) => currentUserId !== userId),
+            }
+          : reaction
+      )
+      .filter((reaction) => reaction.count > 0)
+  }
+
+  const emojiOrder = ['👍', '❤️', '🔥', '😂']
+  nextReactions.sort((left, right) => {
+    const leftOrder = emojiOrder.indexOf(left.emoji)
+    const rightOrder = emojiOrder.indexOf(right.emoji)
+
+    if (leftOrder !== -1 || rightOrder !== -1) {
+      if (leftOrder === -1) return 1
+      if (rightOrder === -1) return -1
+      return leftOrder - rightOrder
+    }
+
+    return left.emoji.localeCompare(right.emoji)
+  })
+
+  return {
+    ...message,
+    reactions: nextReactions,
+  }
+}
+
+function updateMessageReaction(
+  messages: ChatMessageItem[],
+  messageId: string,
+  userId: string,
+  emoji: string,
+  shouldActivate?: boolean
+) {
+  return messages.map((message) =>
+    message.id === messageId ? toggleReactionOnMessage(message, userId, emoji, shouldActivate) : message
+  )
+}
+
 function ChatMessageBody({
   message,
   isOwnMessage = false,
   showSenderName = true,
   onReplyPreviewClick,
   onImageClick,
+  currentUserId = null,
+  onReactionToggle,
 }: {
   message: ChatMessageItem
   isOwnMessage?: boolean
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
   onImageClick?: (imageUrl: string) => void
+  currentUserId?: string | null
+  onReactionToggle?: (messageId: string, emoji: string) => void
 }) {
   const isFallbackReplyPreview = Boolean(
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
@@ -191,6 +275,35 @@ function ChatMessageBody({
         {message.createdAtLabel}
         {message.editedAt ? ' • изменено' : ''}
       </p>
+      {message.reactions.length > 0 ? (
+        <div className={`mt-2 flex flex-wrap gap-1.5 ${isOwnMessage ? 'justify-end' : ''}`}>
+          {message.reactions.map((reaction) => {
+            const isSelected = currentUserId ? reaction.userIds.includes(currentUserId) : false
+
+            return (
+              <button
+                key={`${message.id}:${reaction.emoji}`}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onReactionToggle?.(message.id, reaction.emoji)
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onTouchStart={(event) => event.stopPropagation()}
+                disabled={!onReactionToggle}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-transform duration-150 active:scale-95 ${
+                  isSelected
+                    ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
+                    : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.08] dark:text-white/75'
+                } ${onReactionToggle ? '' : 'cursor-default'}`}
+              >
+                <span>{reaction.emoji}</span>
+                <span>{reaction.count}</span>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
     </>
   )
 }
@@ -635,9 +748,16 @@ export default function ChatSection({
       return
     }
 
-    if (!messages.some((message) => message.id === selectedMessage.id)) {
+    const nextSelectedMessage = messages.find((message) => message.id === selectedMessage.id) ?? null
+
+    if (!nextSelectedMessage) {
       setSelectedMessage(null)
       setIsActionSheetOpen(false)
+      return
+    }
+
+    if (nextSelectedMessage !== selectedMessage) {
+      setSelectedMessage(nextSelectedMessage)
     }
   }, [messages, selectedMessage])
 
@@ -1138,6 +1258,64 @@ export default function ChatSection({
     }
   }, [isNearBottom, keepLatestRenderedMessages, loading, isAuthenticated, refreshMessages, threadId])
 
+  useEffect(() => {
+    if (loading || !isAuthenticated) {
+      return
+    }
+
+    const channel = supabase
+      .channel(threadId ? `chat-message-reactions:${threadId}` : 'chat-message-reactions')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_message_reactions',
+        },
+        (payload) => {
+          const reaction = payload.new as { message_id?: string; user_id?: string; emoji?: string } | null
+          const messageId = String(reaction?.message_id ?? '')
+          const userId = String(reaction?.user_id ?? '')
+          const emoji = String(reaction?.emoji ?? '')
+
+          if (!messageId || !userId || !emoji || !messagesRef.current.some((message) => message.id === messageId)) {
+            return
+          }
+
+          setMessages((currentMessages) =>
+            updateMessageReaction(currentMessages, messageId, userId, emoji, true)
+          )
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'chat_message_reactions',
+        },
+        (payload) => {
+          const reaction = payload.old as { message_id?: string; user_id?: string; emoji?: string } | null
+          const messageId = String(reaction?.message_id ?? '')
+          const userId = String(reaction?.user_id ?? '')
+          const emoji = String(reaction?.emoji ?? '')
+
+          if (!messageId || !userId || !emoji || !messagesRef.current.some((message) => message.id === messageId)) {
+            return
+          }
+
+          setMessages((currentMessages) =>
+            updateMessageReaction(currentMessages, messageId, userId, emoji, false)
+          )
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [isAuthenticated, loading, threadId])
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -1248,6 +1426,36 @@ export default function ChatSection({
   function handleReplyToMessage(message: ChatMessageItem) {
     setReplyingToMessage(message)
     setEditingMessageId(null)
+  }
+
+  async function handleToggleReaction(messageId: string, emoji: string) {
+    if (!currentUserId) {
+      return
+    }
+
+    const currentMessage = messagesRef.current.find((message) => message.id === messageId) ?? null
+
+    if (!currentMessage) {
+      return
+    }
+
+    const hasReacted = currentMessage.reactions.some(
+      (reaction) => reaction.emoji === emoji && reaction.userIds.includes(currentUserId)
+    )
+    const nextShouldActivate = !hasReacted
+
+    setMessages((currentMessages) =>
+      updateMessageReaction(currentMessages, messageId, currentUserId, emoji, nextShouldActivate)
+    )
+
+    try {
+      await toggleChatMessageReaction(messageId, currentUserId, emoji)
+    } catch (error) {
+      console.error('Failed to toggle chat reaction', error)
+      setMessages((currentMessages) =>
+        updateMessageReaction(currentMessages, messageId, currentUserId, emoji, hasReacted)
+      )
+    }
   }
 
   function clearEditingMessage() {
@@ -1726,8 +1934,10 @@ export default function ChatSection({
                                 message={message}
                                 isOwnMessage={isOwnMessage}
                                 showSenderName={showSenderName}
+                                currentUserId={currentUserId}
                                 onReplyPreviewClick={replyPreviewTargetId ? () => handleReplyPreviewClick(replyPreviewTargetId) : undefined}
                                 onImageClick={setSelectedViewerImageUrl}
+                                onReactionToggle={handleToggleReaction}
                               />
                             </div>
                           </div>
@@ -1766,7 +1976,12 @@ export default function ChatSection({
                 <AvatarFallback />
               )}
               <div className="chat-no-select min-w-0 flex-1 rounded-2xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.08]">
-                <ChatMessageBody message={selectedMessage} onImageClick={setSelectedViewerImageUrl} />
+                <ChatMessageBody
+                  message={selectedMessage}
+                  currentUserId={currentUserId}
+                  onImageClick={setSelectedViewerImageUrl}
+                  onReactionToggle={handleToggleReaction}
+                />
               </div>
             </div>
           </div>
@@ -1806,6 +2021,7 @@ export default function ChatSection({
           onDelete={handleDeleteMessage}
           onEdit={handleEditMessage}
           onReply={handleReplyToMessage}
+          onToggleReaction={handleToggleReaction}
         />
       ) : null}
     </div>

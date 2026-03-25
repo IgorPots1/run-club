@@ -27,7 +27,7 @@ import {
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
-const CHAT_UNREAD_COUNT_EVENT = 'run-club:chat-unread-count'
+const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 
 function AvatarFallback() {
   return (
@@ -332,9 +332,8 @@ export default function MessagesPage() {
     }
 
     const totalUnreadCount = Object.values(unreadCountsByThread).reduce((total, count) => total + count, 0)
-
     window.dispatchEvent(
-      new CustomEvent(CHAT_UNREAD_COUNT_EVENT, {
+      new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
         detail: {
           count: totalUnreadCount,
         },

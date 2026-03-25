@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { getBootstrapUser } from '@/lib/auth'
 import { getTotalUnreadCount } from '@/lib/chat/reads'
-import { CHAT_UNREAD_COUNT_EVENT } from '@/lib/chat/unread-events'
 import { supabase } from '@/lib/supabase'
+
+const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 
 export function useRealtimeTotalUnreadCount() {
   const [totalUnreadCount, setTotalUnreadCount] = useState(0)
@@ -43,7 +44,7 @@ export function useRealtimeTotalUnreadCount() {
       setTotalUnreadCount(event.detail.count)
     }
 
-    window.addEventListener(CHAT_UNREAD_COUNT_EVENT, handleUnreadCountEvent)
+    window.addEventListener(CHAT_UNREAD_UPDATED_EVENT, handleUnreadCountEvent)
 
     void getBootstrapUser().then((user) => {
       currentUserIdRef.current = user?.id ?? null
@@ -73,7 +74,7 @@ export function useRealtimeTotalUnreadCount() {
 
     return () => {
       isMounted = false
-      window.removeEventListener(CHAT_UNREAD_COUNT_EVENT, handleUnreadCountEvent)
+      window.removeEventListener(CHAT_UNREAD_UPDATED_EVENT, handleUnreadCountEvent)
       void supabase.removeChannel(channel)
     }
   }, [])

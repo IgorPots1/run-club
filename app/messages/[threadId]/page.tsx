@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
-import { markThreadAsRead } from '@/lib/chat/reads'
+import { getTotalUnreadCount, markThreadAsRead } from '@/lib/chat/reads'
 import { getChatThreadById } from '@/lib/chat/threads'
 import { COACH_USER_ID } from '@/lib/constants'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
@@ -17,6 +17,8 @@ type ProfileRow = {
   nickname: string | null
   email: string | null
 }
+
+const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
@@ -122,11 +124,26 @@ export default function MessageThreadPage() {
 
     lastMarkedThreadIdRef.current = threadId
 
-    void markThreadAsRead(threadId).catch(() => {
-      if (lastMarkedThreadIdRef.current === threadId) {
-        lastMarkedThreadIdRef.current = null
-      }
-    })
+    void markThreadAsRead(threadId)
+      .then(async () => {
+        if (typeof window === 'undefined') {
+          return
+        }
+
+        const totalUnreadCount = await getTotalUnreadCount()
+        window.dispatchEvent(
+          new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
+            detail: {
+              count: totalUnreadCount,
+            },
+          })
+        )
+      })
+      .catch(() => {
+        if (lastMarkedThreadIdRef.current === threadId) {
+          lastMarkedThreadIdRef.current = null
+        }
+      })
   }, [currentUserId, error, loading, threadId])
 
   if (loading) {

@@ -17,6 +17,12 @@ type ChatMessageRow = {
   thread_id?: string | null
 }
 
+type ChatMessageReactionRow = {
+  message_id: string
+  user_id: string
+  emoji: string
+}
+
 type ChatReadStateRow = {
   user_id: string
   last_read_at: string | null
@@ -49,6 +55,11 @@ export type ChatMessageItem = {
     displayName: string
     text: string
   } | null
+  reactions: {
+    emoji: string
+    count: number
+    userIds: string[]
+  }[]
 }
 
 async function loadProfilesByUserIds(userIds: string[]) {
@@ -102,11 +113,58 @@ function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
   }
 }
 
+function sortChatReactions(reactions: { emoji: string; count: number; userIds: string[] }[]) {
+  const emojiOrder = ['👍', '❤️', '🔥', '😂']
+
+  return reactions.slice().sort((left, right) => {
+    const leftOrder = emojiOrder.indexOf(left.emoji)
+    const rightOrder = emojiOrder.indexOf(right.emoji)
+
+    if (leftOrder !== -1 || rightOrder !== -1) {
+      if (leftOrder === -1) return 1
+      if (rightOrder === -1) return -1
+      return leftOrder - rightOrder
+    }
+
+    return left.emoji.localeCompare(right.emoji)
+  })
+}
+
+function buildReactionsByMessageId(rows: ChatMessageReactionRow[]) {
+  const reactionsByMessageId: Record<string, Record<string, Set<string>>> = {}
+
+  rows.forEach((row) => {
+    if (!reactionsByMessageId[row.message_id]) {
+      reactionsByMessageId[row.message_id] = {}
+    }
+
+    if (!reactionsByMessageId[row.message_id]?.[row.emoji]) {
+      reactionsByMessageId[row.message_id]![row.emoji] = new Set()
+    }
+
+    reactionsByMessageId[row.message_id]![row.emoji]!.add(row.user_id)
+  })
+
+  return Object.fromEntries(
+    Object.entries(reactionsByMessageId).map(([messageId, emojiMap]) => [
+      messageId,
+      sortChatReactions(
+        Object.entries(emojiMap).map(([emoji, userIds]) => ({
+          emoji,
+          count: userIds.size,
+          userIds: Array.from(userIds),
+        }))
+      ),
+    ])
+  ) as Record<string, { emoji: string; count: number; userIds: string[] }[]>
+}
+
 function toChatMessageItem(
   message: ChatMessageRow,
   profile?: ProfileRow,
   replyToMessage?: ChatMessageRow | null,
-  replyToProfile?: ProfileRow
+  replyToProfile?: ProfileRow,
+  reactions: { emoji: string; count: number; userIds: string[] }[] = []
 ): ChatMessageItem {
   return {
     id: message.id,
@@ -123,7 +181,25 @@ function toChatMessageItem(
     replyTo: message.reply_to_id
       ? toChatReplyPreview(message.reply_to_id, replyToMessage, replyToProfile)
       : null,
+    reactions,
   }
+}
+
+async function loadChatReactionsByMessageIds(messageIds: string[]) {
+  if (messageIds.length === 0) {
+    return {}
+  }
+
+  const { data: reactions, error: reactionsError } = await supabase
+    .from('chat_message_reactions')
+    .select('message_id, user_id, emoji')
+    .in('message_id', messageIds)
+
+  if (reactionsError) {
+    throw reactionsError
+  }
+
+  return buildReactionsByMessageId((reactions as ChatMessageReactionRow[] | null) ?? [])
 }
 
 async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | null) {
@@ -206,6 +282,47 @@ export async function updateChatMessage(
   }
 
   return updateQuery
+}
+
+export async function toggleChatMessageReaction(messageId: string, userId: string, emoji: string) {
+  const { data: existingReaction, error: existingReactionError } = await supabase
+    .from('chat_message_reactions')
+    .select('message_id')
+    .eq('message_id', messageId)
+    .eq('user_id', userId)
+    .eq('emoji', emoji)
+    .maybeSingle()
+
+  if (existingReactionError) {
+    throw existingReactionError
+  }
+
+  if (existingReaction) {
+    const { error: deleteError } = await supabase
+      .from('chat_message_reactions')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+
+    if (deleteError) {
+      throw deleteError
+    }
+
+    return { active: false }
+  }
+
+  const { error: insertError } = await supabase.from('chat_message_reactions').insert({
+    message_id: messageId,
+    user_id: userId,
+    emoji,
+  })
+
+  if (insertError) {
+    throw insertError
+  }
+
+  return { active: true }
 }
 
 export async function uploadChatImage(userId: string, file: File, threadId?: string | null) {
@@ -302,6 +419,7 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     threadId
   )
   const replyMessage = messageRow.reply_to_id ? replyById[messageRow.reply_to_id] ?? null : null
+  const reactionsByMessageId = await loadChatReactionsByMessageIds([messageRow.id])
   const profileIds = Array.from(
     new Set([
       messageRow.user_id,
@@ -314,7 +432,8 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     messageRow,
     profileById[messageRow.user_id],
     replyMessage,
-    replyMessage ? profileById[replyMessage.user_id] : undefined
+    replyMessage ? profileById[replyMessage.user_id] : undefined,
+    reactionsByMessageId[messageRow.id] ?? []
   )
 }
 
@@ -348,6 +467,7 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
   const replyById = await loadChatReplyRowsByIds(replyIds, threadId)
+  const reactionsByMessageId = await loadChatReactionsByMessageIds(messageRows.map((message) => message.id))
   const userIds = Array.from(
     new Set([
       ...messageRows.map((message) => message.user_id),
@@ -363,7 +483,8 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
       message,
       profileById[message.user_id],
       replyMessage,
-      replyMessage ? profileById[replyMessage.user_id] : undefined
+      replyMessage ? profileById[replyMessage.user_id] : undefined,
+      reactionsByMessageId[message.id] ?? []
     )
   })
 }
@@ -399,6 +520,7 @@ export async function loadOlderChatMessages(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
   const replyById = await loadChatReplyRowsByIds(replyIds, threadId)
+  const reactionsByMessageId = await loadChatReactionsByMessageIds(messageRows.map((message) => message.id))
   const userIds = Array.from(
     new Set([
       ...messageRows.map((message) => message.user_id),
@@ -414,7 +536,8 @@ export async function loadOlderChatMessages(
       message,
       profileById[message.user_id],
       replyMessage,
-      replyMessage ? profileById[replyMessage.user_id] : undefined
+      replyMessage ? profileById[replyMessage.user_id] : undefined,
+      reactionsByMessageId[message.id] ?? []
     )
   })
 }
