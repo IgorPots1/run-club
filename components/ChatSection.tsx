@@ -115,11 +115,13 @@ function ChatMessageBody({
   isOwnMessage = false,
   showSenderName = true,
   onReplyPreviewClick,
+  onImageClick,
 }: {
   message: ChatMessageItem
   isOwnMessage?: boolean
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
+  onImageClick?: (imageUrl: string) => void
 }) {
   const isFallbackReplyPreview = Boolean(
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
@@ -158,13 +160,20 @@ function ChatMessageBody({
         </button>
       ) : null}
       {message.imageUrl ? (
-        <img
-          src={message.imageUrl}
-          alt="Вложение"
-          className={`mt-1 max-h-80 w-auto max-w-[70%] rounded-2xl object-cover ${
+        <button
+          type="button"
+          onClick={() => onImageClick?.(message.imageUrl!)}
+          className={`mt-1 block max-w-[70%] overflow-hidden rounded-2xl ${
             isOwnMessage ? 'ml-auto' : ''
           }`}
-        />
+          aria-label="Открыть изображение"
+        >
+          <img
+            src={message.imageUrl}
+            alt="Вложение"
+            className="max-h-80 w-auto rounded-2xl object-cover"
+          />
+        </button>
       ) : null}
       {message.text ? (
         <p
@@ -232,6 +241,7 @@ export default function ChatSection({
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
+  const [selectedViewerImageUrl, setSelectedViewerImageUrl] = useState<string | null>(null)
   const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
@@ -623,6 +633,24 @@ export default function ChatSection({
       setIsActionSheetOpen(false)
     }
   }, [messages, selectedMessage])
+
+  useEffect(() => {
+    if (!selectedViewerImageUrl) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSelectedViewerImageUrl(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedViewerImageUrl])
 
   useEffect(() => {
     let isMounted = true
@@ -1625,6 +1653,7 @@ export default function ChatSection({
                                 isOwnMessage={isOwnMessage}
                                 showSenderName={showSenderName}
                                 onReplyPreviewClick={replyPreviewTargetId ? () => handleReplyPreviewClick(replyPreviewTargetId) : undefined}
+                                onImageClick={setSelectedViewerImageUrl}
                               />
                             </div>
                           </div>
@@ -1663,9 +1692,34 @@ export default function ChatSection({
                 <AvatarFallback />
               )}
               <div className="chat-no-select min-w-0 flex-1 rounded-2xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.08]">
-                <ChatMessageBody message={selectedMessage} />
+                <ChatMessageBody message={selectedMessage} onImageClick={setSelectedViewerImageUrl} />
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {selectedViewerImageUrl ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setSelectedViewerImageUrl(null)}
+        >
+          <button
+            type="button"
+            aria-label="Закрыть изображение"
+            className="absolute right-4 top-4 z-[81] flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-xl text-white backdrop-blur-sm"
+            onClick={() => setSelectedViewerImageUrl(null)}
+          >
+            X
+          </button>
+          <div
+            className="flex max-h-full max-w-full items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img
+              src={selectedViewerImageUrl}
+              alt="Полноразмерное изображение"
+              className="max-h-[calc(100svh-2rem)] max-w-[calc(100vw-2rem)] rounded-2xl object-contain"
+            />
           </div>
         </div>
       ) : null}
