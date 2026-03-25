@@ -1,19 +1,9 @@
 import { getBootstrapUser } from '../auth'
 import { supabase } from '../supabase'
 
-type ChatThreadRow = {
-  id: string
-}
-
-type ChatThreadReadRow = {
+type UnreadCountRpcRow = {
   thread_id: string
-  user_id: string
-  last_read_at: string | null
-}
-
-type ChatMessageReadMarkerRow = {
-  id: string
-  created_at: string
+  unread_count: number | string | null
 }
 
 export type UnreadCountsByThread = Record<string, number>
@@ -28,36 +18,9 @@ async function requireCurrentUserId() {
   return user.id
 }
 
-async function getAccessibleThreadIds(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('chat_threads')
-    .select('id')
-
-  if (error) {
-    throw error
-  }
-
-  return ((data as ChatThreadRow[] | null) ?? []).map((thread) => thread.id)
-}
-
-async function getThreadReadRows(userId: string, threadIds: string[]) {
-  if (threadIds.length === 0) {
-    return {}
-  }
-
-  const { data, error } = await supabase
-    .from('chat_thread_reads')
-    .select('thread_id, user_id, last_read_at')
-    .eq('user_id', userId)
-    .in('thread_id', threadIds)
-
-  if (error) {
-    throw error
-  }
-
-  return Object.fromEntries(
-    ((data as ChatThreadReadRow[] | null) ?? []).map((row) => [row.thread_id, row])
-  ) as Record<string, ChatThreadReadRow>
+type ChatMessageReadMarkerRow = {
+  id: string
+  created_at: string
 }
 
 export async function markThreadAsRead(threadId: string) {
@@ -99,38 +62,22 @@ export async function markThreadAsRead(threadId: string) {
 
 export async function getUnreadCountsByThread(): Promise<UnreadCountsByThread> {
   const userId = await requireCurrentUserId()
-  const threadIds = await getAccessibleThreadIds()
+  const { data, error } = await supabase.rpc('get_unread_counts_by_thread', {
+    p_user_id: userId,
+  })
 
-  if (threadIds.length === 0) {
-    return {}
+  if (error) {
+    throw error
   }
 
-  const readStateByThreadId = await getThreadReadRows(userId, threadIds)
-  const unreadCountsEntries = await Promise.all(
-    threadIds.map(async (threadId) => {
-      const lastReadAt = readStateByThreadId[threadId]?.last_read_at ?? null
-      const unreadMessagesQuery = supabase
-        .from('chat_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('thread_id', threadId)
-        .eq('is_deleted', false)
-        .neq('user_id', userId)
-
-      if (lastReadAt) {
-        unreadMessagesQuery.gt('created_at', lastReadAt)
-      }
-
-      const { count, error } = await unreadMessagesQuery
-
-      if (error) {
-        throw error
-      }
-
-      return [threadId, count ?? 0] as const
-    })
+  return Object.fromEntries(
+    ((data as UnreadCountRpcRow[] | null) ?? []).map((row) => [
+      row.thread_id,
+      typeof row.unread_count === 'string'
+        ? Number(row.unread_count)
+        : Number(row.unread_count ?? 0),
+    ])
   )
-
-  return Object.fromEntries(unreadCountsEntries)
 }
 
 export async function getTotalUnreadCount(): Promise<number> {
