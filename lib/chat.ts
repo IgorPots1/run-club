@@ -63,18 +63,22 @@ async function loadProfilesByUserIds(userIds: string[]) {
   return Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])) as Record<string, ProfileRow>
 }
 
-function toChatReplyPreview(message: ChatMessageRow | null | undefined, profile?: ProfileRow) {
+function toChatUnavailableReplyPreview(replyToId: string, displayName: string) {
+  return {
+    id: replyToId,
+    userId: null,
+    displayName,
+    text: '',
+  }
+}
+
+function toChatReplyPreview(replyToId: string, message: ChatMessageRow | null | undefined, profile?: ProfileRow) {
   if (!message) {
-    return null
+    return toChatUnavailableReplyPreview(replyToId, 'Сообщение недоступно')
   }
 
   if (message.is_deleted) {
-    return {
-      id: message.id,
-      userId: message.user_id,
-      displayName: getProfileDisplayName(profile, 'Ответ'),
-      text: 'Сообщение недоступно',
-    }
+    return toChatUnavailableReplyPreview(replyToId, 'Сообщение удалено')
   }
 
   return {
@@ -101,7 +105,9 @@ function toChatMessageItem(
     displayName: getProfileDisplayName(profile, 'Бегун'),
     avatarUrl: profile?.avatar_url ?? null,
     replyToId: message.reply_to_id,
-    replyTo: message.reply_to_id ? toChatReplyPreview(replyToMessage, replyToProfile) : null,
+    replyTo: message.reply_to_id
+      ? toChatReplyPreview(message.reply_to_id, replyToMessage, replyToProfile)
+      : null,
   }
 }
 

@@ -120,6 +120,10 @@ function ChatMessageBody({
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
 }) {
+  const isFallbackReplyPreview = Boolean(
+    message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
+  )
+
   return (
     <>
       {showSenderName ? (
@@ -135,14 +139,21 @@ function ChatMessageBody({
         <button
           type="button"
           onClick={onReplyPreviewClick}
+          disabled={!onReplyPreviewClick}
           className={`mt-1 rounded-[14px] px-2.5 py-1.5 ${
             isOwnMessage
               ? 'bg-black/[0.04] dark:bg-white/[0.07]'
               : 'bg-black/[0.03] dark:bg-white/[0.05]'
-          } ${onReplyPreviewClick ? 'block w-full cursor-pointer text-left' : 'block w-full text-left'}`}
+          } ${onReplyPreviewClick ? 'block w-full cursor-pointer text-left' : 'block w-full cursor-default text-left'} ${
+            isFallbackReplyPreview ? 'opacity-75' : ''
+          }`}
         >
-          <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
-          <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
+          <p className={`${isFallbackReplyPreview ? 'app-text-secondary' : 'app-text-primary'} truncate text-xs font-medium`}>
+            {message.replyTo.displayName}
+          </p>
+          {message.replyTo.text ? (
+            <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
+          ) : null}
         </button>
       ) : null}
       <p
@@ -1437,7 +1448,8 @@ export default function ChatSection({
                       const isFirstInAuthorRun = !isSameAuthorAsPrevious
                       const showAvatar = !isOwnMessage && isFirstInAuthorRun
                       const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
-                      const replyPreviewTargetId = message.replyTo?.id ?? null
+                      const replyPreviewTargetId =
+                        message.replyTo && message.replyTo.userId !== null ? message.replyTo.id : null
                       const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
 
                       return (
