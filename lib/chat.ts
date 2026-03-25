@@ -238,6 +238,10 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
   )
 }
 
+export async function loadChatMessageById(messageId: string, threadId?: string | null): Promise<ChatMessageItem | null> {
+  return loadChatMessageItem(messageId, threadId)
+}
+
 export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')

@@ -9,6 +9,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
+  loadChatMessageById,
   loadChatReadState,
   loadChatMessageItem,
   loadOlderChatMessages,
@@ -175,6 +176,7 @@ export default function ChatSection({
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const longPressTimeoutRef = useRef<number | null>(null)
+  const pendingReplyJumpTargetIdRef = useRef<string | null>(null)
   const swipeGestureMessageIdRef = useRef<string | null>(null)
   const swipeStartXRef = useRef<number | null>(null)
   const swipeStartYRef = useRef<number | null>(null)
@@ -315,11 +317,11 @@ export default function ChatSection({
     highlightedMessageIdRef.current = null
   }, [])
 
-  const handleReplyPreviewClick = useCallback((replyToMessageId: string) => {
+  const scrollAndHighlightMessage = useCallback((replyToMessageId: string) => {
     const targetMessageNode = messageRefs.current[replyToMessageId]
 
     if (!targetMessageNode) {
-      return
+      return false
     }
 
     clearReplyTargetHighlight()
@@ -333,7 +335,33 @@ export default function ChatSection({
       }
       highlightedMessageTimeoutRef.current = null
     }, 1500)
+    return true
   }, [clearReplyTargetHighlight])
+
+  const handleReplyPreviewClick = useCallback(async (replyToMessageId: string) => {
+    if (scrollAndHighlightMessage(replyToMessageId)) {
+      return
+    }
+
+    try {
+      const targetMessage = await loadChatMessageById(replyToMessageId, threadId)
+
+      if (!targetMessage) {
+        return
+      }
+
+      pendingReplyJumpTargetIdRef.current = replyToMessageId
+      setMessages((currentMessages) => {
+        if (currentMessages.some((message) => message.id === replyToMessageId)) {
+          return currentMessages
+        }
+
+        return insertMessageChronologically(currentMessages, targetMessage)
+      })
+    } catch {
+      // Keep reply navigation non-blocking if the source message is unavailable.
+    }
+  }, [scrollAndHighlightMessage, threadId])
 
   function getNewMessagesLabel(count: number) {
     return count === 1 ? '1 new message' : `${count} new messages`
@@ -522,10 +550,40 @@ export default function ChatSection({
   }, [clearReplyTargetHighlight])
 
   useEffect(() => {
-    return () => {
-      resetSwipeReplyGesture()
+    const pendingReplyJumpTargetId = pendingReplyJumpTargetIdRef.current
+
+    if (!pendingReplyJumpTargetId) {
+      return
     }
-  }, [resetSwipeReplyGesture])
+
+    let animationFrameId: number | null = null
+    let nestedAnimationFrameId: number | null = null
+
+    animationFrameId = window.requestAnimationFrame(() => {
+      nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        if (scrollAndHighlightMessage(pendingReplyJumpTargetId)) {
+          pendingReplyJumpTargetIdRef.current = null
+        }
+      })
+    })
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+      }
+      if (nestedAnimationFrameId !== null) {
+        window.cancelAnimationFrame(nestedAnimationFrameId)
+      }
+    }
+  }, [messages, scrollAndHighlightMessage])
+
+  useEffect(() => {
+    return () => {
+      swipeGestureMessageIdRef.current = null
+      swipeStartXRef.current = null
+      swipeStartYRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedMessage) {
@@ -1379,6 +1437,7 @@ export default function ChatSection({
                       const isFirstInAuthorRun = !isSameAuthorAsPrevious
                       const showAvatar = !isOwnMessage && isFirstInAuthorRun
                       const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
+                      const replyPreviewTargetId = message.replyTo?.id ?? null
                       const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
 
                       return (
@@ -1462,7 +1521,7 @@ export default function ChatSection({
                                 message={message}
                                 isOwnMessage={isOwnMessage}
                                 showSenderName={showSenderName}
-                                onReplyPreviewClick={message.replyTo ? () => handleReplyPreviewClick(message.replyTo.id) : undefined}
+                                onReplyPreviewClick={replyPreviewTargetId ? () => handleReplyPreviewClick(replyPreviewTargetId) : undefined}
                               />
                             </div>
                           </div>
