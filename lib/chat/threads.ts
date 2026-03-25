@@ -225,18 +225,18 @@ export async function getClubThread(): Promise<ClubThread> {
   return threadWithLastMessage as ClubThread
 }
 
-export async function getChatThreadById(threadId: string): Promise<ChatThreadRow> {
+export async function getChatThreadById(threadId: string): Promise<ChatThreadRow | null> {
   const { data, error } = await supabase
     .from('chat_threads')
     .select('id, type, title, owner_user_id, coach_user_id, created_at')
     .eq('id', threadId)
-    .single()
+    .maybeSingle()
 
   if (error) {
     throw error
   }
 
-  return data as ChatThreadRow
+  return (data as ChatThreadRow | null) ?? null
 }
 
 export async function getOrCreateDirectCoachThread(currentUserId: string): Promise<DirectCoachThread> {

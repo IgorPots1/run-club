@@ -65,6 +65,11 @@ export default function MessageThreadPage() {
           return
         }
 
+        if (!thread) {
+          setError('Чат недоступен')
+          return
+        }
+
         if (thread.type === 'club') {
           setThreadTitle('Общий чат')
           setError('')
