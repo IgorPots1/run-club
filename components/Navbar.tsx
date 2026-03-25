@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase'
 export default function Navbar() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
-  const totalUnreadCount = useRealtimeTotalUnreadCount()
+  const { totalUnreadCount } = useRealtimeTotalUnreadCount()
 
   useEffect(() => {
     void getBootstrapUser().then((nextUser) => {
