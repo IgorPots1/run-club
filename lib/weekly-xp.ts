@@ -1,31 +1,12 @@
-import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
-const XP_PER_LIKE = 5
-
-type ProfileRow = {
-  id: string
-  name: string | null
-  nickname?: string | null
-  email: string | null
-}
-
-type RunRow = {
-  id: string
+type WeeklyXpRpcRow = {
   user_id: string
-  xp: number | null
-  created_at: string
-}
-
-type RunLikeRow = {
-  run_id: string
-  created_at: string
-}
-
-type UserChallengeRow = {
-  user_id: string
-  xp_awarded: number | null
-  completed_at: string
+  display_name: string | null
+  total_xp: number | string | null
+  weekly_xp: number | string | null
+  challenge_xp: number | string | null
+  rank: number | string | null
 }
 
 export type WeeklyXpRow = {
@@ -41,71 +22,31 @@ export type WeeklyXpLeaderboard = {
   gapToNext: number | null
 }
 
-export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<WeeklyXpLeaderboard> {
-  const [
-    { data: profiles, error: profilesError },
-    { data: runs, error: runsError },
-    { data: likes, error: likesError },
-    { data: userChallenges, error: userChallengesError },
-  ] = await Promise.all([
-    supabase.from('profiles').select('id, name, nickname, email'),
-    supabase.from('runs').select('id, user_id, xp, created_at'),
-    supabase.from('run_likes').select('run_id, created_at'),
-    supabase.from('user_challenges').select('user_id, xp_awarded, completed_at'),
-  ])
+function toSafeNumber(value: number | string | null | undefined) {
+  const numericValue = typeof value === 'string' ? Number(value) : value
+  return Number.isFinite(numericValue) ? Number(numericValue) : 0
+}
 
-  if (runsError || likesError) {
+export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<WeeklyXpLeaderboard> {
+  const { data, error } = await supabase.rpc('get_weekly_xp_leaderboard')
+
+  if (error) {
     throw new Error('Не удалось загрузить недельный рейтинг')
   }
 
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
-  const profileById = profilesError
-    ? {}
-    : Object.fromEntries(((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
-  const xpByUserId: Record<string, number> = {}
-  const runOwnerById = Object.fromEntries(((runs as RunRow[] | null) ?? []).map((run) => [run.id, run.user_id]))
-
-  for (const run of (runs as RunRow[] | null) ?? []) {
-    if (new Date(run.created_at).getTime() < cutoff) continue
-    xpByUserId[run.user_id] = (xpByUserId[run.user_id] ?? 0) + Number(run.xp ?? 0)
-  }
-
-  for (const like of (likes as RunLikeRow[] | null) ?? []) {
-    if (new Date(like.created_at).getTime() < cutoff) continue
-    const ownerId = runOwnerById[like.run_id]
-    if (!ownerId) continue
-    xpByUserId[ownerId] = (xpByUserId[ownerId] ?? 0) + XP_PER_LIKE
-  }
-
-  if (!userChallengesError) {
-    for (const challenge of (userChallenges as UserChallengeRow[] | null) ?? []) {
-      if (new Date(challenge.completed_at).getTime() < cutoff) continue
-      xpByUserId[challenge.user_id] = (xpByUserId[challenge.user_id] ?? 0) + Number(challenge.xp_awarded ?? 0)
-    }
-  }
-
-  const rows = Object.entries(xpByUserId)
-    .map(([user_id, totalXp]) => {
-      const profile = profileById[user_id]
-      return {
-        user_id,
-        displayName: getProfileDisplayName(profile, 'Бегун'),
-        totalXp,
-        rank: 0,
-      }
-    })
-    .sort((a, b) => b.totalXp - a.totalXp)
-    .map((row, index) => ({
-      ...row,
-      rank: index + 1,
-    }))
+  const rows = ((data as WeeklyXpRpcRow[] | null) ?? []).map((row) => ({
+    user_id: row.user_id,
+    displayName: row.display_name?.trim() || 'Бегун',
+    totalXp: toSafeNumber(row.total_xp ?? row.weekly_xp),
+    rank: Math.max(0, toSafeNumber(row.rank)),
+  }))
 
   const currentUserIndex = rows.findIndex((row) => row.user_id === currentUserId)
   const currentUserRow =
     (currentUserIndex >= 0 ? rows[currentUserIndex] : null) ??
     {
       user_id: currentUserId,
-      displayName: getProfileDisplayName(profileById[currentUserId], 'Ты'),
+      displayName: 'Ты',
       totalXp: 0,
       rank: rows.length + 1,
     }
