@@ -226,6 +226,10 @@ export async function getClubThread(): Promise<ClubThread> {
 }
 
 export async function getChatThreadById(threadId: string): Promise<ChatThreadRow | null> {
+  console.log('[thread-open-debug] getChatThreadById:query', {
+    threadId,
+  })
+
   const { data, error } = await supabase
     .from('chat_threads')
     .select('id, type, title, owner_user_id, coach_user_id, created_at')
@@ -233,8 +237,18 @@ export async function getChatThreadById(threadId: string): Promise<ChatThreadRow
     .maybeSingle()
 
   if (error) {
+    console.error('[thread-open-debug] getChatThreadById:error', {
+      threadId,
+      error,
+    })
     throw error
   }
+
+  console.log('[thread-open-debug] getChatThreadById:data', {
+    threadId,
+    isNull: data === null,
+    data,
+  })
 
   return (data as ChatThreadRow | null) ?? null
 }
