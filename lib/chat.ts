@@ -513,6 +513,7 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
 
 export async function loadOlderChatMessages(
   beforeCreatedAt: string,
+  beforeId: string,
   limit = 10,
   threadId?: string | null
 ): Promise<ChatMessageItem[]> {
@@ -520,8 +521,9 @@ export async function loadOlderChatMessages(
     .from('chat_messages')
     .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
-    .lt('created_at', beforeCreatedAt)
+    .or(`created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${beforeId})`)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit)
 
   if (threadId) {
