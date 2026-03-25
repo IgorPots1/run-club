@@ -247,11 +247,32 @@ export async function createChatMessage(
     throw new Error('message_too_long')
   }
 
+  let safeReplyToId: string | null = null
+
+  if (replyToId) {
+    const { data: originalReplyMessage, error: originalReplyMessageError } = await supabase
+      .from('chat_messages')
+      .select('id, thread_id')
+      .eq('id', replyToId)
+      .maybeSingle()
+
+    if (originalReplyMessageError) {
+      throw originalReplyMessageError
+    }
+
+    const originalThreadId = ((originalReplyMessage as Pick<ChatMessageRow, 'id' | 'thread_id'> | null) ?? null)?.thread_id ?? null
+    const currentThreadId = threadId ?? null
+
+    if (originalThreadId === currentThreadId) {
+      safeReplyToId = replyToId
+    }
+  }
+
   return supabase.from('chat_messages').insert({
     user_id: userId,
     text: trimmedText,
     image_url: imageUrl ?? null,
-    reply_to_id: replyToId ?? null,
+    reply_to_id: safeReplyToId,
     thread_id: threadId ?? null,
   })
 }

@@ -458,6 +458,7 @@ export default function ChatSection({
   const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl)
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
+  const oldestLoadedMessageId = messages.length > 0 ? messages[0]?.id ?? null : null
   const firstUnreadMessageId = (() => {
     if (!enableReadState) {
       return null
@@ -1128,6 +1129,7 @@ export default function ChatSection({
       loading ||
       !isAuthenticated ||
       !oldestLoadedMessageCreatedAt ||
+      !oldestLoadedMessageId ||
       !hasMoreOlderMessages
     ) {
       return
@@ -1135,8 +1137,9 @@ export default function ChatSection({
 
     async function loadOlderMessages() {
       const oldestCreatedAt = oldestLoadedMessageCreatedAt
+      const oldestMessageId = oldestLoadedMessageId
 
-      if (!oldestCreatedAt) {
+      if (!oldestCreatedAt || !oldestMessageId) {
         prependScrollRestoreRef.current = null
         return
       }
@@ -1154,7 +1157,12 @@ export default function ChatSection({
       }
 
       try {
-        const olderMessages = await loadOlderChatMessages(oldestCreatedAt, OLDER_CHAT_BATCH_LIMIT, threadId)
+        const olderMessages = await loadOlderChatMessages(
+          oldestCreatedAt,
+          oldestMessageId,
+          OLDER_CHAT_BATCH_LIMIT,
+          threadId
+        )
 
         if (olderMessages.length === 0) {
           prependScrollRestoreRef.current = null
@@ -1186,7 +1194,15 @@ export default function ChatSection({
     return () => {
       scrollContainer.removeEventListener('scroll', handleScroll)
     }
-  }, [hasMoreOlderMessages, isAuthenticated, loading, oldestLoadedMessageCreatedAt, prependMessages, threadId])
+  }, [
+    hasMoreOlderMessages,
+    isAuthenticated,
+    loading,
+    oldestLoadedMessageCreatedAt,
+    oldestLoadedMessageId,
+    prependMessages,
+    threadId,
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1561,6 +1577,11 @@ export default function ChatSection({
   }
 
   function handleReplyToMessage(message: ChatMessageItem) {
+    if (!messagesRef.current.some((currentMessage) => currentMessage.id === message.id)) {
+      setReplyingToMessage(null)
+      return
+    }
+
     setReplyingToMessage(message)
     setEditingMessageId(null)
   }
