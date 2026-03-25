@@ -16,6 +16,7 @@ import {
   loadRecentChatMessages,
   softDeleteChatMessage,
   type ChatMessageItem,
+  uploadChatImage,
   upsertChatReadState,
 } from '@/lib/chat'
 import { ensureProfileExists } from '@/lib/profiles'
@@ -156,15 +157,26 @@ function ChatMessageBody({
           ) : null}
         </button>
       ) : null}
-      <p
-        className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
-          message.replyTo ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
-        } ${
-          isOwnMessage ? 'text-right' : ''
-        }`}
-      >
-        {message.text}
-      </p>
+      {message.imageUrl ? (
+        <img
+          src={message.imageUrl}
+          alt="Вложение"
+          className={`mt-1 max-h-80 w-auto max-w-[70%] rounded-2xl object-cover ${
+            isOwnMessage ? 'ml-auto' : ''
+          }`}
+        />
+      ) : null}
+      {message.text ? (
+        <p
+          className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
+            message.replyTo || message.imageUrl ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
+          } ${
+            isOwnMessage ? 'text-right' : ''
+          }`}
+        >
+          {message.text}
+        </p>
+      ) : null}
       <p className={`app-text-secondary mt-1 text-xs ${isOwnMessage ? 'text-right' : ''}`}>
         {message.createdAtLabel}
       </p>
@@ -182,6 +194,7 @@ export default function ChatSection({
   const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -211,6 +224,8 @@ export default function ChatSection({
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
@@ -225,7 +240,9 @@ export default function ChatSection({
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
 
   const trimmedDraftMessage = draftMessage.trim()
+  const hasPendingImage = Boolean(pendingImageUrl)
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
+  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl)
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -1082,8 +1099,8 @@ export default function ChatSection({
       return
     }
 
-    if (!trimmedDraftMessage) {
-      setSubmitError('Введите сообщение')
+    if (!trimmedDraftMessage && !pendingImageUrl) {
+      setSubmitError('Введите сообщение или выберите изображение')
       return
     }
 
@@ -1100,7 +1117,8 @@ export default function ChatSection({
         currentUserId,
         trimmedDraftMessage,
         replyingToMessage?.id ?? null,
-        threadId
+        threadId,
+        pendingImageUrl
       )
 
       if (insertError) {
@@ -1112,6 +1130,7 @@ export default function ChatSection({
       setPendingNewMessagesCount(0)
       setMessages(keepLatestRenderedMessages(recentMessages))
       setDraftMessage('')
+      clearSelectedImage()
       setReplyingToMessage(null)
       window.requestAnimationFrame(() => {
         resizeComposerTextarea()
@@ -1168,6 +1187,47 @@ export default function ChatSection({
 
   function handleReplyToMessage(message: ChatMessageItem) {
     setReplyingToMessage(message)
+  }
+
+  function clearSelectedImage() {
+    setPendingImageUrl(null)
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+  }
+
+  async function handleImageInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const nextFile = event.target.files?.[0]
+
+    if (!nextFile) {
+      return
+    }
+
+    if (!currentUserId) {
+      clearSelectedImage()
+      setSubmitError('Нужно войти, чтобы отправлять изображения')
+      return
+    }
+
+    if (!nextFile.type.startsWith('image/')) {
+      clearSelectedImage()
+      setSubmitError('Можно выбрать только изображение')
+      return
+    }
+
+    setUploadingImage(true)
+    setSubmitError('')
+
+    try {
+      const publicUrl = await uploadChatImage(currentUserId, nextFile, threadId)
+      setPendingImageUrl(publicUrl)
+    } catch {
+      clearSelectedImage()
+      setSubmitError('Не удалось загрузить изображение')
+    } finally {
+      setUploadingImage(false)
+    }
   }
 
   function clearLongPressTimeout() {
@@ -1291,11 +1351,19 @@ export default function ChatSection({
         ) : null}
         <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/82 px-2 py-1.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[color:var(--background)]/78">
           <form onSubmit={handleSubmit}>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageInputChange}
+              className="sr-only"
+              tabIndex={-1}
+            />
             {replyingToMessage ? (
               <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                 <div className="min-w-0">
                   <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
-                  <p className="app-text-secondary truncate text-sm">{replyingToMessage.text}</p>
+                  <p className="app-text-secondary truncate text-sm">{replyingToMessage.text || 'Фото'}</p>
                 </div>
                 <button
                   type="button"
@@ -1307,13 +1375,35 @@ export default function ChatSection({
                 </button>
               </div>
             ) : null}
+            {hasPendingImage ? (
+              <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                <div className="min-w-0">
+                  <p className="app-text-primary text-sm font-medium">Изображение готово</p>
+                  <img
+                    src={pendingImageUrl ?? undefined}
+                    alt="Предпросмотр"
+                    className="mt-2 max-h-36 w-auto max-w-[160px] rounded-2xl object-cover"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelectedImage}
+                  className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
+                  aria-label="Убрать изображение"
+                >
+                  X
+                </button>
+              </div>
+            ) : null}
             <div className="flex items-end gap-1.5">
               <button
                 type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={submitting || uploadingImage}
                 className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
-                aria-label="Скоро: вложения"
+                aria-label="Выбрать изображение"
               >
-                +
+                {uploadingImage ? '...' : '+'}
               </button>
               <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 shadow-none">
                 <label htmlFor="chat-message" className="sr-only">
@@ -1329,8 +1419,8 @@ export default function ChatSection({
                   }}
                   onFocus={() => setIsComposerFocused(true)}
                   onBlur={() => setIsComposerFocused(false)}
-                  placeholder="Сообщение"
-                  disabled={submitting}
+                  placeholder={hasPendingImage ? 'Добавьте подпись' : 'Сообщение'}
+                  disabled={submitting || uploadingImage}
                   maxLength={CHAT_MESSAGE_MAX_LENGTH}
                   rows={1}
                   className="min-h-11 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
@@ -1338,7 +1428,7 @@ export default function ChatSection({
               </div>
               <button
                 type="submit"
-                disabled={submitting || !trimmedDraftMessage || isMessageTooLong}
+                disabled={submitting || uploadingImage || !canSubmitMessage || isMessageTooLong}
                 className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? '...' : '>'}
@@ -1346,7 +1436,7 @@ export default function ChatSection({
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
               <p className="app-text-secondary text-xs">
-                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}{hasPendingImage ? ' + фото' : ''}
               </p>
               {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
             </div>

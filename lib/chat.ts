@@ -3,11 +3,13 @@ import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
 export const CHAT_MESSAGE_MAX_LENGTH = 500
+export const CHAT_MEDIA_BUCKET = 'chat-media'
 
 type ChatMessageRow = {
   id: string
   user_id: string
   text: string
+  image_url?: string | null
   created_at: string
   is_deleted: boolean
   reply_to_id: string | null
@@ -32,6 +34,7 @@ export type ChatMessageItem = {
   id: string
   userId: string
   text: string
+  imageUrl: string | null
   createdAt: string
   createdAtLabel: string
   isDeleted: boolean
@@ -85,7 +88,7 @@ function toChatReplyPreview(replyToId: string, message: ChatMessageRow | null | 
     id: message.id,
     userId: message.user_id,
     displayName: getProfileDisplayName(profile, 'Бегун'),
-    text: message.text,
+    text: message.text.trim() || (message.image_url ? 'Фото' : ''),
   }
 }
 
@@ -99,6 +102,7 @@ function toChatMessageItem(
     id: message.id,
     userId: message.user_id,
     text: message.text,
+    imageUrl: message.image_url ?? null,
     createdAt: message.created_at,
     createdAtLabel: formatRunDateTimeLabel(message.created_at),
     isDeleted: message.is_deleted,
@@ -118,7 +122,7 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
 
   const replyMessagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
     .in('id', replyIds)
 
   if (threadId) {
@@ -138,11 +142,12 @@ export async function createChatMessage(
   userId: string,
   text: string,
   replyToId?: string | null,
-  threadId?: string | null
+  threadId?: string | null,
+  imageUrl?: string | null
 ) {
   const trimmedText = text.trim()
 
-  if (!trimmedText) {
+  if (!trimmedText && !imageUrl) {
     throw new Error('empty_message')
   }
 
@@ -153,9 +158,28 @@ export async function createChatMessage(
   return supabase.from('chat_messages').insert({
     user_id: userId,
     text: trimmedText,
+    image_url: imageUrl ?? null,
     reply_to_id: replyToId ?? null,
     thread_id: threadId ?? null,
   })
+}
+
+export async function uploadChatImage(userId: string, file: File, threadId?: string | null) {
+  const fileExtension = file.name.includes('.')
+    ? file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    : 'jpg'
+  const safeExtension = fileExtension.replace(/[^a-z0-9]/g, '') || 'jpg'
+  const path = `${userId}/${threadId ?? 'club'}/chat-${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExtension}`
+  const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, {
+    contentType: file.type || `image/${safeExtension}`,
+  })
+
+  if (uploadError) {
+    throw uploadError
+  }
+
+  const { data } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path)
+  return data.publicUrl
 }
 
 export async function loadChatReadState(userId: string): Promise<string | null> {
@@ -204,7 +228,7 @@ export async function softDeleteChatMessage(messageId: string, userId: string, t
 export async function loadChatMessageItem(messageId: string, threadId?: string | null): Promise<ChatMessageItem | null> {
   const messageQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
     .eq('id', messageId)
 
   if (threadId) {
@@ -251,7 +275,7 @@ export async function loadChatMessageById(messageId: string, threadId?: string |
 export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -298,7 +322,7 @@ export async function loadOlderChatMessages(
 ): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .lt('created_at', beforeCreatedAt)
     .order('created_at', { ascending: false })
