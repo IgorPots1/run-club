@@ -442,6 +442,7 @@ export default function ChatSection({
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
 
@@ -524,7 +525,7 @@ export default function ChatSection({
     return distanceFromBottom <= 100
   }, [])
 
-  const scrollPageToBottom = useCallback(() => {
+  const scrollPageToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const scrollContainer = scrollContainerRef.current
 
     if (!scrollContainer) {
@@ -533,7 +534,7 @@ export default function ChatSection({
 
     scrollContainer.scrollTo({
       top: scrollContainer.scrollHeight,
-      behavior: 'auto',
+      behavior,
     })
   }, [])
 
@@ -784,6 +785,28 @@ export default function ChatSection({
       }
     }
   }, [])
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    function updateScrollToBottomButtonVisibility() {
+      setShowScrollToBottomButton(!isNearBottom())
+    }
+
+    updateScrollToBottomButtonVisibility()
+
+    scrollContainer.addEventListener('scroll', updateScrollToBottomButtonVisibility, { passive: true })
+    window.addEventListener('resize', updateScrollToBottomButtonVisibility)
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', updateScrollToBottomButtonVisibility)
+      window.removeEventListener('resize', updateScrollToBottomButtonVisibility)
+    }
+  }, [isNearBottom, messages.length])
 
   useEffect(() => {
     return () => {
@@ -1728,20 +1751,6 @@ export default function ChatSection({
   function renderComposer() {
     return (
       <div>
-        {pendingNewMessagesCount > 0 ? (
-          <div className="mb-2 flex justify-center md:justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setPendingNewMessagesCount(0)
-                scrollPageToBottom()
-              }}
-              className="app-button-secondary min-h-11 rounded-full border px-4 py-2 text-sm font-medium shadow-sm"
-            >
-              {getNewMessagesLabel(pendingNewMessagesCount)}
-            </button>
-          </div>
-        ) : null}
         <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/82 px-2 py-1.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[color:var(--background)]/78">
           <form onSubmit={handleSubmit}>
             <input
@@ -1922,6 +1931,38 @@ export default function ChatSection({
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <>
+          {showScrollToBottomButton ? (
+            <div className="pointer-events-none absolute bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-4 z-20 md:bottom-24">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingNewMessagesCount(0)
+                  scrollPageToBottom('smooth')
+                }}
+                className="pointer-events-auto relative flex h-12 w-12 items-center justify-center rounded-full border border-black/[0.06] bg-[color:var(--background)]/92 text-black shadow-lg backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/88 dark:text-white"
+                aria-label={pendingNewMessagesCount > 0 ? getNewMessagesLabel(pendingNewMessagesCount) : 'Прокрутить вниз'}
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 5v14" />
+                  <path d="m19 12-7 7-7-7" />
+                </svg>
+                {pendingNewMessagesCount > 0 ? (
+                  <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow-sm">
+                    {pendingNewMessagesCount > 9 ? '9+' : pendingNewMessagesCount}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+          ) : null}
           <div
             ref={scrollContainerRef}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
