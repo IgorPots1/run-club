@@ -475,8 +475,15 @@ export default function ChatSection({
     return messages.find((message) => new Date(message.createdAt).getTime() > lastReadAtMs)?.id ?? null
   })()
 
-  const keepLatestRenderedMessages = useCallback((nextMessages: ChatMessageItem[]) => {
+  const keepLatestRenderedMessages = useCallback((
+    nextMessages: ChatMessageItem[],
+    options?: { preserveExpandedHistory?: boolean }
+  ) => {
     const filteredMessages = filterPendingDeletedMessages(nextMessages)
+
+    if (options?.preserveExpandedHistory) {
+      return filteredMessages
+    }
 
     if (filteredMessages.length <= MAX_RENDERED_CHAT_MESSAGES) {
       return filteredMessages
@@ -631,7 +638,9 @@ export default function ChatSection({
       return nextMessages
     }
 
-    return nextMessages.slice(0, MAX_RENDERED_CHAT_MESSAGES)
+    // Keep explicitly loaded history in memory so prepending never drops
+    // the newest rendered messages or creates gaps in the loaded timeline.
+    return nextMessages
   }, [])
 
   const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
@@ -1305,7 +1314,9 @@ export default function ChatSection({
             }
 
             setMessages((currentMessages) =>
-              keepLatestRenderedMessages(insertMessageChronologically(currentMessages, nextMessage))
+              keepLatestRenderedMessages(insertMessageChronologically(currentMessages, nextMessage), {
+                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+              })
             )
           } catch {
             void refreshMessages()
@@ -1339,7 +1350,9 @@ export default function ChatSection({
             }
 
             setMessages((currentMessages) =>
-              keepLatestRenderedMessages(upsertMessageById(currentMessages, nextMessage))
+              keepLatestRenderedMessages(upsertMessageById(currentMessages, nextMessage), {
+                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+              })
             )
           } catch {
             // Keep realtime additive and non-blocking if enrichment fails.
@@ -1529,7 +1542,9 @@ export default function ChatSection({
     } catch {
       pendingDeletedMessageIdsRef.current.delete(message.id)
       setMessages((currentMessages) =>
-        keepLatestRenderedMessages(insertMessageChronologically(currentMessages, message))
+        keepLatestRenderedMessages(insertMessageChronologically(currentMessages, message), {
+          preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+        })
       )
       setError('Не удалось удалить сообщение')
     } finally {
