@@ -41,6 +41,7 @@ const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
 const SWIPE_REPLY_TRIGGER_PX = 60
 const SWIPE_REPLY_MAX_OFFSET_PX = 72
 const SWIPE_REPLY_CANCEL_VERTICAL_THRESHOLD_PX = 24
+const REACTION_ANIMATION_DURATION_MS = 200
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -191,6 +192,86 @@ function updateMessageReaction(
   )
 }
 
+function ReactionChip({
+  reactionKey,
+  emoji,
+  count,
+  isSelected,
+  disabled,
+  shouldBurst,
+  onClick,
+}: {
+  reactionKey: string
+  emoji: string
+  count: number
+  isSelected: boolean
+  disabled: boolean
+  shouldBurst: boolean
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+  const [burstPhase, setBurstPhase] = useState<'idle' | 'start' | 'end'>('idle')
+
+  useEffect(() => {
+    if (!shouldBurst) {
+      return
+    }
+
+    let animationFrameId: number | null = null
+    const timeoutId = window.setTimeout(() => {
+      setBurstPhase('idle')
+    }, REACTION_ANIMATION_DURATION_MS + 30)
+
+    setBurstPhase('start')
+    animationFrameId = window.requestAnimationFrame(() => {
+      setBurstPhase('end')
+    })
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+      }
+
+      window.clearTimeout(timeoutId)
+    }
+  }, [reactionKey, shouldBurst])
+
+  const isBursting = burstPhase !== 'idle'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+      disabled={disabled}
+      className={`relative inline-flex items-center gap-1 overflow-visible rounded-full px-2.5 py-1 text-xs font-medium transition-transform duration-200 ease-out ${
+        isSelected
+          ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
+          : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.08] dark:text-white/75'
+      } ${
+        disabled
+          ? 'cursor-default'
+          : 'hover:scale-[1.03] active:scale-95 active:bg-black/[0.1] dark:active:bg-white/[0.18]'
+      } ${isBursting ? 'scale-[1.06]' : ''}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 text-sm transition-all duration-200 ease-out ${
+          burstPhase === 'start'
+            ? '-translate-y-1 scale-95 opacity-90'
+            : burstPhase === 'end'
+              ? '-translate-y-5 scale-125 opacity-0'
+              : 'translate-y-0 scale-75 opacity-0'
+        }`}
+      >
+        {emoji}
+      </span>
+      <span className="relative z-[2]">{emoji}</span>
+      <span className="relative z-[2]">{count}</span>
+    </button>
+  )
+}
+
 function ChatMessageBody({
   message,
   isOwnMessage = false,
@@ -199,6 +280,7 @@ function ChatMessageBody({
   onImageClick,
   currentUserId = null,
   onReactionToggle,
+  animatedReactionKey = null,
 }: {
   message: ChatMessageItem
   isOwnMessage?: boolean
@@ -207,6 +289,7 @@ function ChatMessageBody({
   onImageClick?: (imageUrl: string) => void
   currentUserId?: string | null
   onReactionToggle?: (messageId: string, emoji: string) => void
+  animatedReactionKey?: string | null
 }) {
   const isFallbackReplyPreview = Boolean(
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
@@ -279,27 +362,22 @@ function ChatMessageBody({
         <div className={`mt-2 flex flex-wrap gap-1.5 ${isOwnMessage ? 'justify-end' : ''}`}>
           {message.reactions.map((reaction) => {
             const isSelected = currentUserId ? reaction.userIds.includes(currentUserId) : false
+            const reactionKey = `${message.id}:${reaction.emoji}`
 
             return (
-              <button
-                key={`${message.id}:${reaction.emoji}`}
-                type="button"
+              <ReactionChip
+                key={reactionKey}
+                reactionKey={reactionKey}
+                emoji={reaction.emoji}
+                count={reaction.count}
+                isSelected={isSelected}
+                disabled={!onReactionToggle}
+                shouldBurst={animatedReactionKey === reactionKey}
                 onClick={(event) => {
                   event.stopPropagation()
                   onReactionToggle?.(message.id, reaction.emoji)
                 }}
-                onMouseDown={(event) => event.stopPropagation()}
-                onTouchStart={(event) => event.stopPropagation()}
-                disabled={!onReactionToggle}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-transform duration-150 active:scale-95 ${
-                  isSelected
-                    ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
-                    : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.08] dark:text-white/75'
-                } ${onReactionToggle ? '' : 'cursor-default'}`}
-              >
-                <span>{reaction.emoji}</span>
-                <span>{reaction.count}</span>
-              </button>
+              />
             )
           })}
         </div>
@@ -330,6 +408,7 @@ export default function ChatSection({
   const swipeStartYRef = useRef<number | null>(null)
   const highlightedMessageIdRef = useRef<string | null>(null)
   const highlightedMessageTimeoutRef = useRef<number | null>(null)
+  const animatedReactionTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
   const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number | null } | null>(null)
@@ -358,6 +437,7 @@ export default function ChatSection({
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [selectedViewerImageUrl, setSelectedViewerImageUrl] = useState<string | null>(null)
+  const [animatedReactionKey, setAnimatedReactionKey] = useState<string | null>(null)
   const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
@@ -697,6 +777,10 @@ export default function ChatSection({
     return () => {
       if (longPressTimeoutRef.current !== null) {
         window.clearTimeout(longPressTimeoutRef.current)
+      }
+
+      if (animatedReactionTimeoutRef.current !== null) {
+        window.clearTimeout(animatedReactionTimeoutRef.current)
       }
     }
   }, [])
@@ -1443,6 +1527,19 @@ export default function ChatSection({
       (reaction) => reaction.emoji === emoji && reaction.userIds.includes(currentUserId)
     )
     const nextShouldActivate = !hasReacted
+    const nextAnimatedReactionKey = nextShouldActivate ? `${messageId}:${emoji}` : null
+
+    if (nextAnimatedReactionKey) {
+      if (animatedReactionTimeoutRef.current !== null) {
+        window.clearTimeout(animatedReactionTimeoutRef.current)
+      }
+
+      setAnimatedReactionKey(nextAnimatedReactionKey)
+      animatedReactionTimeoutRef.current = window.setTimeout(() => {
+        setAnimatedReactionKey((currentKey) => (currentKey === nextAnimatedReactionKey ? null : currentKey))
+        animatedReactionTimeoutRef.current = null
+      }, REACTION_ANIMATION_DURATION_MS + 40)
+    }
 
     setMessages((currentMessages) =>
       updateMessageReaction(currentMessages, messageId, currentUserId, emoji, nextShouldActivate)
@@ -1452,6 +1549,9 @@ export default function ChatSection({
       await toggleChatMessageReaction(messageId, currentUserId, emoji)
     } catch (error) {
       console.error('Failed to toggle chat reaction', error)
+      if (nextAnimatedReactionKey) {
+        setAnimatedReactionKey((currentKey) => (currentKey === nextAnimatedReactionKey ? null : currentKey))
+      }
       setMessages((currentMessages) =>
         updateMessageReaction(currentMessages, messageId, currentUserId, emoji, hasReacted)
       )
@@ -1935,6 +2035,7 @@ export default function ChatSection({
                                 isOwnMessage={isOwnMessage}
                                 showSenderName={showSenderName}
                                 currentUserId={currentUserId}
+                                animatedReactionKey={animatedReactionKey}
                                 onReplyPreviewClick={replyPreviewTargetId ? () => handleReplyPreviewClick(replyPreviewTargetId) : undefined}
                                 onImageClick={setSelectedViewerImageUrl}
                                 onReactionToggle={handleToggleReaction}
@@ -1979,6 +2080,7 @@ export default function ChatSection({
                 <ChatMessageBody
                   message={selectedMessage}
                   currentUserId={currentUserId}
+                  animatedReactionKey={animatedReactionKey}
                   onImageClick={setSelectedViewerImageUrl}
                   onReactionToggle={handleToggleReaction}
                 />
