@@ -16,6 +16,7 @@ import {
   loadRecentChatMessages,
   softDeleteChatMessage,
   type ChatMessageItem,
+  updateChatMessage,
   uploadChatImage,
   upsertChatReadState,
 } from '@/lib/chat'
@@ -188,6 +189,7 @@ function ChatMessageBody({
       ) : null}
       <p className={`app-text-secondary mt-1 text-xs ${isOwnMessage ? 'text-right' : ''}`}>
         {message.createdAtLabel}
+        {message.editedAt ? ' • изменено' : ''}
       </p>
     </>
   )
@@ -241,6 +243,7 @@ export default function ChatSection({
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [selectedViewerImageUrl, setSelectedViewerImageUrl] = useState<string | null>(null)
   const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
@@ -250,9 +253,12 @@ export default function ChatSection({
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
 
   const trimmedDraftMessage = draftMessage.trim()
+  const editingMessage = editingMessageId
+    ? messages.find((message) => message.id === editingMessageId) ?? null
+    : null
   const hasPendingImage = Boolean(pendingImageUrl)
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
-  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl)
+  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl || editingMessage?.imageUrl)
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -565,6 +571,7 @@ export default function ChatSection({
     setDraftMessage('')
     setSubmitError('')
     setReplyingToMessage(null)
+    setEditingMessageId(null)
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
   }, [threadId])
@@ -633,6 +640,17 @@ export default function ChatSection({
       setIsActionSheetOpen(false)
     }
   }, [messages, selectedMessage])
+
+  useEffect(() => {
+    if (!editingMessageId) {
+      return
+    }
+
+    if (!messages.some((message) => message.id === editingMessageId)) {
+      setEditingMessageId(null)
+      setDraftMessage('')
+    }
+  }, [editingMessageId, messages])
 
   useEffect(() => {
     if (!selectedViewerImageUrl) {
@@ -1127,7 +1145,7 @@ export default function ChatSection({
       return
     }
 
-    if (!trimmedDraftMessage && !pendingImageUrl) {
+    if (!trimmedDraftMessage && !pendingImageUrl && !editingMessage?.imageUrl) {
       setSubmitError('Введите сообщение или выберите изображение')
       return
     }
@@ -1141,16 +1159,29 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
-      const { error: insertError } = await createChatMessage(
-        currentUserId,
-        trimmedDraftMessage,
-        replyingToMessage?.id ?? null,
-        threadId,
-        pendingImageUrl
-      )
+      if (editingMessageId) {
+        const { error: updateError } = await updateChatMessage(
+          editingMessageId,
+          currentUserId,
+          trimmedDraftMessage,
+          threadId
+        )
 
-      if (insertError) {
-        throw insertError
+        if (updateError) {
+          throw updateError
+        }
+      } else {
+        const { error: insertError } = await createChatMessage(
+          currentUserId,
+          trimmedDraftMessage,
+          replyingToMessage?.id ?? null,
+          threadId,
+          pendingImageUrl
+        )
+
+        if (insertError) {
+          throw insertError
+        }
       }
 
       const recentMessages = await loadRecentChatMessages(50, threadId)
@@ -1160,6 +1191,7 @@ export default function ChatSection({
       setDraftMessage('')
       clearSelectedImage()
       setReplyingToMessage(null)
+      setEditingMessageId(null)
       window.requestAnimationFrame(() => {
         resizeComposerTextarea()
       })
@@ -1215,6 +1247,30 @@ export default function ChatSection({
 
   function handleReplyToMessage(message: ChatMessageItem) {
     setReplyingToMessage(message)
+    setEditingMessageId(null)
+  }
+
+  function clearEditingMessage() {
+    setEditingMessageId(null)
+    setDraftMessage('')
+    setSubmitError('')
+    window.requestAnimationFrame(() => {
+      resizeComposerTextarea()
+    })
+  }
+
+  function handleEditMessage(message: ChatMessageItem) {
+    setEditingMessageId(message.id)
+    setReplyingToMessage(null)
+    clearSelectedImage()
+    setDraftMessage(message.text)
+    setSubmitError('')
+    setSelectedMessage(null)
+    setIsActionSheetOpen(false)
+    window.requestAnimationFrame(() => {
+      resizeComposerTextarea()
+      composerTextareaRef.current?.focus()
+    })
   }
 
   function clearSelectedImage() {
@@ -1388,6 +1444,24 @@ export default function ChatSection({
               className="sr-only"
               tabIndex={-1}
             />
+            {editingMessage ? (
+              <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+                <div className="min-w-0">
+                  <p className="app-text-primary truncate text-sm font-medium">Редактирование сообщения</p>
+                  <p className="app-text-secondary truncate text-sm">
+                    {editingMessage.text || (editingMessage.imageUrl ? 'Подпись к фото' : 'Измените текст сообщения')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearEditingMessage}
+                  className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
+                  aria-label="Отменить редактирование"
+                >
+                  X
+                </button>
+              </div>
+            ) : null}
             {replyingToMessage ? (
               <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                 <div className="min-w-0">
@@ -1428,7 +1502,7 @@ export default function ChatSection({
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={submitting || uploadingImage}
+                disabled={submitting || uploadingImage || Boolean(editingMessageId)}
                 className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
                 aria-label="Выбрать изображение"
               >
@@ -1448,7 +1522,7 @@ export default function ChatSection({
                   }}
                   onFocus={() => setIsComposerFocused(true)}
                   onBlur={() => setIsComposerFocused(false)}
-                  placeholder={hasPendingImage ? 'Добавьте подпись' : 'Сообщение'}
+                  placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись' : 'Сообщение'}
                   disabled={submitting || uploadingImage}
                   maxLength={CHAT_MESSAGE_MAX_LENGTH}
                   rows={1}
@@ -1460,7 +1534,7 @@ export default function ChatSection({
                 disabled={submitting || uploadingImage || !canSubmitMessage || isMessageTooLong}
                 className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting ? '...' : '>'}
+                {submitting ? '...' : editingMessage ? 'OK' : '>'}
               </button>
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
@@ -1730,6 +1804,7 @@ export default function ChatSection({
           open={isActionSheetOpen}
           onOpenChange={handleActionSheetOpenChange}
           onDelete={handleDeleteMessage}
+          onEdit={handleEditMessage}
           onReply={handleReplyToMessage}
         />
       ) : null}

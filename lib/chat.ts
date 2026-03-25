@@ -10,6 +10,7 @@ type ChatMessageRow = {
   user_id: string
   text: string
   image_url: string | null
+  edited_at: string | null
   created_at: string
   is_deleted: boolean
   reply_to_id: string | null
@@ -35,6 +36,7 @@ export type ChatMessageItem = {
   userId: string
   text: string
   imageUrl: string | null
+  editedAt: string | null
   createdAt: string
   createdAtLabel: string
   isDeleted: boolean
@@ -96,6 +98,7 @@ function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
   return {
     ...message,
     image_url: message.image_url ?? null,
+    edited_at: message.edited_at ?? null,
   }
 }
 
@@ -110,6 +113,7 @@ function toChatMessageItem(
     userId: message.user_id,
     text: message.text,
     imageUrl: message.image_url ?? null,
+    editedAt: message.edited_at ?? null,
     createdAt: message.created_at,
     createdAtLabel: formatRunDateTimeLabel(message.created_at),
     isDeleted: message.is_deleted,
@@ -129,7 +133,7 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
 
   const replyMessagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .in('id', replyIds)
 
   if (threadId) {
@@ -174,6 +178,34 @@ export async function createChatMessage(
     reply_to_id: replyToId ?? null,
     thread_id: threadId ?? null,
   })
+}
+
+export async function updateChatMessage(
+  messageId: string,
+  userId: string,
+  text: string,
+  threadId?: string | null
+) {
+  const trimmedText = text.trim()
+
+  if (trimmedText.length > CHAT_MESSAGE_MAX_LENGTH) {
+    throw new Error('message_too_long')
+  }
+
+  const updateQuery = supabase
+    .from('chat_messages')
+    .update({
+      text: trimmedText,
+      edited_at: new Date().toISOString(),
+    })
+    .eq('id', messageId)
+    .eq('user_id', userId)
+
+  if (threadId) {
+    updateQuery.eq('thread_id', threadId)
+  }
+
+  return updateQuery
 }
 
 export async function uploadChatImage(userId: string, file: File, threadId?: string | null) {
@@ -246,7 +278,7 @@ export async function softDeleteChatMessage(messageId: string, userId: string, t
 export async function loadChatMessageItem(messageId: string, threadId?: string | null): Promise<ChatMessageItem | null> {
   const messageQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('id', messageId)
 
   if (threadId) {
@@ -293,7 +325,7 @@ export async function loadChatMessageById(messageId: string, threadId?: string |
 export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -343,7 +375,7 @@ export async function loadOlderChatMessages(
 ): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .lt('created_at', beforeCreatedAt)
     .order('created_at', { ascending: false })

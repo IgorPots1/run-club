@@ -9,6 +9,7 @@ type ChatMessageActionsProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDelete: (message: ChatMessageItem) => Promise<void> | void
+  onEdit: (message: ChatMessageItem) => void
   onReply: (message: ChatMessageItem) => void
 }
 
@@ -18,6 +19,7 @@ export default function ChatMessageActions({
   open,
   onOpenChange,
   onDelete,
+  onEdit,
   onReply,
 }: ChatMessageActionsProps) {
   const router = useRouter()
@@ -45,6 +47,11 @@ export default function ChatMessageActions({
     onReply(message)
   }
 
+  function handleEdit() {
+    onOpenChange(false)
+    onEdit(message)
+  }
+
   function handleOpenProfile() {
     onOpenChange(false)
     router.push(`/users/${message.userId}`)
@@ -65,6 +72,15 @@ export default function ChatMessageActions({
           <p className="chat-no-select app-text-secondary mt-1 truncate text-sm">&quot;{messagePreview}&quot;</p>
         </div>
         <div className="space-y-1.5">
+          {isOwnMessage ? (
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+            >
+              Редактировать
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
