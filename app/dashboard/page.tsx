@@ -1,7 +1,7 @@
 'use client'
 
 import { Activity, Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [shouldLoadWeeklyRace, setShouldLoadWeeklyRace] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
+  const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -71,13 +72,13 @@ export default function DashboardPage() {
     }
   }, [user])
 
-  const swrBaseOptions = {
-    revalidateOnFocus: true,
+  const swrBaseOptions = useMemo(() => ({
+    revalidateOnFocus: false,
     revalidateOnReconnect: true,
     keepPreviousData: true,
     dedupingInterval: 15000,
     focusThrottleInterval: 15000,
-  }
+  }), [])
   const overviewKey = user ? (['dashboard-overview', user.id] as const) : null
   const weeklyRaceKey = user && shouldLoadWeeklyRace ? (['weekly-race', user.id] as const) : null
 
@@ -97,18 +98,37 @@ export default function DashboardPage() {
     ...swrBaseOptions,
   })
 
+  const refreshDashboardData = useCallback(() => {
+    if (refreshDashboardDataPromiseRef.current) {
+      return refreshDashboardDataPromiseRef.current
+    }
+
+    const refreshPromise = (async () => {
+      await Promise.all([
+        mutateOverview(),
+        mutateWeeklyRace(),
+      ])
+    })()
+
+    refreshDashboardDataPromiseRef.current = refreshPromise
+
+    return refreshPromise.finally(() => {
+      if (refreshDashboardDataPromiseRef.current === refreshPromise) {
+        refreshDashboardDataPromiseRef.current = null
+      }
+    })
+  }, [mutateOverview, mutateWeeklyRace])
+
   useEffect(() => {
     if (!user) return
 
     function handleRunsUpdated() {
-      void mutateOverview()
-      void mutateWeeklyRace()
+      void refreshDashboardData()
     }
 
     function handleStorage(event: StorageEvent) {
       if (event.key === RUNS_UPDATED_STORAGE_KEY) {
-        void mutateOverview()
-        void mutateWeeklyRace()
+        void refreshDashboardData()
       }
     }
 
@@ -119,7 +139,7 @@ export default function DashboardPage() {
       window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
       window.removeEventListener('storage', handleStorage)
     }
-  }, [mutateOverview, mutateWeeklyRace, user])
+  }, [refreshDashboardData, user])
 
   if (!user && !loading) {
     return (
@@ -338,8 +358,7 @@ export default function DashboardPage() {
               emptyTitle="Пока нет тренировок"
               showLevelSubtitle
               onSuccessfulLikeToggle={() => {
-                void mutateWeeklyRace()
-                void mutateOverview()
+                void refreshDashboardData()
               }}
             />
           )}
