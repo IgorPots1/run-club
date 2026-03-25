@@ -23,12 +23,22 @@ const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
   const router = useRouter()
-  const lastMarkedThreadIdRef = useRef<string | null>(null)
+  const markReadTimeoutRef = useRef<number | null>(null)
+  const isMarkingThreadReadRef = useRef(false)
+  const pendingMarkThreadReadRef = useRef(false)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('Чат')
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    return () => {
+      if (markReadTimeoutRef.current !== null) {
+        window.clearTimeout(markReadTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -118,32 +128,92 @@ export default function MessageThreadPage() {
       return
     }
 
-    if (lastMarkedThreadIdRef.current === threadId) {
-      return
+    async function runMarkThreadAsRead() {
+      if (isMarkingThreadReadRef.current) {
+        pendingMarkThreadReadRef.current = true
+        return
+      }
+
+      isMarkingThreadReadRef.current = true
+
+      try {
+        await markThreadAsRead(threadId)
+
+        if (typeof window !== 'undefined') {
+          const totalUnreadCount = await getTotalUnreadCount()
+          window.dispatchEvent(
+            new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
+              detail: {
+                count: totalUnreadCount,
+              },
+            })
+          )
+        }
+      } catch {
+        // Keep read refresh non-blocking while the thread stays open.
+      } finally {
+        isMarkingThreadReadRef.current = false
+
+        if (pendingMarkThreadReadRef.current) {
+          pendingMarkThreadReadRef.current = false
+          void runMarkThreadAsRead()
+        }
+      }
     }
 
-    lastMarkedThreadIdRef.current = threadId
+    function scheduleMarkThreadAsRead(delayMs = 0) {
+      if (markReadTimeoutRef.current !== null) {
+        window.clearTimeout(markReadTimeoutRef.current)
+      }
 
-    void markThreadAsRead(threadId)
-      .then(async () => {
-        if (typeof window === 'undefined') {
-          return
-        }
+      markReadTimeoutRef.current = window.setTimeout(() => {
+        markReadTimeoutRef.current = null
+        void runMarkThreadAsRead()
+      }, delayMs)
+    }
 
-        const totalUnreadCount = await getTotalUnreadCount()
-        window.dispatchEvent(
-          new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
-            detail: {
-              count: totalUnreadCount,
-            },
-          })
-        )
-      })
-      .catch(() => {
-        if (lastMarkedThreadIdRef.current === threadId) {
-          lastMarkedThreadIdRef.current = null
+    scheduleMarkThreadAsRead()
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        scheduleMarkThreadAsRead(150)
+      }
+    }
+
+    const channel = supabase
+      .channel(`thread-read-refresh:${threadId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `thread_id=eq.${threadId}`,
+        },
+        (payload) => {
+          const nextMessageUserId = String((payload.new as { user_id?: string } | null)?.user_id ?? '')
+
+          if (!nextMessageUserId || nextMessageUserId === currentUserId) {
+            return
+          }
+
+          scheduleMarkThreadAsRead(250)
         }
-      })
+      )
+      .subscribe()
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      if (markReadTimeoutRef.current !== null) {
+        window.clearTimeout(markReadTimeoutRef.current)
+        markReadTimeoutRef.current = null
+      }
+
+      pendingMarkThreadReadRef.current = false
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      void supabase.removeChannel(channel)
+    }
   }, [currentUserId, error, loading, threadId])
 
   if (loading) {
@@ -158,12 +228,24 @@ export default function MessageThreadPage() {
       >
         <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
           <InnerPageHeader title="Загрузка..." fallbackHref="/messages" />
-          <div className="min-h-0 flex-1">
-            <ChatSection
-              showTitle={false}
-              threadId={threadId}
-              enableReadState={false}
-            />
+          <div className="min-h-0 flex-1 px-4 pb-4 pt-2 md:p-4">
+            <div className="app-card h-full rounded-2xl border px-4 pb-4 pt-3 shadow-sm">
+              <div className="space-y-4">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="flex items-start gap-3">
+                    <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex gap-2">
+                        <div className="skeleton-line h-4 w-24" />
+                        <div className="skeleton-line h-4 w-20" />
+                      </div>
+                      <div className="skeleton-line h-4 w-full" />
+                      <div className="skeleton-line h-4 w-3/4" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </main>

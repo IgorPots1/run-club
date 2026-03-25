@@ -977,30 +977,6 @@ export default function ChatSection({
   }, [hasLoadedReadState, loading, messages.length, pendingInitialScroll, scrollPageToBottom])
 
   useEffect(() => {
-    if (loading || !isAuthenticated) {
-      return
-    }
-
-    function handleWindowFocus() {
-      void refreshMessages()
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        void refreshMessages()
-      }
-    }
-
-    window.addEventListener('focus', handleWindowFocus)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      window.removeEventListener('focus', handleWindowFocus)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [loading, isAuthenticated, refreshMessages])
-
-  useEffect(() => {
     if (
       loading ||
       !isAuthenticated ||
@@ -1444,6 +1420,9 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
+      const editingMessageSnapshot = editingMessage
+      const nextEditedAt = new Date().toISOString()
+
       if (editingMessageId) {
         const { error: updateError } = await updateChatMessage(
           editingMessageId,
@@ -1454,6 +1433,22 @@ export default function ChatSection({
 
         if (updateError) {
           throw updateError
+        }
+
+        if (editingMessageSnapshot) {
+          setMessages((currentMessages) =>
+            keepLatestRenderedMessages(
+              currentMessages.map((message) =>
+                message.id === editingMessageId
+                  ? {
+                      ...message,
+                      text: trimmedDraftMessage,
+                      editedAt: nextEditedAt,
+                    }
+                  : message
+              )
+            )
+          )
         }
       } else {
         const { error: insertError } = await createChatMessage(
@@ -1469,10 +1464,7 @@ export default function ChatSection({
         }
       }
 
-      const recentMessages = await loadRecentChatMessages(50, threadId)
-      pendingAutoScrollToBottomRef.current = true
       setPendingNewMessagesCount(0)
-      setMessages(keepLatestRenderedMessages(recentMessages))
       setDraftMessage('')
       clearSelectedImage()
       setReplyingToMessage(null)
