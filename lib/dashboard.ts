@@ -313,7 +313,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
       .order('created_at', { ascending: false }),
     supabase
       .from('challenges')
-      .select('id, title, description, goal_km, goal_runs, xp_reward, created_at, kind')
+      .select('id, title, description, goal_km, goal_runs, xp_reward, created_at')
       .order('created_at', { ascending: true }),
     loadChallengeXpByUser(),
     loadLikeXpByUser(),
