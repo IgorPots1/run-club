@@ -38,9 +38,10 @@ const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
-const SWIPE_REPLY_TRIGGER_PX = 60
-const SWIPE_REPLY_MAX_OFFSET_PX = 72
-const SWIPE_REPLY_CANCEL_VERTICAL_THRESHOLD_PX = 24
+const SWIPE_REPLY_TRIGGER_PX = 80
+const SWIPE_REPLY_MAX_OFFSET_PX = 96
+const SWIPE_REPLY_VERTICAL_LOCK_PX = 12
+const SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO = 1.5
 const REACTION_ANIMATION_DURATION_MS = 200
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
@@ -406,6 +407,8 @@ export default function ChatSection({
   const swipeGestureMessageIdRef = useRef<string | null>(null)
   const swipeStartXRef = useRef<number | null>(null)
   const swipeStartYRef = useRef<number | null>(null)
+  const swipeOffsetXRef = useRef(0)
+  const swipeLockedVerticalRef = useRef(false)
   const highlightedMessageIdRef = useRef<string | null>(null)
   const highlightedMessageTimeoutRef = useRef<number | null>(null)
   const animatedReactionTimeoutRef = useRef<number | null>(null)
@@ -847,6 +850,8 @@ export default function ChatSection({
       swipeGestureMessageIdRef.current = null
       swipeStartXRef.current = null
       swipeStartYRef.current = null
+      swipeOffsetXRef.current = 0
+      swipeLockedVerticalRef.current = false
     }
   }, [])
 
@@ -1674,6 +1679,8 @@ export default function ChatSection({
     swipeGestureMessageIdRef.current = null
     swipeStartXRef.current = null
     swipeStartYRef.current = null
+    swipeOffsetXRef.current = 0
+    swipeLockedVerticalRef.current = false
     setSwipingMessageId(null)
     setSwipeOffsetX(0)
   }, [])
@@ -1698,6 +1705,8 @@ export default function ChatSection({
     swipeGestureMessageIdRef.current = message.id
     swipeStartXRef.current = touch.clientX
     swipeStartYRef.current = touch.clientY
+    swipeOffsetXRef.current = 0
+    swipeLockedVerticalRef.current = false
     setSwipingMessageId(null)
     setSwipeOffsetX(0)
   }
@@ -1722,35 +1731,56 @@ export default function ChatSection({
 
     const deltaX = touch.clientX - startX
     const deltaY = touch.clientY - startY
+    const absoluteDeltaX = Math.abs(deltaX)
+    const absoluteDeltaY = Math.abs(deltaY)
 
-    if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+    if (absoluteDeltaX > 8 || absoluteDeltaY > 8) {
       clearLongPressTimeout()
+    }
+
+    if (swipeLockedVerticalRef.current) {
+      setSwipingMessageId(null)
+      setSwipeOffsetX(0)
+      swipeOffsetXRef.current = 0
+      return
+    }
+
+    if (
+      absoluteDeltaY > SWIPE_REPLY_VERTICAL_LOCK_PX &&
+      absoluteDeltaX <= absoluteDeltaY * SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO
+    ) {
+      swipeLockedVerticalRef.current = true
+      setSwipingMessageId(null)
+      setSwipeOffsetX(0)
+      swipeOffsetXRef.current = 0
+      return
     }
 
     if (deltaX <= 0) {
       setSwipingMessageId(null)
       setSwipeOffsetX(0)
+      swipeOffsetXRef.current = 0
       return
     }
 
-    if (
-      Math.abs(deltaY) > Math.abs(deltaX) &&
-      Math.abs(deltaY) > SWIPE_REPLY_CANCEL_VERTICAL_THRESHOLD_PX
-    ) {
+    if (absoluteDeltaX <= absoluteDeltaY * SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO) {
       setSwipingMessageId(null)
       setSwipeOffsetX(0)
+      swipeOffsetXRef.current = 0
       return
     }
 
+    const nextSwipeOffsetX = Math.min(deltaX, SWIPE_REPLY_MAX_OFFSET_PX)
     setSwipingMessageId(message.id)
-    setSwipeOffsetX(Math.min(deltaX, SWIPE_REPLY_MAX_OFFSET_PX))
+    setSwipeOffsetX(nextSwipeOffsetX)
+    swipeOffsetXRef.current = nextSwipeOffsetX
   }
 
   function handleMessageTouchEnd(message: ChatMessageItem) {
     const shouldReply =
       isMobileSwipeViewport() &&
       swipeGestureMessageIdRef.current === message.id &&
-      swipeOffsetX >= SWIPE_REPLY_TRIGGER_PX
+      swipeOffsetXRef.current >= SWIPE_REPLY_TRIGGER_PX
 
     clearLongPressTimeout()
     resetSwipeReplyGesture()
