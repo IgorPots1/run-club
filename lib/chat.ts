@@ -187,6 +187,12 @@ export async function uploadChatImage(userId: string, file: File, threadId?: str
   })
 
   if (uploadError) {
+    console.error('Failed to upload chat image', {
+      message: uploadError.message,
+      status: 'status' in uploadError ? uploadError.status : undefined,
+      bucket: CHAT_MEDIA_BUCKET,
+      path,
+    })
     throw uploadError
   }
 

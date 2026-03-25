@@ -1222,7 +1222,8 @@ export default function ChatSection({
     try {
       const publicUrl = await uploadChatImage(currentUserId, nextFile, threadId)
       setPendingImageUrl(publicUrl)
-    } catch {
+    } catch (error) {
+      console.error('Failed to upload image in chat composer', error)
       clearSelectedImage()
       setSubmitError('Не удалось загрузить изображение')
     } finally {
