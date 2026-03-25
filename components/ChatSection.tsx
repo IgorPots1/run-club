@@ -34,6 +34,13 @@ const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
+const REPLY_TARGET_HIGHLIGHT_CLASSES = [
+  'bg-yellow-100',
+  'dark:bg-yellow-500/20',
+  'ring-2',
+  'ring-yellow-300',
+  'dark:ring-yellow-400/40',
+]
 
 function AvatarFallback() {
   return (
@@ -102,10 +109,12 @@ function ChatMessageBody({
   message,
   isOwnMessage = false,
   showSenderName = true,
+  onReplyPreviewClick,
 }: {
   message: ChatMessageItem
   isOwnMessage?: boolean
   showSenderName?: boolean
+  onReplyPreviewClick?: () => void
 }) {
   return (
     <>
@@ -119,16 +128,18 @@ function ChatMessageBody({
         </p>
       ) : null}
       {message.replyTo ? (
-        <div
+        <button
+          type="button"
+          onClick={onReplyPreviewClick}
           className={`mt-1 rounded-[14px] px-2.5 py-1.5 ${
             isOwnMessage
               ? 'bg-black/[0.04] dark:bg-white/[0.07]'
               : 'bg-black/[0.03] dark:bg-white/[0.05]'
-          }`}
+          } ${onReplyPreviewClick ? 'block w-full cursor-pointer text-left' : 'block w-full text-left'}`}
         >
           <p className="app-text-primary truncate text-xs font-medium">{message.replyTo.displayName}</p>
           <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
-        </div>
+        </button>
       ) : null}
       <p
         className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
@@ -157,10 +168,12 @@ export default function ChatSection({
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-  const messageRefs = useRef<Record<string, HTMLElement | null>>({})
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const longPressTimeoutRef = useRef<number | null>(null)
+  const highlightedMessageIdRef = useRef<string | null>(null)
+  const highlightedMessageTimeoutRef = useRef<number | null>(null)
   const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
   const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number | null } | null>(null)
@@ -247,15 +260,6 @@ export default function ChatSection({
       textarea.scrollHeight > CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [])
 
-  const setMessageRef = useCallback((messageId: string, node: HTMLElement | null) => {
-    if (node) {
-      messageRefs.current[messageId] = node
-      return
-    }
-
-    delete messageRefs.current[messageId]
-  }, [])
-
   const isNearBottom = useCallback(() => {
     if (typeof window === 'undefined') {
       return false
@@ -285,6 +289,43 @@ export default function ChatSection({
       behavior: 'auto',
     })
   }, [])
+
+  const clearReplyTargetHighlight = useCallback(() => {
+    if (highlightedMessageTimeoutRef.current !== null) {
+      window.clearTimeout(highlightedMessageTimeoutRef.current)
+      highlightedMessageTimeoutRef.current = null
+    }
+
+    const highlightedMessageId = highlightedMessageIdRef.current
+
+    if (!highlightedMessageId) {
+      return
+    }
+
+    const highlightedMessageNode = messageRefs.current[highlightedMessageId]
+    highlightedMessageNode?.classList.remove(...REPLY_TARGET_HIGHLIGHT_CLASSES)
+    highlightedMessageIdRef.current = null
+  }, [])
+
+  const handleReplyPreviewClick = useCallback((replyToMessageId: string) => {
+    const targetMessageNode = messageRefs.current[replyToMessageId]
+
+    if (!targetMessageNode) {
+      return
+    }
+
+    clearReplyTargetHighlight()
+    targetMessageNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    targetMessageNode.classList.add(...REPLY_TARGET_HIGHLIGHT_CLASSES)
+    highlightedMessageIdRef.current = replyToMessageId
+    highlightedMessageTimeoutRef.current = window.setTimeout(() => {
+      targetMessageNode.classList.remove(...REPLY_TARGET_HIGHLIGHT_CLASSES)
+      if (highlightedMessageIdRef.current === replyToMessageId) {
+        highlightedMessageIdRef.current = null
+      }
+      highlightedMessageTimeoutRef.current = null
+    }, 1500)
+  }, [clearReplyTargetHighlight])
 
   function getNewMessagesLabel(count: number) {
     return count === 1 ? '1 new message' : `${count} new messages`
@@ -465,6 +506,12 @@ export default function ChatSection({
       }
     }
   }, [])
+
+  useEffect(() => {
+    return () => {
+      clearReplyTargetHighlight()
+    }
+  }, [clearReplyTargetHighlight])
 
   useEffect(() => {
     if (!selectedMessage) {
@@ -1227,7 +1274,6 @@ export default function ChatSection({
                       return (
                         <div
                           key={message.id}
-                          ref={(node) => setMessageRef(message.id, node)}
                           className={messageSpacingClass}
                         >
                         {message.id === firstUnreadMessageId ? (
@@ -1252,11 +1298,19 @@ export default function ChatSection({
                             <div className="h-10 w-10 shrink-0" aria-hidden="true" />
                           )}
                           <div
+                            ref={(node) => {
+                              if (node) {
+                                messageRefs.current[message.id] = node
+                                return
+                              }
+
+                              delete messageRefs.current[message.id]
+                            }}
                             className={`chat-no-select min-w-0 w-full max-w-[85%] rounded-[18px] border px-3 py-2 shadow-none ${
                               isOwnMessage
                                 ? 'ml-auto border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
                                 : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
-                            }`}
+                            } transition-colors transition-shadow`}
                             onTouchStart={() => startLongPress(message)}
                             onTouchEnd={clearLongPressTimeout}
                             onTouchCancel={clearLongPressTimeout}
@@ -1275,6 +1329,7 @@ export default function ChatSection({
                               message={message}
                               isOwnMessage={isOwnMessage}
                               showSenderName={showSenderName}
+                              onReplyPreviewClick={message.replyTo ? () => handleReplyPreviewClick(message.replyTo.id) : undefined}
                             />
                           </div>
                         </article>
