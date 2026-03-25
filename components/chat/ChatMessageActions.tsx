@@ -29,6 +29,7 @@ export default function ChatMessageActions({
   const router = useRouter()
 
   const isOwnMessage = currentUserId === message.userId
+  const canEditMessage = isOwnMessage && !message.imageUrl
   const messagePreview = message.text.trim()
 
   async function handleCopy() {
@@ -94,7 +95,7 @@ export default function ChatMessageActions({
           <p className="chat-no-select app-text-secondary mt-1 truncate text-sm">&quot;{messagePreview}&quot;</p>
         </div>
         <div className="space-y-1.5">
-          {isOwnMessage ? (
+          {canEditMessage ? (
             <button
               type="button"
               onClick={handleEdit}

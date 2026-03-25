@@ -452,7 +452,7 @@ export default function ChatSection({
     : null
   const hasPendingImage = Boolean(pendingImageUrl)
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
-  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl || editingMessage?.imageUrl)
+  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl)
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const firstUnreadMessageId = (() => {
@@ -873,9 +873,16 @@ export default function ChatSection({
       return
     }
 
-    if (!messages.some((message) => message.id === editingMessageId)) {
+    const nextEditingMessage = messages.find((message) => message.id === editingMessageId)
+
+    if (!nextEditingMessage) {
       setEditingMessageId(null)
       setDraftMessage('')
+      return
+    }
+
+    if (nextEditingMessage.imageUrl) {
+      clearEditingMessage()
     }
   }, [editingMessageId, messages])
 
@@ -1406,7 +1413,7 @@ export default function ChatSection({
       return
     }
 
-    if (!trimmedDraftMessage && !pendingImageUrl && !editingMessage?.imageUrl) {
+    if (!trimmedDraftMessage && !pendingImageUrl) {
       setSubmitError('Введите сообщение или выберите изображение')
       return
     }
@@ -1424,6 +1431,17 @@ export default function ChatSection({
       const nextEditedAt = new Date().toISOString()
 
       if (editingMessageId) {
+        if (!editingMessageSnapshot || editingMessageSnapshot.imageUrl) {
+          setSubmitError('Нельзя редактировать сообщение с изображением')
+          clearEditingMessage()
+          return
+        }
+
+        if (!trimmedDraftMessage) {
+          setSubmitError('Введите текст сообщения')
+          return
+        }
+
         const { error: updateError } = await updateChatMessage(
           editingMessageId,
           currentUserId,
@@ -1583,6 +1601,13 @@ export default function ChatSection({
   }
 
   function handleEditMessage(message: ChatMessageItem) {
+    if (message.imageUrl) {
+      setSubmitError('Нельзя редактировать сообщение с изображением')
+      setSelectedMessage(null)
+      setIsActionSheetOpen(false)
+      return
+    }
+
     setEditingMessageId(message.id)
     setReplyingToMessage(null)
     clearSelectedImage()
