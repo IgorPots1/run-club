@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [shouldLoadWeeklyRace, setShouldLoadWeeklyRace] = useState(false)
+  const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
 
@@ -55,16 +55,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) {
-      setShouldLoadWeeklyRace(false)
+      setShouldLoadSecondaryContent(false)
       return
     }
 
-    const timer = window.setTimeout(() => {
-      setShouldLoadWeeklyRace(true)
-    }, 180)
+    let timeoutId: number | null = null
+    const frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        setShouldLoadSecondaryContent(true)
+      }, 120)
+    })
 
     return () => {
-      window.clearTimeout(timer)
+      window.cancelAnimationFrame(frameId)
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
     }
   }, [user])
 
@@ -76,7 +83,7 @@ export default function DashboardPage() {
     focusThrottleInterval: 15000,
   }), [])
   const overviewKey = user ? (['dashboard-overview', user.id] as const) : null
-  const weeklyRaceKey = user && shouldLoadWeeklyRace ? (['weekly-race', user.id] as const) : null
+  const weeklyRaceKey = user && shouldLoadSecondaryContent ? (['weekly-race', user.id] as const) : null
 
   const {
     data: overview,
@@ -166,7 +173,8 @@ export default function DashboardPage() {
       ? 'Загружаем прогресс...'
       : null
   const showOverviewSkeleton = isBootstrappingUser || (overviewLoading && !overview && !overviewError)
-  const weeklyLeaderboardLoading = isBootstrappingUser || (shouldLoadWeeklyRace && weeklyRaceLoading)
+  const showSecondarySkeleton = isBootstrappingUser || !shouldLoadSecondaryContent
+  const weeklyLeaderboardLoading = showSecondarySkeleton || weeklyRaceLoading
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -323,10 +331,10 @@ export default function DashboardPage() {
             leaderboard={weeklyRace ?? null}
             currentUserId={user?.id ?? ''}
             loading={weeklyLeaderboardLoading}
-            error={weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
+            error={!showSecondarySkeleton && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
           />
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
-          {isBootstrappingUser ? (
+          {showSecondarySkeleton ? (
             <div className="space-y-3">
               <div className="app-card rounded-xl border p-4 shadow-sm">
                 <div className="skeleton-line h-5 w-32" />
