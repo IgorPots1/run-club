@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import MobileTabBar from "../components/MobileTabBar";
 import Navbar from "../components/Navbar";
 import PwaRegister from "../components/PwaRegister";
+import VoiceStreamLifecycle from "../components/VoiceStreamLifecycle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -57,6 +58,7 @@ export default function RootLayout({
     <html lang="ru">
       <body className="min-h-screen">
         <PwaRegister />
+        <VoiceStreamLifecycle />
         <div
           className={`app-shell mx-auto min-h-screen max-w-xl overflow-x-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >

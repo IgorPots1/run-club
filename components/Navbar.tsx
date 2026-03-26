@@ -7,6 +7,7 @@ import type { User } from '@supabase/supabase-js'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import useRealtimeTotalUnreadCount from '@/components/chat/useRealtimeTotalUnreadCount'
 import { getBootstrapUser } from '@/lib/auth'
+import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../lib/supabase'
 
 export default function Navbar() {
@@ -21,6 +22,7 @@ export default function Navbar() {
   }, [])
 
   async function handleLogout() {
+    stopVoiceStream()
     await supabase.auth.signOut()
     setUser(null)
     router.replace('/login')

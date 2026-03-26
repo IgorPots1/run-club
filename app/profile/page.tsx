@@ -12,6 +12,7 @@ import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
+import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
@@ -658,6 +659,7 @@ function ProfilePageContent() {
     setPageError('')
     setStravaSyncMessage('')
     setStravaConnectionState('disconnected')
+    stopVoiceStream()
 
     try {
       const { error } = await supabase.auth.signOut()
