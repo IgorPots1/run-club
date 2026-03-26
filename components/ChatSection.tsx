@@ -1977,6 +1977,24 @@ export default function ChatSection({
         throw deleteError
       }
 
+      if (message.messageType === 'voice' && message.mediaUrl) {
+        try {
+          const { error: storageDeleteError } = await supabase.storage
+            .from(CHAT_VOICE_BUCKET)
+            .remove([message.mediaUrl])
+
+          if (storageDeleteError) {
+            throw storageDeleteError
+          }
+        } catch (error) {
+          console.error('Failed to delete voice message file from storage', {
+            messageId: message.id,
+            mediaUrl: message.mediaUrl,
+            error,
+          })
+        }
+      }
+
     } catch {
       pendingDeletedMessageIdsRef.current.delete(message.id)
       setMessages((currentMessages) =>
