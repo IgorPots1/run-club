@@ -755,7 +755,7 @@ export default function ChatSection({
   const focusedGestureStartClientYRef = useRef<number | null>(null)
   const focusedGestureBlurredRef = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -1156,10 +1156,9 @@ export default function ChatSection({
         timerRef.current = null
       }
 
-      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
       mediaRecorderRef.current = null
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
-      mediaStreamRef.current = null
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
     }
   }, [])
 
@@ -2117,13 +2116,7 @@ export default function ChatSection({
       timerRef.current = null
     }
 
-    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
     mediaRecorderRef.current = null
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop())
-      mediaStreamRef.current = null
-    }
 
     chunksRef.current = []
     startTimeRef.current = 0
@@ -2289,9 +2282,13 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      })
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        })
+      }
+
+      const stream = streamRef.current
       const recorderMimeType = getVoiceRecorderMimeType()
       const recorder = recorderMimeType
         ? new MediaRecorder(stream, { mimeType: recorderMimeType })
@@ -2299,7 +2296,6 @@ export default function ChatSection({
 
       chunksRef.current = []
       startTimeRef.current = Date.now()
-      mediaStreamRef.current = stream
       mediaRecorderRef.current = recorder
       isStoppingVoiceRecordingRef.current = false
       hasHandledVoiceRecordingStopRef.current = false
