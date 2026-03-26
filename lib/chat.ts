@@ -67,6 +67,11 @@ export type ChatMessageItem = {
     emoji: string
     count: number
     userIds: string[]
+    reactors: {
+      userId: string
+      displayName: string
+      avatarUrl: string | null
+    }[]
   }[]
   previewText: string
   isOptimistic?: boolean
@@ -169,7 +174,7 @@ function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
 }
 
 function sortChatReactions(reactions: { emoji: string; count: number; userIds: string[] }[]) {
-  const emojiOrder = ['👍', '❤️', '🔥', '😂']
+  const emojiOrder = ['👍', '❤️', '🔥', '😂', '👏', '😢', '😮']
 
   return reactions.slice().sort((left, right) => {
     const leftOrder = emojiOrder.indexOf(left.emoji)
@@ -219,7 +224,8 @@ function toChatMessageItem(
   profile?: ProfileRow,
   replyToMessage?: ChatMessageRow | null,
   replyToProfile?: ProfileRow,
-  reactions: { emoji: string; count: number; userIds: string[] }[] = []
+  reactions: { emoji: string; count: number; userIds: string[] }[] = [],
+  profileById: Record<string, ProfileRow> = {}
 ): ChatMessageItem {
   const messageType = resolveChatMessageType(message)
 
@@ -241,7 +247,18 @@ function toChatMessageItem(
     replyTo: message.reply_to_id
       ? toChatReplyPreview(message.reply_to_id, replyToMessage, replyToProfile)
       : null,
-    reactions,
+    reactions: reactions.map((reaction) => ({
+      ...reaction,
+      reactors: reaction.userIds.map((userId) => {
+        const reactorProfile = profileById[userId]
+
+        return {
+          userId,
+          displayName: getProfileDisplayName(reactorProfile, 'Бегун'),
+          avatarUrl: reactorProfile?.avatar_url ?? null,
+        }
+      }),
+    })),
     previewText: getChatMessagePreviewText(message),
   }
 }
@@ -561,6 +578,7 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     new Set([
       messageRow.user_id,
       ...(replyMessage ? [replyMessage.user_id] : []),
+      ...(reactionsByMessageId[messageRow.id] ?? []).flatMap((reaction) => reaction.userIds),
     ])
   )
   const profileById = await loadProfilesByUserIds(profileIds)
@@ -570,7 +588,8 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     profileById[messageRow.user_id],
     replyMessage,
     replyMessage ? profileById[replyMessage.user_id] : undefined,
-    reactionsByMessageId[messageRow.id] ?? []
+    reactionsByMessageId[messageRow.id] ?? [],
+    profileById
   )
 }
 
@@ -609,6 +628,7 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
     new Set([
       ...messageRows.map((message) => message.user_id),
       ...Object.values(replyById).map((message) => message.user_id),
+      ...Object.values(reactionsByMessageId).flatMap((reactions) => reactions.flatMap((reaction) => reaction.userIds)),
     ])
   )
   const profileById = await loadProfilesByUserIds(userIds)
@@ -621,7 +641,8 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
       profileById[message.user_id],
       replyMessage,
       replyMessage ? profileById[replyMessage.user_id] : undefined,
-      reactionsByMessageId[message.id] ?? []
+      reactionsByMessageId[message.id] ?? [],
+      profileById
     )
   })
 }
@@ -664,6 +685,7 @@ export async function loadOlderChatMessages(
     new Set([
       ...messageRows.map((message) => message.user_id),
       ...Object.values(replyById).map((message) => message.user_id),
+      ...Object.values(reactionsByMessageId).flatMap((reactions) => reactions.flatMap((reaction) => reaction.userIds)),
     ])
   )
   const profileById = await loadProfilesByUserIds(userIds)
@@ -676,7 +698,8 @@ export async function loadOlderChatMessages(
       profileById[message.user_id],
       replyMessage,
       replyMessage ? profileById[replyMessage.user_id] : undefined,
-      reactionsByMessageId[message.id] ?? []
+      reactionsByMessageId[message.id] ?? [],
+      profileById
     )
   })
 }

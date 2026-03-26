@@ -81,6 +81,35 @@ function AvatarFallback({ className = 'h-10 w-10' }: { className?: string }) {
   )
 }
 
+function TinyUserAvatar({
+  avatarUrl,
+  displayName,
+  className = 'h-4.5 w-4.5',
+}: {
+  avatarUrl: string | null
+  displayName: string
+  className?: string
+}) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={displayName}
+        className={`${className} shrink-0 rounded-full object-cover ring-1 ring-white/80 dark:ring-black/30`}
+      />
+    )
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} flex shrink-0 items-center justify-center rounded-full bg-gray-200 text-[9px] font-semibold text-gray-600 ring-1 ring-white/80 dark:bg-gray-700 dark:text-gray-200 dark:ring-black/30`}
+    >
+      {(displayName.trim()[0] ?? '?').toUpperCase()}
+    </span>
+  )
+}
+
 function insertMessageChronologically(messages: ChatMessageItem[], nextMessage: ChatMessageItem) {
   if (messages.some((message) => message.id === nextMessage.id)) {
     return messages
@@ -144,6 +173,10 @@ function toggleReactionOnMessage(
   message: ChatMessageItem,
   userId: string,
   emoji: string,
+  reactorProfile: {
+    displayName: string
+    avatarUrl: string | null
+  },
   shouldActivate?: boolean
 ) {
   const existingReaction = message.reactions.find((reaction) => reaction.emoji === emoji) ?? null
@@ -157,6 +190,7 @@ function toggleReactionOnMessage(
   let nextReactions = message.reactions.map((reaction) => ({
     ...reaction,
     userIds: [...reaction.userIds],
+    reactors: [...reaction.reactors],
   }))
 
   if (nextIsActive) {
@@ -167,11 +201,35 @@ function toggleReactionOnMessage(
               ...reaction,
               count: reaction.count + 1,
               userIds: reaction.userIds.includes(userId) ? reaction.userIds : [...reaction.userIds, userId],
+              reactors: reaction.reactors.some((reactor) => reactor.userId === userId)
+                ? reaction.reactors
+                : [
+                    ...reaction.reactors,
+                    {
+                      userId,
+                      displayName: reactorProfile.displayName,
+                      avatarUrl: reactorProfile.avatarUrl,
+                    },
+                  ],
             }
           : reaction
       )
     } else {
-      nextReactions = [...nextReactions, { emoji, count: 1, userIds: [userId] }]
+      nextReactions = [
+        ...nextReactions,
+        {
+          emoji,
+          count: 1,
+          userIds: [userId],
+          reactors: [
+            {
+              userId,
+              displayName: reactorProfile.displayName,
+              avatarUrl: reactorProfile.avatarUrl,
+            },
+          ],
+        },
+      ]
     }
   } else {
     nextReactions = nextReactions
@@ -181,13 +239,14 @@ function toggleReactionOnMessage(
               ...reaction,
               count: Math.max(0, reaction.count - 1),
               userIds: reaction.userIds.filter((currentUserId) => currentUserId !== userId),
+              reactors: reaction.reactors.filter((reactor) => reactor.userId !== userId),
             }
           : reaction
       )
       .filter((reaction) => reaction.count > 0)
   }
 
-  const emojiOrder = ['👍', '❤️', '🔥', '😂']
+  const emojiOrder = ['👍', '❤️', '🔥', '😂', '👏', '😢', '😮']
   nextReactions.sort((left, right) => {
     const leftOrder = emojiOrder.indexOf(left.emoji)
     const rightOrder = emojiOrder.indexOf(right.emoji)
@@ -212,10 +271,14 @@ function updateMessageReaction(
   messageId: string,
   userId: string,
   emoji: string,
+  reactorProfile: {
+    displayName: string
+    avatarUrl: string | null
+  },
   shouldActivate?: boolean
 ) {
   return messages.map((message) =>
-    message.id === messageId ? toggleReactionOnMessage(message, userId, emoji, shouldActivate) : message
+    message.id === messageId ? toggleReactionOnMessage(message, userId, emoji, reactorProfile, shouldActivate) : message
   )
 }
 
@@ -223,19 +286,23 @@ function ReactionChip({
   reactionKey,
   emoji,
   count,
+  reactors,
   isSelected,
   disabled,
   shouldBurst,
-  onClick,
+  onToggle,
+  onOpenDetails,
   compact = false,
 }: {
   reactionKey: string
   emoji: string
   count: number
+  reactors: { userId: string; displayName: string; avatarUrl: string | null }[]
   isSelected: boolean
   disabled: boolean
   shouldBurst: boolean
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+  onToggle: (event: React.MouseEvent<HTMLButtonElement>) => void
+  onOpenDetails?: (event: React.MouseEvent<HTMLButtonElement>) => void
   compact?: boolean
 }) {
   const [burstPhase, setBurstPhase] = useState<'idle' | 'start' | 'end'>('idle')
@@ -265,16 +332,26 @@ function ReactionChip({
   }, [reactionKey, shouldBurst])
 
   const isBursting = burstPhase !== 'idle'
+  const shouldOpenDetails = count > 1 && Boolean(onOpenDetails)
+  const visibleReactors = compact ? [] : reactors.slice(0, Math.min(2, reactors.length))
+  const singleReactor = !compact && count === 1 ? reactors[0] ?? null : null
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        if (shouldOpenDetails) {
+          onOpenDetails?.(event)
+          return
+        }
+
+        onToggle(event)
+      }}
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       disabled={disabled}
       className={`relative inline-flex items-center overflow-visible rounded-full font-medium transition-transform duration-200 ease-out ${
-        compact ? 'gap-0.5 px-1.5 py-0.5 text-[10px]' : 'gap-0.5 px-2 py-[3px] text-[11px]'
+        compact ? 'gap-0.5 px-1.5 py-0.5 text-[10px]' : 'min-h-6 gap-1 px-1.5 py-[3px] text-[11px]'
       } ${
         isSelected
           ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
@@ -299,6 +376,29 @@ function ReactionChip({
       >
         {emoji}
       </span>
+      {singleReactor ? (
+        <TinyUserAvatar
+          avatarUrl={singleReactor.avatarUrl}
+          displayName={singleReactor.displayName}
+          className="h-4 w-4"
+        />
+      ) : visibleReactors.length > 0 ? (
+        <span className="relative mr-0.5 flex h-4.5 w-6 shrink-0 items-center">
+          {visibleReactors.map((reactor, index) => (
+            <span
+              key={`${reactionKey}:${reactor.userId}`}
+              className="absolute top-1/2 -translate-y-1/2"
+              style={{ left: `${index * 8}px` }}
+            >
+              <TinyUserAvatar
+                avatarUrl={reactor.avatarUrl}
+                displayName={reactor.displayName}
+                className="h-4 w-4"
+              />
+            </span>
+          ))}
+        </span>
+      ) : null}
       <span className="relative z-[2]">{emoji}</span>
       <span className="relative z-[2]">{count}</span>
     </button>
@@ -691,6 +791,7 @@ function ChatMessageBody({
   onImageClick,
   currentUserId = null,
   onReactionToggle,
+  onReactionDetailsOpen,
   animatedReactionKey = null,
   compactPreview = false,
 }: {
@@ -701,6 +802,7 @@ function ChatMessageBody({
   onImageClick?: (imageUrl: string) => void
   currentUserId?: string | null
   onReactionToggle?: (messageId: string, emoji: string) => void
+  onReactionDetailsOpen?: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
   animatedReactionKey?: string | null
   compactPreview?: boolean
 }) {
@@ -838,7 +940,7 @@ function ChatMessageBody({
         {message.editedAt ? ' • изменено' : ''}
       </p>
       {message.reactions.length > 0 ? (
-        <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-0.5' : 'mt-1.5 gap-1'} ${isOwnMessage ? 'justify-end' : ''}`}>
+        <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-0.5' : 'mt-2 gap-1'} ${isOwnMessage ? 'justify-end' : ''}`}>
           {message.reactions.map((reaction) => {
             const isSelected = currentUserId ? reaction.userIds.includes(currentUserId) : false
             const reactionKey = `${message.id}:${reaction.emoji}`
@@ -849,13 +951,18 @@ function ChatMessageBody({
                 reactionKey={reactionKey}
                 emoji={reaction.emoji}
                 count={reaction.count}
+                reactors={reaction.reactors}
                 isSelected={isSelected}
                 disabled={!onReactionToggle}
                 shouldBurst={animatedReactionKey === reactionKey}
                 compact={compactPreview}
-                onClick={(event) => {
+                onToggle={(event) => {
                   event.stopPropagation()
                   onReactionToggle?.(message.id, reaction.emoji)
+                }}
+                onOpenDetails={(event) => {
+                  event.stopPropagation()
+                  onReactionDetailsOpen?.(message, reaction)
                 }}
               />
             )
@@ -934,6 +1041,10 @@ export default function ChatSection({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [selectedViewerImageUrl, setSelectedViewerImageUrl] = useState<string | null>(null)
   const [animatedReactionKey, setAnimatedReactionKey] = useState<string | null>(null)
+  const [selectedReactionDetails, setSelectedReactionDetails] = useState<{
+    messageId: string
+    emoji: string
+  } | null>(null)
   const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
@@ -953,6 +1064,15 @@ export default function ChatSection({
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const oldestLoadedMessageId = messages.length > 0 ? messages[0]?.id ?? null : null
+  const selectedReactionMessage = selectedReactionDetails
+    ? messages.find((message) => message.id === selectedReactionDetails.messageId) ?? null
+    : null
+  const selectedReaction = selectedReactionMessage && selectedReactionDetails
+    ? selectedReactionMessage.reactions.find((reaction) => reaction.emoji === selectedReactionDetails.emoji) ?? null
+    : null
+  const isCurrentUserSelectedInReaction = Boolean(
+    currentUserId && selectedReaction?.userIds.includes(currentUserId)
+  )
   const firstUnreadMessageId = (() => {
     if (!enableReadState) {
       return null
@@ -1176,6 +1296,19 @@ export default function ChatSection({
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    if (!selectedReactionDetails) {
+      return
+    }
+
+    const nextMessage = messages.find((message) => message.id === selectedReactionDetails.messageId) ?? null
+    const nextReaction = nextMessage?.reactions.find((reaction) => reaction.emoji === selectedReactionDetails.emoji) ?? null
+
+    if (!nextReaction || nextReaction.count <= 1) {
+      setSelectedReactionDetails(null)
+    }
+  }, [messages, selectedReactionDetails])
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -2162,6 +2295,15 @@ export default function ChatSection({
     setEditingMessageId(null)
   }
 
+  function getCurrentUserReactionProfile() {
+    const currentUserMessage = messagesRef.current.find((message) => message.userId === currentUserId) ?? null
+
+    return {
+      displayName: currentUserMessage?.displayName ?? 'Вы',
+      avatarUrl: currentUserMessage?.avatarUrl ?? null,
+    }
+  }
+
   async function handleToggleReaction(messageId: string, emoji: string) {
     if (!currentUserId) {
       return
@@ -2176,6 +2318,7 @@ export default function ChatSection({
     const hasReacted = currentMessage.reactions.some(
       (reaction) => reaction.emoji === emoji && reaction.userIds.includes(currentUserId)
     )
+    const currentUserReactionProfile = getCurrentUserReactionProfile()
     const nextShouldActivate = !hasReacted
     const nextAnimatedReactionKey = nextShouldActivate ? `${messageId}:${emoji}` : null
 
@@ -2192,7 +2335,7 @@ export default function ChatSection({
     }
 
     setMessages((currentMessages) =>
-      updateMessageReaction(currentMessages, messageId, currentUserId, emoji, nextShouldActivate)
+      updateMessageReaction(currentMessages, messageId, currentUserId, emoji, currentUserReactionProfile, nextShouldActivate)
     )
 
     try {
@@ -2203,7 +2346,7 @@ export default function ChatSection({
         setAnimatedReactionKey((currentKey) => (currentKey === nextAnimatedReactionKey ? null : currentKey))
       }
       setMessages((currentMessages) =>
-        updateMessageReaction(currentMessages, messageId, currentUserId, emoji, hasReacted)
+        updateMessageReaction(currentMessages, messageId, currentUserId, emoji, currentUserReactionProfile, hasReacted)
       )
     }
   }
@@ -3178,6 +3321,14 @@ export default function ChatSection({
                                 onReplyPreviewClick={replyPreviewTargetId ? () => handleReplyPreviewClick(replyPreviewTargetId) : undefined}
                                 onImageClick={setSelectedViewerImageUrl}
                                 onReactionToggle={handleToggleReaction}
+                                onReactionDetailsOpen={(targetMessage, reaction) => {
+                                  if (reaction.count > 1) {
+                                    setSelectedReactionDetails({
+                                      messageId: targetMessage.id,
+                                      emoji: reaction.emoji,
+                                    })
+                                  }
+                                }}
                               />
                             </div>
                           </div>
@@ -3222,6 +3373,66 @@ export default function ChatSection({
               alt="Полноразмерное изображение"
               className="max-h-[calc(100svh-2rem)] max-w-[calc(100vw-2rem)] rounded-2xl object-contain"
             />
+          </div>
+        </div>
+      ) : null}
+      {selectedReactionMessage && selectedReaction ? (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/20 p-3 sm:items-center">
+          <button
+            type="button"
+            aria-label="Закрыть список реакций"
+            className="absolute inset-0"
+            onClick={() => setSelectedReactionDetails(null)}
+          />
+          <div className="app-card relative w-full max-w-[320px] overflow-hidden rounded-[20px] border border-black/[0.05] shadow-lg dark:border-white/10">
+            <div className="flex items-center justify-between border-b border-black/[0.05] px-3 py-2 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="text-lg leading-none">{selectedReaction.emoji}</span>
+                <div>
+                  <p className="app-text-primary text-sm font-semibold">Реакции</p>
+                  <p className="app-text-secondary text-[11px]">{selectedReactionMessage.displayName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="app-text-secondary rounded-full px-2 py-1 text-xs"
+                onClick={() => setSelectedReactionDetails(null)}
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="max-h-[min(50svh,320px)] overflow-y-auto p-2">
+              {selectedReaction.reactors.map((reactor) => (
+                <div
+                  key={`${selectedReactionMessage.id}:${selectedReaction.emoji}:${reactor.userId}`}
+                  className="flex items-center gap-2 rounded-xl px-2 py-2"
+                >
+                  <TinyUserAvatar
+                    avatarUrl={reactor.avatarUrl}
+                    displayName={reactor.displayName}
+                    className="h-7 w-7"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="app-text-primary truncate text-sm font-medium">{reactor.displayName}</p>
+                  </div>
+                  <span className="text-base leading-none">{selectedReaction.emoji}</span>
+                </div>
+              ))}
+            </div>
+            {currentUserId ? (
+              <div className="border-t border-black/[0.05] p-2 dark:border-white/10">
+                <button
+                  type="button"
+                  className="app-text-primary w-full rounded-xl px-3 py-2 text-sm font-medium"
+                  onClick={() => {
+                    void handleToggleReaction(selectedReactionMessage.id, selectedReaction.emoji)
+                    setSelectedReactionDetails(null)
+                  }}
+                >
+                  {isCurrentUserSelectedInReaction ? 'Убрать мою реакцию' : 'Поставить эту реакцию'}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
