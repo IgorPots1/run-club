@@ -768,6 +768,7 @@ export default function ChatSection({
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const hasVoiceRecordingGestureListenersRef = useRef(false)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
   const recordingPointerStartXRef = useRef<number | null>(null)
@@ -1168,41 +1169,10 @@ export default function ChatSection({
         timerRef.current = null
       }
 
+      removeVoiceRecordingGestureListeners()
       mediaRecorderRef.current = null
     }
   }, [])
-
-  useEffect(() => {
-    if (!isRecordingVoice && !isStartingVoiceRecording) {
-      return
-    }
-
-    function handleMove(event: MouseEvent) {
-      updateVoiceRecordingGesture(event.clientX, event.clientY)
-    }
-
-    function handleTouchMove(event: TouchEvent) {
-      updateVoiceRecordingGesture(event.touches[0]?.clientX ?? null, event.touches[0]?.clientY ?? null)
-    }
-
-    function handleRelease() {
-      handleVoiceRecordingRelease()
-    }
-
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('touchmove', handleTouchMove, { passive: true })
-    window.addEventListener('mouseup', handleRelease)
-    window.addEventListener('touchend', handleRelease)
-    window.addEventListener('touchcancel', handleRelease)
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('touchmove', handleTouchMove)
-      window.removeEventListener('mouseup', handleRelease)
-      window.removeEventListener('touchend', handleRelease)
-      window.removeEventListener('touchcancel', handleRelease)
-    }
-  }, [isRecordingVoice, isStartingVoiceRecording])
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -2138,6 +2108,7 @@ export default function ChatSection({
       timerRef.current = null
     }
 
+    removeVoiceRecordingGestureListeners()
     mediaRecorderRef.current = null
 
     chunksRef.current = []
@@ -2225,15 +2196,7 @@ export default function ChatSection({
     setIsLocked(nextIsLocked)
   }
 
-  function beginVoiceRecordingGesture(startClientX?: number | null, startClientY?: number | null) {
-    recordingPointerStartXRef.current = typeof startClientX === 'number' ? startClientX : null
-    recordingPointerStartYRef.current = typeof startClientY === 'number' ? startClientY : null
-    setVoiceCancellingState(false)
-    setVoiceLockedState(false)
-    void startVoiceRecording()
-  }
-
-  function updateVoiceRecordingGesture(clientX?: number | null, clientY?: number | null) {
+  function handleVoiceRecordingMove(clientX?: number | null, clientY?: number | null) {
     const startClientX = recordingPointerStartXRef.current
     const startClientY = recordingPointerStartYRef.current
 
@@ -2264,6 +2227,54 @@ export default function ChatSection({
     }
 
     setVoiceCancellingState(startClientX - clientX >= VOICE_RECORDING_CANCEL_SLIDE_PX)
+  }
+
+  function handleVoiceRecordingMouseMove(event: MouseEvent) {
+    handleVoiceRecordingMove(event.clientX, event.clientY)
+  }
+
+  function handleVoiceRecordingTouchMove(event: TouchEvent) {
+    event.preventDefault()
+    handleVoiceRecordingMove(event.touches[0]?.clientX ?? null, event.touches[0]?.clientY ?? null)
+  }
+
+  function handleVoiceRecordingEnd() {
+    handleVoiceRecordingRelease()
+  }
+
+  function addVoiceRecordingGestureListeners() {
+    if (typeof window === 'undefined' || hasVoiceRecordingGestureListenersRef.current) {
+      return
+    }
+
+    hasVoiceRecordingGestureListenersRef.current = true
+    window.addEventListener('mousemove', handleVoiceRecordingMouseMove)
+    window.addEventListener('mouseup', handleVoiceRecordingEnd)
+    window.addEventListener('touchmove', handleVoiceRecordingTouchMove, { passive: false })
+    window.addEventListener('touchend', handleVoiceRecordingEnd)
+    window.addEventListener('touchcancel', handleVoiceRecordingEnd)
+  }
+
+  function removeVoiceRecordingGestureListeners() {
+    if (typeof window === 'undefined' || !hasVoiceRecordingGestureListenersRef.current) {
+      return
+    }
+
+    hasVoiceRecordingGestureListenersRef.current = false
+    window.removeEventListener('mousemove', handleVoiceRecordingMouseMove)
+    window.removeEventListener('mouseup', handleVoiceRecordingEnd)
+    window.removeEventListener('touchmove', handleVoiceRecordingTouchMove)
+    window.removeEventListener('touchend', handleVoiceRecordingEnd)
+    window.removeEventListener('touchcancel', handleVoiceRecordingEnd)
+  }
+
+  function beginVoiceRecordingGesture(startClientX?: number | null, startClientY?: number | null) {
+    recordingPointerStartXRef.current = typeof startClientX === 'number' ? startClientX : null
+    recordingPointerStartYRef.current = typeof startClientY === 'number' ? startClientY : null
+    setVoiceCancellingState(false)
+    setVoiceLockedState(false)
+    addVoiceRecordingGestureListeners()
+    void startVoiceRecording()
   }
 
   function handleVoiceRecordingRelease() {
@@ -2748,23 +2759,12 @@ export default function ChatSection({
                       event.preventDefault()
                       beginVoiceRecordingGesture(event.clientX, event.clientY)
                     }}
-                    onMouseUp={() => {
-                      handleVoiceRecordingRelease()
-                    }}
                     onTouchStart={(event) => {
                       event.preventDefault()
                       beginVoiceRecordingGesture(
                         event.touches[0]?.clientX ?? null,
                         event.touches[0]?.clientY ?? null
                       )
-                    }}
-                    onTouchEnd={(event) => {
-                      event.preventDefault()
-                      handleVoiceRecordingRelease()
-                    }}
-                    onTouchCancel={(event) => {
-                      event.preventDefault()
-                      handleVoiceRecordingRelease()
                     }}
                     disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
                     className={`app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full px-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60 ${
