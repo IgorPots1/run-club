@@ -10,7 +10,7 @@ export type ChatMessageType = 'text' | 'image' | 'voice'
 type ChatMessageRow = {
   id: string
   user_id: string
-  text: string
+  text: string | null
   message_type: string | null
   image_url: string | null
   media_url: string | null
@@ -135,7 +135,7 @@ function resolveChatMessageImageUrl(message: Pick<ChatMessageRow, 'message_type'
 }
 
 function getChatMessagePreviewText(message: Pick<ChatMessageRow, 'text' | 'message_type' | 'image_url' | 'media_url'>) {
-  const trimmedText = message.text.trim()
+  const trimmedText = message.text?.trim() ?? ''
 
   if (trimmedText) {
     return trimmedText
@@ -157,6 +157,7 @@ function getChatMessagePreviewText(message: Pick<ChatMessageRow, 'text' | 'messa
 function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
   return {
     ...message,
+    text: message.text ?? null,
     message_type: message.message_type ?? null,
     image_url: message.image_url ?? null,
     media_url: message.media_url ?? null,
@@ -223,7 +224,7 @@ function toChatMessageItem(
   return {
     id: message.id,
     userId: message.user_id,
-    text: message.text,
+    text: message.text ?? '',
     messageType,
     imageUrl: resolveChatMessageImageUrl(message),
     mediaUrl: message.media_url ?? null,
@@ -241,6 +242,31 @@ function toChatMessageItem(
     reactions,
     previewText: getChatMessagePreviewText(message),
   }
+}
+
+async function resolveSafeReplyToId(replyToId?: string | null, threadId?: string | null) {
+  if (!replyToId) {
+    return null
+  }
+
+  const { data: originalReplyMessage, error: originalReplyMessageError } = await supabase
+    .from('chat_messages')
+    .select('id, thread_id')
+    .eq('id', replyToId)
+    .maybeSingle()
+
+  if (originalReplyMessageError) {
+    throw originalReplyMessageError
+  }
+
+  const originalThreadId = ((originalReplyMessage as Pick<ChatMessageRow, 'id' | 'thread_id'> | null) ?? null)?.thread_id ?? null
+  const currentThreadId = threadId ?? null
+
+  if (originalThreadId === currentThreadId) {
+    return replyToId
+  }
+
+  return null
 }
 
 async function loadChatReactionsByMessageIds(messageIds: string[]) {
@@ -305,31 +331,37 @@ export async function createChatMessage(
     throw new Error('message_too_long')
   }
 
-  let safeReplyToId: string | null = null
-
-  if (replyToId) {
-    const { data: originalReplyMessage, error: originalReplyMessageError } = await supabase
-      .from('chat_messages')
-      .select('id, thread_id')
-      .eq('id', replyToId)
-      .maybeSingle()
-
-    if (originalReplyMessageError) {
-      throw originalReplyMessageError
-    }
-
-    const originalThreadId = ((originalReplyMessage as Pick<ChatMessageRow, 'id' | 'thread_id'> | null) ?? null)?.thread_id ?? null
-    const currentThreadId = threadId ?? null
-
-    if (originalThreadId === currentThreadId) {
-      safeReplyToId = replyToId
-    }
-  }
+  const safeReplyToId = await resolveSafeReplyToId(replyToId, threadId)
 
   return supabase.from('chat_messages').insert({
     user_id: userId,
     text: trimmedText,
     image_url: imageUrl ?? null,
+    reply_to_id: safeReplyToId,
+    thread_id: threadId ?? null,
+  })
+}
+
+export async function createVoiceChatMessage(
+  userId: string,
+  mediaPath: string,
+  replyToId?: string | null,
+  threadId?: string | null
+) {
+  const trimmedMediaPath = mediaPath.trim()
+
+  if (!trimmedMediaPath) {
+    throw new Error('empty_voice_message')
+  }
+
+  const safeReplyToId = await resolveSafeReplyToId(replyToId, threadId)
+
+  return supabase.from('chat_messages').insert({
+    user_id: userId,
+    text: null,
+    message_type: 'voice',
+    media_url: trimmedMediaPath,
+    image_url: null,
     reply_to_id: safeReplyToId,
     thread_id: threadId ?? null,
   })

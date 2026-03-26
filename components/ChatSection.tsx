@@ -9,6 +9,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
+  createVoiceChatMessage,
   loadChatMessageById,
   loadChatReadState,
   loadChatMessageItem,
@@ -22,6 +23,7 @@ import {
   upsertChatReadState,
 } from '@/lib/chat'
 import { ensureProfileExists } from '@/lib/profiles'
+import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
 
 type ChatSectionProps = {
@@ -43,6 +45,8 @@ const SWIPE_REPLY_MAX_OFFSET_PX = 96
 const SWIPE_REPLY_VERTICAL_LOCK_PX = 12
 const SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO = 1.5
 const REACTION_ANIMATION_DURATION_MS = 200
+const CHAT_VOICE_BUCKET = 'chat-voice'
+const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -281,6 +285,59 @@ function formatVoiceMessageLabel(durationSeconds: number | null) {
   return `Голосовое сообщение • ${durationSeconds} сек`
 }
 
+function VoiceMessageAudio({ storagePath }: { storagePath: string }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadSignedUrl() {
+      try {
+        setLoadError(false)
+        setSignedUrl(null)
+
+        const { data, error } = await supabase.storage
+          .from(CHAT_VOICE_BUCKET)
+          .createSignedUrl(storagePath, CHAT_VOICE_SIGNED_URL_TTL_SECONDS)
+
+        if (error) {
+          throw error
+        }
+
+        if (isMounted) {
+          setSignedUrl(data.signedUrl)
+        }
+      } catch (error) {
+        console.error('Failed to create signed voice message URL', {
+          storagePath,
+          error,
+        })
+
+        if (isMounted) {
+          setLoadError(true)
+        }
+      }
+    }
+
+    void loadSignedUrl()
+
+    return () => {
+      isMounted = false
+    }
+  }, [storagePath])
+
+  if (loadError) {
+    return <p className="mt-1 text-sm text-red-600">Не удалось загрузить голосовое сообщение</p>
+  }
+
+  if (!signedUrl) {
+    return <p className="mt-1 text-sm app-text-secondary">Загрузка аудио...</p>
+  }
+
+  return <audio controls src={signedUrl} className="mt-1 w-full" />
+}
+
 function ChatMessageBody({
   message,
   isOwnMessage = false,
@@ -355,15 +412,18 @@ function ChatMessageBody({
         </button>
       ) : null}
       {hasVoiceAttachment ? (
-        <div
-          className={`mt-1 inline-flex max-w-full rounded-2xl px-3 py-2 text-sm ${
-            isOwnMessage
-              ? 'ml-auto bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
-              : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.07] dark:text-white/75'
-          }`}
-        >
-          {voiceMessageLabel}
-        </div>
+        <>
+          <div
+            className={`mt-1 inline-flex max-w-full rounded-2xl px-3 py-2 text-sm ${
+              isOwnMessage
+                ? 'ml-auto bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
+                : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.07] dark:text-white/75'
+            }`}
+          >
+            {voiceMessageLabel}
+          </div>
+          {message.mediaUrl ? <VoiceMessageAudio storagePath={message.mediaUrl} /> : null}
+        </>
       ) : null}
       {message.text ? (
         <p
@@ -419,6 +479,7 @@ export default function ChatSection({
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const voiceInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -453,6 +514,7 @@ export default function ChatSection({
   const [draftMessage, setDraftMessage] = useState('')
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadingVoice, setUploadingVoice] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
@@ -1726,6 +1788,62 @@ export default function ChatSection({
     }
   }
 
+  function clearSelectedVoiceFile() {
+    if (voiceInputRef.current) {
+      voiceInputRef.current.value = ''
+    }
+  }
+
+  async function handleVoiceInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const nextFile = event.target.files?.[0]
+
+    if (!nextFile) {
+      return
+    }
+
+    if (!currentUserId) {
+      clearSelectedVoiceFile()
+      setSubmitError('Нужно войти, чтобы отправлять голосовые сообщения')
+      return
+    }
+
+    if (nextFile.type && !nextFile.type.startsWith('audio/')) {
+      clearSelectedVoiceFile()
+      setSubmitError('Можно выбрать только аудиофайл')
+      return
+    }
+
+    setUploadingVoice(true)
+    setSubmitError('')
+
+    try {
+      const uploadResult = await uploadVoiceMessage({
+        file: nextFile,
+        userId: currentUserId,
+      })
+      const { error: insertError } = await createVoiceChatMessage(
+        currentUserId,
+        uploadResult.path,
+        replyingToMessage?.id ?? null,
+        threadId
+      )
+
+      if (insertError) {
+        throw insertError
+      }
+
+      setPendingNewMessagesCount(0)
+      setReplyingToMessage(null)
+      clearSelectedVoiceFile()
+    } catch (error) {
+      console.error('Failed to send voice message', error)
+      clearSelectedVoiceFile()
+      setSubmitError('Не удалось отправить голосовое сообщение')
+    } finally {
+      setUploadingVoice(false)
+    }
+  }
+
   function clearLongPressTimeout() {
     if (longPressTimeoutRef.current !== null) {
       window.clearTimeout(longPressTimeoutRef.current)
@@ -1866,6 +1984,13 @@ export default function ChatSection({
               className="sr-only"
               tabIndex={-1}
             />
+            <input
+              ref={voiceInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleVoiceInputChange}
+              disabled={submitting || uploadingImage || uploadingVoice || Boolean(editingMessageId)}
+            />
             {editingMessage ? (
               <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                 <div className="min-w-0">
@@ -1924,7 +2049,7 @@ export default function ChatSection({
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={submitting || uploadingImage || Boolean(editingMessageId)}
+                disabled={submitting || uploadingImage || uploadingVoice || Boolean(editingMessageId)}
                 className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
                 aria-label="Выбрать изображение"
               >
@@ -1945,7 +2070,7 @@ export default function ChatSection({
                   onFocus={() => setIsComposerFocused(true)}
                   onBlur={() => setIsComposerFocused(false)}
                   placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись' : 'Сообщение'}
-                  disabled={submitting || uploadingImage}
+                  disabled={submitting || uploadingImage || uploadingVoice}
                   maxLength={CHAT_MESSAGE_MAX_LENGTH}
                   rows={1}
                   className="min-h-11 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
@@ -1953,7 +2078,7 @@ export default function ChatSection({
               </div>
               <button
                 type="submit"
-                disabled={submitting || uploadingImage || !canSubmitMessage || isMessageTooLong}
+                disabled={submitting || uploadingImage || uploadingVoice || !canSubmitMessage || isMessageTooLong}
                 className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? '...' : editingMessage ? 'OK' : '>'}
@@ -1961,7 +2086,7 @@ export default function ChatSection({
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
               <p className="app-text-secondary text-xs">
-                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}{hasPendingImage ? ' + фото' : ''}
+                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}{hasPendingImage ? ' + фото' : ''}{uploadingVoice ? ' + аудио' : ''}
               </p>
               {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
             </div>

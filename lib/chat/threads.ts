@@ -22,7 +22,7 @@ type ChatThreadLastMessageRow = {
   id: string
   thread_id: string
   user_id: string
-  text: string
+  text: string | null
   message_type: string | null
   image_url: string | null
   media_url: string | null
@@ -133,7 +133,7 @@ function resolveThreadMessageType(message: Pick<ChatThreadLastMessageRow, 'messa
 }
 
 function getThreadMessagePreviewText(message: Pick<ChatThreadLastMessageRow, 'text' | 'message_type' | 'image_url'>) {
-  const trimmedText = message.text.trim()
+  const trimmedText = message.text?.trim() ?? ''
 
   if (trimmedText) {
     return trimmedText
@@ -190,7 +190,7 @@ async function loadLastMessageByThreadId(threadIds: string[]) {
           id: row.id,
           threadId: row.thread_id,
           userId: row.user_id,
-          text: row.text,
+          text: row.text ?? '',
           messageType,
           mediaUrl: row.media_url ?? null,
           mediaDurationSeconds: row.media_duration_seconds ?? null,
@@ -227,7 +227,7 @@ export async function loadChatThreadLastMessage(messageId: string): Promise<Chat
     id: messageRow.id,
     threadId: messageRow.thread_id,
     userId: messageRow.user_id,
-    text: messageRow.text,
+    text: messageRow.text ?? '',
     messageType,
     mediaUrl: messageRow.media_url ?? null,
     mediaDurationSeconds: messageRow.media_duration_seconds ?? null,
