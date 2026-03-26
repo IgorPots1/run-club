@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { getBootstrapUser } from '@/lib/auth'
@@ -286,9 +286,48 @@ function formatVoiceMessageLabel(durationSeconds: number | null) {
   return `Голосовое сообщение • ${durationSeconds} сек`
 }
 
-function VoiceMessageAudio({ storagePath }: { storagePath: string }) {
+function formatVoiceMessageDuration(durationSeconds: number | null) {
+  if (typeof durationSeconds !== 'number' || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return '--:--'
+  }
+
+  const totalSeconds = Math.max(0, Math.round(durationSeconds))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function buildVoiceWaveformBars(seed: string, count = 24) {
+  const safeSeed = seed || 'voice'
+
+  return Array.from({ length: count }, (_, index) => {
+    const seedCharacterCode = safeSeed.charCodeAt(index % safeSeed.length) || 37
+    return 20 + ((seedCharacterCode * (index + 3)) % 65)
+  })
+}
+
+function VoiceMessageAudio({
+  storagePath,
+  durationSeconds,
+  isOwnMessage,
+}: {
+  storagePath: string
+  durationSeconds: number | null
+  isOwnMessage: boolean
+}) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
+  const [resolvedDurationSeconds, setResolvedDurationSeconds] = useState<number | null>(durationSeconds)
+  const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const waveformBars = useMemo(() => buildVoiceWaveformBars(storagePath), [storagePath])
+  const effectiveDurationSeconds = resolvedDurationSeconds ?? durationSeconds
+  const playbackProgress = effectiveDurationSeconds && effectiveDurationSeconds > 0
+    ? Math.min(1, currentTimeSeconds / effectiveDurationSeconds)
+    : 0
+  const playedBarsCount = Math.round(playbackProgress * waveformBars.length)
 
   useEffect(() => {
     let isMounted = true
@@ -331,6 +370,38 @@ function VoiceMessageAudio({ storagePath }: { storagePath: string }) {
     }
   }, [storagePath])
 
+  useEffect(() => {
+    setResolvedDurationSeconds(durationSeconds)
+  }, [durationSeconds])
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause()
+    }
+  }, [])
+
+  async function handleTogglePlayback() {
+    const audio = audioRef.current
+
+    if (!audio || !signedUrl) {
+      return
+    }
+
+    try {
+      if (audio.paused) {
+        await audio.play()
+        setIsPlaying(true)
+        return
+      }
+
+      audio.pause()
+      setIsPlaying(false)
+    } catch (error) {
+      console.error('[voice] failed', error)
+      setLoadError(true)
+    }
+  }
+
   if (loadError) {
     return <p className="mt-1 text-sm text-red-600">Не удалось загрузить голосовое сообщение</p>
   }
@@ -339,7 +410,67 @@ function VoiceMessageAudio({ storagePath }: { storagePath: string }) {
     return <p className="mt-1 text-sm app-text-secondary">Загрузка аудио...</p>
   }
 
-  return <audio controls src={signedUrl} className="mt-1 w-full" />
+  return (
+    <button
+      type="button"
+      onClick={handleTogglePlayback}
+      className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left ${
+        isOwnMessage
+          ? 'bg-black/[0.05] dark:bg-white/[0.09]'
+          : 'bg-black/[0.04] dark:bg-white/[0.07]'
+      }`}
+      aria-label={isPlaying ? 'Пауза голосового сообщения' : 'Воспроизвести голосовое сообщение'}
+    >
+      <span className="shrink-0 text-sm font-medium">{isPlaying ? 'Pause' : 'Play'}</span>
+      <div className="flex h-8 min-w-0 flex-1 items-end gap-1">
+        {waveformBars.map((barHeight, index) => {
+          const isActiveBar = index < playedBarsCount
+
+          return (
+            <span
+              key={`${storagePath}:${index}`}
+              className={`w-1 rounded-full transition-colors ${
+                isActiveBar
+                  ? 'bg-red-500 dark:bg-red-400'
+                  : 'bg-black/20 dark:bg-white/20'
+              }`}
+              style={{ height: `${barHeight}%` }}
+            />
+          )
+        })}
+      </div>
+      <span className="shrink-0 text-xs font-medium tabular-nums">
+        {formatVoiceMessageDuration(effectiveDurationSeconds)}
+      </span>
+      <audio
+        ref={audioRef}
+        src={signedUrl}
+        preload="metadata"
+        className="hidden"
+        onLoadedMetadata={(event) => {
+          const nextDurationSeconds = event.currentTarget.duration
+
+          if (Number.isFinite(nextDurationSeconds) && nextDurationSeconds > 0) {
+            setResolvedDurationSeconds(nextDurationSeconds)
+          }
+        }}
+        onTimeUpdate={(event) => {
+          setCurrentTimeSeconds(event.currentTarget.currentTime)
+        }}
+        onPause={() => {
+          setIsPlaying(false)
+        }}
+        onPlay={() => {
+          setIsPlaying(true)
+        }}
+        onEnded={(event) => {
+          setIsPlaying(false)
+          setCurrentTimeSeconds(0)
+          event.currentTarget.currentTime = 0
+        }}
+      />
+    </button>
+  )
 }
 
 function ChatMessageBody({
@@ -365,7 +496,6 @@ function ChatMessageBody({
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
   )
   const hasVoiceAttachment = message.messageType === 'voice'
-  const voiceMessageLabel = formatVoiceMessageLabel(message.mediaDurationSeconds)
 
   return (
     <>
@@ -417,16 +547,23 @@ function ChatMessageBody({
       ) : null}
       {hasVoiceAttachment ? (
         <>
-          <div
-            className={`mt-1 inline-flex max-w-full rounded-2xl px-3 py-2 text-sm ${
-              isOwnMessage
-                ? 'ml-auto bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
-                : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.07] dark:text-white/75'
-            }`}
-          >
-            {voiceMessageLabel}
-          </div>
-          {message.mediaUrl ? <VoiceMessageAudio storagePath={message.mediaUrl} /> : null}
+          {message.mediaUrl ? (
+            <VoiceMessageAudio
+              storagePath={message.mediaUrl}
+              durationSeconds={message.mediaDurationSeconds}
+              isOwnMessage={isOwnMessage}
+            />
+          ) : (
+            <div
+              className={`mt-1 inline-flex max-w-full rounded-2xl px-3 py-2 text-sm ${
+                isOwnMessage
+                  ? 'ml-auto bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
+                  : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.07] dark:text-white/75'
+              }`}
+            >
+              {formatVoiceMessageLabel(message.mediaDurationSeconds)}
+            </div>
+          )}
         </>
       ) : null}
       {message.text ? (
