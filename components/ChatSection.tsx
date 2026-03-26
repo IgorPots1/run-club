@@ -794,6 +794,7 @@ export default function ChatSection({
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingVoice, setUploadingVoice] = useState(false)
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
+  const [isSendingVoice, setIsSendingVoice] = useState(false)
   const [isStartingVoiceRecording, setIsStartingVoiceRecording] = useState(false)
   const [isCancellingVoice, setIsCancellingVoice] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
@@ -2122,6 +2123,33 @@ export default function ChatSection({
     isLockedVoiceRecordingRef.current = false
     setRecordingTime(0)
     setIsRecordingVoice(false)
+    setIsSendingVoice(false)
+    setIsStartingVoiceRecording(false)
+    setIsCancellingVoice(false)
+    setIsLocked(false)
+  }
+
+  function transitionVoiceRecordingToSendingState() {
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
+    removeVoiceRecordingGestureListeners()
+    mediaRecorderRef.current = null
+
+    chunksRef.current = []
+    startTimeRef.current = 0
+    isStoppingVoiceRecordingRef.current = false
+    shouldStopVoiceRecordingOnStartRef.current = false
+    hasHandledVoiceRecordingStopRef.current = false
+    recordingPointerStartXRef.current = null
+    recordingPointerStartYRef.current = null
+    shouldCancelVoiceRecordingRef.current = false
+    isLockedVoiceRecordingRef.current = false
+    setRecordingTime(0)
+    setIsRecordingVoice(false)
+    setIsSendingVoice(true)
     setIsStartingVoiceRecording(false)
     setIsCancellingVoice(false)
     setIsLocked(false)
@@ -2297,6 +2325,7 @@ export default function ChatSection({
 
   async function sendRecordedVoiceMessage(file: File) {
     if (!currentUserId || isSendingVoiceMessageRef.current) {
+      cleanupVoiceRecordingResources()
       return
     }
 
@@ -2325,10 +2354,12 @@ export default function ChatSection({
 
       setPendingNewMessagesCount(0)
       setReplyingToMessage(null)
+      cleanupVoiceRecordingResources()
     } catch (error) {
       const errorDetails = getErrorDetails(error)
       console.error('Failed to send voice message', errorDetails)
       setSubmitError('Не удалось отправить голосовое сообщение')
+      cleanupVoiceRecordingResources()
     } finally {
       isSendingVoiceMessageRef.current = false
       setUploadingVoice(false)
@@ -2391,17 +2422,18 @@ export default function ChatSection({
           type: recorder.mimeType || 'audio/webm',
         })
 
-        cleanupVoiceRecordingResources()
-
         if (shouldCancelRecording) {
+          cleanupVoiceRecordingResources()
           return
         }
 
         if (recordingDurationMs < 400) {
+          cleanupVoiceRecordingResources()
           return
         }
 
         if (voiceBlob.size < 1024) {
+          cleanupVoiceRecordingResources()
           console.info('Voice recording ignored because blob is too small', {
             blobSize: voiceBlob.size,
           })
@@ -2412,6 +2444,7 @@ export default function ChatSection({
           type: voiceBlob.type || 'audio/webm',
         })
 
+        transitionVoiceRecordingToSendingState()
         void sendRecordedVoiceMessage(voiceFile)
       })
 
@@ -2684,19 +2717,33 @@ export default function ChatSection({
                 </button>
               </div>
             ) : null}
-            {isRecordingVoice || isStartingVoiceRecording ? (
+            {isRecordingVoice || isStartingVoiceRecording || isSendingVoice ? (
               <div className={`mb-1.5 flex min-h-10 items-center justify-between rounded-[18px] px-3 py-2 text-sm ${
-                isCancellingVoice
-                  ? 'bg-red-500/15 text-red-700 dark:bg-red-500/20 dark:text-red-300'
-                  : 'bg-red-500/10 text-red-600 dark:bg-red-500/15'
+                isSendingVoice
+                  ? 'bg-black/[0.04] text-black/70 dark:bg-white/[0.08] dark:text-white/75'
+                  : isCancellingVoice
+                    ? 'bg-red-500/15 text-red-700 dark:bg-red-500/20 dark:text-red-300'
+                    : 'bg-red-500/10 text-red-600 dark:bg-red-500/15'
               }`}>
                 <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${isCancellingVoice ? 'bg-red-600 dark:bg-red-400' : 'bg-red-500 dark:bg-red-400'}`} />
+                  <span className={`h-2.5 w-2.5 rounded-full ${
+                    isSendingVoice
+                      ? 'bg-black/35 dark:bg-white/45'
+                      : isCancellingVoice
+                        ? 'bg-red-600 dark:bg-red-400'
+                        : 'bg-red-500 dark:bg-red-400'
+                  }`} />
                   <p className="font-medium">
-                    {isCancellingVoice ? 'Отпустить для отмены' : `Запись... ${formatRecordingTime(recordingTime)}`}
+                    {isSendingVoice
+                      ? 'Отправка аудио...'
+                      : isCancellingVoice
+                        ? 'Отпустить для отмены'
+                        : `Запись... ${formatRecordingTime(recordingTime)}`}
                   </p>
                 </div>
-                {isLocked ? (
+                {isSendingVoice ? (
+                  <span className="text-xs opacity-80">Пожалуйста, подождите</span>
+                ) : isLocked ? (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
