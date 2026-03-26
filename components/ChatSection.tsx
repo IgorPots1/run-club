@@ -399,17 +399,26 @@ function VoiceMessageAudio({
   const [loadError, setLoadError] = useState(false)
   const [resolvedDurationSeconds, setResolvedDurationSeconds] = useState<number | null>(durationSeconds)
   const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0)
+  const [displayedCurrentTimeSeconds, setDisplayedCurrentTimeSeconds] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackRate, setPlaybackRate] = useState<(typeof VOICE_PLAYBACK_SPEEDS)[number]>(1)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const playbackAnimationFrameRef = useRef<number | null>(null)
   const waveformBars = useMemo(() => buildVoiceWaveformBars(storagePath), [storagePath])
-  const effectiveDurationSeconds = resolvedDurationSeconds ?? durationSeconds
+  const effectiveDurationSeconds =
+    typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0
+      ? durationSeconds
+      : resolvedDurationSeconds
+  const hasPlaybackProgress = displayedCurrentTimeSeconds > 0.05
   const playbackProgress = effectiveDurationSeconds && effectiveDurationSeconds > 0
-    ? Math.min(1, currentTimeSeconds / effectiveDurationSeconds)
+    ? Math.min(1, displayedCurrentTimeSeconds / effectiveDurationSeconds)
     : 0
   const playedBarsCount = Math.round(playbackProgress * waveformBars.length)
-  const currentTimeLabel = formatVoiceMessageDuration(currentTimeSeconds)
+  const currentTimeLabel = formatVoiceMessageDuration(displayedCurrentTimeSeconds)
   const durationLabel = formatVoiceMessageDuration(effectiveDurationSeconds)
+  const durationDisplayLabel = hasPlaybackProgress
+    ? `${currentTimeLabel} / ${durationLabel}`
+    : durationLabel
 
   useEffect(() => {
     let isMounted = true
@@ -454,7 +463,42 @@ function VoiceMessageAudio({
   }, [durationSeconds])
 
   useEffect(() => {
+    if (!isPlaying) {
+      setDisplayedCurrentTimeSeconds(currentTimeSeconds)
+      if (playbackAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(playbackAnimationFrameRef.current)
+        playbackAnimationFrameRef.current = null
+      }
+      return
+    }
+
+    function updateDisplayedPlaybackTime() {
+      const audio = audioRef.current
+
+      if (!audio) {
+        playbackAnimationFrameRef.current = null
+        return
+      }
+
+      setDisplayedCurrentTimeSeconds(audio.currentTime)
+      playbackAnimationFrameRef.current = window.requestAnimationFrame(updateDisplayedPlaybackTime)
+    }
+
+    updateDisplayedPlaybackTime()
+
     return () => {
+      if (playbackAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(playbackAnimationFrameRef.current)
+        playbackAnimationFrameRef.current = null
+      }
+    }
+  }, [currentTimeSeconds, isPlaying])
+
+  useEffect(() => {
+    return () => {
+      if (playbackAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(playbackAnimationFrameRef.current)
+      }
       if (activeVoiceMessageAudio === audioRef.current) {
         activeVoiceMessageAudio = null
       }
@@ -517,6 +561,7 @@ function VoiceMessageAudio({
 
     audio.currentTime = nextTimeSeconds
     setCurrentTimeSeconds(nextTimeSeconds)
+    setDisplayedCurrentTimeSeconds(nextTimeSeconds)
   }
 
   if (loadError) {
@@ -550,9 +595,14 @@ function VoiceMessageAudio({
       <button
         type="button"
         onClick={handleSeek}
-        className="flex h-7 min-w-0 flex-1 items-center gap-0.5"
+        className="relative flex h-7 min-w-0 flex-1 items-center gap-0.5"
         aria-label="Перемотать голосовое сообщение"
       >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-1 left-0 rounded-full bg-red-500/12 dark:bg-red-400/15"
+          style={{ width: `${playbackProgress * 100}%` }}
+        />
         {waveformBars.map((barHeight, index) => {
           const isActiveBar = index < playedBarsCount
 
@@ -568,9 +618,16 @@ function VoiceMessageAudio({
             />
           )
         })}
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-white/80 bg-red-500 shadow-[0_1px_4px_rgba(0,0,0,0.18)] transition-opacity dark:border-white/60 dark:bg-red-400 ${
+            hasPlaybackProgress ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{ left: `calc(${playbackProgress * 100}% - 5px)` }}
+        />
       </button>
       <span className="shrink-0 text-[10px] font-medium tabular-nums text-black/70 dark:text-white/70">
-        {currentTimeLabel} / {durationLabel}
+        {durationDisplayLabel}
       </span>
       <button
         type="button"
@@ -588,21 +645,28 @@ function VoiceMessageAudio({
         onLoadedMetadata={(event) => {
           const nextDurationSeconds = event.currentTarget.duration
 
-          if (Number.isFinite(nextDurationSeconds) && nextDurationSeconds > 0) {
+          if (
+            (!(typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0)) &&
+            Number.isFinite(nextDurationSeconds) &&
+            nextDurationSeconds > 0
+          ) {
             setResolvedDurationSeconds(nextDurationSeconds)
           }
         }}
         onTimeUpdate={(event) => {
           setCurrentTimeSeconds(event.currentTarget.currentTime)
         }}
-        onPause={() => {
-          if (activeVoiceMessageAudio === audioRef.current) {
+        onPause={(event) => {
+          if (activeVoiceMessageAudio === event.currentTarget) {
             activeVoiceMessageAudio = null
           }
+          setCurrentTimeSeconds(event.currentTarget.currentTime)
+          setDisplayedCurrentTimeSeconds(event.currentTarget.currentTime)
           setIsPlaying(false)
         }}
         onPlay={() => {
           activeVoiceMessageAudio = audioRef.current
+          setDisplayedCurrentTimeSeconds(audioRef.current?.currentTime ?? currentTimeSeconds)
           setIsPlaying(true)
         }}
         onEnded={(event) => {
@@ -611,6 +675,7 @@ function VoiceMessageAudio({
           }
           setIsPlaying(false)
           setCurrentTimeSeconds(0)
+          setDisplayedCurrentTimeSeconds(0)
           event.currentTarget.currentTime = 0
         }}
       />
