@@ -7,7 +7,7 @@ import useSWR from 'swr'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
-import { loadDashboardOverview } from '@/lib/dashboard'
+import { loadDashboardOverview, type DashboardOverview } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -26,14 +26,23 @@ type DashboardInitialProfileSummary = {
   email: string | null
 }
 
+type DashboardInitialStats = {
+  totalKmThisMonth: number
+  runsCount: number
+  totalXp: number
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
+  initialStats,
 }: {
   initialUser: DashboardInitialUser
   initialProfileSummary: DashboardInitialProfileSummary
+  initialStats: DashboardInitialStats
 }) {
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
+  const [hasLoadedOverviewDetails, setHasLoadedOverviewDetails] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
 
@@ -63,13 +72,23 @@ export default function DashboardPageClient({
   }), [])
   const overviewKey = ['dashboard-overview', initialUser.id] as const
   const weeklyRaceKey = shouldLoadSecondaryContent ? (['weekly-race', initialUser.id] as const) : null
+  const initialOverview = useMemo<DashboardOverview>(() => ({
+    stats: initialStats,
+    profileSummary: initialProfileSummary,
+    activeChallenge: null,
+    allChallengesCompleted: false,
+  }), [initialProfileSummary, initialStats])
 
   const {
     data: overview,
     error: overviewError,
     isLoading: overviewLoading,
     mutate: mutateOverview,
-  } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), swrBaseOptions)
+  } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), {
+    ...swrBaseOptions,
+    fallbackData: initialOverview,
+    revalidateOnMount: false,
+  })
 
   const {
     data: weeklyRace,
@@ -102,6 +121,24 @@ export default function DashboardPageClient({
   }, [mutateOverview, mutateWeeklyRace])
 
   useEffect(() => {
+    if (!shouldLoadSecondaryContent) {
+      return
+    }
+
+    let isActive = true
+
+    void mutateOverview().finally(() => {
+      if (isActive) {
+        setHasLoadedOverviewDetails(true)
+      }
+    })
+
+    return () => {
+      isActive = false
+    }
+  }, [mutateOverview, shouldLoadSecondaryContent])
+
+  useEffect(() => {
     function handleRunsUpdated() {
       void refreshDashboardData()
     }
@@ -121,9 +158,11 @@ export default function DashboardPageClient({
     }
   }, [refreshDashboardData])
 
-  const stats = overview?.stats ?? null
-  const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? null
-  const allChallengesCompleted = overview?.allChallengesCompleted ?? false
+  const stats = overview?.stats ?? initialStats
+  const activeChallenge: ChallengeWithProgress | null = hasLoadedOverviewDetails
+    ? overview?.activeChallenge ?? null
+    : null
+  const allChallengesCompleted = hasLoadedOverviewDetails ? (overview?.allChallengesCompleted ?? false) : false
   const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
   const profileName = getProfileDisplayName(
     {
@@ -133,14 +172,17 @@ export default function DashboardPageClient({
     },
     'Бегун'
   )
-  const overviewStateError = overviewError ? 'Не удалось загрузить прогресс' : ''
+  const overviewStateError = !hasLoadedOverviewDetails && !stats
+    ? 'Не удалось загрузить прогресс'
+    : ''
   const headerDisplayName = `Привет, ${profileName}`
   const headerLevelLabel = levelProgress
     ? `Уровень ${levelProgress.level}`
     : 'Загружаем прогресс...'
-  const showOverviewSkeleton = overviewLoading && !overview && !overviewError
+  const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
   const showSecondarySkeleton = !shouldLoadSecondaryContent
   const weeklyLeaderboardLoading = showSecondarySkeleton || weeklyRaceLoading
+  const showChallengeSkeleton = !activeChallenge && !allChallengesCompleted && !hasLoadedOverviewDetails
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -260,6 +302,15 @@ export default function DashboardPageClient({
               >
                 Открыть достижения
               </Link>
+            </div>
+          ) : showChallengeSkeleton ? (
+            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+              <div className="skeleton-line h-4 w-32" />
+              <div className="mt-3 space-y-3">
+                <div className="skeleton-line h-6 w-44" />
+                <div className="skeleton-line h-2 w-full" />
+                <div className="skeleton-line h-4 w-36" />
+              </div>
             </div>
           ) : null}
           {stats && levelProgress ? (
