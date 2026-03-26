@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState, type MouseEvent } from 'react'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import useRealtimeTotalUnreadCount from '@/components/chat/useRealtimeTotalUnreadCount'
+import { prefetchMessagesListData } from '@/lib/chat/messagesListPrefetch'
 
 const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
 
@@ -114,6 +115,12 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
     scrollPageToTop()
   }
 
+  function handleTabPrefetch(href: string) {
+    if (href === '/messages') {
+      void prefetchMessagesListData()
+    }
+  }
+
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <nav
@@ -123,6 +130,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
           <Link
             key={tab.href}
             href={tab.href}
+            onPointerDown={() => handleTabPrefetch(tab.href)}
             onClick={(event) => handleTabClick(event, tab.isActive)}
             className={`mx-0.5 flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors ${
               tab.isActive ? 'app-bottom-nav-active' : 'app-bottom-nav-inactive'

@@ -7,6 +7,7 @@ import type { User } from '@supabase/supabase-js'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import useRealtimeTotalUnreadCount from '@/components/chat/useRealtimeTotalUnreadCount'
 import { getBootstrapUser } from '@/lib/auth'
+import { prefetchMessagesListData } from '@/lib/chat/messagesListPrefetch'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../lib/supabase'
 
@@ -38,7 +39,13 @@ export default function Navbar() {
           <Link href="/runs">Тренировки</Link>
           <Link href="/leaderboard">Рейтинг</Link>
           <Link href="/challenges">Челленджи</Link>
-          <Link href="/messages" className="inline-flex items-center gap-2">
+          <Link
+            href="/messages"
+            onPointerDown={() => {
+              void prefetchMessagesListData()
+            }}
+            className="inline-flex items-center gap-2"
+          >
             <span>Сообщения</span>
             <UnreadBadge count={totalUnreadCount} />
           </Link>

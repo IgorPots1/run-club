@@ -8,6 +8,7 @@ import UnreadBadge from '@/components/chat/UnreadBadge'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
 import { getUnreadCountsByThread, type UnreadCountsByThread } from '@/lib/chat/reads'
+import { getPrefetchedMessagesListData } from '@/lib/chat/messagesListPrefetch'
 import { COACH_USER_ID } from '@/lib/constants'
 import { formatChatThreadActivityLabel } from '@/lib/format'
 import {
@@ -272,6 +273,23 @@ export default function MessagesPage() {
 
     async function loadPage() {
       try {
+        const prefetchedData = await getPrefetchedMessagesListData()
+
+        if (!isMounted) {
+          return
+        }
+
+        if (prefetchedData) {
+          setCurrentUserId(prefetchedData.currentUserId)
+          setClubThread(prefetchedData.clubThread)
+          setCoachThread(prefetchedData.coachThread)
+          setDirectThreads(prefetchedData.directThreads)
+          setStudents(prefetchedData.students)
+          setUnreadCountsByThread(prefetchedData.unreadCountsByThread)
+          setError('')
+          return
+        }
+
         const user = await getBootstrapUser()
 
         if (!isMounted) {
