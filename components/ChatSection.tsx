@@ -301,6 +301,14 @@ function formatVoiceMessageDuration(durationSeconds: number | null) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+function formatRecordingTime(durationSeconds: number) {
+  const totalSeconds = Math.max(0, Math.round(durationSeconds))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 function buildVoiceWaveformBars(seed: string, count = 24) {
   const safeSeed = seed || 'voice'
 
@@ -750,6 +758,7 @@ export default function ChatSection({
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
   const recordingPointerStartYRef = useRef<number | null>(null)
@@ -775,6 +784,7 @@ export default function ChatSection({
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
   const [isStartingVoiceRecording, setIsStartingVoiceRecording] = useState(false)
   const [isCancellingVoice, setIsCancellingVoice] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
@@ -1139,6 +1149,11 @@ export default function ChatSection({
 
       if (animatedReactionTimeoutRef.current !== null) {
         window.clearTimeout(animatedReactionTimeoutRef.current)
+      }
+
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
       }
 
       mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
@@ -2097,6 +2112,11 @@ export default function ChatSection({
   }
 
   function cleanupVoiceRecordingResources() {
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
     mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
     mediaRecorderRef.current = null
 
@@ -2112,6 +2132,7 @@ export default function ChatSection({
     hasHandledVoiceRecordingStopRef.current = false
     recordingPointerStartYRef.current = null
     shouldCancelVoiceRecordingRef.current = false
+    setRecordingTime(0)
     setIsRecordingVoice(false)
     setIsStartingVoiceRecording(false)
     setIsCancellingVoice(false)
@@ -2153,6 +2174,29 @@ export default function ChatSection({
     return { raw: String(error) }
   }
 
+  async function getVoiceFileDurationSeconds(file: File): Promise<number | null> {
+    const objectUrl = URL.createObjectURL(file)
+
+    try {
+      const durationSeconds = await new Promise<number | null>((resolve) => {
+        const audio = new Audio(objectUrl)
+
+        audio.onloadedmetadata = () => {
+          const nextDuration = Math.round(audio.duration)
+          resolve(Number.isFinite(nextDuration) && nextDuration > 0 ? nextDuration : null)
+        }
+
+        audio.onerror = () => {
+          resolve(null)
+        }
+      })
+
+      return durationSeconds
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
   function setVoiceCancellingState(nextIsCancelling: boolean) {
     shouldCancelVoiceRecordingRef.current = nextIsCancelling
     setIsCancellingVoice(nextIsCancelling)
@@ -2189,6 +2233,7 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
+      const durationSeconds = await getVoiceFileDurationSeconds(file)
       const uploadResult = await uploadVoiceMessage({
         file,
         userId: currentUserId,
@@ -2197,6 +2242,7 @@ export default function ChatSection({
       const { error: insertError } = await createVoiceChatMessage(
         currentUserId,
         path,
+        durationSeconds,
         replyingToMessage?.id ?? null,
         threadId
       )
@@ -2239,6 +2285,7 @@ export default function ChatSection({
     }
 
     setIsStartingVoiceRecording(true)
+    setRecordingTime(0)
     setSubmitError('')
 
     try {
@@ -2304,6 +2351,12 @@ export default function ChatSection({
       })
 
       recorder.start(250)
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current)
+      }
+      timerRef.current = setInterval(() => {
+        setRecordingTime((currentTime) => currentTime + 1)
+      }, 1000)
       setIsStartingVoiceRecording(false)
       setIsRecordingVoice(true)
 
@@ -2332,6 +2385,11 @@ export default function ChatSection({
 
     isStoppingVoiceRecordingRef.current = true
     setIsStartingVoiceRecording(false)
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+    setRecordingTime(0)
 
     if (recorder.state === 'recording') {
       const duration = Date.now() - startTimeRef.current
@@ -2565,7 +2623,9 @@ export default function ChatSection({
               }`}>
                 <div className="flex items-center gap-2">
                   <span className={`h-2.5 w-2.5 rounded-full ${isCancellingVoice ? 'bg-red-600 dark:bg-red-400' : 'bg-red-500 dark:bg-red-400'}`} />
-                  <p className="font-medium">{isCancellingVoice ? 'Отпустить для отмены' : 'Запись...'}</p>
+                  <p className="font-medium">
+                    {isCancellingVoice ? 'Отпустить для отмены' : `Запись... ${formatRecordingTime(recordingTime)}`}
+                  </p>
                 </div>
                 <p className="text-xs opacity-80">{isCancellingVoice ? 'Отмена' : '↑ Свайп вверх для отмены'}</p>
               </div>

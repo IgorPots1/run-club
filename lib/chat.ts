@@ -345,6 +345,7 @@ export async function createChatMessage(
 export async function createVoiceChatMessage(
   userId: string,
   mediaPath: string,
+  mediaDurationSeconds?: number | null,
   replyToId?: string | null,
   threadId?: string | null
 ) {
@@ -361,6 +362,7 @@ export async function createVoiceChatMessage(
     text: '',
     message_type: 'voice',
     media_url: trimmedMediaPath,
+    media_duration_seconds: mediaDurationSeconds ?? null,
     image_url: null,
     reply_to_id: safeReplyToId,
     thread_id: threadId ?? null,
