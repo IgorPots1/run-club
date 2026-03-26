@@ -2096,7 +2096,7 @@ export default function ChatSection({
           }
 
           setMessages((currentMessages) =>
-            updateMessageReaction(currentMessages, messageId, userId, emoji, true)
+            updateMessageReaction(currentMessages, messageId, userId, emoji, getReactionProfileForUser(userId), true)
           )
         }
       )
@@ -2118,7 +2118,7 @@ export default function ChatSection({
           }
 
           setMessages((currentMessages) =>
-            updateMessageReaction(currentMessages, messageId, userId, emoji, false)
+            updateMessageReaction(currentMessages, messageId, userId, emoji, getReactionProfileForUser(userId), false)
           )
         }
       )
@@ -2295,12 +2295,12 @@ export default function ChatSection({
     setEditingMessageId(null)
   }
 
-  function getCurrentUserReactionProfile() {
-    const currentUserMessage = messagesRef.current.find((message) => message.userId === currentUserId) ?? null
+  function getReactionProfileForUser(userId: string) {
+    const matchingMessage = messagesRef.current.find((message) => message.userId === userId) ?? null
 
     return {
-      displayName: currentUserMessage?.displayName ?? 'Вы',
-      avatarUrl: currentUserMessage?.avatarUrl ?? null,
+      displayName: matchingMessage?.displayName ?? (userId === currentUserId ? 'Вы' : 'Бегун'),
+      avatarUrl: matchingMessage?.avatarUrl ?? null,
     }
   }
 
@@ -2318,7 +2318,7 @@ export default function ChatSection({
     const hasReacted = currentMessage.reactions.some(
       (reaction) => reaction.emoji === emoji && reaction.userIds.includes(currentUserId)
     )
-    const currentUserReactionProfile = getCurrentUserReactionProfile()
+    const currentUserReactionProfile = getReactionProfileForUser(currentUserId)
     const nextShouldActivate = !hasReacted
     const nextAnimatedReactionKey = nextShouldActivate ? `${messageId}:${emoji}` : null
 
