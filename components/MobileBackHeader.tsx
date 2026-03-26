@@ -6,6 +6,7 @@ type MobileBackHeaderProps = {
   className?: string
   sticky?: boolean
   fullBleedOnMobile?: boolean
+  minimal?: boolean
 }
 
 export default function MobileBackHeader({
@@ -14,13 +15,20 @@ export default function MobileBackHeader({
   className = '',
   sticky = true,
   fullBleedOnMobile = true,
+  minimal = false,
 }: MobileBackHeaderProps) {
+  const headerSurfaceClassName = minimal
+    ? 'mb-0 bg-transparent pb-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] shadow-none'
+    : 'mb-4 border-b border-black/5 bg-[color:var(--background)]/98 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_1px_0_rgba(17,24,39,0.04)] dark:border-white/10 dark:shadow-[0_1px_0_rgba(255,255,255,0.03)]'
+  const desktopClassName = minimal
+    ? 'md:mb-1 md:pt-1'
+    : 'md:mb-6 md:rounded-2xl md:border md:pt-3'
   const layoutClassName = [
     sticky ? 'sticky top-0 z-30' : 'shrink-0',
     fullBleedOnMobile ? '-mx-4 px-4 md:mx-0 md:px-4' : 'px-4 md:px-4',
-    'mb-4 border-b border-black/5 bg-[color:var(--background)]/98 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_1px_0_rgba(17,24,39,0.04)] dark:border-white/10 dark:shadow-[0_1px_0_rgba(255,255,255,0.03)]',
-    sticky ? 'backdrop-blur' : '',
-    'md:mb-6 md:rounded-2xl md:border md:pt-3',
+    headerSurfaceClassName,
+    sticky && !minimal ? 'backdrop-blur' : '',
+    desktopClassName,
     className,
   ]
     .filter(Boolean)

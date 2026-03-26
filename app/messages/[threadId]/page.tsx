@@ -252,9 +252,9 @@ export default function MessageThreadPage() {
           minHeight: 'var(--chat-app-height, 100dvh)',
         }}
       >
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
-          <InnerPageHeader title="Загрузка..." fallbackHref="/messages" />
-          <div className="min-h-0 flex-1 px-4 pb-4 pt-2 md:p-4">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+          <InnerPageHeader title="Загрузка..." fallbackHref="/messages" minimal />
+          <div className="min-h-0 flex-1 px-3 pb-4 pt-1 md:px-5 md:pb-5 md:pt-2">
             <div className="app-card h-full rounded-2xl border px-4 pb-4 pt-3 shadow-sm">
               <div className="space-y-4">
                 {[0, 1, 2].map((item) => (
@@ -280,9 +280,9 @@ export default function MessageThreadPage() {
 
   if (error || !currentUserId || !threadId) {
     return (
-      <main className="min-h-screen p-4 pt-[calc(16px+env(safe-area-inset-top))]">
-        <div className="mx-auto max-w-xl">
-          <InnerPageHeader title="Чат" fallbackHref="/messages" />
+      <main className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto max-w-3xl">
+          <InnerPageHeader title="Чат" fallbackHref="/messages" minimal />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error || 'Не удалось открыть чат'}</p>
           </section>
@@ -300,8 +300,8 @@ export default function MessageThreadPage() {
         minHeight: 'var(--chat-app-height, 100dvh)',
       }}
     >
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col">
-        <InnerPageHeader title={threadTitle} fallbackHref="/messages" />
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+        <InnerPageHeader title={threadTitle} fallbackHref="/messages" minimal />
         <div className="min-h-0 flex-1">
           <ChatSection
             showTitle={false}
