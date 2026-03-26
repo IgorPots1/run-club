@@ -486,6 +486,11 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+type TouchPointLike = {
+  clientX: number
+  clientY: number
+}
+
 function FullscreenImageViewer({
   imageUrl,
   onClose,
@@ -547,7 +552,7 @@ function FullscreenImageViewer({
     setDismissTranslateY(0)
   }
 
-  function getTouchDistance(touchA: Touch, touchB: Touch) {
+  function getTouchDistance(touchA: TouchPointLike, touchB: TouchPointLike) {
     return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY)
   }
 
