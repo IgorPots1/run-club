@@ -1909,15 +1909,20 @@ export default function ChatSection({
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const cachedRecentMessages =
+      currentUserId && !enableReadState
+        ? getCachedRecentChatMessages(threadId)
+        : null
+
     pendingDeletedMessageIdsRef.current.clear()
     messagesRef.current = []
-    setMessages([])
+    setMessages(cachedRecentMessages?.messages ?? [])
     setLastReadAt(null)
-    setHasLoadedReadState(false)
-    setPendingInitialScroll(false)
+    setHasLoadedReadState(Boolean(cachedRecentMessages))
+    setPendingInitialScroll(Boolean(cachedRecentMessages?.messages.length))
     setPendingNewMessagesCount(0)
-    setHasMoreOlderMessages(true)
+    setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
     setError('')
     setDraftMessage('')
     setSubmitError('')
@@ -1925,7 +1930,8 @@ export default function ChatSection({
     setEditingMessageId(null)
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
-  }, [threadId])
+    setLoading(!cachedRecentMessages)
+  }, [currentUserId, enableReadState, threadId])
 
   useEffect(() => {
     if (!threadId || loading) {
