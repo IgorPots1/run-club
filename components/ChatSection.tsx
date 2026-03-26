@@ -806,6 +806,7 @@ function VoiceMessageAudio({
   const [playbackRate, setPlaybackRate] = useState<(typeof VOICE_PLAYBACK_SPEEDS)[number]>(1)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playbackAnimationFrameRef = useRef<number | null>(null)
+  const signedUrlPromiseRef = useRef<Promise<string | null> | null>(null)
   const waveformBars = useMemo(() => buildVoiceWaveformBars(storagePath), [storagePath])
   const effectiveDurationSeconds =
     typeof resolvedDurationSeconds === 'number' && Number.isFinite(resolvedDurationSeconds) && resolvedDurationSeconds > 0
@@ -836,14 +837,19 @@ function VoiceMessageAudio({
     }
   }
 
-  useEffect(() => {
-    let isMounted = true
+  const resolveSignedUrl = useCallback(async () => {
+    if (signedUrl) {
+      return signedUrl
+    }
 
-    async function loadSignedUrl() {
+    if (signedUrlPromiseRef.current) {
+      return signedUrlPromiseRef.current
+    }
+
+    setLoadError(false)
+
+    const nextSignedUrlPromise = (async () => {
       try {
-        setLoadError(false)
-        setSignedUrl(null)
-
         const { data, error } = await supabase.storage
           .from(CHAT_VOICE_BUCKET)
           .createSignedUrl(storagePath, CHAT_VOICE_SIGNED_URL_TTL_SECONDS)
@@ -852,26 +858,33 @@ function VoiceMessageAudio({
           throw error
         }
 
-        if (isMounted) {
-          setSignedUrl(data.signedUrl)
-        }
+        setSignedUrl(data.signedUrl)
+        return data.signedUrl
       } catch (error) {
         console.error('Failed to create signed voice message URL', {
           storagePath,
           error,
         })
+        setLoadError(true)
+        return null
+      }
+    })()
 
-        if (isMounted) {
-          setLoadError(true)
-        }
+    signedUrlPromiseRef.current = nextSignedUrlPromise
+
+    try {
+      return await nextSignedUrlPromise
+    } finally {
+      if (signedUrlPromiseRef.current === nextSignedUrlPromise) {
+        signedUrlPromiseRef.current = null
       }
     }
+  }, [signedUrl, storagePath])
 
-    void loadSignedUrl()
-
-    return () => {
-      isMounted = false
-    }
+  useEffect(() => {
+    setSignedUrl(null)
+    setLoadError(false)
+    signedUrlPromiseRef.current = null
   }, [storagePath])
 
   useEffect(() => {
@@ -931,11 +944,21 @@ function VoiceMessageAudio({
   async function handleTogglePlayback() {
     const audio = audioRef.current
 
-    if (!audio || !signedUrl) {
+    if (!audio) {
       return
     }
 
     try {
+      const nextSignedUrl = signedUrl ?? await resolveSignedUrl()
+
+      if (!nextSignedUrl) {
+        return
+      }
+
+      if (audio.src !== nextSignedUrl) {
+        audio.src = nextSignedUrl
+      }
+
       if (audio.paused) {
         if (activeVoiceMessageAudio && activeVoiceMessageAudio !== audio) {
           activeVoiceMessageAudio.pause()
@@ -965,7 +988,7 @@ function VoiceMessageAudio({
     })
   }
 
-  function handleSeek(event: React.MouseEvent<HTMLButtonElement>) {
+  async function handleSeek(event: React.MouseEvent<HTMLButtonElement>) {
     const audio = audioRef.current
 
     if (!audio || !effectiveDurationSeconds || effectiveDurationSeconds <= 0) {
@@ -977,16 +1000,22 @@ function VoiceMessageAudio({
     const nextProgress = bounds.width > 0 ? Math.min(1, Math.max(0, clickOffsetX / bounds.width)) : 0
     const nextTimeSeconds = nextProgress * effectiveDurationSeconds
 
+    const nextSignedUrl = signedUrl ?? await resolveSignedUrl()
+
+    if (!nextSignedUrl) {
+      return
+    }
+
+    if (audio.src !== nextSignedUrl) {
+      audio.src = nextSignedUrl
+    }
+
     audio.currentTime = nextTimeSeconds
     syncPlaybackPosition(audio)
   }
 
   if (loadError) {
     return <p className="mt-1 text-sm text-red-600">Не удалось загрузить голосовое сообщение</p>
-  }
-
-  if (!signedUrl) {
-    return <p className="mt-1 text-sm app-text-secondary">Загрузка аудио...</p>
   }
 
   return (
@@ -1064,7 +1093,7 @@ function VoiceMessageAudio({
       </button>
       <audio
         ref={audioRef}
-        src={signedUrl}
+        src={signedUrl ?? undefined}
         preload="metadata"
         className="hidden"
         onLoadedMetadata={(event) => {
