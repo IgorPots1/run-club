@@ -12,7 +12,7 @@ import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import { loadDashboardOverview } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
-import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
+import { getProfileDisplayName } from '@/lib/profiles'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP } from '@/lib/xp'
@@ -35,10 +35,6 @@ export default function DashboardPage() {
 
         const nextUser = await getBootstrapUser()
         setUser(nextUser)
-
-        if (nextUser) {
-          void ensureProfileExists(nextUser)
-        }
 
         if (!nextUser) {
           router.replace('/login')
