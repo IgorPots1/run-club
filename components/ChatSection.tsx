@@ -479,7 +479,6 @@ export default function ChatSection({
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
-  const voiceInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
@@ -501,6 +500,11 @@ export default function ChatSection({
   const focusedGestureStartScrollTopRef = useRef<number | null>(null)
   const focusedGestureStartClientYRef = useRef<number | null>(null)
   const focusedGestureBlurredRef = useRef(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const recordedVoiceChunksRef = useRef<Blob[]>([])
+  const isStoppingVoiceRecordingRef = useRef(false)
+  const shouldStopVoiceRecordingOnStartRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -515,6 +519,8 @@ export default function ChatSection({
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingVoice, setUploadingVoice] = useState(false)
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false)
+  const [isStartingVoiceRecording, setIsStartingVoiceRecording] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
@@ -539,6 +545,7 @@ export default function ChatSection({
   const hasPendingImage = Boolean(pendingImageUrl)
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl)
+  const shouldShowVoiceRecorderButton = !editingMessage && !trimmedDraftMessage && !hasPendingImage
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const oldestLoadedMessageId = messages.length > 0 ? messages[0]?.id ?? null : null
@@ -879,8 +886,33 @@ export default function ChatSection({
       if (animatedReactionTimeoutRef.current !== null) {
         window.clearTimeout(animatedReactionTimeoutRef.current)
       }
+
+      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
+      mediaRecorderRef.current = null
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!isRecordingVoice && !isStartingVoiceRecording) {
+      return
+    }
+
+    function handleRelease() {
+      void stopVoiceRecording()
+    }
+
+    window.addEventListener('mouseup', handleRelease)
+    window.addEventListener('touchend', handleRelease)
+    window.addEventListener('touchcancel', handleRelease)
+
+    return () => {
+      window.removeEventListener('mouseup', handleRelease)
+      window.removeEventListener('touchend', handleRelease)
+      window.removeEventListener('touchcancel', handleRelease)
+    }
+  }, [isRecordingVoice, isStartingVoiceRecording])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -1788,28 +1820,40 @@ export default function ChatSection({
     }
   }
 
-  function clearSelectedVoiceFile() {
-    if (voiceInputRef.current) {
-      voiceInputRef.current.value = ''
+  function cleanupVoiceRecordingResources() {
+    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
+    mediaRecorderRef.current = null
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
     }
+
+    recordedVoiceChunksRef.current = []
+    isStoppingVoiceRecordingRef.current = false
+    shouldStopVoiceRecordingOnStartRef.current = false
+    setIsRecordingVoice(false)
+    setIsStartingVoiceRecording(false)
   }
 
-  async function handleVoiceInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const nextFile = event.target.files?.[0]
-
-    if (!nextFile) {
-      return
+  function getVoiceRecorderMimeType() {
+    if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+      return ''
     }
 
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      return 'audio/webm;codecs=opus'
+    }
+
+    if (MediaRecorder.isTypeSupported('audio/webm')) {
+      return 'audio/webm'
+    }
+
+    return ''
+  }
+
+  async function sendRecordedVoiceMessage(file: File) {
     if (!currentUserId) {
-      clearSelectedVoiceFile()
-      setSubmitError('Нужно войти, чтобы отправлять голосовые сообщения')
-      return
-    }
-
-    if (nextFile.type && !nextFile.type.startsWith('audio/')) {
-      clearSelectedVoiceFile()
-      setSubmitError('Можно выбрать только аудиофайл')
       return
     }
 
@@ -1818,7 +1862,7 @@ export default function ChatSection({
 
     try {
       const uploadResult = await uploadVoiceMessage({
-        file: nextFile,
+        file,
         userId: currentUserId,
       })
       const { error: insertError } = await createVoiceChatMessage(
@@ -1834,14 +1878,108 @@ export default function ChatSection({
 
       setPendingNewMessagesCount(0)
       setReplyingToMessage(null)
-      clearSelectedVoiceFile()
     } catch (error) {
       console.error('Failed to send voice message', error)
-      clearSelectedVoiceFile()
       setSubmitError('Не удалось отправить голосовое сообщение')
     } finally {
       setUploadingVoice(false)
     }
+  }
+
+  async function startVoiceRecording() {
+    if (
+      !currentUserId ||
+      uploadingVoice ||
+      submitting ||
+      isRecordingVoice ||
+      isStartingVoiceRecording ||
+      !shouldShowVoiceRecorderButton
+    ) {
+      return
+    }
+
+    if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setSubmitError('Запись голоса не поддерживается на этом устройстве')
+      return
+    }
+
+    setIsStartingVoiceRecording(true)
+    setSubmitError('')
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      })
+      const recorderMimeType = getVoiceRecorderMimeType()
+      const recorder = recorderMimeType
+        ? new MediaRecorder(stream, { mimeType: recorderMimeType })
+        : new MediaRecorder(stream)
+
+      recordedVoiceChunksRef.current = []
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+      isStoppingVoiceRecordingRef.current = false
+
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) {
+          recordedVoiceChunksRef.current.push(event.data)
+        }
+      })
+
+      recorder.addEventListener('stop', () => {
+        const voiceBlob = new Blob(recordedVoiceChunksRef.current, {
+          type: recorder.mimeType || 'audio/webm',
+        })
+
+        cleanupVoiceRecordingResources()
+
+        if (voiceBlob.size < 1024) {
+          return
+        }
+
+        const voiceFile = new File([voiceBlob], `voice-message-${Date.now()}.webm`, {
+          type: voiceBlob.type || 'audio/webm',
+        })
+
+        void sendRecordedVoiceMessage(voiceFile)
+      })
+
+      recorder.start()
+      setIsStartingVoiceRecording(false)
+      setIsRecordingVoice(true)
+
+      if (shouldStopVoiceRecordingOnStartRef.current) {
+        shouldStopVoiceRecordingOnStartRef.current = false
+        void stopVoiceRecording()
+      }
+    } catch (error) {
+      console.error('Failed to start voice recording', error)
+      cleanupVoiceRecordingResources()
+      setSubmitError('Не удалось начать запись голоса')
+    }
+  }
+
+  async function stopVoiceRecording() {
+    const recorder = mediaRecorderRef.current
+
+    if (!recorder && isStartingVoiceRecording) {
+      shouldStopVoiceRecordingOnStartRef.current = true
+      return
+    }
+
+    if (!recorder || isStoppingVoiceRecordingRef.current) {
+      return
+    }
+
+    isStoppingVoiceRecordingRef.current = true
+    setIsStartingVoiceRecording(false)
+
+    if (recorder.state !== 'inactive') {
+      recorder.stop()
+      return
+    }
+
+    cleanupVoiceRecordingResources()
   }
 
   function clearLongPressTimeout() {
@@ -1984,13 +2122,6 @@ export default function ChatSection({
               className="sr-only"
               tabIndex={-1}
             />
-            <input
-              ref={voiceInputRef}
-              type="file"
-              accept="audio/*"
-              onChange={handleVoiceInputChange}
-              disabled={submitting || uploadingImage || uploadingVoice || Boolean(editingMessageId)}
-            />
             {editingMessage ? (
               <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                 <div className="min-w-0">
@@ -2045,11 +2176,16 @@ export default function ChatSection({
                 </button>
               </div>
             ) : null}
+            {isRecordingVoice || isStartingVoiceRecording ? (
+              <div className="mb-1.5 rounded-[18px] bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:bg-red-500/15">
+                Recording...
+              </div>
+            ) : null}
             <div className="flex items-end gap-1.5">
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={submitting || uploadingImage || uploadingVoice || Boolean(editingMessageId)}
+                disabled={submitting || uploadingImage || uploadingVoice || isRecordingVoice || isStartingVoiceRecording || Boolean(editingMessageId)}
                 className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
                 aria-label="Выбрать изображение"
               >
@@ -2070,23 +2206,55 @@ export default function ChatSection({
                   onFocus={() => setIsComposerFocused(true)}
                   onBlur={() => setIsComposerFocused(false)}
                   placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись' : 'Сообщение'}
-                  disabled={submitting || uploadingImage || uploadingVoice}
+                  disabled={submitting || uploadingImage || uploadingVoice || isRecordingVoice || isStartingVoiceRecording}
                   maxLength={CHAT_MESSAGE_MAX_LENGTH}
                   rows={1}
                   className="min-h-11 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={submitting || uploadingImage || uploadingVoice || !canSubmitMessage || isMessageTooLong}
-                className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? '...' : editingMessage ? 'OK' : '>'}
-              </button>
+              {shouldShowVoiceRecorderButton ? (
+                <button
+                  type="button"
+                  onMouseDown={() => {
+                    void startVoiceRecording()
+                  }}
+                  onMouseUp={() => {
+                    void stopVoiceRecording()
+                  }}
+                  onMouseLeave={() => {
+                    void stopVoiceRecording()
+                  }}
+                  onTouchStart={(event) => {
+                    event.preventDefault()
+                    void startVoiceRecording()
+                  }}
+                  onTouchEnd={(event) => {
+                    event.preventDefault()
+                    void stopVoiceRecording()
+                  }}
+                  onTouchCancel={(event) => {
+                    event.preventDefault()
+                    void stopVoiceRecording()
+                  }}
+                  disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
+                  className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={isRecordingVoice ? 'Отпустите для отправки голосового сообщения' : 'Удерживайте для записи голосового сообщения'}
+                >
+                  {isStartingVoiceRecording ? '...' : isRecordingVoice ? 'REC' : 'Mic'}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={submitting || uploadingImage || uploadingVoice || isRecordingVoice || isStartingVoiceRecording || !canSubmitMessage || isMessageTooLong}
+                  className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? '...' : editingMessage ? 'OK' : '>'}
+                </button>
+              )}
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
               <p className="app-text-secondary text-xs">
-                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}{hasPendingImage ? ' + фото' : ''}{uploadingVoice ? ' + аудио' : ''}
+                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}{hasPendingImage ? ' + фото' : ''}{isRecordingVoice || isStartingVoiceRecording ? ' + запись' : uploadingVoice ? ' + аудио' : ''}
               </p>
               {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
             </div>
