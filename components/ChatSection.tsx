@@ -48,6 +48,7 @@ const REACTION_ANIMATION_DURATION_MS = 200
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
 const VOICE_RECORDING_CANCEL_SLIDE_PX = 72
+const VOICE_RECORDING_LOCK_SWIPE_PX = 60
 const VOICE_PLAYBACK_SPEEDS = [1, 1.5, 2] as const
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
@@ -350,6 +351,14 @@ function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
     <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M6 6 18 18" />
       <path d="M18 6 6 18" />
+    </svg>
+  )
+}
+
+function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m5 12 4.5 4.5L19 7" />
     </svg>
   )
 }
@@ -762,7 +771,9 @@ export default function ChatSection({
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
   const recordingPointerStartXRef = useRef<number | null>(null)
+  const recordingPointerStartYRef = useRef<number | null>(null)
   const shouldCancelVoiceRecordingRef = useRef(false)
+  const isLockedVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
   const previousBodyUserSelectRef = useRef<string | null>(null)
@@ -784,6 +795,7 @@ export default function ChatSection({
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
   const [isStartingVoiceRecording, setIsStartingVoiceRecording] = useState(false)
   const [isCancellingVoice, setIsCancellingVoice] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -1168,15 +1180,15 @@ export default function ChatSection({
     }
 
     function handleMove(event: MouseEvent) {
-      updateVoiceRecordingGesture(event.clientX)
+      updateVoiceRecordingGesture(event.clientX, event.clientY)
     }
 
     function handleTouchMove(event: TouchEvent) {
-      updateVoiceRecordingGesture(event.touches[0]?.clientX ?? null)
+      updateVoiceRecordingGesture(event.touches[0]?.clientX ?? null, event.touches[0]?.clientY ?? null)
     }
 
     function handleRelease() {
-      void stopVoiceRecording()
+      handleVoiceRecordingRelease()
     }
 
     window.addEventListener('mousemove', handleMove)
@@ -2136,11 +2148,14 @@ export default function ChatSection({
     shouldStopVoiceRecordingOnStartRef.current = false
     hasHandledVoiceRecordingStopRef.current = false
     recordingPointerStartXRef.current = null
+    recordingPointerStartYRef.current = null
     shouldCancelVoiceRecordingRef.current = false
+    isLockedVoiceRecordingRef.current = false
     setRecordingTime(0)
     setIsRecordingVoice(false)
     setIsStartingVoiceRecording(false)
     setIsCancellingVoice(false)
+    setIsLocked(false)
   }
 
   function getVoiceRecorderMimeType() {
@@ -2207,18 +2222,43 @@ export default function ChatSection({
     setIsCancellingVoice(nextIsCancelling)
   }
 
-  function beginVoiceRecordingGesture(startClientX?: number | null) {
+  function setVoiceLockedState(nextIsLocked: boolean) {
+    isLockedVoiceRecordingRef.current = nextIsLocked
+    setIsLocked(nextIsLocked)
+  }
+
+  function beginVoiceRecordingGesture(startClientX?: number | null, startClientY?: number | null) {
     recordingPointerStartXRef.current = typeof startClientX === 'number' ? startClientX : null
+    recordingPointerStartYRef.current = typeof startClientY === 'number' ? startClientY : null
     setVoiceCancellingState(false)
+    setVoiceLockedState(false)
     void startVoiceRecording()
   }
 
-  function updateVoiceRecordingGesture(clientX?: number | null) {
+  function updateVoiceRecordingGesture(clientX?: number | null, clientY?: number | null) {
     const startClientX = recordingPointerStartXRef.current
+    const startClientY = recordingPointerStartYRef.current
 
     if (
       !isRecordingVoice ||
-      isStoppingVoiceRecordingRef.current ||
+      isStoppingVoiceRecordingRef.current
+    ) {
+      return
+    }
+
+    if (
+      !isLockedVoiceRecordingRef.current &&
+      typeof clientY === 'number' &&
+      startClientY !== null &&
+      startClientY - clientY >= VOICE_RECORDING_LOCK_SWIPE_PX
+    ) {
+      setVoiceCancellingState(false)
+      setVoiceLockedState(true)
+      return
+    }
+
+    if (
+      isLockedVoiceRecordingRef.current ||
       typeof clientX !== 'number' ||
       startClientX === null
     ) {
@@ -2226,6 +2266,24 @@ export default function ChatSection({
     }
 
     setVoiceCancellingState(startClientX - clientX >= VOICE_RECORDING_CANCEL_SLIDE_PX)
+  }
+
+  function handleVoiceRecordingRelease() {
+    if (isLockedVoiceRecordingRef.current) {
+      return
+    }
+
+    void stopVoiceRecording()
+  }
+
+  function cancelLockedVoiceRecording() {
+    setVoiceCancellingState(true)
+    void stopVoiceRecording()
+  }
+
+  function sendLockedVoiceRecording() {
+    setVoiceCancellingState(false)
+    void stopVoiceRecording()
   }
 
   async function sendRecordedVoiceMessage(file: File) {
@@ -2635,7 +2693,28 @@ export default function ChatSection({
                     {isCancellingVoice ? 'Отпустить для отмены' : `Запись... ${formatRecordingTime(recordingTime)}`}
                   </p>
                 </div>
-                <p className="text-xs opacity-80">{isCancellingVoice ? 'Отмена' : '← Сдвиг влево для отмены'}</p>
+                {isLocked ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelLockedVoiceRecording}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/15 text-red-600 dark:bg-red-500/20 dark:text-red-300"
+                      aria-label="Отменить голосовую запись"
+                    >
+                      <CloseIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendLockedVoiceRecording}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
+                      aria-label="Отправить голосовую запись"
+                    >
+                      <CheckIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs opacity-80">← Влево для отмены · ↑ Вверх для фиксации</p>
+                )}
               </div>
             ) : null}
             <div className="flex items-end gap-1.5">
@@ -2670,51 +2749,56 @@ export default function ChatSection({
                 />
               </div>
               {shouldShowVoiceRecorderButton ? (
-                <button
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault()
-                    beginVoiceRecordingGesture(event.clientX)
-                  }}
-                  onMouseUp={() => {
-                    void stopVoiceRecording()
-                  }}
-                  onTouchStart={(event) => {
-                    event.preventDefault()
-                    beginVoiceRecordingGesture(event.touches[0]?.clientX ?? null)
-                  }}
-                  onTouchEnd={(event) => {
-                    event.preventDefault()
-                    void stopVoiceRecording()
-                  }}
-                  onTouchCancel={(event) => {
-                    event.preventDefault()
-                    void stopVoiceRecording()
-                  }}
-                  disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
-                  className={`app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full px-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60 ${
-                    isCancellingVoice ? 'bg-red-500 text-white' : ''
-                  }`}
-                  style={{
-                    userSelect: 'none',
-                    WebkitUserSelect: 'none',
-                  }}
-                  aria-label={
-                    isCancellingVoice
-                      ? 'Отпустите для отмены голосового сообщения'
-                      : isRecordingVoice
-                        ? 'Отпустите для отправки голосового сообщения'
-                        : 'Удерживайте для записи голосового сообщения'
-                  }
-                >
-                  {isStartingVoiceRecording ? (
-                    '...'
-                  ) : isCancellingVoice ? (
-                    <CloseIcon />
-                  ) : (
-                    <MicIcon />
-                  )}
-                </button>
+                isLocked ? null : (
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      beginVoiceRecordingGesture(event.clientX, event.clientY)
+                    }}
+                    onMouseUp={() => {
+                      handleVoiceRecordingRelease()
+                    }}
+                    onTouchStart={(event) => {
+                      event.preventDefault()
+                      beginVoiceRecordingGesture(
+                        event.touches[0]?.clientX ?? null,
+                        event.touches[0]?.clientY ?? null
+                      )
+                    }}
+                    onTouchEnd={(event) => {
+                      event.preventDefault()
+                      handleVoiceRecordingRelease()
+                    }}
+                    onTouchCancel={(event) => {
+                      event.preventDefault()
+                      handleVoiceRecordingRelease()
+                    }}
+                    disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
+                    className={`app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full px-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                      isCancellingVoice ? 'bg-red-500 text-white' : ''
+                    }`}
+                    style={{
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                    }}
+                    aria-label={
+                      isCancellingVoice
+                        ? 'Отпустите для отмены голосового сообщения'
+                        : isRecordingVoice
+                          ? 'Отпустите для отправки голосового сообщения'
+                          : 'Удерживайте для записи голосового сообщения'
+                    }
+                  >
+                    {isStartingVoiceRecording ? (
+                      '...'
+                    ) : isCancellingVoice ? (
+                      <CloseIcon />
+                    ) : (
+                      <MicIcon />
+                    )}
+                  </button>
+                )
               ) : (
                 <button
                   type="submit"
