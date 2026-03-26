@@ -75,31 +75,41 @@ export default function ChatMessageActions({
         className="chat-no-select absolute inset-0"
         onClick={() => onOpenChange(false)}
       />
-      <div className="chat-no-select app-card relative w-full rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-md md:rounded-3xl md:pb-4">
-        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
-        <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="chat-no-select app-card relative w-full rounded-t-[26px] px-4 pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3.5 shadow-lg md:max-w-md md:rounded-[26px] md:pb-4">
+        <div className="mx-auto mb-3 h-1.5 w-11 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
+        <div className="mb-3 flex items-center justify-between gap-1.5">
           {QUICK_REACTIONS.map((emoji) => (
             <button
               key={emoji}
               type="button"
               onClick={() => handleQuickReaction(emoji)}
-              className="app-button-secondary flex h-14 w-14 items-center justify-center rounded-2xl border text-2xl transition-transform duration-150 active:scale-90"
+              className="app-button-secondary flex h-11 w-11 items-center justify-center rounded-xl border text-[22px] shadow-none transition-transform duration-150 active:scale-90"
               aria-label={`Реакция ${emoji}`}
             >
               {emoji}
             </button>
           ))}
         </div>
-        <div className="chat-no-select mb-4">
-          <p className="app-text-primary text-base font-semibold">Действия</p>
-          <p className="chat-no-select app-text-secondary mt-1 truncate text-sm">&quot;{messagePreview}&quot;</p>
+        <div className="chat-no-select mb-2.5">
+          <p className="app-text-primary text-sm font-semibold">Действия</p>
+          <p
+            className="chat-no-select app-text-secondary mt-0.5 text-[13px] leading-5"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            &quot;{messagePreview}&quot;
+          </p>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {canEditMessage ? (
             <button
               type="button"
               onClick={handleEdit}
-              className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+              className="app-text-primary min-h-[42px] w-full rounded-xl px-4 py-2.5 text-left text-[15px] font-medium"
             >
               Редактировать
             </button>
@@ -109,14 +119,14 @@ export default function ChatMessageActions({
             onClick={() => {
               void handleCopy()
             }}
-            className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+            className="app-text-primary min-h-[42px] w-full rounded-xl px-4 py-2.5 text-left text-[15px] font-medium"
           >
             Копировать
           </button>
           <button
             type="button"
             onClick={handleReply}
-            className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+            className="app-text-primary min-h-[42px] w-full rounded-xl px-4 py-2.5 text-left text-[15px] font-medium"
           >
             Ответить
           </button>
@@ -126,7 +136,7 @@ export default function ChatMessageActions({
               onClick={() => {
                 void handleDelete()
               }}
-              className="min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium text-red-500"
+              className="min-h-[42px] w-full rounded-xl px-4 py-2.5 text-left text-[15px] font-medium text-red-500"
             >
               Удалить
             </button>
@@ -134,7 +144,7 @@ export default function ChatMessageActions({
             <button
               type="button"
               onClick={handleOpenProfile}
-              className="app-text-primary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+              className="app-text-primary min-h-[42px] w-full rounded-xl px-4 py-2.5 text-left text-[15px] font-medium"
             >
               Открыть профиль
             </button>
@@ -142,7 +152,7 @@ export default function ChatMessageActions({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="app-text-secondary min-h-11 w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium"
+            className="app-text-secondary min-h-[42px] w-full rounded-xl px-4 py-2.5 text-left text-[15px] font-medium"
           >
             Отмена
           </button>

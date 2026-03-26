@@ -59,9 +59,11 @@ const REPLY_TARGET_HIGHLIGHT_CLASSES = [
 
 let activeVoiceMessageAudio: HTMLAudioElement | null = null
 
-function AvatarFallback() {
+function AvatarFallback({ className = 'h-10 w-10' }: { className?: string }) {
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700 ${className}`}
+    >
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
@@ -225,6 +227,7 @@ function ReactionChip({
   disabled,
   shouldBurst,
   onClick,
+  compact = false,
 }: {
   reactionKey: string
   emoji: string
@@ -233,6 +236,7 @@ function ReactionChip({
   disabled: boolean
   shouldBurst: boolean
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+  compact?: boolean
 }) {
   const [burstPhase, setBurstPhase] = useState<'idle' | 'start' | 'end'>('idle')
 
@@ -269,7 +273,9 @@ function ReactionChip({
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       disabled={disabled}
-      className={`relative inline-flex items-center gap-1 overflow-visible rounded-full px-2.5 py-1 text-xs font-medium transition-transform duration-200 ease-out ${
+      className={`relative inline-flex items-center overflow-visible rounded-full font-medium transition-transform duration-200 ease-out ${
+        compact ? 'gap-0.5 px-2 py-0.5 text-[11px]' : 'gap-1 px-2.5 py-1 text-xs'
+      } ${
         isSelected
           ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
           : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.08] dark:text-white/75'
@@ -281,7 +287,9 @@ function ReactionChip({
     >
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 text-sm transition-all duration-200 ease-out ${
+        className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 transition-all duration-200 ease-out ${
+          compact ? 'text-xs' : 'text-sm'
+        } ${
           burstPhase === 'start'
             ? '-translate-y-1 scale-95 opacity-90'
             : burstPhase === 'end'
@@ -521,7 +529,7 @@ function VoiceMessageAudio({
 
   return (
     <div
-      className={`mt-1 flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 ${
+      className={`mt-1 flex w-full items-center gap-2 rounded-[18px] px-2.5 py-1.5 ${
         isOwnMessage
           ? 'bg-black/[0.05] dark:bg-white/[0.09]'
           : 'bg-black/[0.04] dark:bg-white/[0.07]'
@@ -530,7 +538,7 @@ function VoiceMessageAudio({
       <button
         type="button"
         onClick={handleTogglePlayback}
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+        className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full ${
           isPlaying
             ? 'bg-red-500 text-white'
             : 'bg-black/[0.08] text-black dark:bg-white/[0.14] dark:text-white'
@@ -542,7 +550,7 @@ function VoiceMessageAudio({
       <button
         type="button"
         onClick={handleSeek}
-        className="flex h-9 min-w-0 flex-1 items-center gap-1"
+        className="flex h-8 min-w-0 flex-1 items-center gap-1"
         aria-label="Перемотать голосовое сообщение"
       >
         {waveformBars.map((barHeight, index) => {
@@ -556,18 +564,18 @@ function VoiceMessageAudio({
                   ? 'bg-red-500 dark:bg-red-400'
                   : 'bg-black/20 dark:bg-white/20'
               }`}
-              style={{ height: `${Math.max(8, Math.round((barHeight / 100) * 28))}px` }}
+              style={{ height: `${Math.max(7, Math.round((barHeight / 100) * 24))}px` }}
             />
           )
         })}
       </button>
-      <span className="shrink-0 text-[11px] font-medium tabular-nums text-black/70 dark:text-white/70">
+      <span className="shrink-0 text-[10px] font-medium tabular-nums text-black/70 dark:text-white/70">
         {currentTimeLabel} / {durationLabel}
       </span>
       <button
         type="button"
         onClick={handleCyclePlaybackSpeed}
-        className="shrink-0 rounded-full bg-black/[0.06] px-2 py-1 text-[11px] font-medium dark:bg-white/[0.12]"
+        className="shrink-0 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-medium dark:bg-white/[0.12]"
         aria-label={`Скорость воспроизведения ${playbackRate}x`}
       >
         {playbackRate}x
@@ -619,6 +627,7 @@ function ChatMessageBody({
   currentUserId = null,
   onReactionToggle,
   animatedReactionKey = null,
+  compactPreview = false,
 }: {
   message: ChatMessageItem
   isOwnMessage?: boolean
@@ -628,6 +637,7 @@ function ChatMessageBody({
   currentUserId?: string | null
   onReactionToggle?: (messageId: string, emoji: string) => void
   animatedReactionKey?: string | null
+  compactPreview?: boolean
 }) {
   const isFallbackReplyPreview = Boolean(
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
@@ -638,7 +648,9 @@ function ChatMessageBody({
     <>
       {showSenderName ? (
         <p
-          className={`truncate text-[11px] font-medium ${
+          className={`truncate font-medium ${
+            compactPreview ? 'text-[10px]' : 'text-[11px]'
+          } ${
             isOwnMessage ? 'app-text-secondary text-right' : 'app-text-primary'
           }`}
         >
@@ -650,7 +662,9 @@ function ChatMessageBody({
           type="button"
           onClick={onReplyPreviewClick}
           disabled={!onReplyPreviewClick}
-          className={`mt-1 rounded-[14px] px-2.5 py-1.5 ${
+          className={`mt-1 rounded-[14px] ${
+            compactPreview ? 'px-2 py-1' : 'px-2.5 py-1.5'
+          } ${
             isOwnMessage
               ? 'bg-black/[0.04] dark:bg-white/[0.07]'
               : 'bg-black/[0.03] dark:bg-white/[0.05]'
@@ -658,11 +672,17 @@ function ChatMessageBody({
             isFallbackReplyPreview ? 'opacity-75' : ''
           }`}
         >
-          <p className={`${isFallbackReplyPreview ? 'app-text-secondary' : 'app-text-primary'} truncate text-xs font-medium`}>
+          <p
+            className={`${isFallbackReplyPreview ? 'app-text-secondary' : 'app-text-primary'} truncate font-medium ${
+              compactPreview ? 'text-[11px]' : 'text-xs'
+            }`}
+          >
             {message.replyTo.displayName}
           </p>
           {message.replyTo.text ? (
-            <p className="app-text-secondary truncate text-xs">{message.replyTo.text}</p>
+            <p className={`app-text-secondary truncate ${compactPreview ? 'text-[11px]' : 'text-xs'}`}>
+              {message.replyTo.text}
+            </p>
           ) : null}
         </button>
       ) : null}
@@ -670,7 +690,9 @@ function ChatMessageBody({
         <button
           type="button"
           onClick={() => onImageClick?.(message.imageUrl!)}
-          className={`mt-1 block max-w-[70%] overflow-hidden rounded-2xl ${
+          className={`mt-1 block overflow-hidden rounded-2xl ${
+            compactPreview ? 'max-w-[62%]' : 'max-w-[70%]'
+          } ${
             isOwnMessage ? 'ml-auto' : ''
           }`}
           aria-label="Открыть изображение"
@@ -678,7 +700,9 @@ function ChatMessageBody({
           <img
             src={message.imageUrl}
             alt="Вложение"
-            className="max-h-80 w-auto rounded-2xl object-cover"
+            className={`w-auto rounded-2xl object-cover ${
+              compactPreview ? 'max-h-40' : 'max-h-80'
+            }`}
           />
         </button>
       ) : null}
@@ -686,20 +710,20 @@ function ChatMessageBody({
         <>
           {message.isOptimistic ? (
             <div
-              className={`mt-1 flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 ${
+              className={`mt-1 flex w-full items-center gap-2 rounded-[18px] px-2.5 py-1.5 ${
                 isOwnMessage
                   ? 'bg-black/[0.05] dark:bg-white/[0.09]'
                   : 'bg-black/[0.04] dark:bg-white/[0.07]'
               }`}
             >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-black/50 dark:bg-white/[0.14] dark:text-white/60">
+              <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-black/50 dark:bg-white/[0.14] dark:text-white/60">
                 <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
                 </svg>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">Отправка...</p>
-                <p className="app-text-secondary text-xs">
+                <p className="truncate text-[13px] font-medium">Отправка...</p>
+                <p className="app-text-secondary text-[11px]">
                   {formatVoiceMessageDuration(message.mediaDurationSeconds)}
                 </p>
               </div>
@@ -729,17 +753,29 @@ function ChatMessageBody({
             message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
           } ${
             isOwnMessage ? 'text-right' : ''
+          } ${
+            compactPreview ? 'leading-5' : ''
           }`}
+          style={
+            compactPreview
+              ? {
+                  display: '-webkit-box',
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }
+              : undefined
+          }
         >
           {message.text}
         </p>
       ) : null}
-      <p className={`app-text-secondary mt-1 text-xs ${isOwnMessage ? 'text-right' : ''}`}>
+      <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-xs'} ${isOwnMessage ? 'text-right' : ''}`}>
         {message.createdAtLabel}
         {message.editedAt ? ' • изменено' : ''}
       </p>
       {message.reactions.length > 0 ? (
-        <div className={`mt-2 flex flex-wrap gap-1.5 ${isOwnMessage ? 'justify-end' : ''}`}>
+        <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-1' : 'mt-2 gap-1.5'} ${isOwnMessage ? 'justify-end' : ''}`}>
           {message.reactions.map((reaction) => {
             const isSelected = currentUserId ? reaction.userIds.includes(currentUserId) : false
             const reactionKey = `${message.id}:${reaction.emoji}`
@@ -753,6 +789,7 @@ function ChatMessageBody({
                 isSelected={isSelected}
                 disabled={!onReactionToggle}
                 shouldBurst={animatedReactionKey === reactionKey}
+                compact={compactPreview}
                 onClick={(event) => {
                   event.stopPropagation()
                   onReactionToggle?.(message.id, reaction.emoji)
@@ -2894,20 +2931,20 @@ export default function ChatSection({
       <div className="relative flex min-h-0 flex-1 flex-col">
         <>
           {showScrollToBottomButton ? (
-            <div className="pointer-events-none absolute bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-4 z-20 md:bottom-24">
+            <div className="pointer-events-none absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] right-3 z-20 md:bottom-24 md:right-4">
               <button
                 type="button"
                 onClick={() => {
                   setPendingNewMessagesCount(0)
                   scrollPageToBottom('smooth')
                 }}
-                className="pointer-events-auto relative flex h-12 w-12 items-center justify-center rounded-full border border-black/[0.06] bg-[color:var(--background)]/92 text-black shadow-lg backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/88 dark:text-white"
+                className="pointer-events-auto relative flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.05] bg-[color:var(--background)]/90 text-black shadow-md backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white"
                 aria-label={pendingNewMessagesCount > 0 ? getNewMessagesLabel(pendingNewMessagesCount) : 'Прокрутить вниз'}
               >
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5"
+                  className="h-[18px] w-[18px]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -2918,7 +2955,7 @@ export default function ChatSection({
                   <path d="m19 12-7 7-7-7" />
                 </svg>
                 {pendingNewMessagesCount > 0 ? (
-                  <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow-sm">
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm">
                     {pendingNewMessagesCount > 9 ? '9+' : pendingNewMessagesCount}
                   </span>
                 ) : null}
@@ -3066,23 +3103,24 @@ export default function ChatSection({
       </div>
       {selectedMessage && isActionSheetOpen ? (
         <div className="chat-no-select pointer-events-none fixed inset-x-4 top-[40svh] z-[60] mx-auto max-w-xl -translate-y-1/2 md:left-1/2 md:w-full md:max-w-md md:-translate-x-1/2">
-          <div className="chat-no-select chat-selected-preview app-card rounded-2xl border px-4 py-3 shadow-lg ring-1 ring-black/10 dark:ring-white/10">
-            <div className="flex items-start gap-3">
+          <div className="chat-no-select chat-selected-preview app-card rounded-[20px] border px-3 py-2.5 shadow-md ring-1 ring-black/[0.06] dark:ring-white/10">
+            <div className="flex items-start gap-2.5">
               {selectedMessage.avatarUrl ? (
                 <Image
                   src={selectedMessage.avatarUrl}
                   alt=""
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 shrink-0 rounded-full object-cover"
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 shrink-0 rounded-full object-cover"
                 />
               ) : (
-                <AvatarFallback />
+                <AvatarFallback className="h-9 w-9" />
               )}
-              <div className="chat-no-select min-w-0 flex-1 rounded-2xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.08]">
+              <div className="chat-no-select min-w-0 flex-1 rounded-[18px] bg-black/[0.03] px-2.5 py-1.5 dark:bg-white/[0.08]">
                 <ChatMessageBody
                   message={selectedMessage}
                   currentUserId={currentUserId}
+                  compactPreview
                   animatedReactionKey={animatedReactionKey}
                   onImageClick={setSelectedViewerImageUrl}
                   onReactionToggle={handleToggleReaction}
