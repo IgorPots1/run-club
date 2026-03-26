@@ -17,6 +17,7 @@ import { getLevelFromXP } from '@/lib/xp'
 
 type InfiniteWorkoutFeedProps = {
   currentUserId: string | null
+  enabled?: boolean
   targetUserId?: string | null
   pageSize?: number
   emptyTitle: string
@@ -35,6 +36,7 @@ function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) 
 
 export default function InfiniteWorkoutFeed({
   currentUserId,
+  enabled = true,
   targetUserId = null,
   pageSize = 10,
   emptyTitle,
@@ -168,6 +170,10 @@ export default function InfiniteWorkoutFeed({
   }, [currentUserId, hasMore, initialLoading, loadingMore, nextOffset, pageSize, targetUserId])
 
   useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
     firstPageRequestKeyRef.current = feedQueryKey
     firstPageRequestPromiseRef.current = null
     setItems([])
@@ -176,9 +182,13 @@ export default function InfiniteWorkoutFeed({
     setActionError('')
     setActiveLikesRun(null)
     void loadFirstPage()
-  }, [feedQueryKey, loadFirstPage])
+  }, [enabled, feedQueryKey, loadFirstPage])
 
   useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
     function handleRunsUpdated() {
       void loadFirstPage()
     }
@@ -196,7 +206,7 @@ export default function InfiniteWorkoutFeed({
       window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
       window.removeEventListener('storage', handleStorage)
     }
-  }, [loadFirstPage])
+  }, [enabled, loadFirstPage])
 
   useEffect(() => {
     const target = loadMoreRef.current
@@ -381,7 +391,7 @@ export default function InfiniteWorkoutFeed({
 
   return (
     <>
-      <div className="space-y-4 pb-2">
+      <div className="min-h-[236px] space-y-4 pb-2">
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         {initialLoading && items.length === 0 ? (
           <>

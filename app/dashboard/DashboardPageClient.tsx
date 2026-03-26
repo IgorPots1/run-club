@@ -61,19 +61,12 @@ export default function DashboardPageClient({
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
-    let timeoutId: number | null = null
     const frameId = window.requestAnimationFrame(() => {
-      timeoutId = window.setTimeout(() => {
-        setShouldLoadSecondaryContent(true)
-      }, 120)
+      setShouldLoadSecondaryContent(true)
     })
 
     return () => {
       window.cancelAnimationFrame(frameId)
-
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId)
-      }
     }
   }, [])
 
@@ -194,8 +187,7 @@ export default function DashboardPageClient({
     ? `Уровень ${levelProgress.level}`
     : 'Загружаем прогресс...'
   const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
-  const showSecondarySkeleton = !shouldLoadSecondaryContent
-  const weeklyLeaderboardLoading = showSecondarySkeleton || weeklyRaceLoading
+  const weeklyLeaderboardLoading = !shouldLoadSecondaryContent || weeklyRaceLoading
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -352,41 +344,19 @@ export default function DashboardPageClient({
             leaderboard={weeklyRace ?? null}
             currentUserId={initialUser.id}
             loading={weeklyLeaderboardLoading}
-            error={!showSecondarySkeleton && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
+            error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
           />
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
-          {showSecondarySkeleton ? (
-            <div className="space-y-3">
-              <div className="app-card rounded-xl border p-4 shadow-sm">
-                <div className="skeleton-line h-5 w-32" />
-                <div className="mt-2 skeleton-line h-4 w-24" />
-                <div className="mt-3 space-y-2">
-                  <div className="skeleton-line h-4 w-20" />
-                  <div className="skeleton-line h-4 w-16" />
-                  <div className="skeleton-line h-4 w-24" />
-                </div>
-              </div>
-              <div className="app-card rounded-xl border p-4 shadow-sm">
-                <div className="skeleton-line h-5 w-36" />
-                <div className="mt-2 skeleton-line h-4 w-28" />
-                <div className="mt-3 space-y-2">
-                  <div className="skeleton-line h-4 w-24" />
-                  <div className="skeleton-line h-4 w-16" />
-                  <div className="skeleton-line h-4 w-20" />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <InfiniteWorkoutFeed
-              currentUserId={initialUser.id}
-              pageSize={10}
-              emptyTitle="Пока нет тренировок"
-              showLevelSubtitle
-              onSuccessfulLikeToggle={() => {
-                void refreshDashboardData()
-              }}
-            />
-          )}
+          <InfiniteWorkoutFeed
+            currentUserId={initialUser.id}
+            enabled={shouldLoadSecondaryContent}
+            pageSize={10}
+            emptyTitle="Пока нет тренировок"
+            showLevelSubtitle
+            onSuccessfulLikeToggle={() => {
+              void refreshDashboardData()
+            }}
+          />
         </div>
       </div>
       {showXpModal ? (

@@ -27,7 +27,7 @@ export default function WeeklyLeaderboard({
     (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
 
   return (
-    <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+    <div className="app-card mb-4 min-h-[188px] overflow-hidden rounded-xl border p-4 shadow-sm">
       <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
         <Flame className="h-4 w-4 shrink-0" strokeWidth={1.9} />
         <span>Гонка недели</span>
