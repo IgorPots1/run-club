@@ -36,10 +36,14 @@ export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
   initialStats,
+  initialActiveChallenge,
+  initialAllChallengesCompleted,
 }: {
   initialUser: DashboardInitialUser
   initialProfileSummary: DashboardInitialProfileSummary
   initialStats: DashboardInitialStats
+  initialActiveChallenge: ChallengeWithProgress | null
+  initialAllChallengesCompleted: boolean
 }) {
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails, setHasLoadedOverviewDetails] = useState(false)
@@ -75,9 +79,9 @@ export default function DashboardPageClient({
   const initialOverview = useMemo<DashboardOverview>(() => ({
     stats: initialStats,
     profileSummary: initialProfileSummary,
-    activeChallenge: null,
-    allChallengesCompleted: false,
-  }), [initialProfileSummary, initialStats])
+    activeChallenge: initialActiveChallenge,
+    allChallengesCompleted: initialAllChallengesCompleted,
+  }), [initialActiveChallenge, initialAllChallengesCompleted, initialProfileSummary, initialStats])
 
   const {
     data: overview,
@@ -159,10 +163,8 @@ export default function DashboardPageClient({
   }, [refreshDashboardData])
 
   const stats = overview?.stats ?? initialStats
-  const activeChallenge: ChallengeWithProgress | null = hasLoadedOverviewDetails
-    ? overview?.activeChallenge ?? null
-    : null
-  const allChallengesCompleted = hasLoadedOverviewDetails ? (overview?.allChallengesCompleted ?? false) : false
+  const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? initialActiveChallenge
+  const allChallengesCompleted = overview?.allChallengesCompleted ?? initialAllChallengesCompleted
   const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
   const profileName = getProfileDisplayName(
     {
@@ -182,7 +184,6 @@ export default function DashboardPageClient({
   const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
   const showSecondarySkeleton = !shouldLoadSecondaryContent
   const weeklyLeaderboardLoading = showSecondarySkeleton || weeklyRaceLoading
-  const showChallengeSkeleton = !activeChallenge && !allChallengesCompleted && !hasLoadedOverviewDetails
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -302,15 +303,6 @@ export default function DashboardPageClient({
               >
                 Открыть достижения
               </Link>
-            </div>
-          ) : showChallengeSkeleton ? (
-            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
-              <div className="skeleton-line h-4 w-32" />
-              <div className="mt-3 space-y-3">
-                <div className="skeleton-line h-6 w-44" />
-                <div className="skeleton-line h-2 w-full" />
-                <div className="skeleton-line h-4 w-36" />
-              </div>
             </div>
           ) : null}
           {stats && levelProgress ? (
