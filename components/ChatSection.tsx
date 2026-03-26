@@ -1126,9 +1126,9 @@ function ChatMessageBody({
       {showSenderName ? (
         <p
           className={`truncate ${
-            compactPreview ? 'text-[10px]' : 'text-[10px]'
+            compactPreview ? 'text-[10px]' : 'text-[9px]'
           } ${
-            isOwnMessage ? 'app-text-secondary text-right opacity-80' : 'app-text-secondary opacity-85'
+            isOwnMessage ? 'app-text-secondary text-right opacity-70' : 'app-text-secondary opacity-75'
           }`}
         >
           {message.displayName}
@@ -1234,9 +1234,9 @@ function ChatMessageBody({
       {message.text ? (
         <p
           className={`app-text-primary break-words whitespace-pre-wrap text-left text-sm ${
-            message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-px' : ''
+            message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
           } ${
-            compactPreview ? 'leading-5' : 'leading-[1.42]'
+            compactPreview ? 'leading-5' : 'leading-[1.32]'
           }`}
           style={
             compactPreview
@@ -1253,7 +1253,7 @@ function ChatMessageBody({
         </p>
       ) : null}
       {!isImageOnlyMessage ? (
-        <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1.5 text-[10px] opacity-70'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
+        <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
           {message.createdAtLabel}
           {message.editedAt ? ' • изменено' : ''}
         </p>
@@ -3563,7 +3563,7 @@ export default function ChatSection({
                           ) : (
                             <div className="h-10 w-10 shrink-0" aria-hidden="true" />
                           )}
-                          <div className={`relative min-w-0 w-full max-w-[78%] ${isOwnMessage ? 'ml-auto' : ''}`}>
+                          <div className={`relative min-w-0 w-full max-w-[74%] ${isOwnMessage ? 'ml-auto' : ''}`}>
                             <div
                               aria-hidden="true"
                               className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
@@ -3598,7 +3598,7 @@ export default function ChatSection({
                               className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
                                 isImageOnlyMessage
                                   ? 'rounded-2xl bg-transparent px-0 py-0'
-                                  : `rounded-[18px] px-3 py-1.5 ${
+                                  : `rounded-[18px] px-2.5 py-1 ${
                                       isOwnMessage
                                         ? 'bg-[#DCF8C6] dark:bg-green-900/40'
                                         : 'bg-black/[0.04] dark:bg-white/[0.07]'
