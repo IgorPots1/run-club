@@ -756,6 +756,8 @@ export default function ChatSection({
   const shouldCancelVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
+  const previousBodyUserSelectRef = useRef<string | null>(null)
+  const previousBodyWebkitUserSelectRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -1165,6 +1167,28 @@ export default function ChatSection({
       window.removeEventListener('touchcancel', handleRelease)
     }
   }, [isRecordingVoice, isStartingVoiceRecording])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    if (!isRecordingVoice) {
+      return
+    }
+
+    previousBodyUserSelectRef.current = document.body.style.userSelect
+    previousBodyWebkitUserSelectRef.current = document.body.style.webkitUserSelect
+    document.body.style.userSelect = 'none'
+    document.body.style.webkitUserSelect = 'none'
+
+    return () => {
+      document.body.style.userSelect = previousBodyUserSelectRef.current ?? ''
+      document.body.style.webkitUserSelect = previousBodyWebkitUserSelectRef.current ?? ''
+      previousBodyUserSelectRef.current = null
+      previousBodyWebkitUserSelectRef.current = null
+    }
+  }, [isRecordingVoice])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -2581,6 +2605,7 @@ export default function ChatSection({
                 <button
                   type="button"
                   onMouseDown={(event) => {
+                    event.preventDefault()
                     beginVoiceRecordingGesture(event.clientY)
                   }}
                   onMouseMove={(event) => {
@@ -2613,6 +2638,10 @@ export default function ChatSection({
                   className={`app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full px-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60 ${
                     isCancellingVoice ? 'bg-red-500 text-white' : ''
                   }`}
+                  style={{
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                  }}
                   aria-label={
                     isCancellingVoice
                       ? 'Отпустите для отмены голосового сообщения'
