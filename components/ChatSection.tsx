@@ -1330,6 +1330,11 @@ export default function ChatSection({
     }
 
     function updateSelectedMessageAnchorRect() {
+      if (!selectedMessage) {
+        setSelectedMessageAnchorRect(null)
+        return
+      }
+
       const selectedMessageNode = messageRefs.current[selectedMessage.id]
       setSelectedMessageAnchorRect(selectedMessageNode?.getBoundingClientRect() ?? null)
     }
