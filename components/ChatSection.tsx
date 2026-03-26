@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
@@ -1304,6 +1304,161 @@ function ChatMessageBody({
   )
 }
 
+const ChatMessageList = memo(function ChatMessageList({
+  messages,
+  currentUserId,
+  firstUnreadMessageId,
+  swipingMessageId,
+  swipeOffsetX,
+  animatedReactionKey,
+  messageRefs,
+  onReplyPreviewClick,
+  onImageClick,
+  onReactionToggle,
+  onReactionDetailsOpen,
+  onMessageTouchStart,
+  onMessageTouchEnd,
+  onMessageTouchCancel,
+  onMessageTouchMove,
+  onMessageMouseDown,
+  onMessageMouseUp,
+  onMessageMouseLeave,
+  onMessageContextMenu,
+}: {
+  messages: ChatMessageItem[]
+  currentUserId: string | null
+  firstUnreadMessageId: string | null
+  swipingMessageId: string | null
+  swipeOffsetX: number
+  animatedReactionKey: string | null
+  messageRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
+  onReplyPreviewClick: (replyToMessageId: string) => void
+  onImageClick: (imageUrl: string) => void
+  onReactionToggle: (messageId: string, emoji: string) => void
+  onReactionDetailsOpen: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
+  onMessageTouchStart: (message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => void
+  onMessageTouchEnd: (message: ChatMessageItem) => void
+  onMessageTouchCancel: () => void
+  onMessageTouchMove: (message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => void
+  onMessageMouseDown: (message: ChatMessageItem) => void
+  onMessageMouseUp: () => void
+  onMessageMouseLeave: () => void
+  onMessageContextMenu: (message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => void
+}) {
+  return (
+    <section className="flex flex-1 flex-col px-0 pb-3 pt-1">
+      <div className="flex flex-col">
+        {messages.map((message, index) => {
+          const isOwnMessage = currentUserId === message.userId
+          const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && message.messageType !== 'voice')
+          const isSwipeActive = swipingMessageId === message.id
+          const previousMessage = index > 0 ? messages[index - 1] : null
+          const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
+          const isFirstInAuthorRun = !isSameAuthorAsPrevious
+          const showAvatar = !isOwnMessage && isFirstInAuthorRun
+          const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
+          const replyPreviewTargetId =
+            message.replyTo && message.replyTo.userId !== null ? message.replyTo.id : null
+          const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
+
+          return (
+            <div
+              key={message.id}
+              className={messageSpacingClass}
+            >
+              {message.id === firstUnreadMessageId ? (
+                <div className="mb-3.5 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                  <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
+                  <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                </div>
+              ) : null}
+              <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
+                {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
+                  <Image
+                    src={message.avatarUrl}
+                    alt=""
+                    width={40}
+                    height={40}
+                    className="h-10 w-10 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <AvatarFallback />
+                ) : (
+                  <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+                )}
+                <div className={`relative min-w-0 w-full max-w-[80%] md:max-w-[82%] ${isOwnMessage ? 'ml-auto' : ''}`}>
+                  <div
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
+                      isSwipeActive && swipeOffsetX > 8 ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M9 7 4 12l5 5" />
+                      <path d="M20 12H4" />
+                    </svg>
+                  </div>
+                  <div
+                    ref={(node) => {
+                      if (node) {
+                        messageRefs.current[message.id] = node
+                        return
+                      }
+
+                      delete messageRefs.current[message.id]
+                    }}
+                    style={{
+                      transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
+                    }}
+                    className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
+                      isImageOnlyMessage
+                        ? 'rounded-2xl bg-transparent px-0 py-0'
+                        : `rounded-[18px] px-2.5 py-1 ${
+                            isOwnMessage
+                              ? 'bg-[#DCF8C6] dark:bg-green-900/40'
+                              : 'bg-black/[0.04] dark:bg-white/[0.07]'
+                          }`
+                    }`}
+                    onTouchStart={(event) => onMessageTouchStart(message, event)}
+                    onTouchEnd={() => onMessageTouchEnd(message)}
+                    onTouchCancel={onMessageTouchCancel}
+                    onTouchMove={(event) => onMessageTouchMove(message, event)}
+                    onMouseDown={() => onMessageMouseDown(message)}
+                    onMouseUp={onMessageMouseUp}
+                    onMouseLeave={onMessageMouseLeave}
+                    onContextMenu={(event) => onMessageContextMenu(message, event)}
+                  >
+                    <ChatMessageBody
+                      message={message}
+                      isOwnMessage={isOwnMessage}
+                      showSenderName={showSenderName}
+                      currentUserId={currentUserId}
+                      animatedReactionKey={animatedReactionKey}
+                      onReplyPreviewClick={replyPreviewTargetId ? () => onReplyPreviewClick(replyPreviewTargetId) : undefined}
+                      onImageClick={onImageClick}
+                      onReactionToggle={onReactionToggle}
+                      onReactionDetailsOpen={onReactionDetailsOpen}
+                    />
+                  </div>
+                </div>
+              </article>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+})
+
 export default function ChatSection({
   showTitle = true,
   threadId = null,
@@ -2587,16 +2742,16 @@ export default function ChatSection({
     setEditingMessageId(null)
   }
 
-  function getReactionProfileForUser(userId: string) {
+  const getReactionProfileForUser = useCallback((userId: string) => {
     const matchingMessage = messagesRef.current.find((message) => message.userId === userId) ?? null
 
     return {
       displayName: matchingMessage?.displayName ?? (userId === currentUserId ? 'Вы' : 'Бегун'),
       avatarUrl: matchingMessage?.avatarUrl ?? null,
     }
-  }
+  }, [currentUserId])
 
-  async function handleToggleReaction(messageId: string, emoji: string) {
+  const handleToggleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!currentUserId) {
       return
     }
@@ -2641,7 +2796,7 @@ export default function ChatSection({
         updateMessageReaction(currentMessages, messageId, currentUserId, emoji, currentUserReactionProfile, hasReacted)
       )
     }
-  }
+  }, [currentUserId, getReactionProfileForUser])
 
   function clearEditingMessage() {
     setEditingMessageId(null)
@@ -3095,12 +3250,22 @@ export default function ChatSection({
     cleanupVoiceRecordingResources()
   }
 
-  function clearLongPressTimeout() {
+  const clearLongPressTimeout = useCallback(() => {
     if (longPressTimeoutRef.current !== null) {
       window.clearTimeout(longPressTimeoutRef.current)
       longPressTimeoutRef.current = null
     }
-  }
+  }, [])
+
+  const startLongPress = useCallback((message: ChatMessageItem) => {
+    clearLongPressTimeout()
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      navigator.vibrate?.(10)
+      setSelectedMessage(message)
+      setIsActionSheetOpen(true)
+      longPressTimeoutRef.current = null
+    }, LONG_PRESS_MS)
+  }, [clearLongPressTimeout])
 
   const resetSwipeReplyGesture = useCallback(() => {
     swipeGestureMessageIdRef.current = null
@@ -3112,11 +3277,11 @@ export default function ChatSection({
     setSwipeOffsetX(0)
   }, [])
 
-  function isMobileSwipeViewport() {
+  const isMobileSwipeViewport = useCallback(() => {
     return typeof window !== 'undefined' && window.innerWidth < 768
-  }
+  }, [])
 
-  function handleMessageTouchStart(message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) {
+  const handleMessageTouchStart = useCallback((message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => {
     startLongPress(message)
 
     if (!isMobileSwipeViewport()) {
@@ -3136,9 +3301,9 @@ export default function ChatSection({
     swipeLockedVerticalRef.current = false
     setSwipingMessageId(null)
     setSwipeOffsetX(0)
-  }
+  }, [isMobileSwipeViewport, startLongPress])
 
-  function handleMessageTouchMove(message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) {
+  const handleMessageTouchMove = useCallback((message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => {
     if (!isMobileSwipeViewport()) {
       clearLongPressTimeout()
       return
@@ -3201,9 +3366,9 @@ export default function ChatSection({
     setSwipingMessageId(message.id)
     setSwipeOffsetX(nextSwipeOffsetX)
     swipeOffsetXRef.current = nextSwipeOffsetX
-  }
+  }, [clearLongPressTimeout, isMobileSwipeViewport])
 
-  function handleMessageTouchEnd(message: ChatMessageItem) {
+  const handleMessageTouchEnd = useCallback((message: ChatMessageItem) => {
     const shouldReply =
       isMobileSwipeViewport() &&
       swipeGestureMessageIdRef.current === message.id &&
@@ -3215,12 +3380,31 @@ export default function ChatSection({
     if (shouldReply) {
       setReplyingToMessage(message)
     }
-  }
+  }, [clearLongPressTimeout, isMobileSwipeViewport, resetSwipeReplyGesture])
 
-  function handleMessageTouchCancel() {
+  const handleMessageTouchCancel = useCallback(() => {
     clearLongPressTimeout()
     resetSwipeReplyGesture()
-  }
+  }, [clearLongPressTimeout, resetSwipeReplyGesture])
+
+  const handleMessageContextMenu = useCallback((message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    clearLongPressTimeout()
+    setSelectedMessage(message)
+    setIsActionSheetOpen(true)
+  }, [clearLongPressTimeout])
+
+  const handleReactionDetailsOpen = useCallback((
+    targetMessage: ChatMessageItem,
+    reaction: ChatMessageItem['reactions'][number]
+  ) => {
+    if (reaction.count > 1) {
+      setSelectedReactionDetails({
+        messageId: targetMessage.id,
+        emoji: reaction.emoji,
+      })
+    }
+  }, [])
 
   function renderComposer() {
     return (
@@ -3399,16 +3583,6 @@ export default function ChatSection({
     )
   }
 
-  function startLongPress(message: ChatMessageItem) {
-    clearLongPressTimeout()
-    longPressTimeoutRef.current = window.setTimeout(() => {
-      navigator.vibrate?.(10)
-      setSelectedMessage(message)
-      setIsActionSheetOpen(true)
-      longPressTimeoutRef.current = null
-    }, LONG_PRESS_MS)
-  }
-
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl px-3 pb-4 pt-4 md:px-5 md:pb-5 md:pt-4">
@@ -3513,128 +3687,27 @@ export default function ChatSection({
                   </p>
                 </section>
               ) : (
-                <section className="flex flex-1 flex-col px-0 pb-3 pt-1">
-                  <div className="flex flex-col">
-                    {messages.map((message, index) => {
-                      const isOwnMessage = currentUserId === message.userId
-                      const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && message.messageType !== 'voice')
-                      const isSwipeActive = swipingMessageId === message.id
-                      const previousMessage = index > 0 ? messages[index - 1] : null
-                      const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
-                      const isFirstInAuthorRun = !isSameAuthorAsPrevious
-                      const showAvatar = !isOwnMessage && isFirstInAuthorRun
-                      const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
-                      const replyPreviewTargetId =
-                        message.replyTo && message.replyTo.userId !== null ? message.replyTo.id : null
-                      const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
-
-                      return (
-                        <div
-                          key={message.id}
-                          className={messageSpacingClass}
-                        >
-                        {message.id === firstUnreadMessageId ? (
-                          <div className="mb-3.5 flex items-center gap-3">
-                            <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                            <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
-                            <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                          </div>
-                        ) : null}
-                        <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
-                          {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
-                            <Image
-                              src={message.avatarUrl}
-                              alt=""
-                              width={40}
-                              height={40}
-                              className="h-10 w-10 shrink-0 rounded-full object-cover"
-                            />
-                          ) : (
-                            <AvatarFallback />
-                          ) : (
-                            <div className="h-10 w-10 shrink-0" aria-hidden="true" />
-                          )}
-                          <div className={`relative min-w-0 w-full max-w-[80%] md:max-w-[82%] ${isOwnMessage ? 'ml-auto' : ''}`}>
-                            <div
-                              aria-hidden="true"
-                              className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
-                                isSwipeActive && swipeOffsetX > 8 ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
-                              }`}
-                            >
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M9 7 4 12l5 5" />
-                                <path d="M20 12H4" />
-                              </svg>
-                            </div>
-                            <div
-                              ref={(node) => {
-                                if (node) {
-                                  messageRefs.current[message.id] = node
-                                  return
-                                }
-
-                                delete messageRefs.current[message.id]
-                              }}
-                              style={{
-                                transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
-                              }}
-                              className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
-                                isImageOnlyMessage
-                                  ? 'rounded-2xl bg-transparent px-0 py-0'
-                                  : `rounded-[18px] px-2.5 py-1 ${
-                                      isOwnMessage
-                                        ? 'bg-[#DCF8C6] dark:bg-green-900/40'
-                                        : 'bg-black/[0.04] dark:bg-white/[0.07]'
-                                    }`
-                              }`}
-                              onTouchStart={(event) => handleMessageTouchStart(message, event)}
-                              onTouchEnd={() => handleMessageTouchEnd(message)}
-                              onTouchCancel={handleMessageTouchCancel}
-                              onTouchMove={(event) => handleMessageTouchMove(message, event)}
-                              onMouseDown={() => startLongPress(message)}
-                              onMouseUp={clearLongPressTimeout}
-                              onMouseLeave={clearLongPressTimeout}
-                              onContextMenu={(event) => {
-                                event.preventDefault()
-                                clearLongPressTimeout()
-                                setSelectedMessage(message)
-                                setIsActionSheetOpen(true)
-                              }}
-                            >
-                              <ChatMessageBody
-                                message={message}
-                                isOwnMessage={isOwnMessage}
-                                showSenderName={showSenderName}
-                                currentUserId={currentUserId}
-                                animatedReactionKey={animatedReactionKey}
-                                onReplyPreviewClick={replyPreviewTargetId ? () => handleReplyPreviewClick(replyPreviewTargetId) : undefined}
-                                onImageClick={setSelectedViewerImageUrl}
-                                onReactionToggle={handleToggleReaction}
-                                onReactionDetailsOpen={(targetMessage, reaction) => {
-                                  if (reaction.count > 1) {
-                                    setSelectedReactionDetails({
-                                      messageId: targetMessage.id,
-                                      emoji: reaction.emoji,
-                                    })
-                                  }
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </article>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
+                <ChatMessageList
+                  messages={messages}
+                  currentUserId={currentUserId}
+                  firstUnreadMessageId={firstUnreadMessageId}
+                  swipingMessageId={swipingMessageId}
+                  swipeOffsetX={swipeOffsetX}
+                  animatedReactionKey={animatedReactionKey}
+                  messageRefs={messageRefs}
+                  onReplyPreviewClick={handleReplyPreviewClick}
+                  onImageClick={setSelectedViewerImageUrl}
+                  onReactionToggle={handleToggleReaction}
+                  onReactionDetailsOpen={handleReactionDetailsOpen}
+                  onMessageTouchStart={handleMessageTouchStart}
+                  onMessageTouchEnd={handleMessageTouchEnd}
+                  onMessageTouchCancel={handleMessageTouchCancel}
+                  onMessageTouchMove={handleMessageTouchMove}
+                  onMessageMouseDown={startLongPress}
+                  onMessageMouseUp={clearLongPressTimeout}
+                  onMessageMouseLeave={clearLongPressTimeout}
+                  onMessageContextMenu={handleMessageContextMenu}
+                />
               )}
               <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
             </div>
