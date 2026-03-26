@@ -24,6 +24,7 @@ import {
   type CoachDirectThreadItem,
   type StudentProfile,
 } from '@/lib/chat/threads'
+import { prefetchRecentChatMessages } from '@/lib/chat'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
@@ -121,10 +122,18 @@ function getLastMessagePreview(
   return `${senderLabel}: ${previewText}`
 }
 
-function ThreadListRow({ item }: { item: MessageThreadListItem }) {
+function ThreadListRow({
+  item,
+  onPrefetch,
+}: {
+  item: MessageThreadListItem
+  onPrefetch: (threadId: string) => void
+}) {
   return (
     <Link
       href={item.href}
+      onPointerDown={() => onPrefetch(item.id)}
+      onClick={() => onPrefetch(item.id)}
       className="app-card flex items-center gap-3 rounded-2xl border p-4 shadow-sm"
     >
       {item.avatar}
@@ -167,6 +176,10 @@ export default function MessagesPage() {
   const [openingStudentId, setOpeningStudentId] = useState<string | null>(null)
 
   const isCoach = currentUserId === COACH_USER_ID
+
+  function handlePrefetchThreadMessages(threadId: string) {
+    void prefetchRecentChatMessages(10, threadId)
+  }
 
   const directThreadByStudentId = useMemo(
     () =>
@@ -534,7 +547,11 @@ export default function MessagesPage() {
 
         <div className="space-y-3">
           {threadListItems.map((item) => (
-            <ThreadListRow key={item.id} item={item} />
+            <ThreadListRow
+              key={item.id}
+              item={item}
+              onPrefetch={handlePrefetchThreadMessages}
+            />
           ))}
 
           {!isCoach && !coachThread ? (

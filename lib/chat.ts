@@ -78,6 +78,40 @@ export type ChatMessageItem = {
   optimisticLocalObjectUrl?: string | null
 }
 
+const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 15000
+
+type RecentChatMessagesPrefetchEntry = {
+  promise: Promise<ChatMessageItem[]>
+  data: ChatMessageItem[] | null
+  expiresAt: number
+}
+
+const recentChatMessagesPrefetchByKey = new Map<string, RecentChatMessagesPrefetchEntry>()
+
+function getRecentChatMessagesPrefetchKey(limit: number, threadId?: string | null) {
+  return `${threadId ?? 'all'}:${limit}`
+}
+
+function isRecentChatMessagesPrefetchEntryExpired(entry: RecentChatMessagesPrefetchEntry) {
+  return Date.now() >= entry.expiresAt
+}
+
+function getRecentChatMessagesPrefetchEntry(limit: number, threadId?: string | null) {
+  const key = getRecentChatMessagesPrefetchKey(limit, threadId)
+  const entry = recentChatMessagesPrefetchByKey.get(key)
+
+  if (!entry) {
+    return null
+  }
+
+  if (isRecentChatMessagesPrefetchEntryExpired(entry)) {
+    recentChatMessagesPrefetchByKey.delete(key)
+    return null
+  }
+
+  return entry
+}
+
 async function loadProfilesByUserIds(userIds: string[]) {
   if (userIds.length === 0) {
     return {}
@@ -597,7 +631,7 @@ export async function loadChatMessageById(messageId: string, threadId?: string |
   return loadChatMessageItem(messageId, threadId)
 }
 
-export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
+async function fetchRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
     .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
@@ -648,6 +682,60 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
       profileById
     )
   })
+}
+
+export function getPrefetchedRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> | null {
+  const entry = getRecentChatMessagesPrefetchEntry(limit, threadId)
+
+  if (!entry) {
+    return null
+  }
+
+  if (entry.data) {
+    return Promise.resolve(entry.data)
+  }
+
+  return entry.promise
+}
+
+export function prefetchRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
+  const existingEntry = getRecentChatMessagesPrefetchEntry(limit, threadId)
+
+  if (existingEntry) {
+    return existingEntry.data ? Promise.resolve(existingEntry.data) : existingEntry.promise
+  }
+
+  const key = getRecentChatMessagesPrefetchKey(limit, threadId)
+  const nextEntry: RecentChatMessagesPrefetchEntry = {
+    promise: fetchRecentChatMessages(limit, threadId),
+    data: null,
+    expiresAt: Date.now() + RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS,
+  }
+
+  recentChatMessagesPrefetchByKey.set(key, nextEntry)
+
+  nextEntry.promise
+    .then((messages) => {
+      const currentEntry = recentChatMessagesPrefetchByKey.get(key)
+
+      if (currentEntry !== nextEntry) {
+        return
+      }
+
+      nextEntry.data = messages
+      nextEntry.expiresAt = Date.now() + RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS
+    })
+    .catch(() => {
+      if (recentChatMessagesPrefetchByKey.get(key) === nextEntry) {
+        recentChatMessagesPrefetchByKey.delete(key)
+      }
+    })
+
+  return nextEntry.promise
+}
+
+export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
+  return fetchRecentChatMessages(limit, threadId)
 }
 
 export async function loadOlderChatMessages(

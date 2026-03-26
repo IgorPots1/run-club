@@ -8,6 +8,7 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
   createVoiceChatMessage,
+  getPrefetchedRecentChatMessages,
   loadChatMessageById,
   loadChatReadState,
   loadChatMessageItem,
@@ -2092,7 +2093,9 @@ export default function ChatSection({
       }
 
       try {
-        const initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
+        const initialMessages =
+          (await getPrefetchedRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)) ??
+          await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
         let nextLastReadAt: string | null = null
 
         if (enableReadState) {
