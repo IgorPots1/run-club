@@ -2,7 +2,7 @@
   "name": "Run Club",
   "short_name": "Run Club",
   "description": "Легкое клубное приложение для бега, челленджей и рейтинга.",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#ffffff",
