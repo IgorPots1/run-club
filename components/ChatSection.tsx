@@ -1903,9 +1903,6 @@ export default function ChatSection({
 
     async function loadPage() {
       if (!currentUserId) {
-        if (isMounted) {
-          setLoading(false)
-        }
         return
       }
 

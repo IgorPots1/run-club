@@ -29,7 +29,7 @@ export default function MessageThreadPage() {
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [threadTitle, setThreadTitle] = useState('Чат')
+  const [threadTitle, setThreadTitle] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -242,43 +242,7 @@ export default function MessageThreadPage() {
     }
   }, [currentUserId, error, loading, threadId])
 
-  if (loading) {
-    return (
-      <main
-        data-chat-isolated-route="true"
-        className="flex flex-col overflow-hidden"
-        style={{
-          height: 'var(--chat-app-height, 100dvh)',
-          minHeight: 'var(--chat-app-height, 100dvh)',
-        }}
-      >
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-          <InnerPageHeader title="Загрузка..." fallbackHref="/messages" minimal />
-          <div className="min-h-0 flex-1 px-3 pb-4 pt-1 md:px-5 md:pb-5 md:pt-2">
-            <div className="app-card h-full rounded-2xl border px-4 pb-4 pt-3 shadow-sm">
-              <div className="space-y-4">
-                {[0, 1, 2].map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="flex gap-2">
-                        <div className="skeleton-line h-4 w-24" />
-                        <div className="skeleton-line h-4 w-20" />
-                      </div>
-                      <div className="skeleton-line h-4 w-full" />
-                      <div className="skeleton-line h-4 w-3/4" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  if (error || !currentUserId || !threadId) {
+  if (!loading && (error || !currentUserId || !threadId)) {
     return (
       <main className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto max-w-3xl">
@@ -301,7 +265,7 @@ export default function MessageThreadPage() {
       }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-        <InnerPageHeader title={threadTitle} fallbackHref="/messages" minimal />
+        <InnerPageHeader title={threadTitle || ' '} fallbackHref="/messages" minimal />
         <div className="min-h-0 flex-1">
           <ChatSection
             showTitle={false}

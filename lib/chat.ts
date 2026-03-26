@@ -622,8 +622,11 @@ export async function loadRecentChatMessages(limit = 50, threadId?: string | nul
   const replyIds = Array.from(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
-  const replyById = await loadChatReplyRowsByIds(replyIds, threadId)
-  const reactionsByMessageId = await loadChatReactionsByMessageIds(messageRows.map((message) => message.id))
+  const messageIds = messageRows.map((message) => message.id)
+  const [replyById, reactionsByMessageId] = await Promise.all([
+    loadChatReplyRowsByIds(replyIds, threadId),
+    loadChatReactionsByMessageIds(messageIds),
+  ])
   const userIds = Array.from(
     new Set([
       ...messageRows.map((message) => message.user_id),
