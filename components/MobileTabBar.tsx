@@ -36,7 +36,6 @@ function scrollPageToTop() {
 export default function MobileTabBar() {
   const pathname = usePathname()
   const [isChatKeyboardOpen, setIsChatKeyboardOpen] = useState(false)
-  const { totalUnreadCount } = useRealtimeTotalUnreadCount()
   const hiddenRoutes = ['/', '/login', '/register']
   const shouldHide =
     hiddenRoutes.includes(pathname) || pathname.startsWith('/auth')
@@ -60,6 +59,12 @@ export default function MobileTabBar() {
   }, [])
 
   if (shouldHide || pathname === '/chat' || pathname.startsWith('/messages/') || isChatKeyboardOpen) return null
+
+  return <VisibleMobileTabBar pathname={pathname} />
+}
+
+function VisibleMobileTabBar({ pathname }: { pathname: string }) {
+  const { totalUnreadCount } = useRealtimeTotalUnreadCount()
 
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const isMessagesRoute = pathname === '/messages' || pathname.startsWith('/messages/')
