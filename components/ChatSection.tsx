@@ -809,7 +809,6 @@ function VoiceMessageAudio({
   const [playbackRate, setPlaybackRate] = useState<(typeof VOICE_PLAYBACK_SPEEDS)[number]>(1)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playbackAnimationFrameRef = useRef<number | null>(null)
-  const signedUrlPromiseRef = useRef<Promise<string | null> | null>(null)
   const waveformBars = useMemo(() => buildVoiceWaveformBars(storagePath), [storagePath])
   const effectiveDurationSeconds =
     typeof resolvedDurationSeconds === 'number' && Number.isFinite(resolvedDurationSeconds) && resolvedDurationSeconds > 0
@@ -840,19 +839,14 @@ function VoiceMessageAudio({
     }
   }
 
-  const resolveSignedUrl = useCallback(async () => {
-    if (signedUrl) {
-      return signedUrl
-    }
+  useEffect(() => {
+    let isMounted = true
 
-    if (signedUrlPromiseRef.current) {
-      return signedUrlPromiseRef.current
-    }
-
-    setLoadError(false)
-
-    const nextSignedUrlPromise = (async () => {
+    async function loadSignedUrl() {
       try {
+        setLoadError(false)
+        setSignedUrl(null)
+
         const { data, error } = await supabase.storage
           .from(CHAT_VOICE_BUCKET)
           .createSignedUrl(storagePath, CHAT_VOICE_SIGNED_URL_TTL_SECONDS)
@@ -861,33 +855,26 @@ function VoiceMessageAudio({
           throw error
         }
 
-        setSignedUrl(data.signedUrl)
-        return data.signedUrl
+        if (isMounted) {
+          setSignedUrl(data.signedUrl)
+        }
       } catch (error) {
         console.error('Failed to create signed voice message URL', {
           storagePath,
           error,
         })
-        setLoadError(true)
-        return null
-      }
-    })()
 
-    signedUrlPromiseRef.current = nextSignedUrlPromise
-
-    try {
-      return await nextSignedUrlPromise
-    } finally {
-      if (signedUrlPromiseRef.current === nextSignedUrlPromise) {
-        signedUrlPromiseRef.current = null
+        if (isMounted) {
+          setLoadError(true)
+        }
       }
     }
-  }, [signedUrl, storagePath])
 
-  useEffect(() => {
-    setSignedUrl(null)
-    setLoadError(false)
-    signedUrlPromiseRef.current = null
+    void loadSignedUrl()
+
+    return () => {
+      isMounted = false
+    }
   }, [storagePath])
 
   useEffect(() => {
@@ -947,19 +934,13 @@ function VoiceMessageAudio({
   async function handleTogglePlayback() {
     const audio = audioRef.current
 
-    if (!audio) {
+    if (!audio || !signedUrl) {
       return
     }
 
     try {
-      const nextSignedUrl = signedUrl ?? await resolveSignedUrl()
-
-      if (!nextSignedUrl) {
-        return
-      }
-
-      if (audio.src !== nextSignedUrl) {
-        audio.src = nextSignedUrl
+      if (audio.src !== signedUrl) {
+        audio.src = signedUrl
       }
 
       if (audio.paused) {
@@ -979,7 +960,6 @@ function VoiceMessageAudio({
       setIsPlaying(false)
     } catch (error) {
       console.error('Failed to toggle voice message playback', error)
-      setLoadError(true)
     }
   }
 
@@ -991,10 +971,10 @@ function VoiceMessageAudio({
     })
   }
 
-  async function handleSeek(event: React.MouseEvent<HTMLButtonElement>) {
+  function handleSeek(event: React.MouseEvent<HTMLButtonElement>) {
     const audio = audioRef.current
 
-    if (!audio || !effectiveDurationSeconds || effectiveDurationSeconds <= 0) {
+    if (!audio || !signedUrl || !effectiveDurationSeconds || effectiveDurationSeconds <= 0) {
       return
     }
 
@@ -1003,14 +983,8 @@ function VoiceMessageAudio({
     const nextProgress = bounds.width > 0 ? Math.min(1, Math.max(0, clickOffsetX / bounds.width)) : 0
     const nextTimeSeconds = nextProgress * effectiveDurationSeconds
 
-    const nextSignedUrl = signedUrl ?? await resolveSignedUrl()
-
-    if (!nextSignedUrl) {
-      return
-    }
-
-    if (audio.src !== nextSignedUrl) {
-      audio.src = nextSignedUrl
+    if (audio.src !== signedUrl) {
+      audio.src = signedUrl
     }
 
     audio.currentTime = nextTimeSeconds
