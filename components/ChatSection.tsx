@@ -494,6 +494,62 @@ function FullscreenImageViewer({
   onClose: () => void
 }) {
   const [isVisible, setIsVisible] = useState(false)
+  const [scale, setScale] = useState(1)
+  const [translateX, setTranslateX] = useState(0)
+  const [translateY, setTranslateY] = useState(0)
+  const [dismissTranslateY, setDismissTranslateY] = useState(0)
+  const [isGesturing, setIsGesturing] = useState(false)
+  const gestureStateRef = useRef<{
+    mode: 'idle' | 'pan' | 'pinch' | 'dismiss'
+    startScale: number
+    startTranslateX: number
+    startTranslateY: number
+    startDismissTranslateY: number
+    startTouchX: number
+    startTouchY: number
+    startDistance: number
+    hasMoved: boolean
+  }>({
+    mode: 'idle',
+    startScale: 1,
+    startTranslateX: 0,
+    startTranslateY: 0,
+    startDismissTranslateY: 0,
+    startTouchX: 0,
+    startTouchY: 0,
+    startDistance: 0,
+    hasMoved: false,
+  })
+  const lastTapRef = useRef<{ time: number }>({ time: 0 })
+
+  function clampValue(value: number, min: number, max: number) {
+    return Math.min(Math.max(value, min), max)
+  }
+
+  function clampZoom(nextScale: number) {
+    return clampValue(nextScale, 1, 4)
+  }
+
+  function clampTranslation(nextScale: number, nextTranslateX: number, nextTranslateY: number) {
+    const maxOffsetX = Math.max(0, ((typeof window !== 'undefined' ? window.innerWidth : 390) * (nextScale - 1)) / 2)
+    const maxOffsetY = Math.max(0, ((typeof window !== 'undefined' ? window.innerHeight : 844) * (nextScale - 1)) / 2)
+
+    return {
+      translateX: clampValue(nextTranslateX, -maxOffsetX, maxOffsetX),
+      translateY: clampValue(nextTranslateY, -maxOffsetY, maxOffsetY),
+    }
+  }
+
+  function resetViewerTransform() {
+    setScale(1)
+    setTranslateX(0)
+    setTranslateY(0)
+    setDismissTranslateY(0)
+  }
+
+  function getTouchDistance(touchA: Touch, touchB: Touch) {
+    return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY)
+  }
 
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow
@@ -522,11 +578,173 @@ function FullscreenImageViewer({
     }
   }, [onClose])
 
+  function handleImageTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
+    if (event.touches.length === 2) {
+      const [firstTouch, secondTouch] = [event.touches[0], event.touches[1]]
+
+      if (!firstTouch || !secondTouch) {
+        return
+      }
+
+      gestureStateRef.current = {
+        mode: 'pinch',
+        startScale: scale,
+        startTranslateX: translateX,
+        startTranslateY: translateY,
+        startDismissTranslateY: dismissTranslateY,
+        startTouchX: 0,
+        startTouchY: 0,
+        startDistance: getTouchDistance(firstTouch, secondTouch),
+        hasMoved: false,
+      }
+      setIsGesturing(true)
+      return
+    }
+
+    const firstTouch = event.touches[0]
+
+    if (!firstTouch) {
+      return
+    }
+
+    gestureStateRef.current = {
+      mode: scale > 1 ? 'pan' : 'dismiss',
+      startScale: scale,
+      startTranslateX: translateX,
+      startTranslateY: translateY,
+      startDismissTranslateY: dismissTranslateY,
+      startTouchX: firstTouch.clientX,
+      startTouchY: firstTouch.clientY,
+      startDistance: 0,
+      hasMoved: false,
+    }
+    setIsGesturing(true)
+  }
+
+  function handleImageTouchMove(event: ReactTouchEvent<HTMLDivElement>) {
+    const gestureState = gestureStateRef.current
+
+    if (gestureState.mode === 'pinch' && event.touches.length === 2) {
+      const [firstTouch, secondTouch] = [event.touches[0], event.touches[1]]
+
+      if (!firstTouch || !secondTouch || gestureState.startDistance <= 0) {
+        return
+      }
+
+      const nextScale = clampZoom(gestureState.startScale * (getTouchDistance(firstTouch, secondTouch) / gestureState.startDistance))
+      gestureState.hasMoved = true
+      const clampedTranslation = clampTranslation(nextScale, translateX, translateY)
+      setScale(nextScale)
+      setTranslateX(clampedTranslation.translateX)
+      setTranslateY(clampedTranslation.translateY)
+      return
+    }
+
+    const firstTouch = event.touches[0]
+
+    if (!firstTouch) {
+      return
+    }
+
+    const deltaX = firstTouch.clientX - gestureState.startTouchX
+    const deltaY = firstTouch.clientY - gestureState.startTouchY
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+      gestureState.hasMoved = true
+    }
+
+    if (gestureState.mode === 'pan' && gestureState.startScale > 1) {
+      const clampedTranslation = clampTranslation(
+        gestureState.startScale,
+        gestureState.startTranslateX + deltaX,
+        gestureState.startTranslateY + deltaY
+      )
+      setTranslateX(clampedTranslation.translateX)
+      setTranslateY(clampedTranslation.translateY)
+      return
+    }
+
+    if (gestureState.mode === 'dismiss' && gestureState.startScale === 1) {
+      setDismissTranslateY(Math.max(0, gestureState.startDismissTranslateY + deltaY))
+    }
+  }
+
+  function handleImageTouchEnd() {
+    const gestureState = gestureStateRef.current
+    const dismissThreshold = 120
+
+    if (gestureState.mode === 'dismiss') {
+      if (dismissTranslateY > dismissThreshold) {
+        onClose()
+        return
+      }
+
+      setDismissTranslateY(0)
+    }
+
+    if (scale <= 1) {
+      setScale(1)
+      setTranslateX(0)
+      setTranslateY(0)
+    } else {
+      const clampedTranslation = clampTranslation(scale, translateX, translateY)
+      setTranslateX(clampedTranslation.translateX)
+      setTranslateY(clampedTranslation.translateY)
+    }
+
+    gestureStateRef.current.mode = 'idle'
+    setIsGesturing(false)
+  }
+
+  function handleImageDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
+    event.stopPropagation()
+
+    if (scale > 1) {
+      resetViewerTransform()
+      return
+    }
+
+    setScale(2)
+    setTranslateX(0)
+    setTranslateY(0)
+    setDismissTranslateY(0)
+  }
+
+  function handleImageClick(event: React.MouseEvent<HTMLDivElement>) {
+    event.stopPropagation()
+  }
+
+  function handleImageTouchTap(event: ReactTouchEvent<HTMLDivElement>) {
+    if (event.touches.length > 0 || gestureStateRef.current.hasMoved) {
+      return
+    }
+
+    const now = Date.now()
+
+    if (now - lastTapRef.current.time < 280) {
+      if (scale > 1) {
+        resetViewerTransform()
+      } else {
+        setScale(2)
+        setTranslateX(0)
+        setTranslateY(0)
+        setDismissTranslateY(0)
+      }
+      lastTapRef.current.time = 0
+      return
+    }
+
+    lastTapRef.current.time = now
+  }
+
+  const overlayOpacity = clampValue(1 - dismissTranslateY / 220, 0.45, 1)
+  const imageTransform = `translate3d(${translateX}px, ${translateY + dismissTranslateY}px, 0) scale(${scale})`
+
   return (
     <div
-      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black/95 p-3 transition-opacity duration-150 ${
+      className={`fixed inset-0 z-[80] flex items-center justify-center p-3 transition-opacity duration-150 ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}
+      style={{ backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})` }}
       onClick={onClose}
     >
       <button
@@ -538,10 +756,24 @@ function FullscreenImageViewer({
         <CloseIcon className="h-5 w-5" />
       </button>
       <div
-        className={`flex max-h-full max-w-full items-center justify-center transition-transform duration-150 ${
+        className={`flex max-h-full max-w-full items-center justify-center ${
+          isGesturing ? '' : 'transition-transform duration-200'
+        } ${
           isVisible ? 'scale-100' : 'scale-[0.985]'
         }`}
-        onClick={(event) => event.stopPropagation()}
+        style={{
+          transform: `${isVisible ? '' : 'scale(0.985) '}${imageTransform}`.trim(),
+          touchAction: 'none',
+        }}
+        onClick={handleImageClick}
+        onDoubleClick={handleImageDoubleClick}
+        onTouchStart={handleImageTouchStart}
+        onTouchMove={handleImageTouchMove}
+        onTouchEnd={(event) => {
+          handleImageTouchEnd()
+          handleImageTouchTap(event)
+        }}
+        onTouchCancel={handleImageTouchEnd}
       >
         <img
           src={imageUrl}
