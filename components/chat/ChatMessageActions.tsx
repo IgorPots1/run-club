@@ -1,10 +1,12 @@
 'use client'
 
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import type { ChatMessageItem } from '@/lib/chat'
 
 type ChatMessageActionsProps = {
   message: ChatMessageItem
+  anchorRect: DOMRect | null
   currentUserId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -14,10 +16,50 @@ type ChatMessageActionsProps = {
   onToggleReaction: (messageId: string, emoji: string) => Promise<void> | void
 }
 
-const QUICK_REACTIONS = ['👍', '❤️', '🔥', '😂'] as const
+const QUICK_REACTIONS = ['👍', '❤️', '🔥', '😂', '👏', '😢', '😮'] as const
+const VIEWPORT_PADDING = 12
+const REACTION_BAR_HEIGHT = 44
+const REACTION_BAR_WIDTH = 288
+const ACTION_CARD_WIDTH = 228
+const PREVIEW_HEIGHT = 68
+const ACTION_ROW_HEIGHT = 40
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function AvatarFallback() {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M18 20a6 6 0 0 0-12 0" />
+        <circle cx="12" cy="8" r="4" />
+      </svg>
+    </span>
+  )
+}
+
+function ExpandIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
 
 export default function ChatMessageActions({
   message,
+  anchorRect,
   currentUserId,
   open,
   onOpenChange,
@@ -30,11 +72,45 @@ export default function ChatMessageActions({
 
   const isOwnMessage = currentUserId === message.userId
   const canEditMessage = isOwnMessage && message.messageType === 'text'
+  const actionCount = canEditMessage ? 5 : 4
+
+  if (!open || !anchorRect) {
+    return null
+  }
+
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 390
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 844
+  const previewText = message.previewText || message.text || 'Сообщение'
+  const estimatedCardHeight = PREVIEW_HEIGHT + actionCount * ACTION_ROW_HEIGHT + 12
+  const hasSpaceAbove = anchorRect.top >= REACTION_BAR_HEIGHT + VIEWPORT_PADDING + 8
+  const hasSpaceBelow = viewportHeight - anchorRect.bottom >= estimatedCardHeight + REACTION_BAR_HEIGHT + VIEWPORT_PADDING + 16
+  const placeReactionAbove = hasSpaceAbove
+  const reactionBarTop = placeReactionAbove
+    ? anchorRect.top - REACTION_BAR_HEIGHT - 8
+    : Math.min(anchorRect.bottom + 8, viewportHeight - REACTION_BAR_HEIGHT - VIEWPORT_PADDING)
+  const actionCardTop = placeReactionAbove
+    ? hasSpaceBelow
+      ? anchorRect.bottom + 8
+      : Math.max(VIEWPORT_PADDING, anchorRect.top - estimatedCardHeight - 8)
+    : hasSpaceBelow
+      ? Math.min(reactionBarTop + REACTION_BAR_HEIGHT + 8, viewportHeight - estimatedCardHeight - VIEWPORT_PADDING)
+      : Math.max(VIEWPORT_PADDING, anchorRect.top - estimatedCardHeight - 8)
+  const reactionBarLeft = clamp(
+    anchorRect.left + anchorRect.width / 2 - REACTION_BAR_WIDTH / 2,
+    VIEWPORT_PADDING,
+    viewportWidth - REACTION_BAR_WIDTH - VIEWPORT_PADDING
+  )
+  const actionCardLeft = clamp(
+    isOwnMessage ? anchorRect.right - ACTION_CARD_WIDTH : anchorRect.left,
+    VIEWPORT_PADDING,
+    viewportWidth - ACTION_CARD_WIDTH - VIEWPORT_PADDING
+  )
+
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(message.text)
     } catch {
-      // Ignore clipboard failures to keep the sheet lightweight.
+      // Ignore clipboard failures to keep the action UI lightweight.
     } finally {
       onOpenChange(false)
     }
@@ -66,83 +142,137 @@ export default function ChatMessageActions({
   }
 
   return (
-    <div className="chat-no-select fixed inset-0 z-50 flex items-end bg-black/30 md:items-center md:justify-center md:p-4">
+    <div className="chat-no-select fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Закрыть действия сообщения"
-        className="chat-no-select absolute inset-0"
+        className="chat-no-select absolute inset-0 bg-black/10"
         onClick={() => onOpenChange(false)}
       />
-      <div className="chat-no-select app-card relative w-full rounded-t-[22px] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-md md:max-w-md md:rounded-[22px] md:pb-3">
-        <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
-        <div className="mb-2 flex items-center justify-between gap-2">
-          {QUICK_REACTIONS.map((emoji) => (
+      <div className="pointer-events-none absolute inset-0">
+        <div
+          className="pointer-events-auto absolute"
+          style={{
+            top: `${reactionBarTop}px`,
+            left: `${reactionBarLeft}px`,
+            width: `${REACTION_BAR_WIDTH}px`,
+          }}
+        >
+          <div className="app-card flex items-center gap-1 rounded-full border border-black/[0.05] px-2 py-1.5 shadow-sm dark:border-white/10">
+            {QUICK_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => handleQuickReaction(emoji)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[18px] transition-transform duration-150 active:scale-90"
+                aria-label={`Реакция ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
             <button
-              key={emoji}
               type="button"
-              onClick={() => handleQuickReaction(emoji)}
-              className="app-button-secondary flex h-9 w-9 items-center justify-center rounded-lg border border-black/[0.05] bg-transparent text-xl shadow-none transition-transform duration-150 active:scale-90 dark:border-white/10"
-              aria-label={`Реакция ${emoji}`}
+              disabled
+              className="flex h-7 w-7 items-center justify-center rounded-full text-black/45 dark:text-white/45"
+              aria-label="Больше реакций скоро"
             >
-              {emoji}
+              <ExpandIcon />
             </button>
-          ))}
+          </div>
         </div>
-        <div className="chat-no-select mb-1.5">
-          <p className="app-text-primary text-sm font-semibold">Действия</p>
-        </div>
-        <div className="space-y-1">
-          {canEditMessage ? (
-            <button
-              type="button"
-              onClick={handleEdit}
-              className="app-text-primary min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-[15px] font-medium"
-            >
-              Редактировать
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              void handleCopy()
-            }}
-            className="app-text-primary min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-[15px] font-medium"
-          >
-            Копировать
-          </button>
-          <button
-            type="button"
-            onClick={handleReply}
-            className="app-text-primary min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-[15px] font-medium"
-          >
-            Ответить
-          </button>
-          {isOwnMessage ? (
-            <button
-              type="button"
-              onClick={() => {
-                void handleDelete()
-              }}
-              className="min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-[15px] font-medium text-red-500"
-            >
-              Удалить
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleOpenProfile}
-              className="app-text-primary min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-[15px] font-medium"
-            >
-              Открыть профиль
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="app-text-secondary min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-[15px] font-medium"
-          >
-            Отмена
-          </button>
+        <div
+          className="pointer-events-auto absolute"
+          style={{
+            top: `${actionCardTop}px`,
+            left: `${actionCardLeft}px`,
+            width: `${ACTION_CARD_WIDTH}px`,
+          }}
+        >
+          <div className="app-card overflow-hidden rounded-[18px] border border-black/[0.05] shadow-sm dark:border-white/10">
+            <div className="flex items-start gap-2 border-b border-black/[0.05] px-2.5 py-2 dark:border-white/10">
+              {message.avatarUrl ? (
+                <Image
+                  src={message.avatarUrl}
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <AvatarFallback />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="app-text-primary truncate text-[12px] font-semibold">{message.displayName}</p>
+                  <p className="app-text-secondary shrink-0 text-[10px]">{message.createdAtLabel}</p>
+                </div>
+                <p
+                  className="app-text-secondary mt-0.5 text-[12px] leading-4"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {previewText}
+                </p>
+              </div>
+            </div>
+            <div className="p-1">
+              {canEditMessage ? (
+                <button
+                  type="button"
+                  onClick={handleEdit}
+                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+                >
+                  Редактировать
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  void handleCopy()
+                }}
+                className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+              >
+                Копировать
+              </button>
+              <button
+                type="button"
+                onClick={handleReply}
+                className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+              >
+                Ответить
+              </button>
+              {isOwnMessage ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleDelete()
+                  }}
+                  className="flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium text-red-500"
+                >
+                  Удалить
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenProfile}
+                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+                >
+                  Открыть профиль
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="app-text-secondary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

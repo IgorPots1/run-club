@@ -865,6 +865,7 @@ export default function ChatSection({
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
+  const [selectedMessageAnchorRect, setSelectedMessageAnchorRect] = useState<DOMRect | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -1304,6 +1305,7 @@ export default function ChatSection({
 
   useEffect(() => {
     if (!selectedMessage) {
+      setSelectedMessageAnchorRect(null)
       return
     }
 
@@ -1311,6 +1313,7 @@ export default function ChatSection({
 
     if (!nextSelectedMessage) {
       setSelectedMessage(null)
+      setSelectedMessageAnchorRect(null)
       setIsActionSheetOpen(false)
       return
     }
@@ -1319,6 +1322,33 @@ export default function ChatSection({
       setSelectedMessage(nextSelectedMessage)
     }
   }, [messages, selectedMessage])
+
+  useLayoutEffect(() => {
+    if (!selectedMessage || !isActionSheetOpen) {
+      setSelectedMessageAnchorRect(null)
+      return
+    }
+
+    function updateSelectedMessageAnchorRect() {
+      const selectedMessageNode = messageRefs.current[selectedMessage.id]
+      setSelectedMessageAnchorRect(selectedMessageNode?.getBoundingClientRect() ?? null)
+    }
+
+    updateSelectedMessageAnchorRect()
+
+    const scrollContainer = scrollContainerRef.current
+    scrollContainer?.addEventListener('scroll', updateSelectedMessageAnchorRect, { passive: true })
+    window.addEventListener('resize', updateSelectedMessageAnchorRect)
+    window.visualViewport?.addEventListener('resize', updateSelectedMessageAnchorRect)
+    window.visualViewport?.addEventListener('scroll', updateSelectedMessageAnchorRect)
+
+    return () => {
+      scrollContainer?.removeEventListener('scroll', updateSelectedMessageAnchorRect)
+      window.removeEventListener('resize', updateSelectedMessageAnchorRect)
+      window.visualViewport?.removeEventListener('resize', updateSelectedMessageAnchorRect)
+      window.visualViewport?.removeEventListener('scroll', updateSelectedMessageAnchorRect)
+    }
+  }, [isActionSheetOpen, selectedMessage])
 
   useEffect(() => {
     if (!editingMessageId) {
@@ -2049,6 +2079,7 @@ export default function ChatSection({
     setIsActionSheetOpen(open)
 
     if (!open) {
+      setSelectedMessageAnchorRect(null)
       setSelectedMessage(null)
     }
   }
@@ -3101,35 +3132,6 @@ export default function ChatSection({
           </div>
         </>
       </div>
-      {selectedMessage && isActionSheetOpen ? (
-        <div className="chat-no-select pointer-events-none fixed inset-x-4 top-[40svh] z-[60] mx-auto max-w-xl -translate-y-1/2 md:left-1/2 md:w-full md:max-w-md md:-translate-x-1/2">
-          <div className="chat-no-select chat-selected-preview app-card rounded-[18px] border px-3 py-2 shadow-sm ring-1 ring-black/[0.05] dark:ring-white/10">
-            <div className="flex items-start gap-2.5">
-              {selectedMessage.avatarUrl ? (
-                <Image
-                  src={selectedMessage.avatarUrl}
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="h-9 w-9 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <AvatarFallback className="h-9 w-9" />
-              )}
-              <div className="chat-no-select min-w-0 flex-1 rounded-[16px] bg-black/[0.03] px-2 py-1 dark:bg-white/[0.08]">
-                <ChatMessageBody
-                  message={selectedMessage}
-                  currentUserId={currentUserId}
-                  compactPreview
-                  animatedReactionKey={animatedReactionKey}
-                  onImageClick={setSelectedViewerImageUrl}
-                  onReactionToggle={handleToggleReaction}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {selectedViewerImageUrl ? (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4"
@@ -3158,6 +3160,7 @@ export default function ChatSection({
       {selectedMessage ? (
         <ChatMessageActions
           message={selectedMessage}
+          anchorRect={selectedMessageAnchorRect}
           currentUserId={currentUserId}
           open={isActionSheetOpen}
           onOpenChange={handleActionSheetOpenChange}
