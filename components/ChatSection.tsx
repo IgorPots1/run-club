@@ -1562,6 +1562,7 @@ export default function ChatSection({
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
@@ -2288,6 +2289,7 @@ export default function ChatSection({
       }
 
       isLoadingOlderMessagesRef.current = true
+      setIsLoadingOlderMessages(true)
       prependScrollRestoreRef.current = {
         scrollHeight: scrollContainer.scrollHeight,
         scrollTop: scrollContainer.scrollTop,
@@ -2313,6 +2315,7 @@ export default function ChatSection({
         prependScrollRestoreRef.current = null
       } finally {
         isLoadingOlderMessagesRef.current = false
+        setIsLoadingOlderMessages(false)
       }
     }
 
@@ -3660,6 +3663,16 @@ export default function ChatSection({
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <>
+          <div
+            className={`pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 transition-opacity duration-150 ${
+              isLoadingOlderMessages ? 'opacity-100' : 'opacity-0'
+            }`}
+            aria-hidden={!isLoadingOlderMessages}
+          >
+            <div className="rounded-full border border-black/[0.05] bg-[color:var(--background)]/92 px-2.5 py-1 text-[11px] font-medium text-black/55 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white/60">
+              Загрузка...
+            </div>
+          </div>
           {showScrollToBottomButton ? (
             <div className="pointer-events-none absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-3 z-20 md:bottom-20 md:right-4">
               <button
