@@ -48,6 +48,7 @@ const REACTION_ANIMATION_DURATION_MS = 200
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
 const VOICE_RECORDING_CANCEL_SWIPE_PX = 56
+const VOICE_PLAYBACK_SPEEDS = [1, 1.5, 2] as const
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -55,6 +56,8 @@ const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'ring-yellow-300',
   'dark:ring-yellow-400/40',
 ]
+
+let activeVoiceMessageAudio: HTMLAudioElement | null = null
 
 function AvatarFallback() {
   return (
@@ -321,6 +324,7 @@ function VoiceMessageAudio({
   const [resolvedDurationSeconds, setResolvedDurationSeconds] = useState<number | null>(durationSeconds)
   const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState<(typeof VOICE_PLAYBACK_SPEEDS)[number]>(1)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const waveformBars = useMemo(() => buildVoiceWaveformBars(storagePath), [storagePath])
   const effectiveDurationSeconds = resolvedDurationSeconds ?? durationSeconds
@@ -338,7 +342,6 @@ function VoiceMessageAudio({
       try {
         setLoadError(false)
         setSignedUrl(null)
-        console.log('[voice] signed url requested', storagePath)
 
         const { data, error } = await supabase.storage
           .from(CHAT_VOICE_BUCKET)
@@ -350,10 +353,8 @@ function VoiceMessageAudio({
 
         if (isMounted) {
           setSignedUrl(data.signedUrl)
-          console.log('[voice] signed url success', data.signedUrl)
         }
       } catch (error) {
-        console.error('[voice] failed', error)
         console.error('Failed to create signed voice message URL', {
           storagePath,
           error,
@@ -378,9 +379,18 @@ function VoiceMessageAudio({
 
   useEffect(() => {
     return () => {
+      if (activeVoiceMessageAudio === audioRef.current) {
+        activeVoiceMessageAudio = null
+      }
       audioRef.current?.pause()
     }
   }, [])
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate
+    }
+  }, [playbackRate])
 
   async function handleTogglePlayback() {
     const audio = audioRef.current
@@ -391,6 +401,11 @@ function VoiceMessageAudio({
 
     try {
       if (audio.paused) {
+        if (activeVoiceMessageAudio && activeVoiceMessageAudio !== audio) {
+          activeVoiceMessageAudio.pause()
+        }
+
+        activeVoiceMessageAudio = audio
         await audio.play()
         setIsPlaying(true)
         return
@@ -399,9 +414,17 @@ function VoiceMessageAudio({
       audio.pause()
       setIsPlaying(false)
     } catch (error) {
-      console.error('[voice] failed', error)
+      console.error('Failed to toggle voice message playback', error)
       setLoadError(true)
     }
+  }
+
+  function handleCyclePlaybackSpeed() {
+    setPlaybackRate((currentRate) => {
+      const currentIndex = VOICE_PLAYBACK_SPEEDS.indexOf(currentRate)
+      const nextIndex = (currentIndex + 1) % VOICE_PLAYBACK_SPEEDS.length
+      return VOICE_PLAYBACK_SPEEDS[nextIndex] ?? 1
+    })
   }
 
   function handleSeek(event: React.MouseEvent<HTMLButtonElement>) {
@@ -469,6 +492,14 @@ function VoiceMessageAudio({
       <span className="shrink-0 text-xs font-medium tabular-nums">
         {currentTimeLabel} / {durationLabel}
       </span>
+      <button
+        type="button"
+        onClick={handleCyclePlaybackSpeed}
+        className="shrink-0 text-xs font-medium"
+        aria-label={`Скорость воспроизведения ${playbackRate}x`}
+      >
+        {playbackRate}x
+      </button>
       <audio
         ref={audioRef}
         src={signedUrl}
@@ -485,12 +516,19 @@ function VoiceMessageAudio({
           setCurrentTimeSeconds(event.currentTarget.currentTime)
         }}
         onPause={() => {
+          if (activeVoiceMessageAudio === audioRef.current) {
+            activeVoiceMessageAudio = null
+          }
           setIsPlaying(false)
         }}
         onPlay={() => {
+          activeVoiceMessageAudio = audioRef.current
           setIsPlaying(true)
         }}
         onEnded={(event) => {
+          if (activeVoiceMessageAudio === event.currentTarget) {
+            activeVoiceMessageAudio = null
+          }
           setIsPlaying(false)
           setCurrentTimeSeconds(0)
           event.currentTarget.currentTime = 0
@@ -2083,23 +2121,11 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
-      console.log('[voice] sending started')
-      console.log('[voice] upload starting', {
-        fileName: file.name,
-        size: file.size,
-        type: file.type,
-      })
       const uploadResult = await uploadVoiceMessage({
         file,
         userId: currentUserId,
       })
-      console.log('[voice] upload success', uploadResult)
       const path = uploadResult.path
-      console.log('[voice] insert starting', {
-        threadId,
-        mediaUrl: path,
-        messageType: 'voice',
-      })
       const { error: insertError } = await createVoiceChatMessage(
         currentUserId,
         path,
@@ -2108,17 +2134,14 @@ export default function ChatSection({
       )
 
       if (insertError) {
-        console.error('[voice] insert error raw', insertError)
         throw new Error(`voice_insert_failed:${insertError.message}`)
       }
-
-      console.log('[voice] insert success')
 
       setPendingNewMessagesCount(0)
       setReplyingToMessage(null)
     } catch (error) {
       const errorDetails = getErrorDetails(error)
-      console.error('[voice] failed details', errorDetails)
+      console.error('Failed to send voice message', errorDetails)
       setSubmitError('Не удалось отправить голосовое сообщение')
     } finally {
       setUploadingVoice(false)
@@ -2146,7 +2169,6 @@ export default function ChatSection({
       return
     }
 
-    console.log('[voice] startRecording')
     setIsStartingVoiceRecording(true)
     setSubmitError('')
 
@@ -2158,10 +2180,6 @@ export default function ChatSection({
       const recorder = recorderMimeType
         ? new MediaRecorder(stream, { mimeType: recorderMimeType })
         : new MediaRecorder(stream)
-      console.log('[voice] recorder created', {
-        state: recorder.state,
-        mimeType: recorder.mimeType,
-      })
 
       chunksRef.current = []
       startTimeRef.current = Date.now()
@@ -2170,25 +2188,15 @@ export default function ChatSection({
       isStoppingVoiceRecordingRef.current = false
 
       recorder.addEventListener('dataavailable', (event) => {
-        console.log('[voice] chunk', {
-          size: event.data?.size ?? 0,
-        })
         if (event.data.size > 0) {
           chunksRef.current.push(event.data)
         }
       })
 
       recorder.addEventListener('stop', () => {
-        console.log('[voice] onstop fired')
-        console.log('[voice] total chunks', chunksRef.current.length)
         const shouldCancelRecording = shouldCancelVoiceRecordingRef.current
         const voiceBlob = new Blob(chunksRef.current, {
           type: recorder.mimeType || 'audio/webm',
-        })
-        console.log('[voice] blob created', {
-          size: voiceBlob.size,
-          type: voiceBlob.type,
-          chunks: chunksRef.current.length,
         })
 
         cleanupVoiceRecordingResources()
@@ -2212,7 +2220,6 @@ export default function ChatSection({
       })
 
       recorder.addEventListener('error', (event) => {
-        console.error('[voice] failed', event)
         console.error('Voice recorder error', event)
       })
 
@@ -2225,7 +2232,6 @@ export default function ChatSection({
         void stopVoiceRecording()
       }
     } catch (error) {
-      console.error('[voice] failed', error)
       console.error('Failed to start voice recording', error)
       cleanupVoiceRecordingResources()
       setSubmitError('Не удалось начать запись голоса')
@@ -2244,11 +2250,6 @@ export default function ChatSection({
       return
     }
 
-    console.log('[voice] stopRecording called', {
-      recorderExists: !!mediaRecorderRef.current,
-      state: mediaRecorderRef.current?.state,
-    })
-
     isStoppingVoiceRecordingRef.current = true
     setIsStartingVoiceRecording(false)
 
@@ -2258,7 +2259,6 @@ export default function ChatSection({
       try {
         recorder.requestData()
       } catch (error) {
-        console.error('[voice] failed', error)
         console.error('Failed to request final voice recorder data', error)
       }
 
