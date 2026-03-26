@@ -124,6 +124,22 @@ function removeMessageById(messages: ChatMessageItem[], messageId: string) {
   return messages.filter((message) => message.id !== messageId)
 }
 
+function replaceMessageById(
+  messages: ChatMessageItem[],
+  messageId: string,
+  nextMessage: ChatMessageItem
+) {
+  const existingIndex = messages.findIndex((message) => message.id === messageId)
+
+  if (existingIndex === -1) {
+    return messages
+  }
+
+  const nextMessages = [...messages]
+  nextMessages[existingIndex] = nextMessage
+  return nextMessages
+}
+
 function toggleReactionOnMessage(
   message: ChatMessageItem,
   userId: string,
@@ -670,7 +686,27 @@ function ChatMessageBody({
       ) : null}
       {hasVoiceAttachment ? (
         <>
-          {message.mediaUrl ? (
+          {message.isOptimistic ? (
+            <div
+              className={`mt-1 flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 ${
+                isOwnMessage
+                  ? 'bg-black/[0.05] dark:bg-white/[0.09]'
+                  : 'bg-black/[0.04] dark:bg-white/[0.07]'
+              }`}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-black/50 dark:bg-white/[0.14] dark:text-white/60">
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">Отправка...</p>
+                <p className="app-text-secondary text-xs">
+                  {formatVoiceMessageDuration(message.mediaDurationSeconds)}
+                </p>
+              </div>
+            </div>
+          ) : message.mediaUrl ? (
             <VoiceMessageAudio
               storagePath={message.mediaUrl}
               durationSeconds={message.mediaDurationSeconds}
@@ -1720,6 +1756,27 @@ export default function ChatSection({
               return
             }
 
+            const optimisticVoiceMatch = messagesRef.current.find((message) =>
+              message.isOptimistic &&
+              message.messageType === 'voice' &&
+              nextMessage.messageType === 'voice' &&
+              message.userId === nextMessage.userId &&
+              message.mediaUrl === nextMessage.mediaUrl
+            )
+
+            if (optimisticVoiceMatch) {
+              revokeOptimisticVoiceObjectUrl(optimisticVoiceMatch)
+              setMessages((currentMessages) =>
+                keepLatestRenderedMessages(
+                  replaceMessageById(currentMessages, optimisticVoiceMatch.id, nextMessage),
+                  {
+                    preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+                  }
+                )
+              )
+              return
+            }
+
             if (shouldAutoScroll) {
               pendingAutoScrollToBottomRef.current = true
               setPendingNewMessagesCount(0)
@@ -2129,6 +2186,46 @@ export default function ChatSection({
     setIsLocked(false)
   }
 
+  function revokeOptimisticVoiceObjectUrl(message: Pick<ChatMessageItem, 'isOptimistic' | 'optimisticLocalObjectUrl'>) {
+    if (!message.isOptimistic || !message.optimisticLocalObjectUrl) {
+      return
+    }
+
+    URL.revokeObjectURL(message.optimisticLocalObjectUrl)
+  }
+
+  function createOptimisticVoiceMessage(file: File, userId: string, durationSeconds: number | null): ChatMessageItem {
+    const createdAt = new Date().toISOString()
+    const localObjectUrl = URL.createObjectURL(file)
+
+    return {
+      id: `temp-${Date.now()}`,
+      userId,
+      text: '',
+      messageType: 'voice',
+      imageUrl: null,
+      mediaUrl: localObjectUrl,
+      mediaDurationSeconds: durationSeconds,
+      editedAt: null,
+      createdAt,
+      createdAtLabel: 'Сейчас',
+      isDeleted: false,
+      displayName: 'Вы',
+      avatarUrl: null,
+      replyToId: replyingToMessage?.id ?? null,
+      replyTo: replyingToMessage ? {
+        id: replyingToMessage.id,
+        userId: replyingToMessage.userId,
+        displayName: replyingToMessage.displayName,
+        text: replyingToMessage.previewText || replyingToMessage.text,
+      } : null,
+      reactions: [],
+      previewText: 'Голосовое сообщение',
+      isOptimistic: true,
+      optimisticLocalObjectUrl: localObjectUrl,
+    }
+  }
+
   function transitionVoiceRecordingToSendingState() {
     if (timerRef.current !== null) {
       clearInterval(timerRef.current)
@@ -2333,13 +2430,44 @@ export default function ChatSection({
     setUploadingVoice(true)
     setSubmitError('')
 
+    const durationSeconds = await getVoiceFileDurationSeconds(file)
+    const optimisticMessage = createOptimisticVoiceMessage(file, currentUserId, durationSeconds)
+    const shouldAutoScroll = isNearBottom()
+
+    if (shouldAutoScroll) {
+      pendingAutoScrollToBottomRef.current = true
+      setPendingNewMessagesCount(0)
+    }
+
+    setMessages((currentMessages) =>
+      keepLatestRenderedMessages(insertMessageChronologically(currentMessages, optimisticMessage), {
+        preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+      })
+    )
+
     try {
-      const durationSeconds = await getVoiceFileDurationSeconds(file)
       const uploadResult = await uploadVoiceMessage({
         file,
         userId: currentUserId,
       })
       const path = uploadResult.path
+
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(
+          currentMessages.map((message) =>
+            message.id === optimisticMessage.id
+              ? {
+                  ...message,
+                  mediaUrl: path,
+                }
+              : message
+          ),
+          {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          }
+        )
+      )
+
       const { error: insertError } = await createVoiceChatMessage(
         currentUserId,
         path,
@@ -2356,6 +2484,15 @@ export default function ChatSection({
       setReplyingToMessage(null)
       cleanupVoiceRecordingResources()
     } catch (error) {
+      setMessages((currentMessages) => {
+        const optimisticMatch = currentMessages.find((message) => message.id === optimisticMessage.id)
+
+        if (optimisticMatch) {
+          revokeOptimisticVoiceObjectUrl(optimisticMatch)
+        }
+
+        return removeMessageById(currentMessages, optimisticMessage.id)
+      })
       const errorDetails = getErrorDetails(error)
       console.error('Failed to send voice message', errorDetails)
       setSubmitError('Не удалось отправить голосовое сообщение')

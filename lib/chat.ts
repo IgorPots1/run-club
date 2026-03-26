@@ -69,6 +69,8 @@ export type ChatMessageItem = {
     userIds: string[]
   }[]
   previewText: string
+  isOptimistic?: boolean
+  optimisticLocalObjectUrl?: string | null
 }
 
 async function loadProfilesByUserIds(userIds: string[]) {
