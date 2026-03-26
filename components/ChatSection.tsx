@@ -8,12 +8,14 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
   createVoiceChatMessage,
+  getCachedRecentChatMessages,
   getPrefetchedRecentChatMessages,
   loadChatMessageById,
   loadChatReadState,
   loadChatMessageItem,
   loadOlderChatMessages,
   loadRecentChatMessages,
+  setCachedRecentChatMessages,
   softDeleteChatMessage,
   toggleChatMessageReaction,
   type ChatMessageItem,
@@ -1925,6 +1927,16 @@ export default function ChatSection({
     setIsActionSheetOpen(false)
   }, [threadId])
 
+  useEffect(() => {
+    if (!threadId || loading) {
+      return
+    }
+
+    setCachedRecentChatMessages(threadId, messages, {
+      hasMoreOlderMessages,
+    })
+  }, [hasMoreOlderMessages, loading, messages, threadId])
+
   useLayoutEffect(() => {
     resizeComposerTextarea()
   }, [draftMessage, resizeComposerTextarea])
@@ -2093,7 +2105,29 @@ export default function ChatSection({
       }
 
       try {
+        const cachedRecentMessages = getCachedRecentChatMessages(threadId)
+
+        if (cachedRecentMessages && !enableReadState) {
+          if (!isMounted) {
+            return
+          }
+
+          setMessages(
+            keepLatestRenderedMessages(cachedRecentMessages.messages, {
+              preserveExpandedHistory: true,
+            })
+          )
+          setError('')
+          setLastReadAt(null)
+          setHasLoadedReadState(true)
+          setHasMoreOlderMessages(cachedRecentMessages.hasMoreOlderMessages)
+          setPendingInitialScroll(cachedRecentMessages.messages.length > 0)
+          setLoading(false)
+          return
+        }
+
         const initialMessages =
+          cachedRecentMessages?.messages ??
           (await getPrefetchedRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)) ??
           await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
         let nextLastReadAt: string | null = null
@@ -2115,7 +2149,7 @@ export default function ChatSection({
         setError('')
         setLastReadAt(nextLastReadAt)
         setHasLoadedReadState(true)
-        setHasMoreOlderMessages(initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT)
+        setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         setPendingInitialScroll(true)
       } catch {
         if (isMounted) {

@@ -79,6 +79,7 @@ export type ChatMessageItem = {
 }
 
 const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 15000
+const RECENT_CHAT_MESSAGES_CACHE_TTL_MS = 30000
 
 type RecentChatMessagesPrefetchEntry = {
   promise: Promise<ChatMessageItem[]>
@@ -86,13 +87,24 @@ type RecentChatMessagesPrefetchEntry = {
   expiresAt: number
 }
 
+type RecentChatMessagesCacheEntry = {
+  messages: ChatMessageItem[]
+  hasMoreOlderMessages: boolean
+  expiresAt: number
+}
+
 const recentChatMessagesPrefetchByKey = new Map<string, RecentChatMessagesPrefetchEntry>()
+const recentChatMessagesCacheByThreadId = new Map<string, RecentChatMessagesCacheEntry>()
 
 function getRecentChatMessagesPrefetchKey(limit: number, threadId?: string | null) {
   return `${threadId ?? 'all'}:${limit}`
 }
 
 function isRecentChatMessagesPrefetchEntryExpired(entry: RecentChatMessagesPrefetchEntry) {
+  return Date.now() >= entry.expiresAt
+}
+
+function isRecentChatMessagesCacheEntryExpired(entry: RecentChatMessagesCacheEntry) {
   return Date.now() >= entry.expiresAt
 }
 
@@ -110,6 +122,43 @@ function getRecentChatMessagesPrefetchEntry(limit: number, threadId?: string | n
   }
 
   return entry
+}
+
+export function getCachedRecentChatMessages(threadId?: string | null) {
+  if (!threadId) {
+    return null
+  }
+
+  const entry = recentChatMessagesCacheByThreadId.get(threadId)
+
+  if (!entry) {
+    return null
+  }
+
+  if (isRecentChatMessagesCacheEntryExpired(entry)) {
+    recentChatMessagesCacheByThreadId.delete(threadId)
+    return null
+  }
+
+  return entry
+}
+
+export function setCachedRecentChatMessages(
+  threadId: string | null | undefined,
+  messages: ChatMessageItem[],
+  options?: { hasMoreOlderMessages?: boolean }
+) {
+  if (!threadId) {
+    return
+  }
+
+  const currentEntry = getCachedRecentChatMessages(threadId)
+
+  recentChatMessagesCacheByThreadId.set(threadId, {
+    messages,
+    hasMoreOlderMessages: options?.hasMoreOlderMessages ?? currentEntry?.hasMoreOlderMessages ?? true,
+    expiresAt: Date.now() + RECENT_CHAT_MESSAGES_CACHE_TTL_MS,
+  })
 }
 
 async function loadProfilesByUserIds(userIds: string[]) {
@@ -699,6 +748,12 @@ export function getPrefetchedRecentChatMessages(limit = 50, threadId?: string | 
 }
 
 export function prefetchRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
+  const cachedThreadMessages = getCachedRecentChatMessages(threadId)
+
+  if (cachedThreadMessages) {
+    return Promise.resolve(cachedThreadMessages.messages)
+  }
+
   const existingEntry = getRecentChatMessagesPrefetchEntry(limit, threadId)
 
   if (existingEntry) {
@@ -724,6 +779,9 @@ export function prefetchRecentChatMessages(limit = 50, threadId?: string | null)
 
       nextEntry.data = messages
       nextEntry.expiresAt = Date.now() + RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS
+      setCachedRecentChatMessages(threadId, messages, {
+        hasMoreOlderMessages: messages.length === limit,
+      })
     })
     .catch(() => {
       if (recentChatMessagesPrefetchByKey.get(key) === nextEntry) {
