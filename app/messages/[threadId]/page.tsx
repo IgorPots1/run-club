@@ -24,6 +24,7 @@ export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
   const router = useRouter()
   const markReadTimeoutRef = useRef<number | null>(null)
+  const unreadRefreshTimeoutRef = useRef<number | null>(null)
   const isMarkingThreadReadRef = useRef(false)
   const pendingMarkThreadReadRef = useRef(false)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
@@ -36,6 +37,9 @@ export default function MessageThreadPage() {
     return () => {
       if (markReadTimeoutRef.current !== null) {
         window.clearTimeout(markReadTimeoutRef.current)
+      }
+      if (unreadRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(unreadRefreshTimeoutRef.current)
       }
     }
   }, [])
@@ -154,6 +158,34 @@ export default function MessageThreadPage() {
       return
     }
 
+    function scheduleUnreadCountRefresh(delayMs = 500) {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      if (unreadRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(unreadRefreshTimeoutRef.current)
+      }
+
+      unreadRefreshTimeoutRef.current = window.setTimeout(() => {
+        unreadRefreshTimeoutRef.current = null
+
+        void getTotalUnreadCount()
+          .then((totalUnreadCount) => {
+            window.dispatchEvent(
+              new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
+                detail: {
+                  count: totalUnreadCount,
+                },
+              })
+            )
+          })
+          .catch(() => {
+            // Keep unread badge refresh non-blocking around thread open.
+          })
+      }, delayMs)
+    }
+
     async function runMarkThreadAsRead() {
       if (isMarkingThreadReadRef.current) {
         pendingMarkThreadReadRef.current = true
@@ -164,17 +196,7 @@ export default function MessageThreadPage() {
 
       try {
         await markThreadAsRead(threadId)
-
-        if (typeof window !== 'undefined') {
-          const totalUnreadCount = await getTotalUnreadCount()
-          window.dispatchEvent(
-            new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
-              detail: {
-                count: totalUnreadCount,
-              },
-            })
-          )
-        }
+        scheduleUnreadCountRefresh()
       } catch {
         // Keep read refresh non-blocking while the thread stays open.
       } finally {
@@ -234,6 +256,10 @@ export default function MessageThreadPage() {
       if (markReadTimeoutRef.current !== null) {
         window.clearTimeout(markReadTimeoutRef.current)
         markReadTimeoutRef.current = null
+      }
+      if (unreadRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(unreadRefreshTimeoutRef.current)
+        unreadRefreshTimeoutRef.current = null
       }
 
       pendingMarkThreadReadRef.current = false
