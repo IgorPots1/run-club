@@ -328,6 +328,8 @@ function VoiceMessageAudio({
     ? Math.min(1, currentTimeSeconds / effectiveDurationSeconds)
     : 0
   const playedBarsCount = Math.round(playbackProgress * waveformBars.length)
+  const currentTimeLabel = formatVoiceMessageDuration(currentTimeSeconds)
+  const durationLabel = formatVoiceMessageDuration(effectiveDurationSeconds)
 
   useEffect(() => {
     let isMounted = true
@@ -402,6 +404,22 @@ function VoiceMessageAudio({
     }
   }
 
+  function handleSeek(event: React.MouseEvent<HTMLButtonElement>) {
+    const audio = audioRef.current
+
+    if (!audio || !effectiveDurationSeconds || effectiveDurationSeconds <= 0) {
+      return
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const clickOffsetX = event.clientX - bounds.left
+    const nextProgress = bounds.width > 0 ? Math.min(1, Math.max(0, clickOffsetX / bounds.width)) : 0
+    const nextTimeSeconds = nextProgress * effectiveDurationSeconds
+
+    audio.currentTime = nextTimeSeconds
+    setCurrentTimeSeconds(nextTimeSeconds)
+  }
+
   if (loadError) {
     return <p className="mt-1 text-sm text-red-600">Не удалось загрузить голосовое сообщение</p>
   }
@@ -411,18 +429,27 @@ function VoiceMessageAudio({
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleTogglePlayback}
-      className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left ${
+    <div
+      className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-3 py-2 ${
         isOwnMessage
           ? 'bg-black/[0.05] dark:bg-white/[0.09]'
           : 'bg-black/[0.04] dark:bg-white/[0.07]'
       }`}
-      aria-label={isPlaying ? 'Пауза голосового сообщения' : 'Воспроизвести голосовое сообщение'}
     >
-      <span className="shrink-0 text-sm font-medium">{isPlaying ? 'Pause' : 'Play'}</span>
-      <div className="flex h-8 min-w-0 flex-1 items-end gap-1">
+      <button
+        type="button"
+        onClick={handleTogglePlayback}
+        className="shrink-0 text-sm font-medium"
+        aria-label={isPlaying ? 'Пауза голосового сообщения' : 'Воспроизвести голосовое сообщение'}
+      >
+        {isPlaying ? 'Pause' : 'Play'}
+      </button>
+      <button
+        type="button"
+        onClick={handleSeek}
+        className="flex h-8 min-w-0 flex-1 items-end gap-1"
+        aria-label="Перемотать голосовое сообщение"
+      >
         {waveformBars.map((barHeight, index) => {
           const isActiveBar = index < playedBarsCount
 
@@ -438,9 +465,9 @@ function VoiceMessageAudio({
             />
           )
         })}
-      </div>
+      </button>
       <span className="shrink-0 text-xs font-medium tabular-nums">
-        {formatVoiceMessageDuration(effectiveDurationSeconds)}
+        {currentTimeLabel} / {durationLabel}
       </span>
       <audio
         ref={audioRef}
@@ -469,7 +496,7 @@ function VoiceMessageAudio({
           event.currentTarget.currentTime = 0
         }}
       />
-    </button>
+    </div>
   )
 }
 
