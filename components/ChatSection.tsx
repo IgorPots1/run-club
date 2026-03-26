@@ -310,6 +310,42 @@ function buildVoiceWaveformBars(seed: string, count = 24) {
   })
 }
 
+function PlayIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M8 6.5v11l9-5.5-9-5.5Z" />
+    </svg>
+  )
+}
+
+function PauseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M7 6h4v12H7zM13 6h4v12h-4z" />
+    </svg>
+  )
+}
+
+function MicIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M19 11a7 7 0 0 1-14 0" />
+      <path d="M12 18v3" />
+      <path d="M8 21h8" />
+    </svg>
+  )
+}
+
+function CloseIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M6 6 18 18" />
+      <path d="M18 6 6 18" />
+    </svg>
+  )
+}
+
 function VoiceMessageAudio({
   storagePath,
   durationSeconds,
@@ -453,7 +489,7 @@ function VoiceMessageAudio({
 
   return (
     <div
-      className={`mt-1 flex w-full items-center gap-3 rounded-2xl px-3 py-2 ${
+      className={`mt-1 flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 ${
         isOwnMessage
           ? 'bg-black/[0.05] dark:bg-white/[0.09]'
           : 'bg-black/[0.04] dark:bg-white/[0.07]'
@@ -462,15 +498,19 @@ function VoiceMessageAudio({
       <button
         type="button"
         onClick={handleTogglePlayback}
-        className="shrink-0 text-sm font-medium"
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+          isPlaying
+            ? 'bg-red-500 text-white'
+            : 'bg-black/[0.08] text-black dark:bg-white/[0.14] dark:text-white'
+        }`}
         aria-label={isPlaying ? 'Пауза голосового сообщения' : 'Воспроизвести голосовое сообщение'}
       >
-        {isPlaying ? 'Pause' : 'Play'}
+        {isPlaying ? <PauseIcon /> : <PlayIcon className="h-4 w-4 translate-x-[1px]" />}
       </button>
       <button
         type="button"
         onClick={handleSeek}
-        className="flex h-8 min-w-0 flex-1 items-end gap-1"
+        className="flex h-9 min-w-0 flex-1 items-center gap-1"
         aria-label="Перемотать голосовое сообщение"
       >
         {waveformBars.map((barHeight, index) => {
@@ -484,18 +524,18 @@ function VoiceMessageAudio({
                   ? 'bg-red-500 dark:bg-red-400'
                   : 'bg-black/20 dark:bg-white/20'
               }`}
-              style={{ height: `${barHeight}%` }}
+              style={{ height: `${Math.max(8, Math.round((barHeight / 100) * 28))}px` }}
             />
           )
         })}
       </button>
-      <span className="shrink-0 text-xs font-medium tabular-nums">
+      <span className="shrink-0 text-[11px] font-medium tabular-nums text-black/70 dark:text-white/70">
         {currentTimeLabel} / {durationLabel}
       </span>
       <button
         type="button"
         onClick={handleCyclePlaybackSpeed}
-        className="shrink-0 text-xs font-medium"
+        className="shrink-0 rounded-full bg-black/[0.06] px-2 py-1 text-[11px] font-medium dark:bg-white/[0.12]"
         aria-label={`Скорость воспроизведения ${playbackRate}x`}
       >
         {playbackRate}x
@@ -2494,15 +2534,16 @@ export default function ChatSection({
               </div>
             ) : null}
             {isRecordingVoice || isStartingVoiceRecording ? (
-              <div className={`mb-1.5 rounded-[18px] px-3 py-2 text-sm ${
+              <div className={`mb-1.5 flex min-h-10 items-center justify-between rounded-[18px] px-3 py-2 text-sm ${
                 isCancellingVoice
                   ? 'bg-red-500/15 text-red-700 dark:bg-red-500/20 dark:text-red-300'
                   : 'bg-red-500/10 text-red-600 dark:bg-red-500/15'
               }`}>
-                <p>{isCancellingVoice ? 'Отпустить для отмены' : 'Запись...'}</p>
-                <p className="text-xs opacity-80">
-                  {isCancellingVoice ? 'Голосовое сообщение будет отменено' : 'Свайп вверх для отмены'}
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${isCancellingVoice ? 'bg-red-600 dark:bg-red-400' : 'bg-red-500 dark:bg-red-400'}`} />
+                  <p className="font-medium">{isCancellingVoice ? 'Отпустить для отмены' : 'Запись...'}</p>
+                </div>
+                <p className="text-xs opacity-80">{isCancellingVoice ? 'Отмена' : '↑ Свайп вверх для отмены'}</p>
               </div>
             ) : null}
             <div className="flex items-end gap-1.5">
@@ -2569,7 +2610,9 @@ export default function ChatSection({
                     void stopVoiceRecording()
                   }}
                   disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
-                  className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full px-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isCancellingVoice ? 'bg-red-500 text-white' : ''
+                  }`}
                   aria-label={
                     isCancellingVoice
                       ? 'Отпустите для отмены голосового сообщения'
@@ -2578,7 +2621,13 @@ export default function ChatSection({
                         : 'Удерживайте для записи голосового сообщения'
                   }
                 >
-                  {isStartingVoiceRecording ? '...' : isCancellingVoice ? 'Cancel' : isRecordingVoice ? 'REC' : 'Mic'}
+                  {isStartingVoiceRecording ? (
+                    '...'
+                  ) : isCancellingVoice ? (
+                    <CloseIcon />
+                  ) : (
+                    <MicIcon />
+                  )}
                 </button>
               ) : (
                 <button
