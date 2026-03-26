@@ -155,7 +155,7 @@ function cleanupUnreadStoreIfUnused() {
   }
 }
 
-export function useRealtimeTotalUnreadCount() {
+export function useRealtimeTotalUnreadCount({ enabled = true }: { enabled?: boolean } = {}) {
   const [totalUnreadCount, setTotalUnreadCount] = useState(sharedTotalUnreadCount)
 
   useEffect(() => {
@@ -165,7 +165,6 @@ export function useRealtimeTotalUnreadCount() {
 
     unreadCountListeners.add(handleUnreadCountChange)
     setTotalUnreadCount(sharedTotalUnreadCount)
-    void ensureUnreadStoreInitialized()
 
     return () => {
       unreadCountListeners.delete(handleUnreadCountChange)
@@ -173,10 +172,22 @@ export function useRealtimeTotalUnreadCount() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    void ensureUnreadStoreInitialized()
+  }, [enabled])
+
   return {
     totalUnreadCount,
     refreshTotalUnreadCount: refreshSharedTotalUnreadCount,
   }
+}
+
+export async function initializeRealtimeTotalUnreadCount() {
+  await ensureUnreadStoreInitialized()
 }
 
 export default useRealtimeTotalUnreadCount

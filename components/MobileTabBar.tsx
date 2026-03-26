@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type MouseEvent } from 'react'
 import UnreadBadge from '@/components/chat/UnreadBadge'
-import useRealtimeTotalUnreadCount from '@/components/chat/useRealtimeTotalUnreadCount'
+import useRealtimeTotalUnreadCount, {
+  initializeRealtimeTotalUnreadCount,
+} from '@/components/chat/useRealtimeTotalUnreadCount'
 import { prefetchMessagesListData } from '@/lib/chat/messagesListPrefetch'
 
 const CHAT_KEYBOARD_VISIBILITY_EVENT = 'run-club:chat-keyboard-visibility'
@@ -65,7 +67,36 @@ export default function MobileTabBar() {
 }
 
 function VisibleMobileTabBar({ pathname }: { pathname: string }) {
-  const { totalUnreadCount } = useRealtimeTotalUnreadCount()
+  const [isUnreadTrackingEnabled, setIsUnreadTrackingEnabled] = useState(false)
+  const { totalUnreadCount } = useRealtimeTotalUnreadCount({
+    enabled: isUnreadTrackingEnabled,
+  })
+
+  useEffect(() => {
+    let timeoutId: number | null = null
+    const idleCallbackId =
+      typeof window !== 'undefined' && 'requestIdleCallback' in window
+        ? window.requestIdleCallback(() => {
+            setIsUnreadTrackingEnabled(true)
+          }, { timeout: 1200 })
+        : null
+
+    if (idleCallbackId === null) {
+      timeoutId = window.setTimeout(() => {
+        setIsUnreadTrackingEnabled(true)
+      }, 350)
+    }
+
+    return () => {
+      if (idleCallbackId !== null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleCallbackId)
+      }
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [])
 
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const isMessagesRoute = pathname === '/messages' || pathname.startsWith('/messages/')
@@ -117,6 +148,8 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
 
   function handleTabPrefetch(href: string) {
     if (href === '/messages') {
+      setIsUnreadTrackingEnabled(true)
+      void initializeRealtimeTotalUnreadCount()
       void prefetchMessagesListData()
     }
   }
