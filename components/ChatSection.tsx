@@ -25,6 +25,7 @@ import {
 import { ensureProfileExists } from '@/lib/profiles'
 import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
+import { getVoiceStream } from '@/lib/voice/voiceStream'
 
 type ChatSectionProps = {
   showTitle?: boolean
@@ -764,7 +765,6 @@ export default function ChatSection({
   const focusedGestureStartClientYRef = useRef<number | null>(null)
   const focusedGestureBlurredRef = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -1169,8 +1169,6 @@ export default function ChatSection({
       }
 
       mediaRecorderRef.current = null
-      streamRef.current?.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
     }
   }, [])
 
@@ -2352,13 +2350,7 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
-      if (!streamRef.current) {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        })
-      }
-
-      const stream = streamRef.current
+      const stream = await getVoiceStream()
       const recorderMimeType = getVoiceRecorderMimeType()
       const recorder = recorderMimeType
         ? new MediaRecorder(stream, { mimeType: recorderMimeType })
