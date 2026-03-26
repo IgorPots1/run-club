@@ -3,9 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
-import { useRouter } from 'next/navigation'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
-import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
@@ -22,7 +20,6 @@ import {
   uploadChatImage,
   upsertChatReadState,
 } from '@/lib/chat'
-import { ensureProfileExists } from '@/lib/profiles'
 import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
 import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream'
@@ -30,6 +27,7 @@ import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream
 type ChatSectionProps = {
   showTitle?: boolean
   threadId?: string | null
+  currentUserId?: string | null
   title?: string
   description?: string
   enableReadState?: boolean
@@ -1309,11 +1307,11 @@ function ChatMessageBody({
 export default function ChatSection({
   showTitle = true,
   threadId = null,
+  currentUserId = null,
   title,
   description,
   enableReadState = true,
 }: ChatSectionProps) {
-  const router = useRouter()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
@@ -1347,8 +1345,6 @@ export default function ChatSection({
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
   const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(true)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [lastReadAt, setLastReadAt] = useState<string | null>(null)
   const [hasLoadedReadState, setHasLoadedReadState] = useState(false)
@@ -1906,34 +1902,20 @@ export default function ChatSection({
     let isMounted = true
 
     async function loadPage() {
+      if (!currentUserId) {
+        if (isMounted) {
+          setLoading(false)
+        }
+        return
+      }
+
       try {
-        const user = await getBootstrapUser()
-
-        if (!isMounted) {
-          return
-        }
-
-        if (!user) {
-          setIsAuthenticated(false)
-          setCurrentUserId(null)
-          router.replace('/login')
-          return
-        }
-
-        setIsAuthenticated(true)
-        setCurrentUserId(user.id)
-        void ensureProfileExists(user)
-
-        if (!isMounted) {
-          return
-        }
-
         const initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
         let nextLastReadAt: string | null = null
 
         if (enableReadState) {
           try {
-            nextLastReadAt = await loadChatReadState(user.id)
+            nextLastReadAt = await loadChatReadState(currentUserId)
           } catch (readStateError) {
             console.error('Failed to load chat read state', readStateError)
             nextLastReadAt = null
@@ -1966,7 +1948,7 @@ export default function ChatSection({
     return () => {
       isMounted = false
     }
-  }, [enableReadState, keepLatestRenderedMessages, router, threadId])
+  }, [currentUserId, enableReadState, keepLatestRenderedMessages, threadId])
 
   useLayoutEffect(() => {
     if (loading || !hasLoadedReadState || !pendingInitialScroll) {
@@ -1984,10 +1966,9 @@ export default function ChatSection({
   useEffect(() => {
     if (
       loading ||
-      !isAuthenticated ||
+      !currentUserId ||
       !enableReadState ||
       !hasLoadedReadState ||
-      !currentUserId ||
       !latestLoadedMessageCreatedAt ||
       typeof IntersectionObserver === 'undefined'
     ) {
@@ -2023,7 +2004,6 @@ export default function ChatSection({
     currentUserId,
     enableReadState,
     hasLoadedReadState,
-    isAuthenticated,
     latestLoadedMessageCreatedAt,
     loading,
     markMessagesRead,
@@ -2110,7 +2090,7 @@ export default function ChatSection({
   useEffect(() => {
     if (
       loading ||
-      !isAuthenticated ||
+      !currentUserId ||
       !oldestLoadedMessageCreatedAt ||
       !oldestLoadedMessageId ||
       !hasMoreOlderMessages
@@ -2179,7 +2159,7 @@ export default function ChatSection({
     }
   }, [
     hasMoreOlderMessages,
-    isAuthenticated,
+    currentUserId,
     loading,
     oldestLoadedMessageCreatedAt,
     oldestLoadedMessageId,
@@ -2264,7 +2244,7 @@ export default function ChatSection({
   }, [isComposerFocused])
 
   useEffect(() => {
-    if (loading || !isAuthenticated) {
+    if (loading || !currentUserId) {
       return
     }
 
@@ -2384,10 +2364,10 @@ export default function ChatSection({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [isNearBottom, keepLatestRenderedMessages, loading, isAuthenticated, refreshMessages, threadId])
+  }, [currentUserId, isNearBottom, keepLatestRenderedMessages, loading, refreshMessages, threadId])
 
   useEffect(() => {
-    if (loading || !isAuthenticated) {
+    if (loading || !currentUserId) {
       return
     }
 
@@ -2442,7 +2422,7 @@ export default function ChatSection({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [isAuthenticated, loading, threadId])
+  }, [currentUserId, loading, threadId])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -3462,7 +3442,7 @@ export default function ChatSection({
     )
   }
 
-  if (!isAuthenticated) {
+  if (!currentUserId) {
     return (
       <div className="mx-auto flex min-h-[240px] max-w-3xl items-center justify-center px-3 py-4 md:px-5">
         <Link href="/login" className="text-sm underline">

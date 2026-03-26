@@ -306,6 +306,7 @@ export default function MessageThreadPage() {
           <ChatSection
             showTitle={false}
             threadId={threadId}
+            currentUserId={currentUserId}
             enableReadState={false}
           />
         </div>
