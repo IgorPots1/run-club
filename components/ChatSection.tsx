@@ -47,6 +47,7 @@ const SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO = 1.5
 const REACTION_ANIMATION_DURATION_MS = 200
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
+const VOICE_RECORDING_CANCEL_SWIPE_PX = 56
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -509,6 +510,8 @@ export default function ChatSection({
   const startTimeRef = useRef(0)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
+  const recordingPointerStartYRef = useRef<number | null>(null)
+  const shouldCancelVoiceRecordingRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -525,6 +528,7 @@ export default function ChatSection({
   const [uploadingVoice, setUploadingVoice] = useState(false)
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
   const [isStartingVoiceRecording, setIsStartingVoiceRecording] = useState(false)
+  const [isCancellingVoice, setIsCancellingVoice] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
@@ -1837,8 +1841,11 @@ export default function ChatSection({
     startTimeRef.current = 0
     isStoppingVoiceRecordingRef.current = false
     shouldStopVoiceRecordingOnStartRef.current = false
+    recordingPointerStartYRef.current = null
+    shouldCancelVoiceRecordingRef.current = false
     setIsRecordingVoice(false)
     setIsStartingVoiceRecording(false)
+    setIsCancellingVoice(false)
   }
 
   function getVoiceRecorderMimeType() {
@@ -1875,6 +1882,32 @@ export default function ChatSection({
     }
 
     return { raw: String(error) }
+  }
+
+  function setVoiceCancellingState(nextIsCancelling: boolean) {
+    shouldCancelVoiceRecordingRef.current = nextIsCancelling
+    setIsCancellingVoice(nextIsCancelling)
+  }
+
+  function beginVoiceRecordingGesture(startClientY?: number | null) {
+    recordingPointerStartYRef.current = typeof startClientY === 'number' ? startClientY : null
+    setVoiceCancellingState(false)
+    void startVoiceRecording()
+  }
+
+  function updateVoiceRecordingGesture(clientY?: number | null) {
+    const startClientY = recordingPointerStartYRef.current
+
+    if (
+      !isRecordingVoice ||
+      isStoppingVoiceRecordingRef.current ||
+      typeof clientY !== 'number' ||
+      startClientY === null
+    ) {
+      return
+    }
+
+    setVoiceCancellingState(startClientY - clientY >= VOICE_RECORDING_CANCEL_SWIPE_PX)
   }
 
   async function sendRecordedVoiceMessage(file: File) {
@@ -1984,6 +2017,7 @@ export default function ChatSection({
       recorder.addEventListener('stop', () => {
         console.log('[voice] onstop fired')
         console.log('[voice] total chunks', chunksRef.current.length)
+        const shouldCancelRecording = shouldCancelVoiceRecordingRef.current
         const voiceBlob = new Blob(chunksRef.current, {
           type: recorder.mimeType || 'audio/webm',
         })
@@ -1994,6 +2028,10 @@ export default function ChatSection({
         })
 
         cleanupVoiceRecordingResources()
+
+        if (shouldCancelRecording) {
+          return
+        }
 
         if (voiceBlob.size < 1024) {
           console.info('Voice recording ignored because blob is too small', {
@@ -2032,10 +2070,6 @@ export default function ChatSection({
 
   async function stopVoiceRecording() {
     const recorder = mediaRecorderRef.current
-    console.log('[voice] stopRecording called', {
-      recorderExists: !!mediaRecorderRef.current,
-      state: mediaRecorderRef.current?.state,
-    })
 
     if (!recorder && isStartingVoiceRecording) {
       shouldStopVoiceRecordingOnStartRef.current = true
@@ -2045,6 +2079,11 @@ export default function ChatSection({
     if (!recorder || isStoppingVoiceRecordingRef.current) {
       return
     }
+
+    console.log('[voice] stopRecording called', {
+      recorderExists: !!mediaRecorderRef.current,
+      state: mediaRecorderRef.current?.state,
+    })
 
     isStoppingVoiceRecordingRef.current = true
     setIsStartingVoiceRecording(false)
@@ -2275,8 +2314,15 @@ export default function ChatSection({
               </div>
             ) : null}
             {isRecordingVoice || isStartingVoiceRecording ? (
-              <div className="mb-1.5 rounded-[18px] bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:bg-red-500/15">
-                Recording...
+              <div className={`mb-1.5 rounded-[18px] px-3 py-2 text-sm ${
+                isCancellingVoice
+                  ? 'bg-red-500/15 text-red-700 dark:bg-red-500/20 dark:text-red-300'
+                  : 'bg-red-500/10 text-red-600 dark:bg-red-500/15'
+              }`}>
+                <p>{isCancellingVoice ? 'Отпустить для отмены' : 'Запись...'}</p>
+                <p className="text-xs opacity-80">
+                  {isCancellingVoice ? 'Голосовое сообщение будет отменено' : 'Свайп вверх для отмены'}
+                </p>
               </div>
             ) : null}
             <div className="flex items-end gap-1.5">
@@ -2313,18 +2359,26 @@ export default function ChatSection({
               {shouldShowVoiceRecorderButton ? (
                 <button
                   type="button"
-                  onMouseDown={() => {
-                    void startVoiceRecording()
+                  onMouseDown={(event) => {
+                    beginVoiceRecordingGesture(event.clientY)
+                  }}
+                  onMouseMove={(event) => {
+                    updateVoiceRecordingGesture(event.clientY)
                   }}
                   onMouseUp={() => {
                     void stopVoiceRecording()
                   }}
                   onMouseLeave={() => {
-                    void stopVoiceRecording()
+                    if (isRecordingVoice) {
+                      setVoiceCancellingState(true)
+                    }
                   }}
                   onTouchStart={(event) => {
                     event.preventDefault()
-                    void startVoiceRecording()
+                    beginVoiceRecordingGesture(event.touches[0]?.clientY ?? null)
+                  }}
+                  onTouchMove={(event) => {
+                    updateVoiceRecordingGesture(event.touches[0]?.clientY ?? null)
                   }}
                   onTouchEnd={(event) => {
                     event.preventDefault()
@@ -2336,9 +2390,15 @@ export default function ChatSection({
                   }}
                   disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
                   className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label={isRecordingVoice ? 'Отпустите для отправки голосового сообщения' : 'Удерживайте для записи голосового сообщения'}
+                  aria-label={
+                    isCancellingVoice
+                      ? 'Отпустите для отмены голосового сообщения'
+                      : isRecordingVoice
+                        ? 'Отпустите для отправки голосового сообщения'
+                        : 'Удерживайте для записи голосового сообщения'
+                  }
                 >
-                  {isStartingVoiceRecording ? '...' : isRecordingVoice ? 'REC' : 'Mic'}
+                  {isStartingVoiceRecording ? '...' : isCancellingVoice ? 'Cancel' : isRecordingVoice ? 'REC' : 'Mic'}
                 </button>
               ) : (
                 <button
