@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import MobileTabBar from "../components/MobileTabBar";
 import Navbar from "../components/Navbar";
 import PwaRegister from "../components/PwaRegister";
 import VoiceStreamLifecycle from "../components/VoiceStreamLifecycle";
+import { getAuthenticatedUser } from "@/lib/supabase-server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,11 +51,28 @@ export const viewport: Viewport = {
   themeColor: "#ffffff",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestHeaders = await headers()
+  const pathname = requestHeaders.get("x-run-club-pathname") ?? ""
+  const shouldHideNavbar =
+    pathname === "/" || pathname === "/login" || pathname === "/register" || pathname.startsWith("/auth")
+
+  let resolvedNavbarUser: { id: string; email: string | null } | null = null
+
+  if (!shouldHideNavbar) {
+    const { user } = await getAuthenticatedUser()
+    resolvedNavbarUser = user
+      ? {
+          id: user.id,
+          email: user.email ?? null,
+        }
+      : null
+  }
+
   return (
     <html lang="ru">
       <body className="min-h-screen">
@@ -62,9 +81,11 @@ export default function RootLayout({
         <div
           className={`app-shell mx-auto min-h-screen max-w-xl overflow-x-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          <div className="hidden md:block">
-            <Navbar />
-          </div>
+          {resolvedNavbarUser ? (
+            <div className="hidden md:block">
+              <Navbar initialUser={resolvedNavbarUser} />
+            </div>
+          ) : null}
           {children}
           <MobileTabBar />
         </div>

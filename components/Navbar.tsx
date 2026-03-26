@@ -3,29 +3,30 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { User } from '@supabase/supabase-js'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import useRealtimeTotalUnreadCount, {
   initializeRealtimeTotalUnreadCount,
 } from '@/components/chat/useRealtimeTotalUnreadCount'
-import { getBootstrapUser } from '@/lib/auth'
 import { prefetchMessagesListData } from '@/lib/chat/messagesListPrefetch'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../lib/supabase'
 
-export default function Navbar() {
+type NavbarUser = {
+  id: string
+  email: string | null
+}
+
+export default function Navbar({ initialUser }: { initialUser: NavbarUser | null }) {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<NavbarUser | null>(initialUser)
   const [isUnreadTrackingEnabled, setIsUnreadTrackingEnabled] = useState(false)
   const { totalUnreadCount } = useRealtimeTotalUnreadCount({
     enabled: isUnreadTrackingEnabled,
   })
 
   useEffect(() => {
-    void getBootstrapUser().then((nextUser) => {
-      setUser(nextUser)
-    })
-  }, [])
+    setUser(initialUser)
+  }, [initialUser])
 
   useEffect(() => {
     let timeoutId: number | null = null
