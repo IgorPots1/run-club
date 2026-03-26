@@ -529,16 +529,16 @@ function VoiceMessageAudio({
 
   return (
     <div
-      className={`mt-1 flex w-full items-center gap-2 rounded-[18px] px-2.5 py-1.5 ${
+      className={`mt-1 flex w-full items-center gap-1.5 rounded-[18px] px-2 py-1 ${
         isOwnMessage
-          ? 'bg-black/[0.05] dark:bg-white/[0.09]'
+          ? 'bg-green-100 dark:bg-green-900/35'
           : 'bg-black/[0.04] dark:bg-white/[0.07]'
       }`}
     >
       <button
         type="button"
         onClick={handleTogglePlayback}
-        className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full ${
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
           isPlaying
             ? 'bg-red-500 text-white'
             : 'bg-black/[0.08] text-black dark:bg-white/[0.14] dark:text-white'
@@ -550,7 +550,7 @@ function VoiceMessageAudio({
       <button
         type="button"
         onClick={handleSeek}
-        className="flex h-8 min-w-0 flex-1 items-center gap-1"
+        className="flex h-7 min-w-0 flex-1 items-center gap-0.5"
         aria-label="Перемотать голосовое сообщение"
       >
         {waveformBars.map((barHeight, index) => {
@@ -564,7 +564,7 @@ function VoiceMessageAudio({
                   ? 'bg-red-500 dark:bg-red-400'
                   : 'bg-black/20 dark:bg-white/20'
               }`}
-              style={{ height: `${Math.max(7, Math.round((barHeight / 100) * 24))}px` }}
+              style={{ height: `${Math.max(7, Math.round((barHeight / 100) * 22))}px` }}
             />
           )
         })}
@@ -710,13 +710,13 @@ function ChatMessageBody({
         <>
           {message.isOptimistic ? (
             <div
-              className={`mt-1 flex w-full items-center gap-2 rounded-[18px] px-2.5 py-1.5 ${
+              className={`mt-1 flex w-full items-center gap-1.5 rounded-[18px] px-2 py-1 ${
                 isOwnMessage
-                  ? 'bg-black/[0.05] dark:bg-white/[0.09]'
+                  ? 'bg-green-100 dark:bg-green-900/35'
                   : 'bg-black/[0.04] dark:bg-white/[0.07]'
               }`}
             >
-              <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-black/50 dark:bg-white/[0.14] dark:text-white/60">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-black/50 dark:bg-white/[0.14] dark:text-white/60">
                 <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
                 </svg>
@@ -738,7 +738,7 @@ function ChatMessageBody({
             <div
               className={`mt-1 inline-flex max-w-full rounded-2xl px-3 py-2 text-sm ${
                 isOwnMessage
-                  ? 'ml-auto bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
+                  ? 'ml-auto bg-green-100 text-black/80 dark:bg-green-900/35 dark:text-white/80'
                   : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.07] dark:text-white/75'
               }`}
             >
@@ -2884,7 +2884,7 @@ export default function ChatSection({
             <p className="app-text-secondary text-sm">{pageDescription}</p>
           </div>
         ) : null}
-        <div className="app-card rounded-2xl border p-4 shadow-sm">
+        <div className="px-0 py-1">
           <div className="space-y-4">
             {[0, 1, 2].map((item) => (
               <div key={item} className="flex items-start gap-3">
@@ -2931,20 +2931,20 @@ export default function ChatSection({
       <div className="relative flex min-h-0 flex-1 flex-col">
         <>
           {showScrollToBottomButton ? (
-            <div className="pointer-events-none absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] right-3 z-20 md:bottom-24 md:right-4">
+            <div className="pointer-events-none absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-3 z-20 md:bottom-20 md:right-4">
               <button
                 type="button"
                 onClick={() => {
                   setPendingNewMessagesCount(0)
                   scrollPageToBottom('smooth')
                 }}
-                className="pointer-events-auto relative flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.05] bg-[color:var(--background)]/90 text-black shadow-md backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white"
+                className="pointer-events-auto relative flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.04] bg-[color:var(--background)]/90 text-black shadow-sm backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white"
                 aria-label={pendingNewMessagesCount > 0 ? getNewMessagesLabel(pendingNewMessagesCount) : 'Прокрутить вниз'}
               >
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-[18px] w-[18px]"
+                  className="h-4 w-4"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -2968,18 +2968,18 @@ export default function ChatSection({
           >
             <div className="flex min-h-full flex-col">
               {error ? (
-                <section className="app-card flex flex-1 rounded-2xl border p-4 shadow-sm">
+                <section className="flex flex-1 p-1">
                   <p className="text-sm text-red-600">{error}</p>
                 </section>
               ) : messages.length === 0 ? (
-                <section className="app-card flex flex-1 flex-col rounded-2xl border p-4 shadow-sm">
+                <section className="flex flex-1 flex-col px-1 py-4">
                   <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
                   <p className="app-text-secondary mt-2 text-sm">
                     Когда в базе появятся сообщения, они отобразятся здесь.
                   </p>
                 </section>
               ) : (
-                <section className="app-card flex flex-1 flex-col rounded-2xl border px-4 pb-4 pt-3 shadow-sm">
+                <section className="flex flex-1 flex-col px-0 pb-3 pt-1">
                   <div className="flex flex-col">
                     {messages.map((message, index) => {
                       const isOwnMessage = currentUserId === message.userId
@@ -3051,10 +3051,10 @@ export default function ChatSection({
                               style={{
                                 transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
                               }}
-                              className={`chat-no-select relative z-[2] min-w-0 w-full rounded-[18px] border px-3 py-2 shadow-none ${
+                              className={`chat-no-select relative z-[2] min-w-0 w-full rounded-[18px] px-3 py-2 shadow-none ${
                                 isOwnMessage
-                                  ? 'border-black/[0.05] bg-black/[0.035] dark:border-white/[0.08] dark:bg-white/[0.075]'
-                                  : 'border-black/[0.04] bg-black/[0.015] dark:border-white/[0.08] dark:bg-white/[0.035]'
+                                  ? 'bg-[#DCF8C6] dark:bg-green-900/40'
+                                  : 'bg-black/[0.04] dark:bg-white/[0.07]'
                               } transition-[transform,color,background-color,box-shadow] duration-150`}
                               onTouchStart={(event) => handleMessageTouchStart(message, event)}
                               onTouchEnd={() => handleMessageTouchEnd(message)}
@@ -3103,7 +3103,7 @@ export default function ChatSection({
       </div>
       {selectedMessage && isActionSheetOpen ? (
         <div className="chat-no-select pointer-events-none fixed inset-x-4 top-[40svh] z-[60] mx-auto max-w-xl -translate-y-1/2 md:left-1/2 md:w-full md:max-w-md md:-translate-x-1/2">
-          <div className="chat-no-select chat-selected-preview app-card rounded-[20px] border px-3 py-2.5 shadow-md ring-1 ring-black/[0.06] dark:ring-white/10">
+          <div className="chat-no-select chat-selected-preview app-card rounded-[18px] border px-3 py-2 shadow-sm ring-1 ring-black/[0.05] dark:ring-white/10">
             <div className="flex items-start gap-2.5">
               {selectedMessage.avatarUrl ? (
                 <Image
@@ -3116,7 +3116,7 @@ export default function ChatSection({
               ) : (
                 <AvatarFallback className="h-9 w-9" />
               )}
-              <div className="chat-no-select min-w-0 flex-1 rounded-[18px] bg-black/[0.03] px-2.5 py-1.5 dark:bg-white/[0.08]">
+              <div className="chat-no-select min-w-0 flex-1 rounded-[16px] bg-black/[0.03] px-2 py-1 dark:bg-white/[0.08]">
                 <ChatMessageBody
                   message={selectedMessage}
                   currentUserId={currentUserId}
