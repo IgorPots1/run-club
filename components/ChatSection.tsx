@@ -820,6 +820,7 @@ function ChatMessageBody({
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
   )
   const hasVoiceAttachment = message.messageType === 'voice'
+  const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && !hasVoiceAttachment)
 
   return (
     <>
@@ -867,8 +868,8 @@ function ChatMessageBody({
         <button
           type="button"
           onClick={() => onImageClick?.(message.imageUrl!)}
-          className={`mt-1 block overflow-hidden rounded-2xl ${
-            compactPreview ? 'max-w-[62%]' : 'max-w-[70%]'
+          className={`relative mt-1 block overflow-hidden rounded-2xl ${
+            compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
           } ${
             isOwnMessage ? 'ml-auto' : ''
           }`}
@@ -881,6 +882,13 @@ function ChatMessageBody({
               compactPreview ? 'max-h-40' : 'max-h-80'
             }`}
           />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 via-black/15 to-transparent"
+          />
+          <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/38 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
+            {message.createdAtLabel}
+          </span>
         </button>
       ) : null}
       {hasVoiceAttachment ? (
@@ -945,10 +953,12 @@ function ChatMessageBody({
           {message.text}
         </p>
       ) : null}
-      <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1.5 text-[10px] opacity-70'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
-        {message.createdAtLabel}
-        {message.editedAt ? ' • изменено' : ''}
-      </p>
+      {!isImageOnlyMessage ? (
+        <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1.5 text-[10px] opacity-70'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
+          {message.createdAtLabel}
+          {message.editedAt ? ' • изменено' : ''}
+        </p>
+      ) : null}
       {message.reactions.length > 0 ? (
         <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-0.5' : 'mt-2 gap-1'} ${isOwnMessage ? 'justify-end' : ''}`}>
           {message.reactions.map((reaction) => {
@@ -3235,6 +3245,7 @@ export default function ChatSection({
                   <div className="flex flex-col">
                     {messages.map((message, index) => {
                       const isOwnMessage = currentUserId === message.userId
+                      const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && message.messageType !== 'voice')
                       const isSwipeActive = swipingMessageId === message.id
                       const previousMessage = index > 0 ? messages[index - 1] : null
                       const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
@@ -3303,11 +3314,15 @@ export default function ChatSection({
                               style={{
                                 transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
                               }}
-                              className={`chat-no-select relative z-[2] min-w-0 w-full rounded-[18px] px-3 py-1.5 shadow-none ${
-                                isOwnMessage
-                                  ? 'bg-[#DCF8C6] dark:bg-green-900/40'
-                                  : 'bg-black/[0.04] dark:bg-white/[0.07]'
-                              } transition-[transform,color,background-color,box-shadow] duration-150`}
+                              className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
+                                isImageOnlyMessage
+                                  ? 'rounded-2xl bg-transparent px-0 py-0'
+                                  : `rounded-[18px] px-3 py-1.5 ${
+                                      isOwnMessage
+                                        ? 'bg-[#DCF8C6] dark:bg-green-900/40'
+                                        : 'bg-black/[0.04] dark:bg-white/[0.07]'
+                                    }`
+                              }`}
                               onTouchStart={(event) => handleMessageTouchStart(message, event)}
                               onTouchEnd={() => handleMessageTouchEnd(message)}
                               onTouchCancel={handleMessageTouchCancel}
