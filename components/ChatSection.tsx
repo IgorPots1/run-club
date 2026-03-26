@@ -513,12 +513,14 @@ function VoiceMessageAudio({
   const playbackProgress = effectiveDurationSeconds && effectiveDurationSeconds > 0
     ? Math.min(1, displayedCurrentTimeSeconds / effectiveDurationSeconds)
     : 0
-  const playedBarsCount = Math.round(playbackProgress * waveformBars.length)
   const currentTimeLabel = formatVoiceMessageDuration(displayedCurrentTimeSeconds)
   const durationLabel = formatVoiceMessageDuration(effectiveDurationSeconds)
   const durationDisplayLabel = hasPlaybackProgress
     ? `${currentTimeLabel} / ${durationLabel}`
     : durationLabel
+  const waveformOverlayWidthPercent = hasPlaybackProgress
+    ? Math.max(playbackProgress * 100, isPlaying ? 2 : 0)
+    : 0
 
   useEffect(() => {
     let isMounted = true
@@ -683,10 +685,10 @@ function VoiceMessageAudio({
       <button
         type="button"
         onClick={handleTogglePlayback}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-[transform,background-color,box-shadow] duration-150 active:scale-95 ${
           isPlaying
-            ? 'bg-red-500 text-white'
-            : 'bg-black/[0.08] text-black dark:bg-white/[0.14] dark:text-white'
+            ? 'bg-emerald-600 text-white shadow-[0_3px_10px_rgba(5,150,105,0.28)] dark:bg-emerald-500'
+            : 'bg-black/[0.08] text-black active:bg-black/[0.12] dark:bg-white/[0.14] dark:text-white dark:active:bg-white/[0.18]'
         }`}
         aria-label={isPlaying ? 'Пауза голосового сообщения' : 'Воспроизвести голосовое сообщение'}
       >
@@ -698,35 +700,43 @@ function VoiceMessageAudio({
         className="relative flex h-7 min-w-0 flex-1 items-center gap-0.5"
         aria-label="Перемотать голосовое сообщение"
       >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-1 left-0 rounded-full bg-red-500/12 dark:bg-red-400/15"
-          style={{ width: `${playbackProgress * 100}%` }}
-        />
-        {waveformBars.map((barHeight, index) => {
-          const isActiveBar = index < playedBarsCount
-
-          return (
+        <span className="pointer-events-none absolute inset-0 flex items-center gap-0.5">
+          {waveformBars.map((barHeight, index) => (
             <span
-              key={`${storagePath}:${index}`}
+              key={`${storagePath}:base:${index}`}
               className={`w-1 rounded-full transition-colors ${
-                isActiveBar
-                  ? 'bg-red-500 dark:bg-red-400'
+                isPlaying
+                  ? 'bg-black/30 dark:bg-white/28'
                   : 'bg-black/20 dark:bg-white/20'
               }`}
               style={{ height: `${Math.max(7, Math.round((barHeight / 100) * 22))}px` }}
             />
-          )
-        })}
+          ))}
+        </span>
         <span
           aria-hidden="true"
-          className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-white/80 bg-red-500 shadow-[0_1px_4px_rgba(0,0,0,0.18)] transition-opacity dark:border-white/60 dark:bg-red-400 ${
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          style={{ width: `${waveformOverlayWidthPercent}%` }}
+        >
+          <span className="absolute inset-0 flex items-center gap-0.5">
+            {waveformBars.map((barHeight, index) => (
+              <span
+                key={`${storagePath}:progress:${index}`}
+                className="w-1 rounded-full bg-emerald-700 transition-colors dark:bg-emerald-400"
+                style={{ height: `${Math.max(7, Math.round((barHeight / 100) * 22))}px` }}
+              />
+            ))}
+          </span>
+        </span>
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-white/80 bg-emerald-600 shadow-[0_1px_4px_rgba(5,150,105,0.28)] transition-opacity dark:border-white/60 dark:bg-emerald-400 ${
             hasPlaybackProgress ? 'opacity-100' : 'opacity-0'
           }`}
           style={{ left: `calc(${playbackProgress * 100}% - 5px)` }}
         />
       </button>
-      <span className="shrink-0 text-[10px] font-medium tabular-nums text-black/70 dark:text-white/70">
+      <span className="shrink-0 text-[9px] font-medium tabular-nums text-black/55 dark:text-white/55">
         {durationDisplayLabel}
       </span>
       <button
