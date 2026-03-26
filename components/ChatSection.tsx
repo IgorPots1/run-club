@@ -486,6 +486,73 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function FullscreenImageViewer({
+  imageUrl,
+  onClose,
+}: {
+  imageUrl: string
+  onClose: () => void
+}) {
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow
+    const previousDocumentOverflow = document.documentElement.style.overflow
+
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      setIsVisible(true)
+    })
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+      window.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousBodyOverflow
+      document.documentElement.style.overflow = previousDocumentOverflow
+    }
+  }, [onClose])
+
+  return (
+    <div
+      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black/95 p-3 transition-opacity duration-150 ${
+        isVisible ? 'opacity-100' : 'opacity-0'
+      }`}
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        aria-label="Закрыть изображение"
+        className="absolute right-4 top-4 z-[81] flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-transform duration-150 active:scale-95"
+        onClick={onClose}
+      >
+        <CloseIcon className="h-5 w-5" />
+      </button>
+      <div
+        className={`flex max-h-full max-w-full items-center justify-center transition-transform duration-150 ${
+          isVisible ? 'scale-100' : 'scale-[0.985]'
+        }`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <img
+          src={imageUrl}
+          alt="Полноразмерное изображение"
+          className="max-h-[calc(100svh-1.5rem)] max-w-[calc(100vw-1.5rem)] object-contain"
+        />
+      </div>
+    </div>
+  )
+}
+
 function VoiceMessageAudio({
   storagePath,
   durationSeconds,
@@ -1588,24 +1655,6 @@ export default function ChatSection({
       clearEditingMessage()
     }
   }, [editingMessageId, messages])
-
-  useEffect(() => {
-    if (!selectedViewerImageUrl) {
-      return
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setSelectedViewerImageUrl(null)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [selectedViewerImageUrl])
 
   useEffect(() => {
     let isMounted = true
@@ -3377,29 +3426,10 @@ export default function ChatSection({
         </>
       </div>
       {selectedViewerImageUrl ? (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setSelectedViewerImageUrl(null)}
-        >
-          <button
-            type="button"
-            aria-label="Закрыть изображение"
-            className="absolute right-4 top-4 z-[81] flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-xl text-white backdrop-blur-sm"
-            onClick={() => setSelectedViewerImageUrl(null)}
-          >
-            X
-          </button>
-          <div
-            className="flex max-h-full max-w-full items-center justify-center"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <img
-              src={selectedViewerImageUrl}
-              alt="Полноразмерное изображение"
-              className="max-h-[calc(100svh-2rem)] max-w-[calc(100vw-2rem)] rounded-2xl object-contain"
-            />
-          </div>
-        </div>
+        <FullscreenImageViewer
+          imageUrl={selectedViewerImageUrl}
+          onClose={() => setSelectedViewerImageUrl(null)}
+        />
       ) : null}
       {selectedReactionMessage && selectedReaction ? (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/20 p-3 sm:items-center">
