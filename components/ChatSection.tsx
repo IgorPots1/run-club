@@ -810,9 +810,9 @@ function VoiceMessageAudio({
   const playbackAnimationFrameRef = useRef<number | null>(null)
   const waveformBars = useMemo(() => buildVoiceWaveformBars(storagePath), [storagePath])
   const effectiveDurationSeconds =
-    typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0
-      ? durationSeconds
-      : resolvedDurationSeconds
+    typeof resolvedDurationSeconds === 'number' && Number.isFinite(resolvedDurationSeconds) && resolvedDurationSeconds > 0
+      ? resolvedDurationSeconds
+      : durationSeconds
   const hasPlaybackProgress = displayedCurrentTimeSeconds > 0.05
   const playbackProgress = effectiveDurationSeconds && effectiveDurationSeconds > 0
     ? Math.min(1, displayedCurrentTimeSeconds / effectiveDurationSeconds)
@@ -825,6 +825,18 @@ function VoiceMessageAudio({
   const waveformOverlayWidthPercent = hasPlaybackProgress
     ? Math.max(playbackProgress * 100, isPlaying ? 2 : 0)
     : 0
+
+  function syncPlaybackPosition(audio: HTMLAudioElement) {
+    const nextTimeSeconds = audio.currentTime
+    const nextDurationSeconds = audio.duration
+
+    setCurrentTimeSeconds(nextTimeSeconds)
+    setDisplayedCurrentTimeSeconds(nextTimeSeconds)
+
+    if (Number.isFinite(nextDurationSeconds) && nextDurationSeconds > 0) {
+      setResolvedDurationSeconds(nextDurationSeconds)
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -898,7 +910,7 @@ function VoiceMessageAudio({
         playbackAnimationFrameRef.current = null
       }
     }
-  }, [currentTimeSeconds, isPlaying])
+  }, [isPlaying])
 
   useEffect(() => {
     return () => {
@@ -933,11 +945,13 @@ function VoiceMessageAudio({
 
         activeVoiceMessageAudio = audio
         await audio.play()
+        syncPlaybackPosition(audio)
         setIsPlaying(true)
         return
       }
 
       audio.pause()
+      syncPlaybackPosition(audio)
       setIsPlaying(false)
     } catch (error) {
       console.error('Failed to toggle voice message playback', error)
@@ -966,8 +980,7 @@ function VoiceMessageAudio({
     const nextTimeSeconds = nextProgress * effectiveDurationSeconds
 
     audio.currentTime = nextTimeSeconds
-    setCurrentTimeSeconds(nextTimeSeconds)
-    setDisplayedCurrentTimeSeconds(nextTimeSeconds)
+    syncPlaybackPosition(audio)
   }
 
   if (loadError) {
@@ -1057,30 +1070,26 @@ function VoiceMessageAudio({
         preload="metadata"
         className="hidden"
         onLoadedMetadata={(event) => {
-          const nextDurationSeconds = event.currentTarget.duration
-
-          if (
-            (!(typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0)) &&
-            Number.isFinite(nextDurationSeconds) &&
-            nextDurationSeconds > 0
-          ) {
-            setResolvedDurationSeconds(nextDurationSeconds)
-          }
+          syncPlaybackPosition(event.currentTarget)
         }}
         onTimeUpdate={(event) => {
-          setCurrentTimeSeconds(event.currentTarget.currentTime)
+          syncPlaybackPosition(event.currentTarget)
+        }}
+        onDurationChange={(event) => {
+          syncPlaybackPosition(event.currentTarget)
         }}
         onPause={(event) => {
           if (activeVoiceMessageAudio === event.currentTarget) {
             activeVoiceMessageAudio = null
           }
-          setCurrentTimeSeconds(event.currentTarget.currentTime)
-          setDisplayedCurrentTimeSeconds(event.currentTarget.currentTime)
+          syncPlaybackPosition(event.currentTarget)
           setIsPlaying(false)
         }}
         onPlay={() => {
           activeVoiceMessageAudio = audioRef.current
-          setDisplayedCurrentTimeSeconds(audioRef.current?.currentTime ?? currentTimeSeconds)
+          if (audioRef.current) {
+            syncPlaybackPosition(audioRef.current)
+          }
           setIsPlaying(true)
         }}
         onEnded={(event) => {
@@ -3239,7 +3248,7 @@ export default function ChatSection({
   function renderComposer() {
     return (
       <div>
-        <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/82 px-2 py-1.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[color:var(--background)]/78">
+        <section className="rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-3 py-2 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
           <form onSubmit={handleSubmit}>
             <input
               ref={imageInputRef}
@@ -3250,42 +3259,42 @@ export default function ChatSection({
               tabIndex={-1}
             />
             {editingMessage ? (
-              <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-                <div className="min-w-0">
+              <div className="mb-2 flex items-start justify-between gap-3 rounded-[18px] border border-black/[0.05] bg-black/[0.03] px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="min-w-0 flex-1">
                   <p className="app-text-primary truncate text-sm font-medium">Редактирование сообщения</p>
-                  <p className="app-text-secondary truncate text-sm">
+                  <p className="app-text-secondary mt-0.5 truncate text-sm">
                     {editingMessage.previewText || 'Измените текст сообщения'}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={clearEditingMessage}
-                  className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
+                  className="app-text-secondary mt-0.5 shrink-0 rounded-full p-1"
                   aria-label="Отменить редактирование"
                 >
-                  X
+                  <CloseIcon className="h-3.5 w-3.5" />
                 </button>
               </div>
             ) : null}
             {replyingToMessage ? (
-              <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-                <div className="min-w-0">
+              <div className="mb-2 flex items-start justify-between gap-3 rounded-[18px] border border-black/[0.05] bg-black/[0.03] px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="min-w-0 flex-1">
                   <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
-                  <p className="app-text-secondary truncate text-sm">{replyingToMessage.previewText || 'Сообщение'}</p>
+                  <p className="app-text-secondary mt-0.5 truncate text-sm">{replyingToMessage.previewText || 'Сообщение'}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setReplyingToMessage(null)}
-                  className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
+                  className="app-text-secondary mt-0.5 shrink-0 rounded-full p-1"
                   aria-label="Отменить ответ"
                 >
-                  X
+                  <CloseIcon className="h-3.5 w-3.5" />
                 </button>
               </div>
             ) : null}
             {hasPendingImage ? (
-              <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-                <div className="min-w-0">
+              <div className="mb-2 flex items-start justify-between gap-3 rounded-[18px] border border-black/[0.05] bg-black/[0.03] px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="min-w-0 flex-1">
                   <p className="app-text-primary text-sm font-medium">Изображение готово</p>
                   <img
                     src={pendingImageUrl ?? undefined}
@@ -3296,10 +3305,10 @@ export default function ChatSection({
                 <button
                   type="button"
                   onClick={clearSelectedImage}
-                  className="app-text-secondary shrink-0 rounded-full p-1.5 text-sm"
+                  className="app-text-secondary mt-0.5 shrink-0 rounded-full p-1"
                   aria-label="Убрать изображение"
                 >
-                  X
+                  <CloseIcon className="h-3.5 w-3.5" />
                 </button>
               </div>
             ) : null}
@@ -3347,7 +3356,7 @@ export default function ChatSection({
                 )}
               </div>
             ) : (
-              <div className="flex items-end gap-1.5">
+              <div className="flex items-end gap-2">
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
@@ -3357,7 +3366,7 @@ export default function ChatSection({
                 >
                   {uploadingImage ? '...' : '+'}
                 </button>
-                <div className="app-input flex min-w-0 flex-1 items-end rounded-[22px] border px-3.5 shadow-none">
+                <div className="flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-3 dark:bg-white/[0.05]">
                   <label htmlFor="chat-message" className="sr-only">
                     Сообщение
                   </label>
@@ -3425,7 +3434,7 @@ export default function ChatSection({
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-none md:p-4">
+      <div className="mx-auto max-w-3xl px-3 pb-4 pt-4 md:px-5 md:pb-5 md:pt-4">
         {showTitle ? (
           <div className="mb-4 space-y-1">
             <h1 className="app-text-primary text-2xl font-bold">{pageTitle}</h1>
@@ -3455,7 +3464,7 @@ export default function ChatSection({
 
   if (!isAuthenticated) {
     return (
-      <div className="mx-auto flex min-h-[240px] max-w-xl items-center justify-center p-4 md:max-w-none">
+      <div className="mx-auto flex min-h-[240px] max-w-3xl items-center justify-center px-3 py-4 md:px-5">
         <Link href="/login" className="text-sm underline">
           Открыть вход
         </Link>
@@ -3465,7 +3474,7 @@ export default function ChatSection({
 
   return (
     <div
-      className={`mx-auto flex h-full min-h-0 max-w-xl flex-col overflow-hidden px-4 md:max-w-none md:p-4 ${
+      className={`mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden px-3 md:px-5 md:py-4 ${
         showTitle ? 'pt-4' : 'pt-2'
       }`}
     >
@@ -3568,7 +3577,7 @@ export default function ChatSection({
                           ) : (
                             <div className="h-10 w-10 shrink-0" aria-hidden="true" />
                           )}
-                          <div className={`relative min-w-0 w-full max-w-[74%] ${isOwnMessage ? 'ml-auto' : ''}`}>
+                          <div className={`relative min-w-0 w-full max-w-[80%] md:max-w-[82%] ${isOwnMessage ? 'ml-auto' : ''}`}>
                             <div
                               aria-hidden="true"
                               className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
