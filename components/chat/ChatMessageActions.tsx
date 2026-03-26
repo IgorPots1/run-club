@@ -23,6 +23,8 @@ const REACTION_BAR_WIDTH = 288
 const ACTION_CARD_WIDTH = 228
 const PREVIEW_HEIGHT = 68
 const ACTION_ROW_HEIGHT = 40
+const FLOATING_GROUP_GAP = 8
+const FLOATING_GROUP_OFFSET = 8
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -82,19 +84,18 @@ export default function ChatMessageActions({
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 844
   const previewText = message.previewText || message.text || 'Сообщение'
   const estimatedCardHeight = PREVIEW_HEIGHT + actionCount * ACTION_ROW_HEIGHT + 12
-  const hasSpaceAbove = anchorRect.top >= REACTION_BAR_HEIGHT + VIEWPORT_PADDING + 8
-  const hasSpaceBelow = viewportHeight - anchorRect.bottom >= estimatedCardHeight + REACTION_BAR_HEIGHT + VIEWPORT_PADDING + 16
-  const placeReactionAbove = hasSpaceAbove
-  const reactionBarTop = placeReactionAbove
-    ? anchorRect.top - REACTION_BAR_HEIGHT - 8
-    : Math.min(anchorRect.bottom + 8, viewportHeight - REACTION_BAR_HEIGHT - VIEWPORT_PADDING)
-  const actionCardTop = placeReactionAbove
-    ? hasSpaceBelow
-      ? anchorRect.bottom + 8
-      : Math.max(VIEWPORT_PADDING, anchorRect.top - estimatedCardHeight - 8)
-    : hasSpaceBelow
-      ? Math.min(reactionBarTop + REACTION_BAR_HEIGHT + 8, viewportHeight - estimatedCardHeight - VIEWPORT_PADDING)
-      : Math.max(VIEWPORT_PADDING, anchorRect.top - estimatedCardHeight - 8)
+  const totalFloatingGroupHeight = REACTION_BAR_HEIGHT + FLOATING_GROUP_GAP + estimatedCardHeight
+  const hasSpaceAbove = anchorRect.top >= totalFloatingGroupHeight + VIEWPORT_PADDING + FLOATING_GROUP_OFFSET
+  const preferredGroupTop = hasSpaceAbove
+    ? anchorRect.top - totalFloatingGroupHeight - FLOATING_GROUP_OFFSET
+    : anchorRect.bottom + FLOATING_GROUP_OFFSET
+  const groupTop = clamp(
+    preferredGroupTop,
+    VIEWPORT_PADDING,
+    viewportHeight - totalFloatingGroupHeight - VIEWPORT_PADDING
+  )
+  const reactionBarTop = groupTop
+  const actionCardTop = groupTop + REACTION_BAR_HEIGHT + FLOATING_GROUP_GAP
   const reactionBarLeft = clamp(
     anchorRect.left + anchorRect.width / 2 - REACTION_BAR_WIDTH / 2,
     VIEWPORT_PADDING,

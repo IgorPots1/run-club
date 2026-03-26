@@ -274,7 +274,7 @@ function ReactionChip({
       onTouchStart={(event) => event.stopPropagation()}
       disabled={disabled}
       className={`relative inline-flex items-center overflow-visible rounded-full font-medium transition-transform duration-200 ease-out ${
-        compact ? 'gap-0.5 px-2 py-0.5 text-[11px]' : 'gap-1 px-2.5 py-1 text-xs'
+        compact ? 'gap-0.5 px-1.5 py-0.5 text-[10px]' : 'gap-0.5 px-2 py-[3px] text-[11px]'
       } ${
         isSelected
           ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
@@ -288,7 +288,7 @@ function ReactionChip({
       <span
         aria-hidden="true"
         className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 transition-all duration-200 ease-out ${
-          compact ? 'text-xs' : 'text-sm'
+          compact ? 'text-[11px]' : 'text-[13px]'
         } ${
           burstPhase === 'start'
             ? '-translate-y-1 scale-95 opacity-90'
@@ -749,12 +749,10 @@ function ChatMessageBody({
       ) : null}
       {message.text ? (
         <p
-          className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
+          className={`app-text-primary break-words whitespace-pre-wrap text-left text-sm ${
             message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
           } ${
-            isOwnMessage ? 'text-right' : ''
-          } ${
-            compactPreview ? 'leading-5' : ''
+            compactPreview ? 'leading-5' : 'leading-[1.45]'
           }`}
           style={
             compactPreview
@@ -770,12 +768,12 @@ function ChatMessageBody({
           {message.text}
         </p>
       ) : null}
-      <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-xs'} ${isOwnMessage ? 'text-right' : ''}`}>
+      <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-xs'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
         {message.createdAtLabel}
         {message.editedAt ? ' • изменено' : ''}
       </p>
       {message.reactions.length > 0 ? (
-        <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-1' : 'mt-2 gap-1.5'} ${isOwnMessage ? 'justify-end' : ''}`}>
+        <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-0.5' : 'mt-1.5 gap-1'} ${isOwnMessage ? 'justify-end' : ''}`}>
           {message.reactions.map((reaction) => {
             const isSelected = currentUserId ? reaction.userIds.includes(currentUserId) : false
             const reactionKey = `${message.id}:${reaction.emoji}`
