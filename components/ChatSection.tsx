@@ -25,7 +25,7 @@ import {
 import { ensureProfileExists } from '@/lib/profiles'
 import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
-import { getVoiceStream } from '@/lib/voice/voiceStream'
+import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream'
 
 type ChatSectionProps = {
   showTitle?: boolean
@@ -2412,6 +2412,8 @@ export default function ChatSection({
         const voiceBlob = new Blob(chunksRef.current, {
           type: recorder.mimeType || 'audio/webm',
         })
+
+        scheduleVoiceStreamStop()
 
         if (shouldCancelRecording) {
           cleanupVoiceRecordingResources()

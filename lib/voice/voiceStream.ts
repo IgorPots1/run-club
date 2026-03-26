@@ -1,4 +1,12 @@
 let sharedVoiceStream: MediaStream | null = null
+let idleTimeout: number | null = null
+
+function clearScheduledStreamStop() {
+  if (idleTimeout !== null) {
+    window.clearTimeout(idleTimeout)
+    idleTimeout = null
+  }
+}
 
 function isVoiceStreamActive(stream: MediaStream | null) {
   if (!stream || !stream.active) {
@@ -9,6 +17,8 @@ function isVoiceStreamActive(stream: MediaStream | null) {
 }
 
 export async function getVoiceStream(): Promise<MediaStream> {
+  clearScheduledStreamStop()
+
   if (isVoiceStreamActive(sharedVoiceStream)) {
     return sharedVoiceStream as MediaStream
   }
@@ -24,7 +34,19 @@ export async function getVoiceStream(): Promise<MediaStream> {
   return sharedVoiceStream
 }
 
+export function scheduleVoiceStreamStop() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  clearScheduledStreamStop()
+  idleTimeout = window.setTimeout(() => {
+    stopVoiceStream()
+  }, 30000)
+}
+
 export function stopVoiceStream() {
+  clearScheduledStreamStop()
   sharedVoiceStream?.getTracks().forEach((track) => track.stop())
   sharedVoiceStream = null
 }
