@@ -2195,6 +2195,11 @@ export default function ChatSection({
       return
     }
 
+    if (prependScrollRestoreRef.current || isLoadingOlderMessagesRef.current) {
+      pendingAutoScrollToBottomRef.current = false
+      return
+    }
+
     let nestedAnimationFrameId: number | null = null
     const animationFrameId = window.requestAnimationFrame(() => {
       nestedAnimationFrameId = window.requestAnimationFrame(() => {
@@ -2211,35 +2216,23 @@ export default function ChatSection({
     }
   }, [messages, scrollPageToBottom])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pendingRestore = prependScrollRestoreRef.current
 
     if (!pendingRestore) {
       return
     }
 
-    let nestedAnimationFrameId: number | null = null
-    const animationFrameId = window.requestAnimationFrame(() => {
-      nestedAnimationFrameId = window.requestAnimationFrame(() => {
-        const scrollContainer = scrollContainerRef.current
+    const scrollContainer = scrollContainerRef.current
 
-        if (!scrollContainer || pendingRestore.scrollTop === null) {
-          prependScrollRestoreRef.current = null
-          return
-        }
-
-        const scrollHeightDelta = scrollContainer.scrollHeight - pendingRestore.scrollHeight
-        scrollContainer.scrollTop = Math.max(0, pendingRestore.scrollTop + scrollHeightDelta)
-        prependScrollRestoreRef.current = null
-      })
-    })
-
-    return () => {
-      window.cancelAnimationFrame(animationFrameId)
-      if (nestedAnimationFrameId !== null) {
-        window.cancelAnimationFrame(nestedAnimationFrameId)
-      }
+    if (!scrollContainer || pendingRestore.scrollTop === null) {
+      prependScrollRestoreRef.current = null
+      return
     }
+
+    const scrollHeightDelta = scrollContainer.scrollHeight - pendingRestore.scrollHeight
+    scrollContainer.scrollTop = Math.max(0, pendingRestore.scrollTop + scrollHeightDelta)
+    prependScrollRestoreRef.current = null
   }, [messages])
 
   useEffect(() => {
