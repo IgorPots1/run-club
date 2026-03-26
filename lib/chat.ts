@@ -358,7 +358,7 @@ export async function createVoiceChatMessage(
 
   return supabase.from('chat_messages').insert({
     user_id: userId,
-    text: null,
+    text: '',
     message_type: 'voice',
     media_url: trimmedMediaPath,
     image_url: null,

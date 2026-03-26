@@ -296,6 +296,7 @@ function VoiceMessageAudio({ storagePath }: { storagePath: string }) {
       try {
         setLoadError(false)
         setSignedUrl(null)
+        console.log('[voice] signed url requested', storagePath)
 
         const { data, error } = await supabase.storage
           .from(CHAT_VOICE_BUCKET)
@@ -307,8 +308,10 @@ function VoiceMessageAudio({ storagePath }: { storagePath: string }) {
 
         if (isMounted) {
           setSignedUrl(data.signedUrl)
+          console.log('[voice] signed url success', data.signedUrl)
         }
       } catch (error) {
+        console.error('[voice] failed', error)
         console.error('Failed to create signed voice message URL', {
           storagePath,
           error,
@@ -502,7 +505,8 @@ export default function ChatSection({
   const focusedGestureBlurredRef = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
-  const recordedVoiceChunksRef = useRef<Blob[]>([])
+  const chunksRef = useRef<Blob[]>([])
+  const startTimeRef = useRef(0)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
   const [loading, setLoading] = useState(true)
@@ -1829,7 +1833,8 @@ export default function ChatSection({
       mediaStreamRef.current = null
     }
 
-    recordedVoiceChunksRef.current = []
+    chunksRef.current = []
+    startTimeRef.current = 0
     isStoppingVoiceRecordingRef.current = false
     shouldStopVoiceRecordingOnStartRef.current = false
     setIsRecordingVoice(false)
@@ -1852,6 +1857,26 @@ export default function ChatSection({
     return ''
   }
 
+  function getErrorDetails(error: unknown) {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      }
+    }
+
+    if (typeof error === 'object' && error !== null) {
+      try {
+        return JSON.parse(JSON.stringify(error))
+      } catch {
+        return { raw: String(error) }
+      }
+    }
+
+    return { raw: String(error) }
+  }
+
   async function sendRecordedVoiceMessage(file: File) {
     if (!currentUserId) {
       return
@@ -1861,25 +1886,42 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
+      console.log('[voice] sending started')
+      console.log('[voice] upload starting', {
+        fileName: file.name,
+        size: file.size,
+        type: file.type,
+      })
       const uploadResult = await uploadVoiceMessage({
         file,
         userId: currentUserId,
       })
+      console.log('[voice] upload success', uploadResult)
+      const path = uploadResult.path
+      console.log('[voice] insert starting', {
+        threadId,
+        mediaUrl: path,
+        messageType: 'voice',
+      })
       const { error: insertError } = await createVoiceChatMessage(
         currentUserId,
-        uploadResult.path,
+        path,
         replyingToMessage?.id ?? null,
         threadId
       )
 
       if (insertError) {
-        throw insertError
+        console.error('[voice] insert error raw', insertError)
+        throw new Error(`voice_insert_failed:${insertError.message}`)
       }
+
+      console.log('[voice] insert success')
 
       setPendingNewMessagesCount(0)
       setReplyingToMessage(null)
     } catch (error) {
-      console.error('Failed to send voice message', error)
+      const errorDetails = getErrorDetails(error)
+      console.error('[voice] failed details', errorDetails)
       setSubmitError('Не удалось отправить голосовое сообщение')
     } finally {
       setUploadingVoice(false)
@@ -1887,6 +1929,10 @@ export default function ChatSection({
   }
 
   async function startVoiceRecording() {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      return
+    }
+
     if (
       !currentUserId ||
       uploadingVoice ||
@@ -1903,6 +1949,7 @@ export default function ChatSection({
       return
     }
 
+    console.log('[voice] startRecording')
     setIsStartingVoiceRecording(true)
     setSubmitError('')
 
@@ -1914,26 +1961,44 @@ export default function ChatSection({
       const recorder = recorderMimeType
         ? new MediaRecorder(stream, { mimeType: recorderMimeType })
         : new MediaRecorder(stream)
+      console.log('[voice] recorder created', {
+        state: recorder.state,
+        mimeType: recorder.mimeType,
+      })
 
-      recordedVoiceChunksRef.current = []
+      chunksRef.current = []
+      startTimeRef.current = Date.now()
       mediaStreamRef.current = stream
       mediaRecorderRef.current = recorder
       isStoppingVoiceRecordingRef.current = false
 
       recorder.addEventListener('dataavailable', (event) => {
+        console.log('[voice] chunk', {
+          size: event.data?.size ?? 0,
+        })
         if (event.data.size > 0) {
-          recordedVoiceChunksRef.current.push(event.data)
+          chunksRef.current.push(event.data)
         }
       })
 
       recorder.addEventListener('stop', () => {
-        const voiceBlob = new Blob(recordedVoiceChunksRef.current, {
+        console.log('[voice] onstop fired')
+        console.log('[voice] total chunks', chunksRef.current.length)
+        const voiceBlob = new Blob(chunksRef.current, {
           type: recorder.mimeType || 'audio/webm',
+        })
+        console.log('[voice] blob created', {
+          size: voiceBlob.size,
+          type: voiceBlob.type,
+          chunks: chunksRef.current.length,
         })
 
         cleanupVoiceRecordingResources()
 
         if (voiceBlob.size < 1024) {
+          console.info('Voice recording ignored because blob is too small', {
+            blobSize: voiceBlob.size,
+          })
           return
         }
 
@@ -1944,7 +2009,12 @@ export default function ChatSection({
         void sendRecordedVoiceMessage(voiceFile)
       })
 
-      recorder.start()
+      recorder.addEventListener('error', (event) => {
+        console.error('[voice] failed', event)
+        console.error('Voice recorder error', event)
+      })
+
+      recorder.start(250)
       setIsStartingVoiceRecording(false)
       setIsRecordingVoice(true)
 
@@ -1953,6 +2023,7 @@ export default function ChatSection({
         void stopVoiceRecording()
       }
     } catch (error) {
+      console.error('[voice] failed', error)
       console.error('Failed to start voice recording', error)
       cleanupVoiceRecordingResources()
       setSubmitError('Не удалось начать запись голоса')
@@ -1961,6 +2032,10 @@ export default function ChatSection({
 
   async function stopVoiceRecording() {
     const recorder = mediaRecorderRef.current
+    console.log('[voice] stopRecording called', {
+      recorderExists: !!mediaRecorderRef.current,
+      state: mediaRecorderRef.current?.state,
+    })
 
     if (!recorder && isStartingVoiceRecording) {
       shouldStopVoiceRecordingOnStartRef.current = true
@@ -1974,7 +2049,30 @@ export default function ChatSection({
     isStoppingVoiceRecordingRef.current = true
     setIsStartingVoiceRecording(false)
 
-    if (recorder.state !== 'inactive') {
+    if (recorder.state === 'recording') {
+      const duration = Date.now() - startTimeRef.current
+
+      try {
+        recorder.requestData()
+      } catch (error) {
+        console.error('[voice] failed', error)
+        console.error('Failed to request final voice recorder data', error)
+      }
+
+      if (duration < 300) {
+        window.setTimeout(() => {
+          const activeRecorder = mediaRecorderRef.current
+
+          if (activeRecorder?.state === 'recording') {
+            activeRecorder.stop()
+            return
+          }
+
+          cleanupVoiceRecordingResources()
+        }, 300 - duration)
+        return
+      }
+
       recorder.stop()
       return
     }

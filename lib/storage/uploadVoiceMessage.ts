@@ -51,6 +51,10 @@ export async function uploadVoiceMessage({
   const timestamp = Date.now()
   const randomSegment = createUploadRandomSegment()
   const path = `voice/${safeUserId}/${timestamp}-${randomSegment}.webm`
+  console.log('[voice] upload target', {
+    bucket: CHAT_VOICE_BUCKET,
+    path,
+  })
 
   const { error: uploadError } = await supabase.storage.from(CHAT_VOICE_BUCKET).upload(path, file, {
     contentType: file.type || 'audio/webm',
