@@ -47,7 +47,7 @@ const SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO = 1.5
 const REACTION_ANIMATION_DURATION_MS = 200
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
-const VOICE_RECORDING_CANCEL_SWIPE_PX = 56
+const VOICE_RECORDING_CANCEL_SLIDE_PX = 72
 const VOICE_PLAYBACK_SPEEDS = [1, 1.5, 2] as const
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
@@ -761,7 +761,7 @@ export default function ChatSection({
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
-  const recordingPointerStartYRef = useRef<number | null>(null)
+  const recordingPointerStartXRef = useRef<number | null>(null)
   const shouldCancelVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
@@ -1167,15 +1167,27 @@ export default function ChatSection({
       return
     }
 
+    function handleMove(event: MouseEvent) {
+      updateVoiceRecordingGesture(event.clientX)
+    }
+
+    function handleTouchMove(event: TouchEvent) {
+      updateVoiceRecordingGesture(event.touches[0]?.clientX ?? null)
+    }
+
     function handleRelease() {
       void stopVoiceRecording()
     }
 
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('touchmove', handleTouchMove, { passive: true })
     window.addEventListener('mouseup', handleRelease)
     window.addEventListener('touchend', handleRelease)
     window.addEventListener('touchcancel', handleRelease)
 
     return () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('touchmove', handleTouchMove)
       window.removeEventListener('mouseup', handleRelease)
       window.removeEventListener('touchend', handleRelease)
       window.removeEventListener('touchcancel', handleRelease)
@@ -2123,7 +2135,7 @@ export default function ChatSection({
     isStoppingVoiceRecordingRef.current = false
     shouldStopVoiceRecordingOnStartRef.current = false
     hasHandledVoiceRecordingStopRef.current = false
-    recordingPointerStartYRef.current = null
+    recordingPointerStartXRef.current = null
     shouldCancelVoiceRecordingRef.current = false
     setRecordingTime(0)
     setIsRecordingVoice(false)
@@ -2195,25 +2207,25 @@ export default function ChatSection({
     setIsCancellingVoice(nextIsCancelling)
   }
 
-  function beginVoiceRecordingGesture(startClientY?: number | null) {
-    recordingPointerStartYRef.current = typeof startClientY === 'number' ? startClientY : null
+  function beginVoiceRecordingGesture(startClientX?: number | null) {
+    recordingPointerStartXRef.current = typeof startClientX === 'number' ? startClientX : null
     setVoiceCancellingState(false)
     void startVoiceRecording()
   }
 
-  function updateVoiceRecordingGesture(clientY?: number | null) {
-    const startClientY = recordingPointerStartYRef.current
+  function updateVoiceRecordingGesture(clientX?: number | null) {
+    const startClientX = recordingPointerStartXRef.current
 
     if (
       !isRecordingVoice ||
       isStoppingVoiceRecordingRef.current ||
-      typeof clientY !== 'number' ||
-      startClientY === null
+      typeof clientX !== 'number' ||
+      startClientX === null
     ) {
       return
     }
 
-    setVoiceCancellingState(startClientY - clientY >= VOICE_RECORDING_CANCEL_SWIPE_PX)
+    setVoiceCancellingState(startClientX - clientX >= VOICE_RECORDING_CANCEL_SLIDE_PX)
   }
 
   async function sendRecordedVoiceMessage(file: File) {
@@ -2623,7 +2635,7 @@ export default function ChatSection({
                     {isCancellingVoice ? 'Отпустить для отмены' : `Запись... ${formatRecordingTime(recordingTime)}`}
                   </p>
                 </div>
-                <p className="text-xs opacity-80">{isCancellingVoice ? 'Отмена' : '↑ Свайп вверх для отмены'}</p>
+                <p className="text-xs opacity-80">{isCancellingVoice ? 'Отмена' : '← Сдвиг влево для отмены'}</p>
               </div>
             ) : null}
             <div className="flex items-end gap-1.5">
@@ -2662,25 +2674,14 @@ export default function ChatSection({
                   type="button"
                   onMouseDown={(event) => {
                     event.preventDefault()
-                    beginVoiceRecordingGesture(event.clientY)
-                  }}
-                  onMouseMove={(event) => {
-                    updateVoiceRecordingGesture(event.clientY)
+                    beginVoiceRecordingGesture(event.clientX)
                   }}
                   onMouseUp={() => {
                     void stopVoiceRecording()
                   }}
-                  onMouseLeave={() => {
-                    if (isRecordingVoice) {
-                      setVoiceCancellingState(true)
-                    }
-                  }}
                   onTouchStart={(event) => {
                     event.preventDefault()
-                    beginVoiceRecordingGesture(event.touches[0]?.clientY ?? null)
-                  }}
-                  onTouchMove={(event) => {
-                    updateVoiceRecordingGesture(event.touches[0]?.clientY ?? null)
+                    beginVoiceRecordingGesture(event.touches[0]?.clientX ?? null)
                   }}
                   onTouchEnd={(event) => {
                     event.preventDefault()
