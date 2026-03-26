@@ -32,16 +32,26 @@ type DashboardInitialStats = {
   totalXp: number
 }
 
+type DashboardInitialLevelProgress = {
+  level: number
+  nextLevelXP: number | null
+  currentLevelXp: number
+  xpToNextLevel: number
+  progressPercent: number
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
   initialStats,
+  initialLevelProgress,
   initialActiveChallenge,
   initialAllChallengesCompleted,
 }: {
   initialUser: DashboardInitialUser
   initialProfileSummary: DashboardInitialProfileSummary
   initialStats: DashboardInitialStats
+  initialLevelProgress: DashboardInitialLevelProgress
   initialActiveChallenge: ChallengeWithProgress | null
   initialAllChallengesCompleted: boolean
 }) {
@@ -165,7 +175,9 @@ export default function DashboardPageClient({
   const stats = overview?.stats ?? initialStats
   const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? initialActiveChallenge
   const allChallengesCompleted = overview?.allChallengesCompleted ?? initialAllChallengesCompleted
-  const levelProgress = stats ? getLevelProgressFromXP(stats.totalXp) : null
+  const levelProgress = hasLoadedOverviewDetails && stats
+    ? getLevelProgressFromXP(stats.totalXp)
+    : initialLevelProgress
   const profileName = getProfileDisplayName(
     {
       name: overview?.profileSummary.name ?? initialProfileSummary.name,

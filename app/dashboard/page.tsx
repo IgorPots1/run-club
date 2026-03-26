@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import DashboardPageClient from './DashboardPageClient'
 import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress } from '@/lib/challenges'
 import { createSupabaseServerClient, getAuthenticatedUser } from '@/lib/supabase-server'
+import { getLevelProgressFromXP } from '@/lib/xp'
 
 type ProfileSummaryRow = {
   name: string | null
@@ -111,10 +112,12 @@ export default async function DashboardPage() {
     return sum + Number(challengeRewardById[item.challenge_id] ?? 0)
   }, 0)
   const totalLikeXp = (((likes.data as RunLikeRow[] | null) ?? []).length) * 5
+  const totalXp = totalRunXp + totalChallengeXp + totalLikeXp
   const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => getChallengeProgress(challenge, runRows))
   const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
   const initialActiveChallenge: ChallengeWithProgress | null = activeChallenges[0] ?? null
   const initialAllChallengesCompleted = challengeItems.length > 0 && activeChallenges.length === 0
+  const initialLevelProgress = getLevelProgressFromXP(totalXp)
 
   return (
     <DashboardPageClient
@@ -130,8 +133,9 @@ export default async function DashboardPage() {
       initialStats={{
         totalKmThisMonth,
         runsCount: runRows.length,
-        totalXp: totalRunXp + totalChallengeXp + totalLikeXp,
+        totalXp,
       }}
+      initialLevelProgress={initialLevelProgress}
       initialActiveChallenge={initialActiveChallenge}
       initialAllChallengesCompleted={initialAllChallengesCompleted}
     />
