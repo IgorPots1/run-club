@@ -714,6 +714,8 @@ export default function ChatSection({
   const shouldStopVoiceRecordingOnStartRef = useRef(false)
   const recordingPointerStartYRef = useRef<number | null>(null)
   const shouldCancelVoiceRecordingRef = useRef(false)
+  const hasHandledVoiceRecordingStopRef = useRef(false)
+  const isSendingVoiceMessageRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -2043,6 +2045,7 @@ export default function ChatSection({
     startTimeRef.current = 0
     isStoppingVoiceRecordingRef.current = false
     shouldStopVoiceRecordingOnStartRef.current = false
+    hasHandledVoiceRecordingStopRef.current = false
     recordingPointerStartYRef.current = null
     shouldCancelVoiceRecordingRef.current = false
     setIsRecordingVoice(false)
@@ -2113,10 +2116,11 @@ export default function ChatSection({
   }
 
   async function sendRecordedVoiceMessage(file: File) {
-    if (!currentUserId) {
+    if (!currentUserId || isSendingVoiceMessageRef.current) {
       return
     }
 
+    isSendingVoiceMessageRef.current = true
     setUploadingVoice(true)
     setSubmitError('')
 
@@ -2144,6 +2148,7 @@ export default function ChatSection({
       console.error('Failed to send voice message', errorDetails)
       setSubmitError('Не удалось отправить голосовое сообщение')
     } finally {
+      isSendingVoiceMessageRef.current = false
       setUploadingVoice(false)
     }
   }
@@ -2186,6 +2191,7 @@ export default function ChatSection({
       mediaStreamRef.current = stream
       mediaRecorderRef.current = recorder
       isStoppingVoiceRecordingRef.current = false
+      hasHandledVoiceRecordingStopRef.current = false
 
       recorder.addEventListener('dataavailable', (event) => {
         if (event.data.size > 0) {
@@ -2194,7 +2200,13 @@ export default function ChatSection({
       })
 
       recorder.addEventListener('stop', () => {
+        if (hasHandledVoiceRecordingStopRef.current) {
+          return
+        }
+
+        hasHandledVoiceRecordingStopRef.current = true
         const shouldCancelRecording = shouldCancelVoiceRecordingRef.current
+        const recordingDurationMs = Date.now() - startTimeRef.current
         const voiceBlob = new Blob(chunksRef.current, {
           type: recorder.mimeType || 'audio/webm',
         })
@@ -2202,6 +2214,10 @@ export default function ChatSection({
         cleanupVoiceRecordingResources()
 
         if (shouldCancelRecording) {
+          return
+        }
+
+        if (recordingDurationMs < 400) {
           return
         }
 
