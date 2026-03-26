@@ -62,6 +62,13 @@ export default function InfiniteWorkoutFeed({
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
   const pendingRunIdsRef = useRef<string[]>([])
+  const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
+  const firstPageRequestKeyRef = useRef<string>('')
+
+  const feedQueryKey = useMemo(
+    () => [currentUserId ?? 'anonymous', targetUserId ?? 'all', pageSize].join(':'),
+    [currentUserId, pageSize, targetUserId]
+  )
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId
@@ -91,23 +98,56 @@ export default function InfiniteWorkoutFeed({
   }, [updateRunItem])
 
   const loadFirstPage = useCallback(async () => {
+    if (
+      firstPageRequestPromiseRef.current &&
+      firstPageRequestKeyRef.current === feedQueryKey
+    ) {
+      return firstPageRequestPromiseRef.current
+    }
+
     setInitialLoading(true)
     setFeedError('')
 
+    const requestKey = feedQueryKey
+    firstPageRequestKeyRef.current = requestKey
+
+    const requestPromise = (async () => {
+      try {
+        const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
+
+        if (firstPageRequestKeyRef.current !== requestKey) {
+          return
+        }
+
+        setItems(page.items)
+        setHasMore(page.hasMore)
+        setNextOffset(page.items.length)
+      } catch {
+        if (firstPageRequestKeyRef.current !== requestKey) {
+          return
+        }
+
+        setFeedError('Не удалось загрузить ленту')
+        setItems([])
+        setHasMore(false)
+        setNextOffset(0)
+      } finally {
+        if (firstPageRequestKeyRef.current === requestKey) {
+          setInitialLoading(false)
+        }
+      }
+    })()
+
+    firstPageRequestPromiseRef.current = requestPromise
+
     try {
-      const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
-      setItems(page.items)
-      setHasMore(page.hasMore)
-      setNextOffset(page.items.length)
-    } catch {
-      setFeedError('Не удалось загрузить ленту')
-      setItems([])
-      setHasMore(false)
-      setNextOffset(0)
+      await requestPromise
     } finally {
-      setInitialLoading(false)
+      if (firstPageRequestPromiseRef.current === requestPromise) {
+        firstPageRequestPromiseRef.current = null
+      }
     }
-  }, [currentUserId, pageSize, targetUserId])
+  }, [currentUserId, feedQueryKey, pageSize, targetUserId])
 
   const loadMoreRuns = useCallback(async () => {
     if (initialLoading || loadingMore || !hasMore) return
@@ -128,13 +168,15 @@ export default function InfiniteWorkoutFeed({
   }, [currentUserId, hasMore, initialLoading, loadingMore, nextOffset, pageSize, targetUserId])
 
   useEffect(() => {
+    firstPageRequestKeyRef.current = feedQueryKey
+    firstPageRequestPromiseRef.current = null
     setItems([])
     setHasMore(true)
     setNextOffset(0)
     setActionError('')
     setActiveLikesRun(null)
     void loadFirstPage()
-  }, [loadFirstPage])
+  }, [feedQueryKey, loadFirstPage])
 
   useEffect(() => {
     function handleRunsUpdated() {

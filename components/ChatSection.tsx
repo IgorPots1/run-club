@@ -273,6 +273,14 @@ function ReactionChip({
   )
 }
 
+function formatVoiceMessageLabel(durationSeconds: number | null) {
+  if (typeof durationSeconds !== 'number' || durationSeconds <= 0) {
+    return 'Голосовое сообщение'
+  }
+
+  return `Голосовое сообщение • ${durationSeconds} сек`
+}
+
 function ChatMessageBody({
   message,
   isOwnMessage = false,
@@ -295,6 +303,8 @@ function ChatMessageBody({
   const isFallbackReplyPreview = Boolean(
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
   )
+  const hasVoiceAttachment = message.messageType === 'voice'
+  const voiceMessageLabel = formatVoiceMessageLabel(message.mediaDurationSeconds)
 
   return (
     <>
@@ -344,10 +354,21 @@ function ChatMessageBody({
           />
         </button>
       ) : null}
+      {hasVoiceAttachment ? (
+        <div
+          className={`mt-1 inline-flex max-w-full rounded-2xl px-3 py-2 text-sm ${
+            isOwnMessage
+              ? 'ml-auto bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
+              : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.07] dark:text-white/75'
+          }`}
+        >
+          {voiceMessageLabel}
+        </div>
+      ) : null}
       {message.text ? (
         <p
           className={`app-text-primary break-words whitespace-pre-wrap text-sm leading-6 ${
-            message.replyTo || message.imageUrl ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
+            message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
           } ${
             isOwnMessage ? 'text-right' : ''
           }`}
@@ -896,7 +917,7 @@ export default function ChatSection({
       return
     }
 
-    if (nextEditingMessage.imageUrl) {
+    if (nextEditingMessage.messageType !== 'text') {
       clearEditingMessage()
     }
   }, [editingMessageId, messages])
@@ -1465,8 +1486,8 @@ export default function ChatSection({
       const nextEditedAt = new Date().toISOString()
 
       if (editingMessageId) {
-        if (!editingMessageSnapshot || editingMessageSnapshot.imageUrl) {
-          setSubmitError('Нельзя редактировать сообщение с изображением')
+        if (!editingMessageSnapshot || editingMessageSnapshot.messageType !== 'text') {
+          setSubmitError('Нельзя редактировать нетекстовое сообщение')
           clearEditingMessage()
           return
         }
@@ -1495,6 +1516,7 @@ export default function ChatSection({
                   ? {
                       ...message,
                       text: trimmedDraftMessage,
+                      previewText: trimmedDraftMessage,
                       editedAt: nextEditedAt,
                     }
                   : message
@@ -1642,8 +1664,8 @@ export default function ChatSection({
   }
 
   function handleEditMessage(message: ChatMessageItem) {
-    if (message.imageUrl) {
-      setSubmitError('Нельзя редактировать сообщение с изображением')
+    if (message.messageType !== 'text') {
+      setSubmitError('Нельзя редактировать нетекстовое сообщение')
       setSelectedMessage(null)
       setIsActionSheetOpen(false)
       return
@@ -1849,7 +1871,7 @@ export default function ChatSection({
                 <div className="min-w-0">
                   <p className="app-text-primary truncate text-sm font-medium">Редактирование сообщения</p>
                   <p className="app-text-secondary truncate text-sm">
-                    {editingMessage.text || (editingMessage.imageUrl ? 'Подпись к фото' : 'Измените текст сообщения')}
+                    {editingMessage.previewText || 'Измените текст сообщения'}
                   </p>
                 </div>
                 <button
@@ -1866,7 +1888,7 @@ export default function ChatSection({
               <div className="mb-1.5 flex items-start justify-between gap-2.5 rounded-[18px] bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
                 <div className="min-w-0">
                   <p className="app-text-primary truncate text-sm font-medium">{replyingToMessage.displayName}</p>
-                  <p className="app-text-secondary truncate text-sm">{replyingToMessage.text || 'Фото'}</p>
+                  <p className="app-text-secondary truncate text-sm">{replyingToMessage.previewText || 'Сообщение'}</p>
                 </div>
                 <button
                   type="button"

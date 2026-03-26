@@ -29,8 +29,8 @@ export default function ChatMessageActions({
   const router = useRouter()
 
   const isOwnMessage = currentUserId === message.userId
-  const canEditMessage = isOwnMessage && !message.imageUrl
-  const messagePreview = message.text.trim()
+  const canEditMessage = isOwnMessage && message.messageType === 'text'
+  const messagePreview = message.previewText
 
   async function handleCopy() {
     try {

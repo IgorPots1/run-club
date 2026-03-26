@@ -107,7 +107,7 @@ function getLastMessagePreview(
     return fallbackText
   }
 
-  const previewText = lastMessage.text.trim() || 'Новое сообщение'
+  const previewText = lastMessage.previewText || 'Новое сообщение'
 
   if (!prefixSender) {
     return previewText

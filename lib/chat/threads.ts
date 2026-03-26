@@ -23,6 +23,10 @@ type ChatThreadLastMessageRow = {
   thread_id: string
   user_id: string
   text: string
+  message_type: string | null
+  image_url: string | null
+  media_url: string | null
+  media_duration_seconds: number | null
   created_at: string
   is_deleted?: boolean
 }
@@ -32,8 +36,12 @@ export type ChatThreadLastMessage = {
   threadId: string
   userId: string
   text: string
+  messageType: 'text' | 'image' | 'voice'
+  mediaUrl: string | null
+  mediaDurationSeconds: number | null
   createdAt: string
   senderDisplayName: string
+  previewText: string
 }
 
 export type ClubThread = ChatThreadRow & {
@@ -112,6 +120,38 @@ async function loadProfilesByUserIds(userIds: string[]) {
   ) as Record<string, ProfileRow>
 }
 
+function resolveThreadMessageType(message: Pick<ChatThreadLastMessageRow, 'message_type' | 'image_url'>) {
+  if (message.message_type === 'voice') {
+    return 'voice' as const
+  }
+
+  if (message.message_type === 'image' || message.image_url) {
+    return 'image' as const
+  }
+
+  return 'text' as const
+}
+
+function getThreadMessagePreviewText(message: Pick<ChatThreadLastMessageRow, 'text' | 'message_type' | 'image_url'>) {
+  const trimmedText = message.text.trim()
+
+  if (trimmedText) {
+    return trimmedText
+  }
+
+  const messageType = resolveThreadMessageType(message)
+
+  if (messageType === 'voice') {
+    return 'Голосовое сообщение'
+  }
+
+  if (messageType === 'image') {
+    return 'Фото'
+  }
+
+  return ''
+}
+
 async function loadLastMessageByThreadId(threadIds: string[]) {
   if (threadIds.length === 0) {
     return {}
@@ -119,7 +159,7 @@ async function loadLastMessageByThreadId(threadIds: string[]) {
 
   const { data, error } = await supabase
     .from('chat_messages')
-    .select('id, thread_id, user_id, text, created_at')
+    .select('id, thread_id, user_id, text, message_type, image_url, media_url, media_duration_seconds, created_at')
     .eq('is_deleted', false)
     .in('thread_id', threadIds)
     .order('created_at', { ascending: false })
@@ -141,24 +181,32 @@ async function loadLastMessageByThreadId(threadIds: string[]) {
   )
 
   return Object.fromEntries(
-    Object.entries(latestMessageRowByThreadId).map(([threadId, row]) => [
-      threadId,
-      {
-        id: row.id,
-        threadId: row.thread_id,
-        userId: row.user_id,
-        text: row.text,
-        createdAt: row.created_at,
-        senderDisplayName: getProfileDisplayName(profileById[row.user_id], 'Бегун'),
-      } satisfies ChatThreadLastMessage,
-    ])
+    Object.entries(latestMessageRowByThreadId).map(([threadId, row]) => {
+      const messageType = resolveThreadMessageType(row)
+
+      return [
+        threadId,
+        {
+          id: row.id,
+          threadId: row.thread_id,
+          userId: row.user_id,
+          text: row.text,
+          messageType,
+          mediaUrl: row.media_url ?? null,
+          mediaDurationSeconds: row.media_duration_seconds ?? null,
+          createdAt: row.created_at,
+          senderDisplayName: getProfileDisplayName(profileById[row.user_id], 'Бегун'),
+          previewText: getThreadMessagePreviewText(row),
+        } satisfies ChatThreadLastMessage,
+      ]
+    })
   ) as Record<string, ChatThreadLastMessage>
 }
 
 export async function loadChatThreadLastMessage(messageId: string): Promise<ChatThreadLastMessage | null> {
   const { data, error } = await supabase
     .from('chat_messages')
-    .select('id, thread_id, user_id, text, created_at, is_deleted')
+    .select('id, thread_id, user_id, text, message_type, image_url, media_url, media_duration_seconds, created_at, is_deleted')
     .eq('id', messageId)
     .maybeSingle()
 
@@ -173,14 +221,19 @@ export async function loadChatThreadLastMessage(messageId: string): Promise<Chat
   }
 
   const profileById = await loadProfilesByUserIds([messageRow.user_id])
+  const messageType = resolveThreadMessageType(messageRow)
 
   return {
     id: messageRow.id,
     threadId: messageRow.thread_id,
     userId: messageRow.user_id,
     text: messageRow.text,
+    messageType,
+    mediaUrl: messageRow.media_url ?? null,
+    mediaDurationSeconds: messageRow.media_duration_seconds ?? null,
     createdAt: messageRow.created_at,
     senderDisplayName: getProfileDisplayName(profileById[messageRow.user_id], 'Бегун'),
+    previewText: getThreadMessagePreviewText(messageRow),
   }
 }
 

@@ -5,11 +5,16 @@ import { supabase } from './supabase'
 export const CHAT_MESSAGE_MAX_LENGTH = 500
 export const CHAT_MEDIA_BUCKET = 'chat-media'
 
+export type ChatMessageType = 'text' | 'image' | 'voice'
+
 type ChatMessageRow = {
   id: string
   user_id: string
   text: string
+  message_type: string | null
   image_url: string | null
+  media_url: string | null
+  media_duration_seconds: number | null
   edited_at: string | null
   created_at: string
   is_deleted: boolean
@@ -41,7 +46,10 @@ export type ChatMessageItem = {
   id: string
   userId: string
   text: string
+  messageType: ChatMessageType
   imageUrl: string | null
+  mediaUrl: string | null
+  mediaDurationSeconds: number | null
   editedAt: string | null
   createdAt: string
   createdAtLabel: string
@@ -60,6 +68,7 @@ export type ChatMessageItem = {
     count: number
     userIds: string[]
   }[]
+  previewText: string
 }
 
 async function loadProfilesByUserIds(userIds: string[]) {
@@ -101,14 +110,57 @@ function toChatReplyPreview(replyToId: string, message: ChatMessageRow | null | 
     id: message.id,
     userId: message.user_id,
     displayName: getProfileDisplayName(profile, 'Бегун'),
-    text: message.text.trim() || (message.image_url ? 'Фото' : ''),
+    text: getChatMessagePreviewText(message),
   }
+}
+
+function resolveChatMessageType(message: Pick<ChatMessageRow, 'message_type' | 'image_url'>): ChatMessageType {
+  if (message.message_type === 'voice') {
+    return 'voice'
+  }
+
+  if (message.message_type === 'image' || message.image_url) {
+    return 'image'
+  }
+
+  return 'text'
+}
+
+function resolveChatMessageImageUrl(message: Pick<ChatMessageRow, 'message_type' | 'image_url' | 'media_url'>) {
+  if (message.image_url) {
+    return message.image_url
+  }
+
+  return resolveChatMessageType(message) === 'image' ? message.media_url ?? null : null
+}
+
+function getChatMessagePreviewText(message: Pick<ChatMessageRow, 'text' | 'message_type' | 'image_url' | 'media_url'>) {
+  const trimmedText = message.text.trim()
+
+  if (trimmedText) {
+    return trimmedText
+  }
+
+  const messageType = resolveChatMessageType(message)
+
+  if (messageType === 'voice') {
+    return 'Голосовое сообщение'
+  }
+
+  if (messageType === 'image') {
+    return 'Фото'
+  }
+
+  return ''
 }
 
 function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
   return {
     ...message,
+    message_type: message.message_type ?? null,
     image_url: message.image_url ?? null,
+    media_url: message.media_url ?? null,
+    media_duration_seconds: message.media_duration_seconds ?? null,
     edited_at: message.edited_at ?? null,
   }
 }
@@ -166,11 +218,16 @@ function toChatMessageItem(
   replyToProfile?: ProfileRow,
   reactions: { emoji: string; count: number; userIds: string[] }[] = []
 ): ChatMessageItem {
+  const messageType = resolveChatMessageType(message)
+
   return {
     id: message.id,
     userId: message.user_id,
     text: message.text,
-    imageUrl: message.image_url ?? null,
+    messageType,
+    imageUrl: resolveChatMessageImageUrl(message),
+    mediaUrl: message.media_url ?? null,
+    mediaDurationSeconds: message.media_duration_seconds ?? null,
     editedAt: message.edited_at ?? null,
     createdAt: message.created_at,
     createdAtLabel: formatRunDateTimeLabel(message.created_at),
@@ -182,6 +239,7 @@ function toChatMessageItem(
       ? toChatReplyPreview(message.reply_to_id, replyToMessage, replyToProfile)
       : null,
     reactions,
+    previewText: getChatMessagePreviewText(message),
   }
 }
 
@@ -209,7 +267,7 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
 
   const replyMessagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .in('id', replyIds)
 
   if (threadId) {
@@ -438,7 +496,7 @@ export async function softDeleteChatMessage(messageId: string, userId: string, t
 export async function loadChatMessageItem(messageId: string, threadId?: string | null): Promise<ChatMessageItem | null> {
   const messageQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('id', messageId)
 
   if (threadId) {
@@ -487,7 +545,7 @@ export async function loadChatMessageById(messageId: string, threadId?: string |
 export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -540,7 +598,7 @@ export async function loadOlderChatMessages(
 ): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, image_url, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
     .eq('is_deleted', false)
     .or(`created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${beforeId})`)
     .order('created_at', { ascending: false })
