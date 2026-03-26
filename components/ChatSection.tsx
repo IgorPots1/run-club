@@ -351,7 +351,7 @@ function ReactionChip({
       onTouchStart={(event) => event.stopPropagation()}
       disabled={disabled}
       className={`relative inline-flex items-center overflow-visible rounded-full font-medium transition-transform duration-200 ease-out ${
-        compact ? 'gap-0.5 px-1.5 py-0.5 text-[10px]' : 'min-h-6 gap-1 px-1.5 py-[3px] text-[11px]'
+        compact ? 'gap-0.5 px-1.5 py-[2px] text-[10px]' : 'min-h-[22px] gap-0.5 px-2 py-[2px] text-[10px]'
       } ${
         isSelected
           ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
@@ -365,7 +365,7 @@ function ReactionChip({
       <span
         aria-hidden="true"
         className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 transition-all duration-200 ease-out ${
-          compact ? 'text-[11px]' : 'text-[13px]'
+          compact ? 'text-[10px]' : 'text-[12px]'
         } ${
           burstPhase === 'start'
             ? '-translate-y-1 scale-95 opacity-90'
@@ -383,12 +383,12 @@ function ReactionChip({
           className="h-4 w-4"
         />
       ) : visibleReactors.length > 0 ? (
-        <span className="relative mr-0.5 flex h-4.5 w-6 shrink-0 items-center">
+        <span className="relative mr-0.5 flex h-4 w-5.5 shrink-0 items-center">
           {visibleReactors.map((reactor, index) => (
             <span
               key={`${reactionKey}:${reactor.userId}`}
               className="absolute top-1/2 -translate-y-1/2"
-              style={{ left: `${index * 8}px` }}
+              style={{ left: `${index * 7}px` }}
             >
               <TinyUserAvatar
                 avatarUrl={reactor.avatarUrl}
@@ -815,10 +815,10 @@ function ChatMessageBody({
     <>
       {showSenderName ? (
         <p
-          className={`truncate font-medium ${
-            compactPreview ? 'text-[10px]' : 'text-[11px]'
+          className={`truncate ${
+            compactPreview ? 'text-[10px]' : 'text-[10px]'
           } ${
-            isOwnMessage ? 'app-text-secondary text-right' : 'app-text-primary'
+            isOwnMessage ? 'app-text-secondary text-right opacity-80' : 'app-text-secondary opacity-85'
           }`}
         >
           {message.displayName}
@@ -917,9 +917,9 @@ function ChatMessageBody({
       {message.text ? (
         <p
           className={`app-text-primary break-words whitespace-pre-wrap text-left text-sm ${
-            message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
+            message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-px' : ''
           } ${
-            compactPreview ? 'leading-5' : 'leading-[1.45]'
+            compactPreview ? 'leading-5' : 'leading-[1.42]'
           }`}
           style={
             compactPreview
@@ -935,7 +935,7 @@ function ChatMessageBody({
           {message.text}
         </p>
       ) : null}
-      <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-xs'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
+      <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1.5 text-[10px] opacity-70'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
         {message.createdAtLabel}
         {message.editedAt ? ' • изменено' : ''}
       </p>
@@ -3261,7 +3261,7 @@ export default function ChatSection({
                           ) : (
                             <div className="h-10 w-10 shrink-0" aria-hidden="true" />
                           )}
-                          <div className={`relative min-w-0 w-full max-w-[85%] ${isOwnMessage ? 'ml-auto' : ''}`}>
+                          <div className={`relative min-w-0 w-full max-w-[78%] ${isOwnMessage ? 'ml-auto' : ''}`}>
                             <div
                               aria-hidden="true"
                               className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
@@ -3293,7 +3293,7 @@ export default function ChatSection({
                               style={{
                                 transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
                               }}
-                              className={`chat-no-select relative z-[2] min-w-0 w-full rounded-[18px] px-3 py-2 shadow-none ${
+                              className={`chat-no-select relative z-[2] min-w-0 w-full rounded-[18px] px-3 py-1.5 shadow-none ${
                                 isOwnMessage
                                   ? 'bg-[#DCF8C6] dark:bg-green-900/40'
                                   : 'bg-black/[0.04] dark:bg-white/[0.07]'
