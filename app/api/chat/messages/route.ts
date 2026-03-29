@@ -334,25 +334,9 @@ async function sendChatMessagePushNotifications(
     )
     const notificationContent = getChatNotificationContent(context)
 
-    const { error: deliveryLogInsertError } = await supabaseAdmin
-      .from('push_delivery_log')
-      .insert(
-        allowedRecipientUserIds.map((recipientUserId) => ({
-          user_id: recipientUserId,
-          thread_id: context.threadId,
-        }))
-      )
-
-    if (deliveryLogInsertError) {
-      console.error('Failed to record push delivery log', {
-        threadId: context.threadId,
-        recipientUserIds: allowedRecipientUserIds,
-        error: deliveryLogInsertError.message,
-      })
-    }
-
     const results = await Promise.all(
       uniqueSubscriptions.map(async (subscription) => ({
+        userId: subscription.user_id,
         endpoint: subscription.endpoint,
         result: await (async () => {
           const endpointShort = subscription.endpoint.slice(0, 50)
@@ -387,6 +371,33 @@ async function sendChatMessagePushNotifications(
         })(),
       }))
     )
+
+    const successfulRecipientUserIds = Array.from(
+      new Set(
+        results
+          .filter(({ result }) => result.ok)
+          .map(({ userId }) => userId)
+      )
+    )
+
+    if (successfulRecipientUserIds.length > 0) {
+      const { error: deliveryLogInsertError } = await supabaseAdmin
+        .from('push_delivery_log')
+        .insert(
+          successfulRecipientUserIds.map((recipientUserId) => ({
+            user_id: recipientUserId,
+            thread_id: context.threadId,
+          }))
+        )
+
+      if (deliveryLogInsertError) {
+        console.error('Failed to record push delivery log', {
+          threadId: context.threadId,
+          recipientUserIds: successfulRecipientUserIds,
+          error: deliveryLogInsertError.message,
+        })
+      }
+    }
 
     const deadEndpoints = results
       .filter(({ result }) => result.statusCode === 404 || result.statusCode === 410)
