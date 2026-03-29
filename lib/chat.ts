@@ -346,31 +346,6 @@ function toChatMessageItem(
   }
 }
 
-async function resolveSafeReplyToId(replyToId?: string | null, threadId?: string | null) {
-  if (!replyToId) {
-    return null
-  }
-
-  const { data: originalReplyMessage, error: originalReplyMessageError } = await supabase
-    .from('chat_messages')
-    .select('id, thread_id')
-    .eq('id', replyToId)
-    .maybeSingle()
-
-  if (originalReplyMessageError) {
-    throw originalReplyMessageError
-  }
-
-  const originalThreadId = ((originalReplyMessage as Pick<ChatMessageRow, 'id' | 'thread_id'> | null) ?? null)?.thread_id ?? null
-  const currentThreadId = threadId ?? null
-
-  if (originalThreadId === currentThreadId) {
-    return replyToId
-  }
-
-  return null
-}
-
 async function loadChatReactionsByMessageIds(messageIds: string[]) {
   if (messageIds.length === 0) {
     return {}
@@ -416,6 +391,60 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
   ) as Record<string, ChatMessageRow>
 }
 
+type CreateChatMessageApiResult = {
+  error: Error | null
+}
+
+type CreateTextChatMessageApiPayload = {
+  kind?: 'text'
+  text?: string
+  imageUrl?: string | null
+  replyToId?: string | null
+  threadId?: string | null
+}
+
+type CreateVoiceChatMessageApiPayload = {
+  kind: 'voice'
+  mediaPath?: string
+  mediaDurationSeconds?: number | null
+  replyToId?: string | null
+  threadId?: string | null
+}
+
+async function createChatMessageViaApi(
+  payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
+): Promise<CreateChatMessageApiResult> {
+  try {
+    const response = await fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const result = await response.json().catch(() => null) as
+      | {
+          error?: string
+        }
+      | null
+
+    if (!response.ok) {
+      return {
+        error: new Error(result?.error ?? 'chat_message_create_failed'),
+      }
+    }
+
+    return {
+      error: null,
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error('chat_message_create_failed'),
+    }
+  }
+}
+
 export async function createChatMessage(
   userId: string,
   text: string,
@@ -433,14 +462,12 @@ export async function createChatMessage(
     throw new Error('message_too_long')
   }
 
-  const safeReplyToId = await resolveSafeReplyToId(replyToId, threadId)
-
-  return supabase.from('chat_messages').insert({
-    user_id: userId,
+  return createChatMessageViaApi({
+    kind: 'text',
     text: trimmedText,
-    image_url: imageUrl ?? null,
-    reply_to_id: safeReplyToId,
-    thread_id: threadId ?? null,
+    imageUrl: imageUrl ?? null,
+    replyToId: replyToId ?? null,
+    threadId: threadId ?? null,
   })
 }
 
@@ -457,17 +484,12 @@ export async function createVoiceChatMessage(
     throw new Error('empty_voice_message')
   }
 
-  const safeReplyToId = await resolveSafeReplyToId(replyToId, threadId)
-
-  return supabase.from('chat_messages').insert({
-    user_id: userId,
-    text: '',
-    message_type: 'voice',
-    media_url: trimmedMediaPath,
-    media_duration_seconds: mediaDurationSeconds ?? null,
-    image_url: null,
-    reply_to_id: safeReplyToId,
-    thread_id: threadId ?? null,
+  return createChatMessageViaApi({
+    kind: 'voice',
+    mediaPath: trimmedMediaPath,
+    mediaDurationSeconds: mediaDurationSeconds ?? null,
+    replyToId: replyToId ?? null,
+    threadId: threadId ?? null,
   })
 }
 
