@@ -48,13 +48,15 @@ type SenderProfileRow = {
 }
 
 type PushSubscriptionRow = {
+  user_id: string
   endpoint: string
   p256dh: string
   auth: string
 }
 
-type DirectChatDeliveryContext = {
-  recipientUserId: string
+type ChatDeliveryContext = {
+  threadType: 'club' | 'direct_coach'
+  recipientUserIds: string[]
   senderName: string
   messagePreview: string
   threadId: string
@@ -103,10 +105,10 @@ function getMessagePreview(message: Pick<InsertedChatMessageRow, 'text' | 'messa
   return ''
 }
 
-async function loadDirectChatDeliveryContext(
+async function loadChatDeliveryContext(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   message: InsertedChatMessageRow
-): Promise<DirectChatDeliveryContext | null> {
+): Promise<ChatDeliveryContext | null> {
   if (!message.thread_id) {
     return null
   }
@@ -121,18 +123,9 @@ async function loadDirectChatDeliveryContext(
     throw threadError
   }
 
-  const directThread = (thread as ChatThreadRow | null) ?? null
+  const chatThread = (thread as ChatThreadRow | null) ?? null
 
-  if (!directThread || directThread.type !== 'direct_coach') {
-    return null
-  }
-
-  const recipientUserId =
-    [directThread.owner_user_id, directThread.coach_user_id].find(
-      (userId): userId is string => Boolean(userId) && userId !== message.user_id
-    ) ?? null
-
-  if (!recipientUserId) {
+  if (!chatThread) {
     return null
   }
 
@@ -146,8 +139,29 @@ async function loadDirectChatDeliveryContext(
     throw senderProfileError
   }
 
+  const recipientUserIds =
+    chatThread.type === 'direct_coach'
+      ? [chatThread.owner_user_id, chatThread.coach_user_id].filter(
+          (userId): userId is string => Boolean(userId) && userId !== message.user_id
+        )
+      : (
+          (
+            await supabaseAdmin
+              .from('push_subscriptions')
+              .select('user_id')
+              .neq('user_id', message.user_id)
+          ).data as { user_id: string }[] | null
+        )?.map((row) => row.user_id) ?? []
+
+  const uniqueRecipientUserIds = Array.from(new Set(recipientUserIds))
+
+  if (uniqueRecipientUserIds.length === 0) {
+    return null
+  }
+
   return {
-    recipientUserId,
+    threadType: chatThread.type,
+    recipientUserIds: uniqueRecipientUserIds,
     senderName: getProfileDisplayName((senderProfile as SenderProfileRow | null) ?? null, 'Run Club'),
     messagePreview: getMessagePreview(message),
     threadId: message.thread_id,
@@ -156,21 +170,25 @@ async function loadDirectChatDeliveryContext(
 
 async function emitChatMessageCreatedEvent(
   message: InsertedChatMessageRow,
-  context: DirectChatDeliveryContext
+  context: ChatDeliveryContext
 ) {
   try {
-    await createAppEvent({
-      type: 'chat_message.created',
-      actorUserId: message.user_id,
-      targetUserId: context.recipientUserId,
-      entityType: 'chat_message',
-      entityId: message.id,
-      payload: {
-        threadId: context.threadId,
-        messagePreview: context.messagePreview,
-        senderName: context.senderName,
-      },
-    })
+    await Promise.all(
+      context.recipientUserIds.map((recipientUserId) =>
+        createAppEvent({
+          type: 'chat_message.created',
+          actorUserId: message.user_id,
+          targetUserId: recipientUserId,
+          entityType: 'chat_message',
+          entityId: message.id,
+          payload: {
+            threadId: context.threadId,
+            messagePreview: context.messagePreview,
+            senderName: context.senderName,
+          },
+        })
+      )
+    )
   } catch (error) {
     console.error('Failed to create chat message app event', {
       messageId: message.id,
@@ -183,13 +201,25 @@ async function emitChatMessageCreatedEvent(
 
 async function sendChatMessagePushNotifications(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
-  context: DirectChatDeliveryContext
+  context: ChatDeliveryContext
 ) {
   try {
-    const { data: subscriptions, error: subscriptionsError } = await supabaseAdmin
+    console.log('[push] recipients_resolved', {
+      threadType: context.threadType,
+      recipientUserCount: context.recipientUserIds.length,
+    })
+
+    const subscriptionsQuery = supabaseAdmin
       .from('push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .eq('user_id', context.recipientUserId)
+      .select('user_id, endpoint, p256dh, auth')
+
+    if (context.recipientUserIds.length === 1) {
+      subscriptionsQuery.eq('user_id', context.recipientUserIds[0]!)
+    } else {
+      subscriptionsQuery.in('user_id', context.recipientUserIds)
+    }
+
+    const { data: subscriptions, error: subscriptionsError } = await subscriptionsQuery
 
     if (subscriptionsError) {
       throw subscriptionsError
@@ -197,7 +227,7 @@ async function sendChatMessagePushNotifications(
 
     const subscriptionRows = (subscriptions as PushSubscriptionRow[] | null) ?? []
     console.log('[push] subscriptions_loaded', {
-      recipientId: context.recipientUserId,
+      threadType: context.threadType,
       count: subscriptionRows.length,
     })
 
@@ -205,8 +235,12 @@ async function sendChatMessagePushNotifications(
       return
     }
 
+    const uniqueSubscriptions = Array.from(
+      new Map(subscriptionRows.map((subscription) => [subscription.endpoint, subscription])).values()
+    )
+
     const results = await Promise.all(
-      subscriptionRows.map(async (subscription) => ({
+      uniqueSubscriptions.map(async (subscription) => ({
         endpoint: subscription.endpoint,
         result: await (async () => {
           const endpointShort = subscription.endpoint.slice(0, 50)
@@ -245,6 +279,12 @@ async function sendChatMessagePushNotifications(
       .map(({ endpoint }) => endpoint)
 
     if (deadEndpoints.length === 0) {
+      console.log('[push] send_summary', {
+        threadType: context.threadType,
+        recipientUserCount: context.recipientUserIds.length,
+        subscriptionCount: uniqueSubscriptions.length,
+        deadSubscriptionCount: 0,
+      })
       return
     }
 
@@ -257,19 +297,24 @@ async function sendChatMessagePushNotifications(
     const { error: deleteError } = await supabaseAdmin
       .from('push_subscriptions')
       .delete()
-      .eq('user_id', context.recipientUserId)
       .in('endpoint', deadEndpoints)
 
     if (deleteError) {
       console.error('Failed to delete dead push subscriptions', {
-        userId: context.recipientUserId,
         endpoints: deadEndpoints,
         error: deleteError.message,
       })
     }
+
+    console.log('[push] send_summary', {
+      threadType: context.threadType,
+      recipientUserCount: context.recipientUserIds.length,
+      subscriptionCount: uniqueSubscriptions.length,
+      deadSubscriptionCount: deadEndpoints.length,
+    })
   } catch (error) {
     console.error('Failed to send chat message push notifications', {
-      userId: context.recipientUserId,
+      recipientUserIds: context.recipientUserIds,
       threadId: context.threadId,
       error: error instanceof Error ? error.message : 'unknown_error',
     })
@@ -352,17 +397,22 @@ export async function POST(request: Request) {
 
     const message = data as InsertedChatMessageRow
     const supabaseAdmin = createSupabaseAdminClient()
-    const directChatDeliveryContext = await loadDirectChatDeliveryContext(supabaseAdmin, message)
+    const chatDeliveryContext = await loadChatDeliveryContext(supabaseAdmin, message)
 
-    if (directChatDeliveryContext) {
+    if (chatDeliveryContext) {
       console.log('[push] message_created', {
         messageId: message.id,
-        threadId: directChatDeliveryContext.threadId,
+        threadId: chatDeliveryContext.threadId,
         senderId: message.user_id,
-        recipientId: directChatDeliveryContext.recipientUserId,
+        recipientId:
+          chatDeliveryContext.recipientUserIds.length === 1
+            ? chatDeliveryContext.recipientUserIds[0]
+            : undefined,
+        recipientCount: chatDeliveryContext.recipientUserIds.length,
+        threadType: chatDeliveryContext.threadType,
       })
-      await emitChatMessageCreatedEvent(message, directChatDeliveryContext)
-      await sendChatMessagePushNotifications(supabaseAdmin, directChatDeliveryContext)
+      await emitChatMessageCreatedEvent(message, chatDeliveryContext)
+      await sendChatMessagePushNotifications(supabaseAdmin, chatDeliveryContext)
     }
 
     return NextResponse.json({
