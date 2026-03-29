@@ -72,8 +72,14 @@ self.addEventListener('notificationclick', (event) => {
         type: 'window',
         includeUncontrolled: true,
       })
-      const exactMatchClient = clientsArr.find((client) => client.url === url)
-      const sameOriginClient = clientsArr.find((client) => client.url.startsWith(self.location.origin))
+      const isReusableClient = (client) =>
+        client.focused === true || client.visibilityState === 'visible'
+      const exactMatchClient = clientsArr.find(
+        (client) => client.url === url && isReusableClient(client)
+      )
+      const sameOriginClient = clientsArr.find(
+        (client) => client.url.startsWith(self.location.origin) && isReusableClient(client)
+      )
       const bestClient = exactMatchClient ?? sameOriginClient
 
       if (bestClient && 'focus' in bestClient) {
