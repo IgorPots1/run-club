@@ -62,6 +62,11 @@ type ChatDeliveryContext = {
   threadId: string
 }
 
+type ChatNotificationContent = {
+  title: string
+  body: string
+}
+
 async function resolveSafeReplyToId(
   supabase: SupabaseClient,
   replyToId?: string | null,
@@ -103,6 +108,23 @@ function getMessagePreview(message: Pick<InsertedChatMessageRow, 'text' | 'messa
   }
 
   return ''
+}
+
+function getChatNotificationContent(context: Pick<ChatDeliveryContext, 'threadType' | 'senderName' | 'messagePreview'>): ChatNotificationContent {
+  const senderName = context.senderName || 'Run Club'
+  const messagePreview = context.messagePreview.trim()
+
+  if (context.threadType === 'club') {
+    return {
+      title: 'Клуб',
+      body: messagePreview ? `${senderName}: ${messagePreview}` : 'Новое сообщение в клубе',
+    }
+  }
+
+  return {
+    title: senderName,
+    body: messagePreview || 'Новое сообщение',
+  }
 }
 
 async function loadChatDeliveryContext(
@@ -238,6 +260,7 @@ async function sendChatMessagePushNotifications(
     const uniqueSubscriptions = Array.from(
       new Map(subscriptionRows.map((subscription) => [subscription.endpoint, subscription])).values()
     )
+    const notificationContent = getChatNotificationContent(context)
 
     const results = await Promise.all(
       uniqueSubscriptions.map(async (subscription) => ({
@@ -253,8 +276,8 @@ async function sendChatMessagePushNotifications(
             p256dh: subscription.p256dh,
             auth: subscription.auth,
             payload: {
-              title: context.senderName || 'Run Club',
-              body: context.messagePreview || 'Новое сообщение',
+              title: notificationContent.title,
+              body: notificationContent.body,
               threadId: context.threadId,
               threadType: context.threadType,
             },
