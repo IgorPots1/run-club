@@ -68,6 +68,12 @@ type ChatNotificationContent = {
   body: string
 }
 
+type PushDeliveryLogRow = {
+  user_id: string
+}
+
+const PUSH_DELIVERY_THROTTLE_WINDOW_MS = 15_000
+
 async function resolveSafeReplyToId(
   supabase: SupabaseClient,
   replyToId?: string | null,
@@ -250,19 +256,61 @@ async function sendChatMessagePushNotifications(
       return
     }
 
+    const recentDeliveryThreshold = new Date(Date.now() - PUSH_DELIVERY_THROTTLE_WINDOW_MS).toISOString()
+    const recentDeliveriesQuery = supabaseAdmin
+      .from('push_delivery_log')
+      .select('user_id')
+      .eq('thread_id', context.threadId)
+      .gte('sent_at', recentDeliveryThreshold)
+
+    if (unmutedRecipientUserIds.length === 1) {
+      recentDeliveriesQuery.eq('user_id', unmutedRecipientUserIds[0]!)
+    } else {
+      recentDeliveriesQuery.in('user_id', unmutedRecipientUserIds)
+    }
+
+    const { data: recentDeliveries, error: recentDeliveriesError } = await recentDeliveriesQuery
+
+    if (recentDeliveriesError) {
+      throw recentDeliveriesError
+    }
+
+    const recentlyDeliveredUserIds = new Set(
+      ((recentDeliveries as PushDeliveryLogRow[] | null) ?? []).map((delivery) => delivery.user_id)
+    )
+    const allowedRecipientUserIds = unmutedRecipientUserIds.filter((recipientUserId) => {
+      if (recentlyDeliveredUserIds.has(recipientUserId)) {
+        console.log('[push] skipped_recent_delivery', {
+          recipientId: recipientUserId,
+          threadId: context.threadId,
+        })
+        return false
+      }
+
+      console.log('[push] push_allowed', {
+        recipientId: recipientUserId,
+        threadId: context.threadId,
+      })
+      return true
+    })
+
+    if (allowedRecipientUserIds.length === 0) {
+      return
+    }
+
     console.log('[push] recipients_resolved', {
       threadType: context.threadType,
-      recipientUserCount: unmutedRecipientUserIds.length,
+      recipientUserCount: allowedRecipientUserIds.length,
     })
 
     const subscriptionsQuery = supabaseAdmin
       .from('push_subscriptions')
       .select('user_id, endpoint, p256dh, auth')
 
-    if (unmutedRecipientUserIds.length === 1) {
-      subscriptionsQuery.eq('user_id', unmutedRecipientUserIds[0]!)
+    if (allowedRecipientUserIds.length === 1) {
+      subscriptionsQuery.eq('user_id', allowedRecipientUserIds[0]!)
     } else {
-      subscriptionsQuery.in('user_id', unmutedRecipientUserIds)
+      subscriptionsQuery.in('user_id', allowedRecipientUserIds)
     }
 
     const { data: subscriptions, error: subscriptionsError } = await subscriptionsQuery
@@ -285,6 +333,23 @@ async function sendChatMessagePushNotifications(
       new Map(subscriptionRows.map((subscription) => [subscription.endpoint, subscription])).values()
     )
     const notificationContent = getChatNotificationContent(context)
+
+    const { error: deliveryLogInsertError } = await supabaseAdmin
+      .from('push_delivery_log')
+      .insert(
+        allowedRecipientUserIds.map((recipientUserId) => ({
+          user_id: recipientUserId,
+          thread_id: context.threadId,
+        }))
+      )
+
+    if (deliveryLogInsertError) {
+      console.error('Failed to record push delivery log', {
+        threadId: context.threadId,
+        recipientUserIds: allowedRecipientUserIds,
+        error: deliveryLogInsertError.message,
+      })
+    }
 
     const results = await Promise.all(
       uniqueSubscriptions.map(async (subscription) => ({
@@ -330,7 +395,7 @@ async function sendChatMessagePushNotifications(
     if (deadEndpoints.length === 0) {
       console.log('[push] send_summary', {
         threadType: context.threadType,
-        recipientUserCount: unmutedRecipientUserIds.length,
+        recipientUserCount: allowedRecipientUserIds.length,
         subscriptionCount: uniqueSubscriptions.length,
         deadSubscriptionCount: 0,
       })
@@ -357,7 +422,7 @@ async function sendChatMessagePushNotifications(
 
     console.log('[push] send_summary', {
       threadType: context.threadType,
-      recipientUserCount: unmutedRecipientUserIds.length,
+      recipientUserCount: allowedRecipientUserIds.length,
       subscriptionCount: uniqueSubscriptions.length,
       deadSubscriptionCount: deadEndpoints.length,
     })
