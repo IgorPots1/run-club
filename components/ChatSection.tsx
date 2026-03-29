@@ -2320,6 +2320,15 @@ export default function ChatSection({
     }
 
     const scrollHeightDelta = scrollContainer.scrollHeight - pendingRestore.scrollHeight
+    if (scrollHeightDelta === 0) {
+      prependScrollRestoreRef.current = null
+      return
+    }
+
+    console.log('[chat] restore scroll after prepend', {
+      previousScrollTop: pendingRestore.scrollTop,
+      scrollHeightDelta,
+    })
     scrollContainer.scrollTop = Math.max(0, pendingRestore.scrollTop + scrollHeightDelta)
     prependScrollRestoreRef.current = null
   }, [messages])
