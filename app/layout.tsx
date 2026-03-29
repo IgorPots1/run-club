@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import UnreadBadgeSync from "@/components/chat/UnreadBadgeSync";
 import MobileTabBar from "../components/MobileTabBar";
 import Navbar from "../components/Navbar";
 import PwaRegister from "../components/PwaRegister";
@@ -78,6 +79,7 @@ export default async function RootLayout({
       <body className="min-h-screen">
         <PwaRegister />
         <VoiceStreamLifecycle />
+        <UnreadBadgeSync />
         <div
           className={`app-shell mx-auto min-h-screen max-w-xl overflow-x-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >
