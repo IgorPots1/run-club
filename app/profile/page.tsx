@@ -12,6 +12,7 @@ import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
+import { subscribeToPush } from '@/lib/push/subscribeToPush'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
@@ -125,6 +126,8 @@ function ProfilePageContent() {
   const [saveMessage, setSaveMessage] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
   const [showStravaConnectedToast, setShowStravaConnectedToast] = useState(false)
+  const [subscribingPush, setSubscribingPush] = useState(false)
+  const [pushMessage, setPushMessage] = useState('')
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const hasShownStravaConnectedToastRef = useRef(false)
 
@@ -351,14 +354,6 @@ function ProfilePageContent() {
     setSaveMessage('')
 
     try {
-      const payload = {
-        id: user.id,
-        email: user.email ?? email,
-        name: nextName || null,
-        nickname: nextNickname || null,
-        avatar_url: profile?.avatar_url ?? null,
-      }
-
       const { error, data } = await updateProfileById({
         id: user.id,
         name: nextName || null,
@@ -643,6 +638,37 @@ function ProfilePageContent() {
       setPageError('')
     } finally {
       setSyncingStrava(false)
+    }
+  }
+
+  async function handleSubscribePush() {
+    if (subscribingPush) {
+      return
+    }
+
+    setSubscribingPush(true)
+    setPushMessage('')
+    setPageError('')
+
+    try {
+      await subscribeToPush()
+      setPushMessage('Уведомления включены')
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.message : 'push_subscription_failed'
+
+      if (errorCode === 'notification_permission_denied') {
+        setPageError('Разрешите уведомления в настройках браузера или устройства')
+      } else if (errorCode === 'notification_permission_not_granted') {
+        setPageError('Разрешение на уведомления не выдано')
+      } else if (errorCode === 'service_worker_not_supported' || errorCode === 'notifications_not_supported' || errorCode === 'push_not_supported') {
+        setPageError('Уведомления не поддерживаются на этом устройстве')
+      } else if (errorCode === 'missing_vapid_public_key') {
+        setPageError('Не настроен публичный ключ уведомлений')
+      } else {
+        setPageError('Не удалось включить уведомления')
+      }
+    } finally {
+      setSubscribingPush(false)
     }
   }
 
@@ -985,6 +1011,21 @@ function ProfilePageContent() {
               {syncingStrava ? 'Синхронизация...' : 'Синхронизировать Strava'}
             </button>
             {stravaSyncMessage ? <p className="app-text-secondary text-sm">{stravaSyncMessage}</p> : null}
+          </div>
+          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-lg font-semibold">Уведомления</h2>
+            <p className="app-text-secondary text-sm">
+              Включите push-уведомления для сообщений и важных событий клуба.
+            </p>
+            <button
+              type="button"
+              onClick={handleSubscribePush}
+              disabled={subscribingPush}
+              className="app-button-primary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
+              {subscribingPush ? 'Подключаем...' : 'Включить уведомления'}
+            </button>
+            {pushMessage ? <p className="text-sm text-green-700">{pushMessage}</p> : null}
           </div>
           <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
