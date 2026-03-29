@@ -351,6 +351,7 @@ async function sendChatMessagePushNotifications(
             payload: {
               title: notificationContent.title,
               body: notificationContent.body,
+              targetUrl: `/messages/${context.threadId}`,
               threadId: context.threadId,
               threadType: context.threadType,
             },
