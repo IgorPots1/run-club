@@ -39,6 +39,7 @@ type ChatSectionProps = {
 const LONG_PRESS_MS = 450
 const INITIAL_CHAT_MESSAGE_LIMIT = 10
 const OLDER_CHAT_BATCH_LIMIT = 10
+const AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES = 12
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
@@ -1784,6 +1785,76 @@ export default function ChatSection({
     }
   }, [currentUserId, lastReadAt])
 
+  const loadOlderMessages = useCallback(async (
+    { requireNearTop = true }: { requireNearTop?: boolean } = {}
+  ) => {
+    if (
+      !currentUserId ||
+      !oldestLoadedMessageCreatedAt ||
+      !oldestLoadedMessageId
+    ) {
+      prependScrollRestoreRef.current = null
+      return null
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer || isLoadingOlderMessagesRef.current) {
+      return null
+    }
+
+    if (requireNearTop && scrollContainer.scrollTop > 80) {
+      return null
+    }
+
+    isLoadingOlderMessagesRef.current = true
+    setIsLoadingOlderMessages(true)
+    prependScrollRestoreRef.current = {
+      scrollHeight: scrollContainer.scrollHeight,
+      scrollTop: scrollContainer.scrollTop,
+    }
+
+    try {
+      const olderMessages = await loadOlderChatMessages(
+        oldestLoadedMessageCreatedAt,
+        oldestLoadedMessageId,
+        OLDER_CHAT_BATCH_LIMIT,
+        threadId
+      )
+
+      if (olderMessages.length === 0) {
+        prependScrollRestoreRef.current = null
+        setHasMoreOlderMessages(false)
+        return {
+          didLoad: false,
+          hasMoreOlderMessages: false,
+        }
+      }
+
+      const nextHasMoreOlderMessages = olderMessages.length === OLDER_CHAT_BATCH_LIMIT
+
+      setHasMoreOlderMessages(nextHasMoreOlderMessages)
+      setMessages((currentMessages) => prependMessages(currentMessages, olderMessages))
+
+      return {
+        didLoad: true,
+        hasMoreOlderMessages: nextHasMoreOlderMessages,
+      }
+    } catch {
+      prependScrollRestoreRef.current = null
+      return null
+    } finally {
+      isLoadingOlderMessagesRef.current = false
+      setIsLoadingOlderMessages(false)
+    }
+  }, [
+    currentUserId,
+    oldestLoadedMessageCreatedAt,
+    oldestLoadedMessageId,
+    prependMessages,
+    threadId,
+  ])
+
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
@@ -2290,52 +2361,6 @@ export default function ChatSection({
       return
     }
 
-    async function loadOlderMessages() {
-      const oldestCreatedAt = oldestLoadedMessageCreatedAt
-      const oldestMessageId = oldestLoadedMessageId
-
-      if (!oldestCreatedAt || !oldestMessageId) {
-        prependScrollRestoreRef.current = null
-        return
-      }
-
-      const scrollContainer = scrollContainerRef.current
-
-      if (!scrollContainer || scrollContainer.scrollTop > 80 || isLoadingOlderMessagesRef.current) {
-        return
-      }
-
-      isLoadingOlderMessagesRef.current = true
-      setIsLoadingOlderMessages(true)
-      prependScrollRestoreRef.current = {
-        scrollHeight: scrollContainer.scrollHeight,
-        scrollTop: scrollContainer.scrollTop,
-      }
-
-      try {
-        const olderMessages = await loadOlderChatMessages(
-          oldestCreatedAt,
-          oldestMessageId,
-          OLDER_CHAT_BATCH_LIMIT,
-          threadId
-        )
-
-        if (olderMessages.length === 0) {
-          prependScrollRestoreRef.current = null
-          setHasMoreOlderMessages(false)
-          return
-        }
-
-        setHasMoreOlderMessages(olderMessages.length === OLDER_CHAT_BATCH_LIMIT)
-        setMessages((currentMessages) => prependMessages(currentMessages, olderMessages))
-      } catch {
-        prependScrollRestoreRef.current = null
-      } finally {
-        isLoadingOlderMessagesRef.current = false
-        setIsLoadingOlderMessages(false)
-      }
-    }
-
     function handleScroll() {
       void loadOlderMessages()
     }
@@ -2354,10 +2379,82 @@ export default function ChatSection({
   }, [
     hasMoreOlderMessages,
     currentUserId,
+    loadOlderMessages,
     loading,
+  ])
+
+  useEffect(() => {
+    if (
+      loading ||
+      messages.length === 0 ||
+      !hasMoreOlderMessages ||
+      !currentUserId ||
+      !oldestLoadedMessageCreatedAt ||
+      !oldestLoadedMessageId
+    ) {
+      return
+    }
+
+    let isCancelled = false
+    let frameId: number | null = null
+
+    async function waitForLayout() {
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve())
+        })
+      })
+    }
+
+    async function autoLoadOlderMessagesToFillViewport() {
+      await waitForLayout()
+
+      let remainingBatches = AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES
+      let canLoadMore = hasMoreOlderMessages
+
+      while (!isCancelled && canLoadMore && remainingBatches > 0) {
+        const scrollContainer = scrollContainerRef.current
+
+        if (!scrollContainer || scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+          return
+        }
+
+        console.log('[chat] auto-loading older messages to fill viewport', {
+          threadId,
+          remainingBatches,
+        })
+
+        const result = await loadOlderMessages({ requireNearTop: false })
+
+        if (isCancelled || !result?.didLoad) {
+          return
+        }
+
+        canLoadMore = result.hasMoreOlderMessages
+        remainingBatches -= 1
+        await waitForLayout()
+      }
+    }
+
+    frameId = window.requestAnimationFrame(() => {
+      void autoLoadOlderMessagesToFillViewport()
+    })
+
+    return () => {
+      isCancelled = true
+
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+    }
+  }, [
+    currentUserId,
+    hasMoreOlderMessages,
+    loadOlderMessages,
+    loading,
+    messages.length,
     oldestLoadedMessageCreatedAt,
     oldestLoadedMessageId,
-    prependMessages,
     threadId,
   ])
 
