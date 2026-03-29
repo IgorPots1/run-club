@@ -53,6 +53,11 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
   }
 
   try {
+    console.log('[push] payload', {
+      title: input.payload.title,
+      body: input.payload.body,
+    })
+
     await webpush.sendNotification(
       {
         endpoint: input.endpoint,
@@ -78,11 +83,19 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
       typeof error.statusCode === 'number'
         ? error.statusCode
         : undefined
+    const body =
+      typeof error === 'object' &&
+      error !== null &&
+      'body' in error &&
+      typeof error.body === 'string'
+        ? error.body
+        : undefined
+    const endpointShort = input.endpoint.slice(0, 50)
 
-    console.error('Failed to send web push', {
-      endpoint: input.endpoint,
+    console.error('[push] webpush_error', {
       statusCode,
-      error: error instanceof Error ? error.message : 'unknown_error',
+      body,
+      endpointShort,
     })
 
     return {

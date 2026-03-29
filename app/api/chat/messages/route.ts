@@ -196,6 +196,10 @@ async function sendChatMessagePushNotifications(
     }
 
     const subscriptionRows = (subscriptions as PushSubscriptionRow[] | null) ?? []
+    console.log('[push] subscriptions_loaded', {
+      recipientId: context.recipientUserId,
+      count: subscriptionRows.length,
+    })
 
     if (subscriptionRows.length === 0) {
       return
@@ -204,15 +208,35 @@ async function sendChatMessagePushNotifications(
     const results = await Promise.all(
       subscriptionRows.map(async (subscription) => ({
         endpoint: subscription.endpoint,
-        result: await sendWebPush({
-          endpoint: subscription.endpoint,
-          p256dh: subscription.p256dh,
-          auth: subscription.auth,
-          payload: {
-            title: context.senderName || 'Run Club',
-            body: context.messagePreview || 'Новое сообщение',
-          },
-        }),
+        result: await (async () => {
+          const endpointShort = subscription.endpoint.slice(0, 50)
+          console.log('[push] sending', {
+            endpointShort,
+          })
+
+          const result = await sendWebPush({
+            endpoint: subscription.endpoint,
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+            payload: {
+              title: context.senderName || 'Run Club',
+              body: context.messagePreview || 'Новое сообщение',
+            },
+          })
+
+          if (result.ok) {
+            console.log('[push] success', {
+              endpointShort,
+            })
+          } else {
+            console.error('[push] error', {
+              statusCode: result.statusCode,
+              message: 'send_failed',
+            })
+          }
+
+          return result
+        })(),
       }))
     )
 
@@ -223,6 +247,12 @@ async function sendChatMessagePushNotifications(
     if (deadEndpoints.length === 0) {
       return
     }
+
+    deadEndpoints.forEach((endpoint) => {
+      console.log('[push] deleting_dead_subscription', {
+        endpointShort: endpoint.slice(0, 50),
+      })
+    })
 
     const { error: deleteError } = await supabaseAdmin
       .from('push_subscriptions')
@@ -325,6 +355,12 @@ export async function POST(request: Request) {
     const directChatDeliveryContext = await loadDirectChatDeliveryContext(supabaseAdmin, message)
 
     if (directChatDeliveryContext) {
+      console.log('[push] message_created', {
+        messageId: message.id,
+        threadId: directChatDeliveryContext.threadId,
+        senderId: message.user_id,
+        recipientId: directChatDeliveryContext.recipientUserId,
+      })
       await emitChatMessageCreatedEvent(message, directChatDeliveryContext)
       await sendChatMessagePushNotifications(supabaseAdmin, directChatDeliveryContext)
     }
