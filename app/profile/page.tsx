@@ -12,7 +12,12 @@ import { formatDistanceKm } from '@/lib/format'
 import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
-import { subscribeToPush } from '@/lib/push/subscribeToPush'
+import {
+  getPushSubscriptionState,
+  isPushSupportedInCurrentContext,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from '@/lib/push/subscribeToPush'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
 import { loadChallengeXpByUser } from '@/lib/user-challenges'
@@ -85,6 +90,35 @@ function StravaIcon() {
   )
 }
 
+type SwitchProps = {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  disabled?: boolean
+  ariaLabel: string
+  ariaDescribedBy?: string
+}
+
+function Switch({ checked, onCheckedChange, disabled = false, ariaLabel, ariaDescribedBy }: SwitchProps) {
+  return (
+    <label className={`relative inline-flex shrink-0 items-center ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+      <input
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        onChange={(event) => {
+          onCheckedChange(event.target.checked)
+        }}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
+        role="switch"
+      />
+      <span className="h-7 w-12 rounded-full bg-[var(--surface-interactive)] transition-colors duration-200 peer-checked:bg-[var(--accent-strong)] peer-disabled:bg-[var(--surface-interactive)]" />
+      <span className="pointer-events-none absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 peer-checked:translate-x-5" />
+    </label>
+  )
+}
+
 export default function ProfilePage() {
   return (
     <Suspense fallback={null}>
@@ -126,8 +160,11 @@ function ProfilePageContent() {
   const [saveMessage, setSaveMessage] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
   const [showStravaConnectedToast, setShowStravaConnectedToast] = useState(false)
-  const [subscribingPush, setSubscribingPush] = useState(false)
-  const [pushMessage, setPushMessage] = useState('')
+  const [loadingNotificationsStatus, setLoadingNotificationsStatus] = useState(true)
+  const [updatingNotifications, setUpdatingNotifications] = useState(false)
+  const [notificationsSupported, setNotificationsSupported] = useState(false)
+  const [isNotificationsEnabled, setNotificationsEnabled] = useState(false)
+  const [notificationsError, setNotificationsError] = useState('')
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const hasShownStravaConnectedToastRef = useRef(false)
 
@@ -252,6 +289,28 @@ function ProfilePageContent() {
     }
   }, [])
 
+  const loadPushStatus = useCallback(async (isMounted = true) => {
+    setLoadingNotificationsStatus(true)
+
+    try {
+      const nextPushState = await getPushSubscriptionState()
+
+      if (!isMounted) return
+
+      setNotificationsSupported(nextPushState.supported)
+      setNotificationsEnabled(nextPushState.subscribed)
+    } catch {
+      if (!isMounted) return
+
+      setNotificationsSupported(false)
+      setNotificationsEnabled(false)
+    } finally {
+      if (isMounted) {
+        setLoadingNotificationsStatus(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     let isMounted = true
 
@@ -303,6 +362,18 @@ function ProfilePageContent() {
       isMounted = false
     }
   }, [loadStravaStatus, user])
+
+  useEffect(() => {
+    if (!user) return
+
+    let isMounted = true
+
+    void loadPushStatus(isMounted)
+
+    return () => {
+      isMounted = false
+    }
+  }, [loadPushStatus, user])
 
   useEffect(() => {
     const stravaStatus = searchParams.get('strava')
@@ -641,34 +712,57 @@ function ProfilePageContent() {
     }
   }
 
-  async function handleSubscribePush() {
-    if (subscribingPush) {
+  async function handleToggleNotifications(checked: boolean) {
+    if (updatingNotifications || loadingNotificationsStatus || !isPushSupportedInCurrentContext()) {
       return
     }
 
-    setSubscribingPush(true)
-    setPushMessage('')
+    const previousEnabled = isNotificationsEnabled
+
+    setUpdatingNotifications(true)
+    setNotificationsError('')
     setPageError('')
+    setNotificationsEnabled(checked)
 
     try {
-      await subscribeToPush()
-      setPushMessage('Уведомления включены')
+      if (checked) {
+        const permission = await Notification.requestPermission()
+
+        if (permission !== 'granted') {
+          setNotificationsEnabled(false)
+          setNotificationsError(
+            permission === 'denied'
+              ? 'Разрешите уведомления в настройках браузера или устройства'
+              : 'Разрешение на уведомления не выдано'
+          )
+          return
+        }
+
+        await subscribeToPush()
+      } else {
+        await unsubscribeFromPush()
+      }
     } catch (error) {
+      setNotificationsEnabled(previousEnabled)
+
       const errorCode = error instanceof Error ? error.message : 'push_subscription_failed'
 
       if (errorCode === 'notification_permission_denied') {
-        setPageError('Разрешите уведомления в настройках браузера или устройства')
+        setNotificationsError('Разрешите уведомления в настройках браузера или устройства')
       } else if (errorCode === 'notification_permission_not_granted') {
-        setPageError('Разрешение на уведомления не выдано')
+        setNotificationsError('Разрешение на уведомления не выдано')
       } else if (errorCode === 'service_worker_not_supported' || errorCode === 'notifications_not_supported' || errorCode === 'push_not_supported') {
-        setPageError('Уведомления не поддерживаются на этом устройстве')
+        setNotificationsSupported(false)
+        setNotificationsError('Уведомления недоступны на этом устройстве')
       } else if (errorCode === 'missing_vapid_public_key') {
-        setPageError('Не настроен публичный ключ уведомлений')
+        setNotificationsError('Не настроен публичный ключ уведомлений')
+      } else if (checked) {
+        setNotificationsError('Не удалось включить уведомления')
       } else {
-        setPageError('Не удалось включить уведомления')
+        setNotificationsError('Не удалось выключить уведомления')
       }
     } finally {
-      setSubscribingPush(false)
+      setUpdatingNotifications(false)
     }
   }
 
@@ -735,6 +829,15 @@ function ProfilePageContent() {
   const isChangePasswordDisabled = changingPassword || !isPasswordFormValid
   const stravaConnected = stravaConnectionState === 'connected'
   const stravaReconnectRequired = stravaConnectionState === 'reconnect_required'
+  const isNotificationsUnavailable = !notificationsSupported
+  const isNotificationsToggleDisabled = isNotificationsUnavailable || loadingNotificationsStatus || updatingNotifications
+  const notificationsSubtitle = loadingNotificationsStatus
+    ? 'Проверяем статус уведомлений...'
+    : isNotificationsUnavailable
+      ? 'Уведомления недоступны на этом устройстве'
+      : isNotificationsEnabled
+        ? 'Push-уведомления включены'
+        : 'Push-уведомления выключены'
 
   if (profileDataLoading) {
     return (
@@ -1012,20 +1115,25 @@ function ProfilePageContent() {
             </button>
             {stravaSyncMessage ? <p className="app-text-secondary text-sm">{stravaSyncMessage}</p> : null}
           </div>
-          <div className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-lg font-semibold">Уведомления</h2>
-            <p className="app-text-secondary text-sm">
-              Включите push-уведомления для сообщений и важных событий клуба.
-            </p>
-            <button
-              type="button"
-              onClick={handleSubscribePush}
-              disabled={subscribingPush}
-              className="app-button-primary min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-            >
-              {subscribingPush ? 'Подключаем...' : 'Включить уведомления'}
-            </button>
-            {pushMessage ? <p className="text-sm text-green-700">{pushMessage}</p> : null}
+          <div className="app-card mb-8 rounded-2xl border p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="app-text-primary text-lg font-semibold">Уведомления</h2>
+                <p id="push-notifications-subtitle" className="app-text-secondary mt-1 text-sm">
+                  {notificationsSubtitle}
+                </p>
+                {notificationsError ? <p className="mt-2 text-xs text-red-600">{notificationsError}</p> : null}
+              </div>
+              <Switch
+                checked={isNotificationsEnabled}
+                onCheckedChange={(checked) => {
+                  void handleToggleNotifications(checked)
+                }}
+                disabled={isNotificationsToggleDisabled}
+                ariaLabel="Переключить push-уведомления"
+                ariaDescribedBy="push-notifications-subtitle"
+              />
+            </div>
           </div>
           <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
