@@ -255,6 +255,8 @@ async function sendChatMessagePushNotifications(
             payload: {
               title: context.senderName || 'Run Club',
               body: context.messagePreview || 'Новое сообщение',
+              threadId: context.threadId,
+              threadType: context.threadType,
             },
           })
 

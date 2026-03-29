@@ -9,6 +9,8 @@ type SendWebPushInput = {
   payload: {
     title: string
     body: string
+    threadId?: string
+    threadType?: 'club' | 'direct_coach'
   }
 }
 
@@ -56,6 +58,8 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
     console.log('[push] payload', {
       title: input.payload.title,
       body: input.payload.body,
+      threadId: input.payload.threadId,
+      threadType: input.payload.threadType,
     })
 
     await webpush.sendNotification(
@@ -69,6 +73,8 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
       JSON.stringify({
         title: input.payload.title,
         body: input.payload.body,
+        threadId: input.payload.threadId,
+        threadType: input.payload.threadType,
       })
     )
 
