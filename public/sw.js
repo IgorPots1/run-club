@@ -79,6 +79,10 @@ self.addEventListener('notificationclick', (event) => {
       if (bestClient && 'focus' in bestClient) {
         await bestClient.navigate(url)
         await bestClient.focus()
+        bestClient.postMessage({
+          type: 'NAVIGATE',
+          url,
+        })
         console.log('[sw] focused_existing_client', {
           targetUrl: url,
           matchedExactly: bestClient.url === url,
@@ -86,7 +90,16 @@ self.addEventListener('notificationclick', (event) => {
         return
       }
 
-      await self.clients.openWindow(url)
+      const openedClient = await self.clients.openWindow(url)
+      if (openedClient) {
+        if ('focus' in openedClient) {
+          await openedClient.focus()
+        }
+        openedClient.postMessage({
+          type: 'NAVIGATE',
+          url,
+        })
+      }
       console.log('[sw] opened_new_window', {
         targetUrl: url,
       })
