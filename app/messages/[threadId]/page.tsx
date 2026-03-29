@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
@@ -8,6 +8,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import { getTotalUnreadCount, markThreadAsRead } from '@/lib/chat/reads'
 import { getChatThreadById } from '@/lib/chat/threads'
 import { COACH_USER_ID } from '@/lib/constants'
+import { loadThreadMuteState, toggleThreadMute } from '@/lib/notifications/toggleThreadMute'
 import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
@@ -23,6 +24,7 @@ const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
   const router = useRouter()
+  const headerMenuRef = useRef<HTMLDivElement | null>(null)
   const markReadTimeoutRef = useRef<number | null>(null)
   const unreadRefreshTimeoutRef = useRef<number | null>(null)
   const isMarkingThreadReadRef = useRef(false)
@@ -32,6 +34,11 @@ export default function MessageThreadPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('')
   const [error, setError] = useState('')
+  const [threadMuted, setThreadMuted] = useState(false)
+  const [isLoadingThreadMuteState, setIsLoadingThreadMuteState] = useState(false)
+  const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
+  const [threadMuteError, setThreadMuteError] = useState('')
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -152,6 +159,95 @@ export default function MessageThreadPage() {
       isMounted = false
     }
   }, [router, threadId])
+
+  useEffect(() => {
+    if (!threadId || !currentUserId) {
+      setThreadMuted(false)
+      setIsLoadingThreadMuteState(false)
+      setThreadMuteError('')
+      return
+    }
+
+    let isMounted = true
+    setIsLoadingThreadMuteState(true)
+    setThreadMuteError('')
+
+    void loadThreadMuteState(threadId)
+      .then((muted) => {
+        if (!isMounted) {
+          return
+        }
+
+        setThreadMuted(muted)
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return
+        }
+
+        setThreadMuted(false)
+        setThreadMuteError('Не удалось загрузить настройки уведомлений')
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingThreadMuteState(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentUserId, threadId])
+
+  useEffect(() => {
+    if (!isHeaderMenuOpen) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!headerMenuRef.current?.contains(event.target as Node)) {
+        setIsHeaderMenuOpen(false)
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsHeaderMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isHeaderMenuOpen])
+
+  const handleToggleThreadMute = useCallback(async () => {
+    if (!threadId || isUpdatingThreadMute) {
+      return
+    }
+
+    const previousMuted = threadMuted
+    const nextMuted = !threadMuted
+
+    setThreadMuted(nextMuted)
+    setIsUpdatingThreadMute(true)
+    setThreadMuteError('')
+    setIsHeaderMenuOpen(false)
+
+    try {
+      const confirmedMuted = await toggleThreadMute(threadId, nextMuted)
+      setThreadMuted(confirmedMuted)
+    } catch {
+      setThreadMuted(previousMuted)
+      setThreadMuteError('Не удалось обновить уведомления')
+    } finally {
+      setIsUpdatingThreadMute(false)
+    }
+  }, [isUpdatingThreadMute, threadId, threadMuted])
 
   useEffect(() => {
     if (loading || error || !currentUserId || !threadId) {
@@ -281,6 +377,40 @@ export default function MessageThreadPage() {
     )
   }
 
+  const headerRightSlot = threadId ? (
+    <div ref={headerMenuRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsHeaderMenuOpen((open) => !open)}
+        disabled={isLoadingThreadMuteState || isUpdatingThreadMute}
+        className="app-text-primary inline-flex h-11 w-11 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-60"
+        aria-label="Действия чата"
+        aria-expanded={isHeaderMenuOpen}
+        aria-haspopup="menu"
+      >
+        <span aria-hidden="true" className="text-xl leading-none">...</span>
+      </button>
+      {isHeaderMenuOpen ? (
+        <div
+          className="app-card absolute right-0 top-full z-40 mt-1 min-w-[220px] rounded-2xl border p-1 shadow-lg"
+          role="menu"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              void handleToggleThreadMute()
+            }}
+            disabled={isUpdatingThreadMute}
+            className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            role="menuitem"
+          >
+            {threadMuted ? 'Включить уведомления' : 'Выключить уведомления'}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ) : null
+
   return (
     <main
       data-chat-isolated-route="true"
@@ -291,7 +421,12 @@ export default function MessageThreadPage() {
       }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-        <InnerPageHeader title={threadTitle || ' '} fallbackHref="/messages" minimal />
+        <InnerPageHeader title={threadTitle || ' '} fallbackHref="/messages" minimal rightSlot={headerRightSlot} />
+        {threadMuteError ? (
+          <div className="px-4 pb-2">
+            <p className="text-xs text-red-600">{threadMuteError}</p>
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1">
           <ChatSection
             showTitle={false}

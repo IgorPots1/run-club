@@ -1,4 +1,5 @@
 import BackNavigationButton from '@/components/BackNavigationButton'
+import type { ReactNode } from 'react'
 
 type MobileBackHeaderProps = {
   title: string
@@ -7,6 +8,7 @@ type MobileBackHeaderProps = {
   sticky?: boolean
   fullBleedOnMobile?: boolean
   minimal?: boolean
+  rightSlot?: ReactNode
 }
 
 export default function MobileBackHeader({
@@ -16,6 +18,7 @@ export default function MobileBackHeader({
   sticky = true,
   fullBleedOnMobile = true,
   minimal = false,
+  rightSlot = null,
 }: MobileBackHeaderProps) {
   const headerSurfaceClassName = minimal
     ? 'mb-0 bg-transparent pb-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] shadow-none'
@@ -41,7 +44,7 @@ export default function MobileBackHeader({
         <h1 className="app-text-primary truncate text-center text-base font-semibold">
           {title}
         </h1>
-        <div className="h-11 w-11" aria-hidden="true" />
+        {rightSlot ? <div className="flex h-11 w-11 items-center justify-center">{rightSlot}</div> : <div className="h-11 w-11" aria-hidden="true" />}
       </div>
     </header>
   )

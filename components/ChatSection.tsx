@@ -23,7 +23,6 @@ import {
   uploadChatImage,
   upsertChatReadState,
 } from '@/lib/chat'
-import { loadThreadMuteState, toggleThreadMute } from '@/lib/notifications/toggleThreadMute'
 import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
 import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream'
@@ -1515,10 +1514,6 @@ export default function ChatSection({
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
-  const [threadMuted, setThreadMuted] = useState(false)
-  const [isLoadingThreadMuteState, setIsLoadingThreadMuteState] = useState(false)
-  const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
-  const [threadMuteError, setThreadMuteError] = useState('')
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingVoice, setUploadingVoice] = useState(false)
@@ -1548,68 +1543,6 @@ export default function ChatSection({
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
-
-  useEffect(() => {
-    if (!threadId || !currentUserId) {
-      setThreadMuted(false)
-      setIsLoadingThreadMuteState(false)
-      setThreadMuteError('')
-      return
-    }
-
-    let isMounted = true
-    setIsLoadingThreadMuteState(true)
-    setThreadMuteError('')
-
-    void loadThreadMuteState(threadId)
-      .then((muted) => {
-        if (!isMounted) {
-          return
-        }
-
-        setThreadMuted(muted)
-      })
-      .catch(() => {
-        if (!isMounted) {
-          return
-        }
-
-        setThreadMuted(false)
-        setThreadMuteError('Не удалось загрузить настройки уведомлений')
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoadingThreadMuteState(false)
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [currentUserId, threadId])
-
-  const handleToggleThreadMute = useCallback(async () => {
-    if (!threadId || isUpdatingThreadMute) {
-      return
-    }
-
-    const previousMuted = threadMuted
-    const nextMuted = !threadMuted
-
-    setThreadMuted(nextMuted)
-    setIsUpdatingThreadMute(true)
-    setThreadMuteError('')
-
-    try {
-      const confirmedMuted = await toggleThreadMute(threadId, nextMuted)
-      setThreadMuted(confirmedMuted)
-    } catch {
-      setThreadMuted(previousMuted)
-      setThreadMuteError('Не удалось обновить уведомления')
-    } finally {
-      setIsUpdatingThreadMute(false)
-    }
-  }, [isUpdatingThreadMute, threadId, threadMuted])
 
   const trimmedDraftMessage = draftMessage.trim()
   const editingMessage = editingMessageId
@@ -3742,20 +3675,6 @@ export default function ChatSection({
         <div className="mb-4 space-y-1">
           <h1 className="app-text-primary text-2xl font-bold">{pageTitle}</h1>
           <p className="app-text-secondary text-sm">{pageDescription}</p>
-        </div>
-      ) : null}
-
-      {threadId ? (
-        <div className="mb-3 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleToggleThreadMute}
-            disabled={isLoadingThreadMuteState || isUpdatingThreadMute}
-            className="app-text-secondary inline-flex min-h-9 items-center rounded-full border px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {threadMuted ? '🔕 Уведомления выключены' : '🔔 Уведомления включены'}
-          </button>
-          {threadMuteError ? <p className="text-xs text-red-600">{threadMuteError}</p> : null}
         </div>
       ) : null}
 
