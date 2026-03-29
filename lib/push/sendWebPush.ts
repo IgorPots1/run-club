@@ -9,6 +9,7 @@ type SendWebPushInput = {
   payload: {
     title: string
     body: string
+    targetUrl: string
     threadId?: string
     threadType?: 'club' | 'direct_coach'
   }
@@ -58,6 +59,7 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
     console.log('[push] payload', {
       title: input.payload.title,
       body: input.payload.body,
+      targetUrl: input.payload.targetUrl,
       threadId: input.payload.threadId,
       threadType: input.payload.threadType,
     })
@@ -73,6 +75,7 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
       JSON.stringify({
         title: input.payload.title,
         body: input.payload.body,
+        targetUrl: input.payload.targetUrl,
         threadId: input.payload.threadId,
         threadType: input.payload.threadType,
       })

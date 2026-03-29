@@ -30,10 +30,9 @@ self.addEventListener('push', (event) => {
     ? payload.title.trim()
     : 'Run Club'
   const body = typeof payload.body === 'string' ? payload.body : ''
-  const threadId = typeof payload.threadId === 'string' ? payload.threadId : ''
-  const threadType = payload.threadType === 'club' || payload.threadType === 'direct_coach'
-    ? payload.threadType
-    : undefined
+  const targetUrl = typeof payload.targetUrl === 'string' && payload.targetUrl.trim()
+    ? payload.targetUrl.trim()
+    : '/dashboard'
 
   event.waitUntil(
     (async () => {
@@ -45,8 +44,7 @@ self.addEventListener('push', (event) => {
       await self.registration.showNotification(title, {
         body,
         data: {
-          threadId,
-          threadType,
+          targetUrl,
         },
       })
 
@@ -58,39 +56,39 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
-  const threadId = typeof event.notification.data?.threadId === 'string'
-    ? event.notification.data.threadId
-    : ''
-  const targetUrl = threadId ? `/messages/${threadId}` : '/messages'
+  const targetUrl = typeof event.notification.data?.targetUrl === 'string'
+    ? event.notification.data.targetUrl
+    : '/dashboard'
+  const url = new URL(targetUrl || '/dashboard', self.location.origin).toString()
 
   console.log('[sw] notification_click')
   console.log('[sw] target_url', {
-    targetUrl,
+    targetUrl: url,
   })
 
   event.waitUntil(
     (async () => {
-      const windowClients = await self.clients.matchAll({
+      const clientsArr = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true,
       })
+      const exactMatchClient = clientsArr.find((client) => client.url === url)
+      const sameOriginClient = clientsArr.find((client) => client.url.startsWith(self.location.origin))
+      const bestClient = exactMatchClient ?? sameOriginClient
 
-      for (const client of windowClients) {
-        if (!('focus' in client) || !client.url.startsWith(self.location.origin)) {
-          continue
-        }
-
-        await client.navigate(targetUrl)
-        await client.focus()
+      if (bestClient && 'focus' in bestClient) {
+        await bestClient.navigate(url)
+        await bestClient.focus()
         console.log('[sw] focused_existing_client', {
-          targetUrl,
+          targetUrl: url,
+          matchedExactly: bestClient.url === url,
         })
         return
       }
 
-      await self.clients.openWindow(targetUrl)
+      await self.clients.openWindow(url)
       console.log('[sw] opened_new_window', {
-        targetUrl,
+        targetUrl: url,
       })
     })()
   )
