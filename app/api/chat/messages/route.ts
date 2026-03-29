@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAppEvent } from '@/lib/events/createAppEvent'
+import { isThreadMuted } from '@/lib/notifications/isThreadMuted'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -226,19 +227,42 @@ async function sendChatMessagePushNotifications(
   context: ChatDeliveryContext
 ) {
   try {
+    const muteChecks = await Promise.all(
+      context.recipientUserIds.map(async (recipientUserId) => ({
+        recipientUserId,
+        muted: await isThreadMuted(recipientUserId, context.threadId),
+      }))
+    )
+    const unmutedRecipientUserIds = muteChecks
+      .filter((entry) => {
+        if (entry.muted) {
+          console.log('[push] skipped_muted_thread', {
+            recipientId: entry.recipientUserId,
+            threadId: context.threadId,
+          })
+        }
+
+        return !entry.muted
+      })
+      .map((entry) => entry.recipientUserId)
+
+    if (unmutedRecipientUserIds.length === 0) {
+      return
+    }
+
     console.log('[push] recipients_resolved', {
       threadType: context.threadType,
-      recipientUserCount: context.recipientUserIds.length,
+      recipientUserCount: unmutedRecipientUserIds.length,
     })
 
     const subscriptionsQuery = supabaseAdmin
       .from('push_subscriptions')
       .select('user_id, endpoint, p256dh, auth')
 
-    if (context.recipientUserIds.length === 1) {
-      subscriptionsQuery.eq('user_id', context.recipientUserIds[0]!)
+    if (unmutedRecipientUserIds.length === 1) {
+      subscriptionsQuery.eq('user_id', unmutedRecipientUserIds[0]!)
     } else {
-      subscriptionsQuery.in('user_id', context.recipientUserIds)
+      subscriptionsQuery.in('user_id', unmutedRecipientUserIds)
     }
 
     const { data: subscriptions, error: subscriptionsError } = await subscriptionsQuery
@@ -306,7 +330,7 @@ async function sendChatMessagePushNotifications(
     if (deadEndpoints.length === 0) {
       console.log('[push] send_summary', {
         threadType: context.threadType,
-        recipientUserCount: context.recipientUserIds.length,
+        recipientUserCount: unmutedRecipientUserIds.length,
         subscriptionCount: uniqueSubscriptions.length,
         deadSubscriptionCount: 0,
       })
@@ -333,7 +357,7 @@ async function sendChatMessagePushNotifications(
 
     console.log('[push] send_summary', {
       threadType: context.threadType,
-      recipientUserCount: context.recipientUserIds.length,
+      recipientUserCount: unmutedRecipientUserIds.length,
       subscriptionCount: uniqueSubscriptions.length,
       deadSubscriptionCount: deadEndpoints.length,
     })
