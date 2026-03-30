@@ -931,13 +931,16 @@ async function syncRunPhotosForActivity(
   const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
 
   try {
+    console.log('[PHOTO_SYNC_START]', { runId, activityId })
     console.info('[strava-photo-debug] sync_start', {
       runId,
       activityId,
     })
 
     const photos = await fetchStravaActivityPhotos(accessToken, activityId)
+    console.log('[PHOTO_SYNC_FETCHED]', { count: photos.length })
     const photoRows = buildRunPhotoUpsertPayloads(runId, photos)
+    console.log('[PHOTO_SYNC_MAPPED]', { rows: photoRows.length })
 
     console.info('[strava-photo-debug] sync_mapped', {
       runId,
@@ -968,6 +971,8 @@ async function syncRunPhotosForActivity(
     const { error } = await supabase
       .from('run_photos')
       .upsert(photoRows, { onConflict: 'run_id,source,source_photo_id' })
+
+    console.log('[PHOTO_SYNC_UPSERT]', { success: !error, error })
 
     if (error) {
       console.warn('[strava-photo-debug] upsert_error', {
@@ -1040,6 +1045,7 @@ async function syncRunSupplementalStravaDataForActivity(
     accessToken,
     debugRunId
   )
+  console.log('[PHOTO_SYNC_CALL]', { runId, activityId })
   const photosSynced = await syncRunPhotosForActivity(
     supabase,
     runId,
