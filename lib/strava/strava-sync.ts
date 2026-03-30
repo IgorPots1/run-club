@@ -2133,23 +2133,16 @@ export async function syncStravaRuns(
     await importStravaActivityForUser(connection.user_id, targetedActivity, {
       updateExisting: true,
       debugRunId: targetDebugRunId,
+      accessToken: connection.access_token,
     })
 
-    const targetedDetailSeriesSynced = await syncRunDetailSeriesForActivity(
+    const targetedSyncSucceeded = await syncRunSupplementalStravaDataForActivity(
       supabase,
       targetRun.id,
       targetedActivityId,
       connection.access_token,
       targetDebugRunId
     )
-    const targetedLapsSyncResult = await syncRunLapsForActivity(
-      supabase,
-      targetRun.id,
-      targetedActivityId,
-      connection.access_token,
-      targetDebugRunId
-    )
-    const targetedSyncSucceeded = targetedDetailSeriesSynced || targetedLapsSyncResult.synced
 
     return {
       ok: true,
@@ -2179,11 +2172,6 @@ export async function syncStravaRuns(
         targetedSyncSucceeded,
         targetedOwnerMismatch: false,
         targetedRunOwnerUserId: targetRun.user_id,
-        targetedLapsFetchedCount: targetedLapsSyncResult.fetchedCount,
-        targetedLapsSavedCount: targetedLapsSyncResult.savedCount,
-        targetedLapsStatus: targetedLapsSyncResult.status,
-        targetedLapsErrorMessage: targetedLapsSyncResult.errorMessage,
-        targetedLapsHttpStatus: targetedLapsSyncResult.httpStatus,
         detailedActivityDebug,
       },
     }
