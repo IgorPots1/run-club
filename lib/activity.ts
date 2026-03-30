@@ -19,7 +19,10 @@ export type ActivityChartPoint = {
 }
 
 export type ActivityTrendPoint = ActivityChartPoint & {
-  isCurrent?: boolean
+  xKey: string
+  axisLabel: string
+  rangeLabel: string
+  isCurrent: boolean
 }
 
 export type ActivitySummary = {
@@ -81,9 +84,14 @@ function addMonths(date: Date, months: number) {
 
 const RUSSIAN_MONTH_LABELS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'] as const
 const RUSSIAN_WEEKDAY_LABELS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'] as const
+const RUSSIAN_LONG_MONTH_LABELS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'] as const
 
 function formatMonthLabel(date: Date) {
   return RUSSIAN_MONTH_LABELS[date.getMonth()] ?? ''
+}
+
+function formatLongMonthLabel(date: Date) {
+  return RUSSIAN_LONG_MONTH_LABELS[date.getMonth()] ?? ''
 }
 
 function formatYearLabel(date: Date) {
@@ -246,15 +254,27 @@ export function buildRollingWeeklyDistanceChart(
   runs: ActivityWindowRun[],
   options: { weeks?: number; now?: Date } = {}
 ): ActivityTrendPoint[] {
-  const { weeks = 4, now = new Date() } = options
-  const end = addDays(startOfDay(now), 1)
+  const { weeks = 12, now = new Date() } = options
   const safeWeeks = Math.max(1, Math.floor(weeks))
-  const totalDays = safeWeeks * 7
-  const start = addDays(end, -totalDays)
+  const currentWeekStart = startOfWeek(now)
+  const firstWeekStart = addDays(currentWeekStart, -(safeWeeks - 1) * 7)
+
+  function buildRangeLabel(weekStart: Date, weekEndInclusive: Date) {
+    const sameMonth =
+      weekStart.getFullYear() === weekEndInclusive.getFullYear() &&
+      weekStart.getMonth() === weekEndInclusive.getMonth()
+
+    if (sameMonth) {
+      return `${weekStart.getDate()}–${weekEndInclusive.getDate()} ${formatLongMonthLabel(weekEndInclusive)}`
+    }
+
+    return `${weekStart.getDate()} ${formatLongMonthLabel(weekStart)} – ${weekEndInclusive.getDate()} ${formatLongMonthLabel(weekEndInclusive)}`
+  }
 
   return Array.from({ length: safeWeeks }, (_, index) => {
-    const bucketStart = addDays(start, index * 7)
+    const bucketStart = addDays(firstWeekStart, index * 7)
     const bucketEnd = addDays(bucketStart, 7)
+    const bucketEndInclusive = addDays(bucketEnd, -1)
     const totalDistance = runs.reduce((sum, run) => {
       const createdAt = new Date(run.created_at)
 
@@ -266,8 +286,17 @@ export function buildRollingWeeklyDistanceChart(
     }, 0)
 
     return {
-      label: String(index + 1),
+      label:
+        index === 0 || bucketStart.getMonth() !== addDays(bucketStart, -7).getMonth()
+          ? formatMonthLabel(bucketStart)
+          : '',
       distance: totalDistance,
+      xKey: formatDateKey(bucketStart),
+      axisLabel:
+        index === 0 || bucketStart.getMonth() !== addDays(bucketStart, -7).getMonth()
+          ? formatMonthLabel(bucketStart)
+          : '',
+      rangeLabel: buildRangeLabel(bucketStart, bucketEndInclusive),
       isCurrent: index === safeWeeks - 1,
     }
   })

@@ -139,7 +139,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
   const activity7Days = buildActivityWindowStats(publicRuns, { days: 7 })
   const activity30Days = buildActivityWindowStats(publicRuns)
-  const activity30DayChartData = buildRollingWeeklyDistanceChart(publicRuns, { weeks: 4 })
+  const activity30DayChartData = buildRollingWeeklyDistanceChart(publicRuns, { weeks: 12 })
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
   return (
@@ -244,7 +244,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
           </div>
         </section>
         <section className="app-card rounded-2xl border p-4 shadow-sm sm:p-5">
-          <h2 className="app-text-primary text-base font-semibold">Бег за 30 дней</h2>
+          <h2 className="app-text-primary text-base font-semibold">Бег</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
@@ -266,7 +266,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             </div>
           </div>
           <div className="app-surface-muted mt-3 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-            <p className="app-text-secondary text-sm font-medium">Динамика по неделям</p>
+            <p className="app-text-secondary text-sm font-medium">Последние 12 недель</p>
             {activity30DayChartData.some((point) => point.distance > 0) ? (
               <div className="mt-3">
                 <ProfileWeeklyVolumeTrendChart
@@ -275,7 +275,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               </div>
             ) : (
               <p className="app-text-secondary mt-3 text-sm">
-                За последние 4 недели пока нет пробежек.
+                За последние 12 недель пока нет пробежек.
               </p>
             )}
           </div>

@@ -1,11 +1,11 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
   ReferenceLine,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
@@ -17,22 +17,18 @@ type ProfileWeeklyVolumeTrendChartProps = {
 }
 
 function WeeklyVolumeTooltip({
-  active,
-  payload,
+  point,
 }: {
-  active?: boolean
-  payload?: Array<{ payload?: ActivityTrendPoint }>
+  point: ActivityTrendPoint | null
 }) {
-  const point = payload?.[0]?.payload
-
-  if (!active || !point) {
+  if (!point) {
     return null
   }
 
   return (
     <div className="app-card rounded-xl border px-3 py-2 shadow-lg">
       <p className="app-text-secondary text-xs">
-        Неделя <span className="app-text-primary font-medium">{point.label}</span>
+        <span className="app-text-primary font-medium">{point.rangeLabel}</span>
       </p>
       <p className="app-text-secondary mt-1 text-xs">
         Пробег <span className="app-text-primary font-medium">{formatDistanceKm(point.distance)} км</span>
@@ -44,10 +40,20 @@ function WeeklyVolumeTooltip({
 export default function ProfileWeeklyVolumeTrendChart({
   data,
 }: ProfileWeeklyVolumeTrendChartProps) {
-  const latestPoint = data[data.length - 1] ?? null
+  const [selectedIndex, setSelectedIndex] = useState(() => Math.max(0, data.length - 1))
+  const safeSelectedIndex =
+    data[selectedIndex] != null ? selectedIndex : Math.max(0, data.length - 1)
+  const selectedPoint = data[safeSelectedIndex] ?? null
+  const axisLabelByKey = useMemo(
+    () =>
+      Object.fromEntries(data.map((point) => [point.xKey, point.axisLabel])) as Record<string, string>,
+    [data]
+  )
 
   return (
-    <div className="h-[190px] w-full">
+    <div className="space-y-3">
+      <WeeklyVolumeTooltip point={selectedPoint} />
+      <div className="relative h-[210px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
           <defs>
@@ -57,20 +63,18 @@ export default function ProfileWeeklyVolumeTrendChart({
             </linearGradient>
           </defs>
           <XAxis
-            dataKey="label"
+            dataKey="xKey"
             tickLine={false}
             axisLine={false}
             tickMargin={8}
+            interval={0}
+            tickFormatter={(value) => axisLabelByKey[String(value)] ?? ''}
             tick={{ fill: 'var(--chart-tick)', fontSize: 11 }}
           />
           <YAxis hide domain={[0, 'dataMax + 2']} />
-          <Tooltip
-            cursor={false}
-            content={<WeeklyVolumeTooltip />}
-          />
-          {latestPoint ? (
+          {selectedPoint ? (
             <ReferenceLine
-              x={latestPoint.label}
+              x={selectedPoint.xKey}
               stroke="var(--chart-grid)"
               strokeDasharray="3 3"
               strokeOpacity={0.65}
@@ -84,25 +88,45 @@ export default function ProfileWeeklyVolumeTrendChart({
             fill="url(#profile-weekly-volume-fill)"
             fillOpacity={1}
             dot={(dotProps) => {
-              const isLatest = dotProps.index === data.length - 1
+              if (typeof dotProps.cx !== 'number' || typeof dotProps.cy !== 'number') {
+                return null
+              }
+
+              const isSelected = dotProps.index === safeSelectedIndex
 
               return (
                 <circle
                   key={`weekly-dot-${dotProps.index}`}
                   cx={dotProps.cx}
                   cy={dotProps.cy}
-                  r={isLatest ? 4.5 : 3}
+                  r={isSelected ? 4.5 : 3}
                   fill="var(--accent-strong)"
-                  fillOpacity={isLatest ? 1 : 0.7}
+                  fillOpacity={isSelected ? 1 : 0.7}
                   stroke="var(--surface)"
-                  strokeWidth={isLatest ? 2 : 1.5}
+                  strokeWidth={isSelected ? 2 : 1.5}
                 />
               )
             }}
-            activeDot={{ r: 5, fill: 'var(--accent-strong)', stroke: 'var(--surface)', strokeWidth: 2 }}
+            activeDot={false}
           />
         </AreaChart>
       </ResponsiveContainer>
+        <div
+          className="absolute inset-x-[10px] top-[8px] bottom-[28px] grid grid-cols-12"
+          aria-label="Выбор недели на графике"
+        >
+          {data.map((point, index) => (
+            <button
+              key={point.xKey}
+              type="button"
+              onClick={() => setSelectedIndex(index)}
+              aria-pressed={index === safeSelectedIndex}
+              aria-label={`${point.rangeLabel}: пробег ${formatDistanceKm(point.distance)} км`}
+              className="h-full w-full appearance-none border-0 bg-transparent p-0"
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
