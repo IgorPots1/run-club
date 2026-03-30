@@ -44,6 +44,20 @@ export default function RunPhotoLightbox({
     [photos.length]
   )
 
+  const navigateToIndex = useCallback(
+    (nextIndex: number) => {
+      const boundedIndex = Math.max(0, Math.min(nextIndex, photos.length - 1))
+
+      if (boundedIndex === activeIndexRef.current) {
+        return
+      }
+
+      setActiveIndex(boundedIndex)
+      scrollToPhoto(boundedIndex, 'smooth')
+    },
+    [photos.length, scrollToPhoto]
+  )
+
   useEffect(() => {
     if (selectedIndex == null) {
       return
@@ -69,16 +83,12 @@ export default function RunPhotoLightbox({
       }
 
       if (event.key === 'ArrowLeft') {
-        const nextIndex = Math.max(0, activeIndexRef.current - 1)
-        setActiveIndex(nextIndex)
-        scrollToPhoto(nextIndex, 'smooth')
+        navigateToIndex(activeIndexRef.current - 1)
         return
       }
 
       if (event.key === 'ArrowRight') {
-        const nextIndex = Math.min(photos.length - 1, activeIndexRef.current + 1)
-        setActiveIndex(nextIndex)
-        scrollToPhoto(nextIndex, 'smooth')
+        navigateToIndex(activeIndexRef.current + 1)
       }
     }
 
@@ -87,7 +97,7 @@ export default function RunPhotoLightbox({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose, photos.length, scrollToPhoto, selectedIndex])
+  }, [navigateToIndex, onClose, selectedIndex])
 
   useEffect(() => {
     if (selectedIndex == null) {
@@ -134,6 +144,8 @@ export default function RunPhotoLightbox({
   }
 
   const activePhotoNumber = activeIndex + 1
+  const canGoToPreviousPhoto = activeIndex > 0
+  const canGoToNextPhoto = activeIndex < photos.length - 1
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Просмотр фото тренировки">
@@ -145,18 +157,34 @@ export default function RunPhotoLightbox({
       />
 
       <div className="relative z-10 flex h-full w-full items-center justify-center">
-        <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-black/45 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
+        <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-full bg-black/45 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
           {activePhotoNumber} / {photos.length}
         </div>
 
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors active:scale-[0.98]"
+          className="absolute right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors active:scale-[0.98]"
           aria-label="Закрыть фото"
         >
           <X className="h-5 w-5" strokeWidth={2} />
         </button>
+
+        <button
+          type="button"
+          onClick={() => navigateToIndex(activeIndexRef.current - 1)}
+          aria-label="Предыдущее фото"
+          aria-disabled={!canGoToPreviousPhoto}
+          className="absolute inset-y-0 left-0 z-10 w-[24vw] min-w-16 max-w-24 bg-transparent transition-colors active:bg-white/5"
+        />
+
+        <button
+          type="button"
+          onClick={() => navigateToIndex(activeIndexRef.current + 1)}
+          aria-label="Следующее фото"
+          aria-disabled={!canGoToNextPhoto}
+          className="absolute inset-y-0 right-0 z-10 w-[24vw] min-w-16 max-w-24 bg-transparent transition-colors active:bg-white/5"
+        />
 
         <div
           ref={scrollContainerRef}
