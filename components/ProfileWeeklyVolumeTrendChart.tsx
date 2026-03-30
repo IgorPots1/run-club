@@ -43,18 +43,9 @@ export default function ProfileWeeklyVolumeTrendChart({
   const overlayRef = useRef<HTMLDivElement | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [isScrubbing, setIsScrubbing] = useState(false)
-  const defaultSelectedIndex = useMemo(() => {
-    const lastCompleteIndex = [...data]
-      .reverse()
-      .find((point) => point.isComplete)?.index
-
-    return typeof lastCompleteIndex === 'number'
-      ? lastCompleteIndex
-      : Math.max(0, data.length - 1)
-  }, [data])
   const safeSelectedIndex =
-    selectedIndex != null && data[selectedIndex] != null ? selectedIndex : defaultSelectedIndex
-  const selectedPoint = data[safeSelectedIndex] ?? null
+    selectedIndex != null && data[selectedIndex] != null ? selectedIndex : null
+  const selectedPoint = safeSelectedIndex != null ? data[safeSelectedIndex] ?? null : null
   const monthTicks = useMemo(() => {
     const buckets = new Map<string, { label: string; indices: number[] }>()
 
@@ -98,7 +89,16 @@ export default function ProfileWeeklyVolumeTrendChart({
   return (
     <div className="space-y-3">
       <WeeklyVolumeTooltip point={selectedPoint} />
-      <div className="relative h-[210px] w-full">
+      <div
+        className="relative h-[210px] w-full"
+        onPointerDown={(event) => {
+          if (overlayRef.current?.contains(event.target as Node)) {
+            return
+          }
+
+          setSelectedIndex(null)
+        }}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
             <defs>
@@ -143,7 +143,7 @@ export default function ProfileWeeklyVolumeTrendChart({
                   return null
                 }
 
-                const isSelected = dotProps.index === safeSelectedIndex
+                const isSelected = safeSelectedIndex != null && dotProps.index === safeSelectedIndex
 
                 return (
                   <circle
@@ -166,13 +166,14 @@ export default function ProfileWeeklyVolumeTrendChart({
           ref={overlayRef}
           className={`absolute inset-x-[10px] top-[8px] bottom-[28px] ${
             isScrubbing ? 'cursor-grabbing' : 'cursor-pointer'
-          }`}
+          } outline-none`}
           aria-label="Выбор недели на графике"
           onPointerDown={(event) => {
             if (data.length === 0) {
               return
             }
 
+            event.preventDefault()
             event.currentTarget.setPointerCapture(event.pointerId)
             setIsScrubbing(true)
             updateSelectionFromClientX(event.clientX)
@@ -182,6 +183,7 @@ export default function ProfileWeeklyVolumeTrendChart({
               return
             }
 
+            event.preventDefault()
             updateSelectionFromClientX(event.clientX)
           }}
           onPointerUp={(event) => {
@@ -196,7 +198,7 @@ export default function ProfileWeeklyVolumeTrendChart({
             }
             setIsScrubbing(false)
           }}
-          style={{ touchAction: 'none' }}
+          style={{ touchAction: 'none', WebkitTapHighlightColor: 'transparent' }}
         >
           <span className="sr-only">
             Проведите пальцем по графику, чтобы посмотреть недельный пробег.
