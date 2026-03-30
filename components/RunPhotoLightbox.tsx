@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 export type RunPhotoLightboxPhoto = {
@@ -20,6 +20,30 @@ export default function RunPhotoLightbox({
   onClose,
   getAlt,
 }: RunPhotoLightboxProps) {
+  const [activeIndex, setActiveIndex] = useState(() =>
+    Math.max(0, Math.min(selectedIndex ?? 0, photos.length - 1))
+  )
+  const activeIndexRef = useRef(activeIndex)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollToPhoto = useCallback(
+    (index: number, behavior: ScrollBehavior) => {
+      const scrollContainer = scrollContainerRef.current
+
+      if (!scrollContainer) {
+        return
+      }
+
+      const boundedIndex = Math.max(0, Math.min(index, photos.length - 1))
+
+      scrollContainer.scrollTo({
+        left: scrollContainer.clientWidth * boundedIndex,
+        behavior,
+      })
+    },
+    [photos.length]
+  )
+
   useEffect(() => {
     if (selectedIndex == null) {
       return
@@ -41,6 +65,20 @@ export default function RunPhotoLightbox({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onClose()
+        return
+      }
+
+      if (event.key === 'ArrowLeft') {
+        const nextIndex = Math.max(0, activeIndexRef.current - 1)
+        setActiveIndex(nextIndex)
+        scrollToPhoto(nextIndex, 'smooth')
+        return
+      }
+
+      if (event.key === 'ArrowRight') {
+        const nextIndex = Math.min(photos.length - 1, activeIndexRef.current + 1)
+        setActiveIndex(nextIndex)
+        scrollToPhoto(nextIndex, 'smooth')
       }
     }
 
@@ -49,50 +87,97 @@ export default function RunPhotoLightbox({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose, selectedIndex])
+  }, [onClose, photos.length, scrollToPhoto, selectedIndex])
+
+  useEffect(() => {
+    if (selectedIndex == null) {
+      return
+    }
+
+    const boundedIndex = Math.max(0, Math.min(selectedIndex, photos.length - 1))
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      scrollToPhoto(boundedIndex, 'auto')
+    })
+
+    const handleResize = () => {
+      scrollToPhoto(activeIndexRef.current, 'auto')
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [photos.length, scrollToPhoto, selectedIndex])
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex
+  }, [activeIndex])
+
+  function handleScroll() {
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer || scrollContainer.clientWidth <= 0) {
+      return
+    }
+
+    const nextIndex = Math.round(scrollContainer.scrollLeft / scrollContainer.clientWidth)
+    const boundedIndex = Math.max(0, Math.min(nextIndex, photos.length - 1))
+
+    setActiveIndex((currentIndex) => (currentIndex === boundedIndex ? currentIndex : boundedIndex))
+  }
 
   if (selectedIndex == null || selectedIndex < 0 || selectedIndex >= photos.length) {
     return null
   }
 
-  const selectedPhoto = photos[selectedIndex]
-  const selectedPhotoNumber = selectedIndex + 1
+  const activePhotoNumber = activeIndex + 1
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Просмотр фото тренировки"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Просмотр фото тренировки">
       <button
         type="button"
+        className="absolute inset-0 bg-black/95"
+        aria-label="Закрыть просмотр фото"
         onClick={onClose}
-        className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors active:scale-[0.98]"
-        aria-label="Закрыть фото"
-      >
-        <X className="h-5 w-5" strokeWidth={2} />
-      </button>
+      />
 
-      {photos.length > 1 ? (
+      <div className="relative z-10 flex h-full w-full items-center justify-center">
         <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-black/45 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
-          {selectedPhotoNumber} / {photos.length}
+          {activePhotoNumber} / {photos.length}
         </div>
-      ) : null}
 
-      <div
-        className="flex max-h-full w-full items-center justify-center"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={selectedPhoto.public_url}
-          alt={getAlt ? getAlt(selectedIndex) : `Фото тренировки ${selectedPhotoNumber}`}
-          className="max-h-[calc(100vh-5rem)] w-auto max-w-full rounded-2xl object-contain shadow-2xl"
-          decoding="async"
-          draggable={false}
-        />
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors active:scale-[0.98]"
+          aria-label="Закрыть фото"
+        >
+          <X className="h-5 w-5" strokeWidth={2} />
+        </button>
+
+        <div
+          ref={scrollContainerRef}
+          className="h-full w-full overflow-x-auto overflow-y-hidden overscroll-x-contain overscroll-y-none snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          onScroll={handleScroll}
+        >
+          <div className="grid h-full grid-flow-col auto-cols-[100%]">
+            {photos.map((photo, index) => (
+              <div key={`${photo.public_url}-${index}`} className="flex h-full w-full snap-center items-center justify-center px-4 py-20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.public_url}
+                  alt={getAlt ? getAlt(index) : `Фото тренировки ${index + 1}`}
+                  className="block max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+                  decoding="async"
+                  draggable={false}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

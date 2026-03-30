@@ -200,6 +200,7 @@ function WorkoutFeedCard({
   }, [mapPreviewUrl, photos, runId, showMapPreview])
   const shouldRenderMediaCarousel = mediaSlides.length > 1 && mediaSlides[0]?.type === 'map'
   const totalMediaSlides = mediaSlides.length
+  const currentMediaIndex = Math.max(0, Math.min(activeMediaIndex, totalMediaSlides - 1))
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
     : '—'
@@ -238,10 +239,6 @@ function WorkoutFeedCard({
       window.clearTimeout(timer)
     }
   }, [showStravaHint])
-
-  useEffect(() => {
-    setActiveMediaIndex(0)
-  }, [runId, shouldRenderMediaCarousel, mediaSlides.length])
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
     const container = event.currentTarget
@@ -402,7 +399,7 @@ function WorkoutFeedCard({
                   scrollToMediaSlide(index)
                 }}
                 className={`h-1.5 rounded-full transition-all ${
-                  index === activeMediaIndex ? 'w-4 bg-[var(--text-primary)]' : 'w-1.5 bg-black/20 dark:bg-white/25'
+                  index === currentMediaIndex ? 'w-4 bg-[var(--text-primary)]' : 'w-1.5 bg-black/20 dark:bg-white/25'
                 }`}
                 aria-label={`Открыть слайд ${index + 1}`}
               />
@@ -503,6 +500,7 @@ function WorkoutFeedCard({
       </div>
 
       <RunPhotoLightbox
+        key={selectedPhotoIndex ?? 'closed'}
         photos={photos}
         selectedIndex={selectedPhotoIndex}
         onClose={() => setSelectedPhotoIndex(null)}
