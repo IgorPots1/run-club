@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -48,6 +48,7 @@ function WeeklyVolumeTooltip({
 export default function ProfileWeeklyVolumeTrendChart({
   data,
 }: ProfileWeeklyVolumeTrendChartProps) {
+  const chartRootRef = useRef<HTMLDivElement | null>(null)
   const overlayRef = useRef<HTMLDivElement | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [isScrubbing, setIsScrubbing] = useState(false)
@@ -102,18 +103,31 @@ export default function ProfileWeeklyVolumeTrendChart({
     outline: 'none',
   }
 
+  useEffect(() => {
+    function handleDocumentPointerDown(event: PointerEvent) {
+      if (chartRootRef.current?.contains(event.target as Node)) {
+        return
+      }
+
+      setSelectedIndex(null)
+    }
+
+    document.addEventListener('pointerdown', handleDocumentPointerDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handleDocumentPointerDown)
+    }
+  }, [])
+
   return (
-    <div className="space-y-3 select-none" style={interactionStyle}>
+    <div
+      ref={chartRootRef}
+      className="profile-chart-root space-y-3 select-none"
+      style={interactionStyle}
+    >
       <WeeklyVolumeTooltip point={selectedPoint} />
       <div
         className="relative h-[210px] w-full select-none outline-none"
-        onPointerDown={(event) => {
-          if (overlayRef.current?.contains(event.target as Node)) {
-            return
-          }
-
-          setSelectedIndex(null)
-        }}
         onDragStart={(event) => {
           event.preventDefault()
         }}
@@ -228,6 +242,19 @@ export default function ProfileWeeklyVolumeTrendChart({
           </span>
         </div>
       </div>
+      <style jsx global>{`
+        .profile-chart-root,
+        .profile-chart-root * {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .profile-chart-root svg,
+        .profile-chart-root text {
+          user-select: none;
+          -webkit-user-select: none;
+          -webkit-touch-callout: none;
+        }
+      `}</style>
     </div>
   )
 }
