@@ -18,6 +18,10 @@ export type ActivityChartPoint = {
   distance: number
 }
 
+export type ActivityTrendPoint = ActivityChartPoint & {
+  isCurrent?: boolean
+}
+
 export type ActivitySummary = {
   totalDistance: number
   totalWorkouts: number
@@ -238,34 +242,33 @@ export function buildActivityWindowStats(
   }
 }
 
-export function buildRollingDailyDistanceChart(
+export function buildRollingWeeklyDistanceChart(
   runs: ActivityWindowRun[],
-  options: { days?: number; now?: Date } = {}
-): ActivityChartPoint[] {
-  const { days = 30, now = new Date() } = options
+  options: { weeks?: number; now?: Date } = {}
+): ActivityTrendPoint[] {
+  const { weeks = 4, now = new Date() } = options
   const end = addDays(startOfDay(now), 1)
-  const safeDays = Math.max(1, Math.floor(days))
-  const start = addDays(end, -safeDays)
-  const distanceByDateKey = runs.reduce<Record<string, number>>((totals, run) => {
-    const createdAt = new Date(run.created_at)
+  const safeWeeks = Math.max(1, Math.floor(weeks))
+  const totalDays = safeWeeks * 7
+  const start = addDays(end, -totalDays)
 
-    if (Number.isNaN(createdAt.getTime()) || createdAt < start || createdAt >= end) {
-      return totals
-    }
+  return Array.from({ length: safeWeeks }, (_, index) => {
+    const bucketStart = addDays(start, index * 7)
+    const bucketEnd = addDays(bucketStart, 7)
+    const totalDistance = runs.reduce((sum, run) => {
+      const createdAt = new Date(run.created_at)
 
-    const dateKey = formatDateKey(createdAt)
-    totals[dateKey] = (totals[dateKey] ?? 0) + Math.max(0, Number(run.distance_km ?? 0))
+      if (Number.isNaN(createdAt.getTime()) || createdAt < bucketStart || createdAt >= bucketEnd) {
+        return sum
+      }
 
-    return totals
-  }, {})
-
-  return Array.from({ length: safeDays }, (_, index) => {
-    const day = addDays(start, index)
-    const dateKey = formatDateKey(day)
+      return sum + Math.max(0, Number(run.distance_km ?? 0))
+    }, 0)
 
     return {
-      label: String(day.getDate()),
-      distance: distanceByDateKey[dateKey] ?? 0,
+      label: String(index + 1),
+      distance: totalDistance,
+      isCurrent: index === safeWeeks - 1,
     }
   })
 }

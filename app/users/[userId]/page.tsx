@@ -3,10 +3,10 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import ActivityDistanceChart from '@/components/ActivityDistanceChart'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
+import ProfileWeeklyVolumeTrendChart from '@/components/ProfileWeeklyVolumeTrendChart'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
-import { buildActivityWindowStats, buildRollingDailyDistanceChart } from '@/lib/activity'
+import { buildActivityWindowStats, buildRollingWeeklyDistanceChart } from '@/lib/activity'
 import { formatDistanceKm, formatDurationCompact } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -139,7 +139,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
   const activity7Days = buildActivityWindowStats(publicRuns, { days: 7 })
   const activity30Days = buildActivityWindowStats(publicRuns)
-  const activity30DayChartData = buildRollingDailyDistanceChart(publicRuns, { days: 30 })
+  const activity30DayChartData = buildRollingWeeklyDistanceChart(publicRuns, { weeks: 4 })
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
   return (
@@ -266,20 +266,16 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             </div>
           </div>
           <div className="app-surface-muted mt-3 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-            <p className="app-text-secondary text-sm font-medium">Дистанция по дням</p>
+            <p className="app-text-secondary text-sm font-medium">Динамика по неделям</p>
             {activity30DayChartData.some((point) => point.distance > 0) ? (
               <div className="mt-3">
-                <ActivityDistanceChart
+                <ProfileWeeklyVolumeTrendChart
                   data={activity30DayChartData}
-                  mode="rolling30"
-                  heightClassName="h-[180px]"
-                  compact
-                  showYAxis={false}
                 />
               </div>
             ) : (
               <p className="app-text-secondary mt-3 text-sm">
-                За последние 30 дней пока нет пробежек.
+                За последние 4 недели пока нет пробежек.
               </p>
             )}
           </div>
