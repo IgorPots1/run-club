@@ -4,8 +4,14 @@ import { memo, useEffect, useState, type ReactNode } from 'react'
 import { Heart, LoaderCircle, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import RunPhotoLightbox, { type RunPhotoLightboxPhoto } from '@/components/RunPhotoLightbox'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
+
+type WorkoutFeedCardPhoto = RunPhotoLightboxPhoto & {
+  id: string
+  thumbnail_url: string | null
+}
 
 type WorkoutFeedCardProps = {
   runId?: string
@@ -29,6 +35,7 @@ type WorkoutFeedCardProps = {
   onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
   profileHref?: string | null
+  photos?: WorkoutFeedCardPhoto[]
 }
 
 function StravaIcon() {
@@ -140,13 +147,17 @@ function WorkoutFeedCard({
   onOpenLikes,
   onCommentClick,
   profileHref = null,
+  photos = [],
 }: WorkoutFeedCardProps) {
   const router = useRouter()
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const normalizedDescription = toNullableTrimmedText(description)
+  const previewPhoto = photos[0] ?? null
+  const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
@@ -208,6 +219,35 @@ function WorkoutFeedCard({
         router.push(`/runs/${runId}`)
       }}
     >
+      {previewPhoto ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setSelectedPhotoIndex(0)
+          }}
+          className="-mx-5 -mt-5 mb-4 block overflow-hidden bg-[var(--surface-muted)] text-left"
+          aria-label="Открыть фото тренировки"
+        >
+          <div className="relative aspect-[4/3] w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewPhoto.thumbnail_url ?? previewPhoto.public_url}
+              alt={`Фото тренировки ${displayTitle}`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+            />
+            {additionalPhotosCount > 0 ? (
+              <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                +{additionalPhotosCount}
+              </div>
+            ) : null}
+          </div>
+        </button>
+      ) : null}
+
       <div className="flex items-start justify-between gap-3">
         <ParticipantIdentity
           avatarUrl={avatarUrl}
@@ -285,30 +325,36 @@ function WorkoutFeedCard({
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
         <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <FeedActionButton
-              count={likesCount}
-              active={likedByMe}
-              disabled={pending || !runId}
-              onClick={() => onToggleLike(runId)}
-              onCountClick={() => onOpenLikes?.()}
-              icon={
-                pending ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-                ) : (
-                  <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
-                )
-              }
-            />
-            <FeedActionButton
-              count={commentsCount}
-              disabled={!runId}
-              onClick={() => onCommentClick?.(runId)}
-              icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
-            />
-            <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
-            {stravaBadge}
+          <FeedActionButton
+            count={likesCount}
+            active={likedByMe}
+            disabled={pending || !runId}
+            onClick={() => onToggleLike(runId)}
+            onCountClick={() => onOpenLikes?.()}
+            icon={
+              pending ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+              ) : (
+                <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
+              )
+            }
+          />
+          <FeedActionButton
+            count={commentsCount}
+            disabled={!runId}
+            onClick={() => onCommentClick?.(runId)}
+            icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
+          />
+          <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
+          {stravaBadge}
         </div>
       </div>
+
+      <RunPhotoLightbox
+        photos={photos}
+        selectedIndex={selectedPhotoIndex}
+        onClose={() => setSelectedPhotoIndex(null)}
+      />
     </div>
   )
 }

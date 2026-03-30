@@ -444,6 +444,7 @@ export default function InfiniteWorkoutFeed({
               likesCount={item.likesCount}
               commentsCount={item.commentsCount}
               likedByMe={item.likedByMe}
+              photos={item.photos}
               pending={pendingRunIds.includes(item.id)}
               onToggleLike={handleLikeToggle}
               onOpenLikes={() => handleOpenLikes(item)}

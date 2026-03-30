@@ -38,6 +38,21 @@ type RunRow = {
   created_at: string
 }
 
+type RunPhotoRow = {
+  id: string
+  run_id: string
+  public_url: string
+  thumbnail_url: string | null
+  sort_order: number
+  created_at?: string | null
+}
+
+export type FeedRunPhoto = {
+  id: string
+  public_url: string
+  thumbnail_url: string | null
+}
+
 export type DashboardRunItem = {
   id: string
   user_id: string
@@ -56,6 +71,7 @@ export type DashboardRunItem = {
   likesCount: number
   commentsCount: number
   likedByMe: boolean
+  photos: FeedRunPhoto[]
 }
 
 export type FeedRunItem = DashboardRunItem & {
@@ -403,12 +419,50 @@ export async function loadFeedRuns(
     totalXpByUser,
     likesSummary,
     commentsCountByRunId,
+    photosResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadTotalXpByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
     loadRunCommentCountsForRunIds(runIds).catch(() => ({} as Record<string, number>)),
+    runIds.length === 0
+      ? Promise.resolve({ data: [] as RunPhotoRow[], error: null })
+      : supabase
+          .from('run_photos')
+          .select('id, run_id, public_url, thumbnail_url, sort_order, created_at')
+          .in('run_id', runIds)
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true }),
   ])
+
+  const photosByRunId = ((photosResult.data as RunPhotoRow[] | null) ?? []).reduce<Record<string, FeedRunPhoto[]>>(
+    (accumulator, photo) => {
+      if (
+        typeof photo.run_id !== 'string' ||
+        photo.run_id.length === 0 ||
+        typeof photo.id !== 'string' ||
+        photo.id.length === 0 ||
+        typeof photo.public_url !== 'string' ||
+        photo.public_url.trim().length === 0
+      ) {
+        return accumulator
+      }
+
+      if (!accumulator[photo.run_id]) {
+        accumulator[photo.run_id] = []
+      }
+
+      accumulator[photo.run_id].push({
+        id: photo.id,
+        public_url: photo.public_url,
+        thumbnail_url: photo.thumbnail_url ?? null,
+      })
+
+      return accumulator
+    },
+    {}
+  )
 
   return {
     items: pageRuns.map((run) => {
@@ -435,6 +489,7 @@ export async function loadFeedRuns(
         likesCount: likesSummary.likesByRunId[run.id] ?? 0,
         commentsCount: commentsCountByRunId[run.id] ?? 0,
         likedByMe: likesSummary.likedRunIds.has(run.id),
+        photos: photosByRunId[run.id] ?? [],
       }
     }),
     hasMore: pageRuns.length === limit,
