@@ -26,7 +26,15 @@ function WeeklyVolumeTooltip({
   }
 
   return (
-    <div className="app-card rounded-xl border px-3 py-2 shadow-lg">
+    <div
+      className="app-card pointer-events-none select-none rounded-xl border px-3 py-2 shadow-lg"
+      style={{
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
       <p className="app-text-secondary text-xs">
         <span className="app-text-primary font-medium">{point.rangeLabel}</span>
       </p>
@@ -86,11 +94,19 @@ export default function ProfileWeeklyVolumeTrendChart({
     setSelectedIndex(nextIndex)
   }
 
+  const interactionStyle = {
+    userSelect: 'none' as const,
+    WebkitUserSelect: 'none' as const,
+    WebkitTouchCallout: 'none' as const,
+    WebkitTapHighlightColor: 'transparent',
+    outline: 'none',
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 select-none" style={interactionStyle}>
       <WeeklyVolumeTooltip point={selectedPoint} />
       <div
-        className="relative h-[210px] w-full"
+        className="relative h-[210px] w-full select-none outline-none"
         onPointerDown={(event) => {
           if (overlayRef.current?.contains(event.target as Node)) {
             return
@@ -98,6 +114,10 @@ export default function ProfileWeeklyVolumeTrendChart({
 
           setSelectedIndex(null)
         }}
+        onDragStart={(event) => {
+          event.preventDefault()
+        }}
+        style={interactionStyle}
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
@@ -166,7 +186,7 @@ export default function ProfileWeeklyVolumeTrendChart({
           ref={overlayRef}
           className={`absolute inset-x-[10px] top-[8px] bottom-[28px] ${
             isScrubbing ? 'cursor-grabbing' : 'cursor-pointer'
-          } outline-none`}
+          } select-none outline-none`}
           aria-label="Выбор недели на графике"
           onPointerDown={(event) => {
             if (data.length === 0) {
@@ -198,7 +218,10 @@ export default function ProfileWeeklyVolumeTrendChart({
             }
             setIsScrubbing(false)
           }}
-          style={{ touchAction: 'none', WebkitTapHighlightColor: 'transparent' }}
+          style={{
+            ...interactionStyle,
+            touchAction: 'none',
+          }}
         >
           <span className="sr-only">
             Проведите пальцем по графику, чтобы посмотреть недельный пробег.
