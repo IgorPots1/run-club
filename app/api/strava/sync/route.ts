@@ -71,7 +71,7 @@ export async function GET(request: Request) {
 
   try {
     const result = await syncStravaRuns(user.id, {
-      mode: 'backfill',
+      mode: debugRunId ? 'backfill' : 'incremental',
       ...(debugRunId ? { debugRunId } : {}),
       ...(debugMode && debugRunId ? { allowTargetedDebugOwnerBypass: true } : {}),
     })
