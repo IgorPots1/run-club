@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
@@ -33,6 +32,8 @@ type RunDetailsRow = {
   name: string | null
   title?: string | null
   description?: string | null
+  name_manually_edited?: boolean
+  description_manually_edited?: boolean
   city?: string | null
   region?: string | null
   country?: string | null
@@ -94,7 +95,7 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, description, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, description, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
   'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
@@ -124,6 +125,8 @@ function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefin
     message.includes('calories') ||
     message.includes('average_cadence') ||
     message.includes('description') ||
+    message.includes('name_manually_edited') ||
+    message.includes('description_manually_edited') ||
     message.includes('city') ||
     message.includes('region') ||
     message.includes('country')
@@ -515,6 +518,13 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
+function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description'> | null | undefined) {
+  return {
+    name: run?.name ?? '',
+    description: run?.description ?? '',
+  }
+}
+
 export default function RunDetailsPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -534,6 +544,11 @@ export default function RunDetailsPage() {
   const [lapsBackfillAttemptedRunId, setLapsBackfillAttemptedRunId] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [isEditingDetails, setIsEditingDetails] = useState(false)
+  const [editedName, setEditedName] = useState('')
+  const [editedDescription, setEditedDescription] = useState('')
+  const [saveDetailsError, setSaveDetailsError] = useState('')
+  const [savingDetails, setSavingDetails] = useState(false)
 
   async function handleCommentSubmit(comment: string) {
     if (!user || !run) {
@@ -714,6 +729,16 @@ export default function RunDetailsPage() {
   }, [authLoading, reloadKey, runId, user])
 
   useEffect(() => {
+    if (isEditingDetails) {
+      return
+    }
+
+    const nextDraft = getRunEditDraft(run)
+    setEditedName(nextDraft.name)
+    setEditedDescription(nextDraft.description)
+  }, [isEditingDetails, run])
+
+  useEffect(() => {
     if (loading || !user || !run) {
       return
     }
@@ -752,7 +777,7 @@ export default function RunDetailsPage() {
     return () => {
       cancelled = true
     }
-  }, [lapsBackfillAttemptedRunId, loading, run, runLaps.length, user])
+  }, [lapsBackfillAttemptedRunId, loading, run, runId, runLaps.length, user])
 
   const commentsCount = comments.length
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
@@ -849,6 +874,78 @@ export default function RunDetailsPage() {
     [breakdownRows]
   )
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
+  const isOwner = Boolean(user && run && user.id === run.user_id)
+  const normalizedEditedName = toNullableTrimmedText(editedName)
+  const normalizedEditedDescription = toNullableTrimmedText(editedDescription)
+  const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
+  const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
+  const hasPendingDetailChanges = hasNameChanged || hasDescriptionChanged
+
+  function handleStartEditingDetails() {
+    if (!isOwner || !run) {
+      return
+    }
+
+    const nextDraft = getRunEditDraft(run)
+    setEditedName(nextDraft.name)
+    setEditedDescription(nextDraft.description)
+    setSaveDetailsError('')
+    setIsEditingDetails(true)
+  }
+
+  function handleCancelEditingDetails() {
+    const nextDraft = getRunEditDraft(run)
+    setEditedName(nextDraft.name)
+    setEditedDescription(nextDraft.description)
+    setSaveDetailsError('')
+    setIsEditingDetails(false)
+  }
+
+  async function handleSaveDetails() {
+    if (!user || !run || !isOwner || savingDetails || !hasPendingDetailChanges) {
+      return
+    }
+
+    const nextName = normalizedEditedName
+    const nextDescription = normalizedEditedDescription
+    const updates: Partial<RunDetailsRow> = {}
+
+    if (hasNameChanged) {
+      updates.name = nextName
+      updates.name_manually_edited = true
+    }
+
+    if (hasDescriptionChanged) {
+      updates.description = nextDescription
+      updates.description_manually_edited = true
+    }
+
+    setSavingDetails(true)
+    setSaveDetailsError('')
+
+    try {
+      const { error: updateError } = await supabase
+        .from('runs')
+        .update(updates)
+        .eq('id', run.id)
+        .eq('user_id', user.id)
+
+      if (updateError) {
+        setSaveDetailsError('Не удалось сохранить изменения')
+        return
+      }
+
+      setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
+      setEditedName(nextName ?? '')
+      setEditedDescription(nextDescription ?? '')
+      setDescriptionExpanded(false)
+      setIsEditingDetails(false)
+    } catch {
+      setSaveDetailsError('Не удалось сохранить изменения')
+    } finally {
+      setSavingDetails(false)
+    }
+  }
 
   const details = useMemo(() => {
     if (!run) {
@@ -975,29 +1072,100 @@ export default function RunDetailsPage() {
                   Strava
                 </span>
               ) : null}
+              {isOwner && !isEditingDetails ? (
+                <button
+                  type="button"
+                  onClick={handleStartEditingDetails}
+                  className="app-text-muted text-xs font-medium"
+                >
+                  Редактировать
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
-          {runDescription ? (
-            <div className="mt-2">
-              <p
-                className={`app-text-secondary break-words text-sm leading-5 ${
-                  descriptionExpanded ? '' : 'line-clamp-2'
-                }`}
-              >
-                {runDescription}
-              </p>
+          {isEditingDetails ? (
+            <div className="mt-3 space-y-4">
+              <div>
+                <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
+                  Название
+                </label>
+                <input
+                  id="run-name"
+                  type="text"
+                  value={editedName}
+                  onChange={(event) => {
+                    setEditedName(event.target.value)
+                    setSaveDetailsError('')
+                  }}
+                  placeholder="Введите название"
+                  disabled={savingDetails}
+                  className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+                />
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setDescriptionExpanded((prev) => !prev)}
-                className="app-text-muted mt-0.5 text-xs font-medium"
-              >
-                {descriptionExpanded ? 'Скрыть' : 'Читать'}
-              </button>
+              <div>
+                <label htmlFor="run-description" className="app-text-secondary text-sm font-medium">
+                  Описание
+                </label>
+                <textarea
+                  id="run-description"
+                  value={editedDescription}
+                  onChange={(event) => {
+                    setEditedDescription(event.target.value)
+                    setSaveDetailsError('')
+                  }}
+                  placeholder="Добавьте описание"
+                  disabled={savingDetails}
+                  className="app-input mt-1 min-h-28 w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+
+              {saveDetailsError ? <p className="text-sm text-red-600">{saveDetailsError}</p> : null}
+
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEditingDetails}
+                  disabled={savingDetails}
+                  className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveDetails()}
+                  disabled={savingDetails || !hasPendingDetailChanges}
+                  className="app-button-primary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingDetails ? 'Сохраняем...' : 'Сохранить'}
+                </button>
+              </div>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
+              {runDescription ? (
+                <div className="mt-2">
+                  <p
+                    className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
+                      descriptionExpanded ? '' : 'line-clamp-2'
+                    }`}
+                  >
+                    {runDescription}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionExpanded((prev) => !prev)}
+                    className="app-text-muted mt-0.5 text-xs font-medium"
+                  >
+                    {descriptionExpanded ? 'Скрыть' : 'Читать'}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          )}
 
           <div className="mt-2.5 text-sm">
             <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
