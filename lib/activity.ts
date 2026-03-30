@@ -31,12 +31,6 @@ export type ActivityWindowStats = {
   totalMovingTimeSeconds: number
 }
 
-export type ActivityVolumeBucket = {
-  label: string
-  totalDistanceKm: number
-  isCurrent: boolean
-}
-
 function startOfDay(date: Date) {
   const next = new Date(date)
   next.setHours(0, 0, 0, 0)
@@ -244,37 +238,34 @@ export function buildActivityWindowStats(
   }
 }
 
-export function buildLast30DayWeeklyVolume(
+export function buildRollingDailyDistanceChart(
   runs: ActivityWindowRun[],
-  now = new Date()
-): ActivityVolumeBucket[] {
+  options: { days?: number; now?: Date } = {}
+): ActivityChartPoint[] {
+  const { days = 30, now = new Date() } = options
   const end = addDays(startOfDay(now), 1)
-  const boundaries = [
-    addDays(end, -30),
-    addDays(end, -21),
-    addDays(end, -14),
-    addDays(end, -7),
-    end,
-  ]
+  const safeDays = Math.max(1, Math.floor(days))
+  const start = addDays(end, -safeDays)
+  const distanceByDateKey = runs.reduce<Record<string, number>>((totals, run) => {
+    const createdAt = new Date(run.created_at)
 
-  return Array.from({ length: 4 }, (_, index) => {
-    const start = boundaries[index]
-    const bucketEnd = boundaries[index + 1]
+    if (Number.isNaN(createdAt.getTime()) || createdAt < start || createdAt >= end) {
+      return totals
+    }
 
-    const totalDistanceKm = runs.reduce((sum, run) => {
-      const createdAt = new Date(run.created_at)
+    const dateKey = formatDateKey(createdAt)
+    totals[dateKey] = (totals[dateKey] ?? 0) + Math.max(0, Number(run.distance_km ?? 0))
 
-      if (Number.isNaN(createdAt.getTime()) || createdAt < start || createdAt >= bucketEnd) {
-        return sum
-      }
+    return totals
+  }, {})
 
-      return sum + Math.max(0, Number(run.distance_km ?? 0))
-    }, 0)
+  return Array.from({ length: safeDays }, (_, index) => {
+    const day = addDays(start, index)
+    const dateKey = formatDateKey(day)
 
     return {
-      label: String(index + 1),
-      totalDistanceKm,
-      isCurrent: index === 3,
+      label: String(day.getDate()),
+      distance: distanceByDateKey[dateKey] ?? 0,
     }
   })
 }

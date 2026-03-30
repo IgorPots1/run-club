@@ -4,21 +4,12 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import ActivityDistanceChart from '@/components/ActivityDistanceChart'
 import { getBootstrapUser } from '@/lib/auth'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import type { User } from '@supabase/supabase-js'
 import {
   buildActivitySummary,
   loadActivityRuns,
-  type ActivityChartPoint,
   type ActivityPeriod,
 } from '@/lib/activity'
 import { formatDistanceKm } from '@/lib/format'
@@ -36,32 +27,11 @@ function formatDistance(value: number) {
   return formatDistanceKm(value)
 }
 
-type ActivityChartTooltipProps = {
-  point: (ActivityChartPoint & { index: number }) | null
-}
-
-function ActivityChartTooltip({ point }: ActivityChartTooltipProps) {
-  if (!point) return null
-
-  return (
-    <div className="app-card max-w-[180px] rounded-xl border px-3 py-2 shadow-lg">
-      <p className="app-text-secondary text-xs">
-        Период: <span className="app-text-primary font-medium">{point.label}</span>
-      </p>
-      <p className="app-text-secondary mt-1 text-xs">
-        Дистанция: <span className="app-text-primary font-medium">{formatDistance(point.distance)} км</span>
-      </p>
-    </div>
-  )
-}
-
 export default function ActivityPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
-  const [viewportWidth, setViewportWidth] = useState<number | null>(null)
-  const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -94,19 +64,6 @@ export default function ActivityPage() {
     }
   }, [router])
 
-  useEffect(() => {
-    function updateViewportState() {
-      setViewportWidth(window.innerWidth)
-    }
-
-    updateViewportState()
-    window.addEventListener('resize', updateViewportState)
-
-    return () => {
-      window.removeEventListener('resize', updateViewportState)
-    }
-  }, [])
-
   const { data: runs, error, isLoading, mutate } = useSWR(
     user ? (['activity-runs', user.id] as const) : null,
     ([, userId]: readonly [string, string]) => loadActivityRuns(userId),
@@ -120,7 +77,6 @@ export default function ActivityPage() {
   )
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
-  const isVerySmallScreen = viewportWidth !== null && viewportWidth < 390
   const chartTitle =
     period === 'year'
       ? 'Дистанция по месяцам'
@@ -128,85 +84,6 @@ export default function ActivityPage() {
         ? 'Дистанция по годам'
         : 'Дистанция по дням'
   const shouldRenderEmptyState = summary.chartData.length === 0
-  const chartTickFontSize =
-    period === 'year'
-      ? viewportWidth !== null && viewportWidth < 360
-        ? 9
-        : isVerySmallScreen
-          ? 10
-          : 11
-      : isVerySmallScreen
-        ? 11
-        : 12
-  const xAxisHeight = period === 'year' || period === 'all' ? 40 : 32
-  const chartConfig =
-    period === 'week'
-      ? {
-          interval: 0,
-          minTickGap: 10,
-          tickMargin: 8,
-          xPadding: { left: 6, right: 6 },
-          yAxisWidth: 40,
-          chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
-          barCategoryGap: '30%',
-          barSize: 18,
-          maxBarSize: 24,
-        }
-      : period === 'month'
-        ? {
-            interval: isVerySmallScreen && summary.chartData.length > 10 ? 1 : 0,
-            minTickGap: isVerySmallScreen ? 12 : 10,
-            tickMargin: 8,
-            xPadding: { left: 4, right: 4 },
-            yAxisWidth: 40,
-            chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
-            barCategoryGap:
-              summary.chartData.length <= 4 ? '34%' : summary.chartData.length <= 8 ? '26%' : '18%',
-            barSize: summary.chartData.length <= 4 ? 20 : 14,
-            maxBarSize: summary.chartData.length <= 4 ? 28 : 22,
-          }
-        : period === 'year'
-          ? {
-              interval: 0,
-              minTickGap: 0,
-              tickMargin: 8,
-              xPadding: { left: 4, right: 4 },
-              yAxisWidth: 42,
-              chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
-              barCategoryGap: '46%',
-              barSize: 12,
-              maxBarSize: 16,
-            }
-          : {
-              interval: isVerySmallScreen && summary.chartData.length > 5 ? 1 : 0,
-              minTickGap: isVerySmallScreen ? 16 : 12,
-              tickMargin: 10,
-              xPadding: summary.chartData.length === 1 ? { left: 32, right: 32 } : { left: 10, right: 10 },
-              yAxisWidth: 42,
-              chartMargin: { top: 4, right: 6, left: 12, bottom: 6 },
-              barCategoryGap: summary.chartData.length === 1 ? '72%' : '36%',
-              barSize: summary.chartData.length === 1 ? 18 : 14,
-              maxBarSize: summary.chartData.length === 1 ? 24 : 20,
-            }
-  const activeBar =
-    activeBarIndex === null || !summary.chartData[activeBarIndex]
-      ? null
-      : { ...summary.chartData[activeBarIndex], index: activeBarIndex }
-  const weekTapTargetsStyle =
-    period === 'week'
-      ? {
-          top: chartConfig.chartMargin.top,
-          right: chartConfig.chartMargin.right + chartConfig.xPadding.right,
-          bottom: xAxisHeight,
-          left: chartConfig.chartMargin.left + chartConfig.yAxisWidth + chartConfig.xPadding.left,
-        }
-      : null
-  const chartInteractionStyle = {
-    userSelect: 'none' as const,
-    WebkitUserSelect: 'none' as const,
-    WebkitTouchCallout: 'none' as const,
-    WebkitTapHighlightColor: 'transparent',
-  }
 
   useEffect(() => {
     if (!user) return
@@ -229,10 +106,6 @@ export default function ActivityPage() {
       window.removeEventListener('storage', handleStorage)
     }
   }, [mutate, user])
-
-  useEffect(() => {
-    setActiveBarIndex(null)
-  }, [period, summary.chartData.length])
 
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
@@ -313,84 +186,13 @@ export default function ActivityPage() {
                     <p className="mt-2">Попробуйте выбрать другой диапазон.</p>
                   </div>
                 ) : (
-                  <div className="mt-3 h-[220px] w-full md:mt-3.5 md:h-[300px]">
-                    <div className="relative h-full w-full select-none touch-manipulation" style={chartInteractionStyle}>
-                      <div className="pointer-events-none absolute left-2 top-2 z-10">
-                        <ActivityChartTooltip point={activeBar} />
-                      </div>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={summary.chartData}
-                          margin={chartConfig.chartMargin}
-                          barCategoryGap={chartConfig.barCategoryGap}
-                          accessibilityLayer={false}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
-                          <XAxis
-                            dataKey="label"
-                            tickLine={false}
-                            axisLine={false}
-                            interval={chartConfig.interval}
-                            minTickGap={chartConfig.minTickGap}
-                            tickMargin={chartConfig.tickMargin}
-                            height={xAxisHeight}
-                            padding={chartConfig.xPadding}
-                            tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
-                          />
-                          <YAxis
-                            tickLine={false}
-                            axisLine={false}
-                            tick={{ fill: 'var(--chart-tick)', fontSize: chartTickFontSize }}
-                            width={chartConfig.yAxisWidth}
-                          />
-                          <Bar
-                            dataKey="distance"
-                            fill="var(--accent-strong)"
-                            radius={[8, 8, 0, 0]}
-                            barSize={chartConfig.barSize}
-                            maxBarSize={chartConfig.maxBarSize}
-                            onMouseEnter={(_, index) => {
-                              if (summary.chartData[index]?.distance > 0) {
-                                setActiveBarIndex(index)
-                              }
-                            }}
-                            onMouseLeave={() => {
-                              setActiveBarIndex(null)
-                            }}
-                            onClick={(_, index) => {
-                              if (summary.chartData[index]?.distance > 0) {
-                                setActiveBarIndex((current) => (current === index ? null : index))
-                              }
-                            }}
-                          >
-                            {summary.chartData.map((entry, index) => (
-                              <Cell
-                                key={`${entry.label}-${index}`}
-                                cursor={entry.distance > 0 ? 'pointer' : 'default'}
-                                fillOpacity={activeBarIndex === index ? 0.82 : 1}
-                                pointerEvents={entry.distance > 0 ? 'auto' : 'none'}
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                      {period === 'week' && weekTapTargetsStyle ? (
-                        <div className="absolute z-10 grid h-full w-full grid-cols-7" style={weekTapTargetsStyle}>
-                          {summary.chartData.map((entry, index) => (
-                            <button
-                              key={`${entry.label}-tap-${index}`}
-                              type="button"
-                              className="h-full min-h-0 w-full appearance-none bg-transparent p-0"
-                              aria-label={`Показать активность за ${entry.label}: ${formatDistance(entry.distance)} км`}
-                              onClick={() => {
-                                setActiveBarIndex((current) => (current === index ? null : index))
-                              }}
-                              style={chartInteractionStyle}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                  <div className="mt-3 w-full md:mt-3.5">
+                    <ActivityDistanceChart
+                      key={period}
+                      data={summary.chartData}
+                      mode={period}
+                      heightClassName="h-[220px] md:h-[300px]"
+                    />
                   </div>
                 )}
               </div>
