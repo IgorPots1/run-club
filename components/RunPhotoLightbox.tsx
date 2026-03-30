@@ -1,6 +1,6 @@
 'use client'
 
-import type { TouchEvent as ReactTouchEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
@@ -33,6 +33,7 @@ export default function RunPhotoLightbox({
   const [isVerticalDragging, setIsVerticalDragging] = useState(false)
   const activeIndexRef = useRef(activeIndex)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const ignoreTapUntilRef = useRef(0)
   const dragGestureRef = useRef({
     startX: 0,
     startY: 0,
@@ -159,6 +160,7 @@ export default function RunPhotoLightbox({
     }
 
     const touch = event.touches[0]
+    ignoreTapUntilRef.current = 0
     dragGestureRef.current = {
       startX: touch.clientX,
       startY: touch.clientY,
@@ -178,6 +180,13 @@ export default function RunPhotoLightbox({
     const deltaY = touch.clientY - dragGestureRef.current.startY
     const absoluteDeltaX = Math.abs(deltaX)
     const absoluteDeltaY = Math.abs(deltaY)
+
+    if (
+      absoluteDeltaX >= DRAG_DIRECTION_THRESHOLD_PX ||
+      absoluteDeltaY >= DRAG_DIRECTION_THRESHOLD_PX
+    ) {
+      ignoreTapUntilRef.current = window.performance.now() + 350
+    }
 
     if (dragGestureRef.current.axis === 'undetermined') {
       if (
@@ -239,13 +248,34 @@ export default function RunPhotoLightbox({
     setDragOffsetY(0)
   }
 
+  function handleViewerTap(event: ReactMouseEvent<HTMLDivElement>) {
+    if (window.performance.now() < ignoreTapUntilRef.current) {
+      return
+    }
+
+    const containerRect = event.currentTarget.getBoundingClientRect()
+
+    if (containerRect.width <= 0) {
+      return
+    }
+
+    const horizontalTapRatio = (event.clientX - containerRect.left) / containerRect.width
+
+    if (horizontalTapRatio <= 0.3) {
+      navigateToIndex(activeIndexRef.current - 1)
+      return
+    }
+
+    if (horizontalTapRatio >= 0.7) {
+      navigateToIndex(activeIndexRef.current + 1)
+    }
+  }
+
   if (selectedIndex == null || selectedIndex < 0 || selectedIndex >= photos.length) {
     return null
   }
 
   const activePhotoNumber = activeIndex + 1
-  const canGoToPreviousPhoto = activeIndex > 0
-  const canGoToNextPhoto = activeIndex < photos.length - 1
   const backdropOpacity = Math.max(0.55, 0.95 - Math.min(dragOffsetY / 320, 0.4))
   const viewerTransform = dragOffsetY > 0 ? `translateY(${dragOffsetY}px)` : undefined
 
@@ -278,26 +308,11 @@ export default function RunPhotoLightbox({
           <X className="h-5 w-5" strokeWidth={2} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => navigateToIndex(activeIndexRef.current - 1)}
-          aria-label="Предыдущее фото"
-          aria-disabled={!canGoToPreviousPhoto}
-          className="absolute inset-y-0 left-0 z-10 w-[24vw] min-w-16 max-w-24 bg-transparent transition-colors active:bg-white/5"
-        />
-
-        <button
-          type="button"
-          onClick={() => navigateToIndex(activeIndexRef.current + 1)}
-          aria-label="Следующее фото"
-          aria-disabled={!canGoToNextPhoto}
-          className="absolute inset-y-0 right-0 z-10 w-[24vw] min-w-16 max-w-24 bg-transparent transition-colors active:bg-white/5"
-        />
-
         <div
           ref={scrollContainerRef}
           className="h-full w-full overflow-x-auto overflow-y-hidden overscroll-x-contain overscroll-y-none snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           onScroll={handleScroll}
+          onClick={handleViewerTap}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
