@@ -931,10 +931,28 @@ async function syncRunPhotosForActivity(
   const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
 
   try {
+    console.info('[strava-photo-debug] sync_start', {
+      runId,
+      activityId,
+    })
+
     const photos = await fetchStravaActivityPhotos(accessToken, activityId)
     const photoRows = buildRunPhotoUpsertPayloads(runId, photos)
 
+    console.info('[strava-photo-debug] sync_mapped', {
+      runId,
+      activityId,
+      fetchedPhotosCount: Array.isArray(photos) ? photos.length : 0,
+      mappedPhotoRowsCount: photoRows.length,
+    })
+
     if (photoRows.length === 0) {
+      console.info('[strava-photo-debug] sync_no_rows', {
+        runId,
+        activityId,
+        fetchedPhotosCount: Array.isArray(photos) ? photos.length : 0,
+      })
+
       if (shouldDebug) {
         console.info('[run-detail-debug] run_photos_sync_skipped', {
           runId,
@@ -952,8 +970,20 @@ async function syncRunPhotosForActivity(
       .upsert(photoRows, { onConflict: 'run_id,source,source_photo_id' })
 
     if (error) {
+      console.warn('[strava-photo-debug] upsert_error', {
+        runId,
+        activityId,
+        mappedPhotoRowsCount: photoRows.length,
+        error: error.message,
+      })
       throw new Error(error.message)
     }
+
+    console.info('[strava-photo-debug] upsert_success', {
+      runId,
+      activityId,
+      mappedPhotoRowsCount: photoRows.length,
+    })
 
     console.info('Strava run photos synced', {
       runId,
@@ -1025,10 +1055,21 @@ async function syncRunSupplementalStravaDataIfAvailable(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   runId: string,
   activityId: number,
+  externalId: string,
+  outcome: StravaImportOutcome,
   accessToken?: string,
   debugRunId?: string
 ) {
   if (!accessToken) {
+    console.info('[strava-photo-debug] supplemental_sync_skipped', {
+      activityId,
+      externalId,
+      outcome,
+      resolvedRunId: runId,
+      reason: 'missing_access_token',
+      supplementalSyncCalled: false,
+    })
+
     if (shouldDebugRunDetailSeries({ runId, activityId })) {
       console.warn('[run-detail-debug] target_run_skipped', {
         runId,
@@ -1040,6 +1081,14 @@ async function syncRunSupplementalStravaDataIfAvailable(
     return false
   }
 
+  console.info('[strava-photo-debug] supplemental_sync_call', {
+    activityId,
+    externalId,
+    outcome,
+    resolvedRunId: runId,
+    supplementalSyncCalled: true,
+  })
+
   return syncRunSupplementalStravaDataForActivity(
     supabase,
     runId,
@@ -1047,6 +1096,24 @@ async function syncRunSupplementalStravaDataIfAvailable(
     accessToken,
     debugRunId
   )
+}
+
+async function resolveExistingStravaRunIdForSupplementalSync(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  externalId: string
+) {
+  const { data, error } = await supabase
+    .from('runs')
+    .select('id')
+    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+    .eq('external_id', externalId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data?.id ?? null
 }
 
 async function backfillMissingRunDetailSeriesForUser(
@@ -1733,22 +1800,28 @@ export async function importStravaActivityForUser(
       }
       // #endregion
       if (isUniqueViolationError(insertError)) {
-        const { data: conflictingRun, error: conflictingRunError } = await supabase
-          .from('runs')
-          .select('id')
-          .eq('external_source', STRAVA_EXTERNAL_SOURCE)
-          .eq('external_id', payload.external_id)
-          .maybeSingle()
+        const resolvedRunId = await resolveExistingStravaRunIdForSupplementalSync(
+          supabase,
+          payload.external_id
+        )
 
-        if (conflictingRunError) {
-          throw new Error(conflictingRunError.message)
-        }
+        console.info('[strava-photo-debug] existing_run_resolved', {
+          activityId: activityForImport.id,
+          externalId: payload.external_id,
+          outcome: options.updateExisting ? 'updated' : 'skipped_existing',
+          inserted: false,
+          updated: Boolean(options.updateExisting),
+          skipped: !options.updateExisting,
+          resolvedRunId,
+        })
 
-        if (conflictingRun?.id) {
+        if (resolvedRunId) {
           await syncRunSupplementalStravaDataIfAvailable(
             supabase,
-            conflictingRun.id,
+            resolvedRunId,
             activityForImport.id,
+            payload.external_id,
+            options.updateExisting ? 'updated' : 'skipped_existing',
             options.accessToken,
             options.debugRunId
           )
@@ -1769,6 +1842,16 @@ export async function importStravaActivityForUser(
     }
 
     if (insertedRun?.id && options.accessToken) {
+      console.info('[strava-photo-debug] existing_run_resolved', {
+        activityId: activityForImport.id,
+        externalId: payload.external_id,
+        outcome: 'imported',
+        inserted: true,
+        updated: false,
+        skipped: false,
+        resolvedRunId: insertedRun.id,
+      })
+
       await syncRunSupplementalStravaDataForActivity(
         supabase,
         insertedRun.id,
@@ -1804,11 +1887,30 @@ export async function importStravaActivityForUser(
     })
   }
 
+  const resolvedExistingRunId = await resolveExistingStravaRunIdForSupplementalSync(
+    supabase,
+    payload.external_id
+  )
+  const existingRunIdForSupplementalSync = resolvedExistingRunId ?? normalizedExistingRun.id
+
+  console.info('[strava-photo-debug] existing_run_resolved', {
+    activityId: activityForImport.id,
+    externalId: payload.external_id,
+    outcome: !options.updateExisting && !requiresOwnerRepair ? 'skipped_existing' : 'updated',
+    inserted: false,
+    updated: options.updateExisting || requiresOwnerRepair,
+    skipped: !options.updateExisting && !requiresOwnerRepair,
+    resolvedRunId: existingRunIdForSupplementalSync,
+    initialExistingRunId: normalizedExistingRun.id,
+  })
+
   if (!options.updateExisting && !requiresOwnerRepair) {
     await syncRunSupplementalStravaDataIfAvailable(
       supabase,
-      normalizedExistingRun.id,
+      existingRunIdForSupplementalSync,
       activityForImport.id,
+      payload.external_id,
+      'skipped_existing',
       options.accessToken,
       options.debugRunId
     )
@@ -1905,13 +2007,13 @@ export async function importStravaActivityForUser(
 
     if (existingSeriesError) {
       console.warn('Strava run detail series existence check failed', {
-        runId: normalizedExistingRun.id,
+        runId: existingRunIdForSupplementalSync,
           activityId: activityForImport.id,
         error: existingSeriesError.message,
       })
     } else if (!existingSeriesRow) {
       console.info('Strava run detail series fallback sync triggered', {
-        runId: normalizedExistingRun.id,
+        runId: existingRunIdForSupplementalSync,
           activityId: activityForImport.id,
         fallback_reason: 'missing_detail_series',
       })
@@ -1919,14 +2021,14 @@ export async function importStravaActivityForUser(
 
     await syncRunSupplementalStravaDataForActivity(
       supabase,
-      normalizedExistingRun.id,
+      existingRunIdForSupplementalSync,
       activityForImport.id,
       options.accessToken,
       options.debugRunId
     )
-  } else if (shouldDebugRunDetailSeries({ runId: normalizedExistingRun.id, activityId: activityForImport.id })) {
+  } else if (shouldDebugRunDetailSeries({ runId: existingRunIdForSupplementalSync, activityId: activityForImport.id })) {
     console.warn('[run-detail-debug] target_run_skipped', {
-      runId: normalizedExistingRun.id,
+      runId: existingRunIdForSupplementalSync,
       activityId: activityForImport.id,
       reason: 'missing_access_token',
     })
