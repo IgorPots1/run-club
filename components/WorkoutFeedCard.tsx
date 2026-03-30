@@ -332,34 +332,36 @@ function WorkoutFeedCard({
         <div className="mt-3.5" onClick={(event) => event.stopPropagation()}>
           <div
             ref={mediaScrollRef}
-            className="overflow-x-auto overflow-y-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden dark:ring-white/10"
+            className="overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             onScroll={handleMediaScroll}
           >
-            <div className="flex">
+            <div className="grid grid-flow-col auto-cols-[100%]">
               {mediaSlides.map((slide) => (
-                <div key={slide.key} className="min-w-full shrink-0 snap-start">
+                <div key={slide.key} className="snap-start">
                   {slide.type === 'map' ? (
-                    <div className="relative aspect-[2.15/1] w-full">
-                      <img
-                        src={slide.src}
-                        alt="Предпросмотр маршрута"
-                        className="h-full w-full rounded-xl object-cover"
-                        loading="lazy"
-                        decoding="async"
-                        draggable={false}
-                        onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
-                      />
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
-                      />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
-                          <span>{distanceLabel}</span>
-                          <span className="text-white/75">•</span>
-                          <span>{paceWithUnit}</span>
-                          <span className="text-white/75">•</span>
-                          <span>{movingTimeLabel}</span>
+                    <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+                      <div className="relative aspect-[2.15/1] w-full">
+                        <img
+                          src={slide.src}
+                          alt="Предпросмотр маршрута"
+                          className="h-full w-full rounded-xl object-cover"
+                          loading="lazy"
+                          decoding="async"
+                          draggable={false}
+                          onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
+                        />
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+                        />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                            <span>{distanceLabel}</span>
+                            <span className="text-white/75">•</span>
+                            <span>{paceWithUnit}</span>
+                            <span className="text-white/75">•</span>
+                            <span>{movingTimeLabel}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -370,16 +372,18 @@ function WorkoutFeedCard({
                       className="block w-full"
                       aria-label={`Открыть фото тренировки ${slide.photoIndex + 1}`}
                     >
-                      <div className="relative aspect-[2.15/1] w-full">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={slide.src}
-                          alt={`Фото тренировки ${displayTitle}`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                          draggable={false}
-                        />
+                      <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+                        <div className="relative aspect-[2.15/1] w-full">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={slide.src}
+                            alt={`Фото тренировки ${displayTitle}`}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                            draggable={false}
+                          />
+                        </div>
                       </div>
                     </button>
                   )}
