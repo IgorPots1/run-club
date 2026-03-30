@@ -158,6 +158,7 @@ function WorkoutFeedCard({
   const normalizedDescription = toNullableTrimmedText(description)
   const previewPhoto = photos[0] ?? null
   const additionalPhotosCount = Math.max(0, photos.length - 1)
+  const hasCoverPhoto = Boolean(previewPhoto)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
@@ -201,7 +202,9 @@ function WorkoutFeedCard({
 
   return (
     <div
-      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      className={`app-card relative cursor-pointer overflow-hidden rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10 ${
+        hasCoverPhoto ? 'pb-5' : 'px-5 py-5'
+      }`}
       role="button"
       tabIndex={0}
       onClick={(event) => {
@@ -226,7 +229,7 @@ function WorkoutFeedCard({
             event.stopPropagation()
             setSelectedPhotoIndex(0)
           }}
-          className="-mx-5 -mt-5 mb-4 block overflow-hidden bg-[var(--surface-muted)] text-left"
+          className="block overflow-hidden bg-[var(--surface-muted)] text-left"
           aria-label="Открыть фото тренировки"
         >
           <div className="relative aspect-[4/3] w-full">
@@ -239,68 +242,9 @@ function WorkoutFeedCard({
               decoding="async"
               draggable={false}
             />
-            {additionalPhotosCount > 0 ? (
-              <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
-                +{additionalPhotosCount}
-              </div>
-            ) : null}
-          </div>
-        </button>
-      ) : null}
-
-      <div className="flex items-start justify-between gap-3">
-        <ParticipantIdentity
-          avatarUrl={avatarUrl}
-          displayName={displayName}
-          level={level}
-          href={profileHref}
-          size="sm"
-        />
-        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
-          {formatRunTimestampLabel(createdAt, externalSource)}
-        </p>
-      </div>
-
-      <div className="mt-3">
-        <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
-          {displayTitle}
-        </p>
-        {normalizedDescription ? (
-          <div className="mt-1">
-            <p
-              className={`app-text-secondary break-words text-sm leading-5 ${
-                expanded ? '' : 'line-clamp-2'
-              }`}
-            >
-              {normalizedDescription}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setExpanded((prev) => !prev)}
-              className="app-text-muted mt-0.5 text-xs font-medium"
-            >
-              {expanded ? 'Скрыть' : 'Читать'}
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      {showMapPreview && mapPreviewUrl ? (
-        <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-          <div className="relative aspect-[2.15/1] w-full">
-            <img
-              src={mapPreviewUrl}
-              alt="Предпросмотр маршрута"
-              className="h-full w-full rounded-xl object-cover"
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
-            />
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent"
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
@@ -311,42 +255,120 @@ function WorkoutFeedCard({
                 <span>{movingTimeLabel}</span>
               </div>
             </div>
+            {additionalPhotosCount > 0 ? (
+              <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                +{additionalPhotosCount}
+              </div>
+            ) : null}
           </div>
-        </div>
-      ) : (
-        <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
-          <span className="font-semibold">{distanceLabel}</span>
-          <span className="app-text-secondary">•</span>
-          <span className="font-semibold">{paceWithUnit}</span>
-          <span className="app-text-secondary">•</span>
-          <span className="font-semibold">{movingTimeLabel}</span>
-        </div>
-      )}
+        </button>
+      ) : null}
 
-      <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
-        <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <FeedActionButton
-            count={likesCount}
-            active={likedByMe}
-            disabled={pending || !runId}
-            onClick={() => onToggleLike(runId)}
-            onCountClick={() => onOpenLikes?.()}
-            icon={
-              pending ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-              ) : (
-                <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
-              )
-            }
+      <div className={hasCoverPhoto ? 'px-5 pt-4' : ''}>
+        <div className="flex items-start justify-between gap-3">
+          <ParticipantIdentity
+            avatarUrl={avatarUrl}
+            displayName={displayName}
+            level={level}
+            href={profileHref}
+            size="sm"
           />
-          <FeedActionButton
-            count={commentsCount}
-            disabled={!runId}
-            onClick={() => onCommentClick?.(runId)}
-            icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
-          />
-          <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
-          {stravaBadge}
+          <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
+            {formatRunTimestampLabel(createdAt, externalSource)}
+          </p>
+        </div>
+
+        <div className="mt-3">
+          <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
+            {displayTitle}
+          </p>
+          {normalizedDescription ? (
+            <div className="mt-1">
+              <p
+                className={`app-text-secondary break-words text-sm leading-5 ${
+                  expanded ? '' : 'line-clamp-2'
+                }`}
+              >
+                {normalizedDescription}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setExpanded((prev) => !prev)}
+                className="app-text-muted mt-0.5 text-xs font-medium"
+              >
+                {expanded ? 'Скрыть' : 'Читать'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {showMapPreview && mapPreviewUrl ? (
+          <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+            <div className="relative aspect-[2.15/1] w-full">
+              <img
+                src={mapPreviewUrl}
+                alt="Предпросмотр маршрута"
+                className="h-full w-full rounded-xl object-cover"
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
+              />
+              {!hasCoverPhoto ? (
+                <>
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+                  />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                      <span>{distanceLabel}</span>
+                      <span className="text-white/75">•</span>
+                      <span>{paceWithUnit}</span>
+                      <span className="text-white/75">•</span>
+                      <span>{movingTimeLabel}</span>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : !hasCoverPhoto ? (
+          <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
+            <span className="font-semibold">{distanceLabel}</span>
+            <span className="app-text-secondary">•</span>
+            <span className="font-semibold">{paceWithUnit}</span>
+            <span className="app-text-secondary">•</span>
+            <span className="font-semibold">{movingTimeLabel}</span>
+          </div>
+        ) : null}
+
+        <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
+          <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <FeedActionButton
+              count={likesCount}
+              active={likedByMe}
+              disabled={pending || !runId}
+              onClick={() => onToggleLike(runId)}
+              onCountClick={() => onOpenLikes?.()}
+              icon={
+                pending ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                ) : (
+                  <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
+                )
+              }
+            />
+            <FeedActionButton
+              count={commentsCount}
+              disabled={!runId}
+              onClick={() => onCommentClick?.(runId)}
+              icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
+            />
+            <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
+            {stravaBadge}
+          </div>
         </div>
       </div>
 
