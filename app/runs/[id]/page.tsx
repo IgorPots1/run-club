@@ -1047,6 +1047,8 @@ export default function RunDetailsPage() {
   const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
   const hasPendingDetailChanges = hasNameChanged || hasDescriptionChanged
+  const selectedPhotoNumber =
+    selectedPhotoIndex !== null ? selectedPhotoIndex + 1 : 1
   const selectedPhoto =
     selectedPhotoIndex != null && selectedPhotoIndex >= 0 && selectedPhotoIndex < runPhotos.length
       ? runPhotos[selectedPhotoIndex]
@@ -1652,7 +1654,7 @@ export default function RunDetailsPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={selectedPhoto.public_url}
-            alt={`Фото тренировки ${selectedPhotoIndex + 1}`}
+            alt={`Фото тренировки ${selectedPhotoNumber}`}
             className="max-h-[calc(100vh-5rem)] w-auto max-w-full rounded-2xl object-contain shadow-2xl"
             decoding="async"
             draggable={false}
