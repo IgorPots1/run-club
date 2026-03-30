@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Heart, LoaderCircle, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
@@ -13,6 +13,19 @@ type WorkoutFeedCardPhoto = {
   public_url: string
   thumbnail_url: string | null
 }
+
+type WorkoutFeedCardMediaSlide =
+  | {
+      type: 'map'
+      key: string
+      src: string
+    }
+  | {
+      type: 'photo'
+      key: string
+      src: string
+      photoIndex: number
+    }
 
 type WorkoutFeedCardProps = {
   runId?: string
@@ -163,8 +176,30 @@ function WorkoutFeedCard({
   const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
-  const shouldRenderMediaCarousel = showMapPreview && Boolean(mapPreviewUrl) && photos.length > 0
-  const totalMediaSlides = 1 + photos.length
+  const mediaSlides = useMemo<WorkoutFeedCardMediaSlide[]>(() => {
+    const slides: WorkoutFeedCardMediaSlide[] = []
+
+    if (showMapPreview && mapPreviewUrl) {
+      slides.push({
+        type: 'map',
+        key: `map-${runId || mapPreviewUrl}`,
+        src: mapPreviewUrl,
+      })
+    }
+
+    photos.forEach((photo, index) => {
+      slides.push({
+        type: 'photo',
+        key: photo.id,
+        src: photo.thumbnail_url ?? photo.public_url,
+        photoIndex: index,
+      })
+    })
+
+    return slides
+  }, [mapPreviewUrl, photos, runId, showMapPreview])
+  const shouldRenderMediaCarousel = mediaSlides.length > 1 && mediaSlides[0]?.type === 'map'
+  const totalMediaSlides = mediaSlides.length
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
     : '—'
@@ -206,7 +241,7 @@ function WorkoutFeedCard({
 
   useEffect(() => {
     setActiveMediaIndex(0)
-  }, [runId, shouldRenderMediaCarousel, photos.length])
+  }, [runId, shouldRenderMediaCarousel, mediaSlides.length])
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
     const container = event.currentTarget
@@ -301,53 +336,53 @@ function WorkoutFeedCard({
             onScroll={handleMediaScroll}
           >
             <div className="flex">
-              <div className="min-w-full shrink-0 snap-start">
-                <div className="relative aspect-[2.15/1] w-full">
-                  <img
-                    src={mapPreviewUrl}
-                    alt="Предпросмотр маршрута"
-                    className="h-full w-full rounded-xl object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                    onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
-                  />
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
-                  />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
-                      <span>{distanceLabel}</span>
-                      <span className="text-white/75">•</span>
-                      <span>{paceWithUnit}</span>
-                      <span className="text-white/75">•</span>
-                      <span>{movingTimeLabel}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {photos.map((photo, index) => (
-                <div key={photo.id} className="min-w-full shrink-0 snap-start">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPhotoIndex(index)}
-                    className="block w-full"
-                    aria-label={`Открыть фото тренировки ${index + 1}`}
-                  >
+              {mediaSlides.map((slide) => (
+                <div key={slide.key} className="min-w-full shrink-0 snap-start">
+                  {slide.type === 'map' ? (
                     <div className="relative aspect-[2.15/1] w-full">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={photo.thumbnail_url ?? photo.public_url}
-                        alt={`Фото тренировки ${displayTitle}`}
-                        className="h-full w-full object-cover"
+                        src={slide.src}
+                        alt="Предпросмотр маршрута"
+                        className="h-full w-full rounded-xl object-cover"
                         loading="lazy"
                         decoding="async"
                         draggable={false}
+                        onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
                       />
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+                      />
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                          <span>{distanceLabel}</span>
+                          <span className="text-white/75">•</span>
+                          <span>{paceWithUnit}</span>
+                          <span className="text-white/75">•</span>
+                          <span>{movingTimeLabel}</span>
+                        </div>
+                      </div>
                     </div>
-                  </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPhotoIndex(slide.photoIndex)}
+                      className="block w-full"
+                      aria-label={`Открыть фото тренировки ${slide.photoIndex + 1}`}
+                    >
+                      <div className="relative aspect-[2.15/1] w-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={slide.src}
+                          alt={`Фото тренировки ${displayTitle}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                          draggable={false}
+                        />
+                      </div>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
