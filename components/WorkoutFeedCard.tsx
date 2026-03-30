@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Heart, LoaderCircle, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
@@ -155,12 +155,16 @@ function WorkoutFeedCard({
   const [showStravaHint, setShowStravaHint] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0)
+  const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const normalizedDescription = toNullableTrimmedText(description)
   const previewPhoto = photos[0] ?? null
   const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
+  const shouldRenderMediaCarousel = showMapPreview && Boolean(mapPreviewUrl) && photos.length > 0
+  const totalMediaSlides = 1 + photos.length
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
     : '—'
@@ -199,6 +203,37 @@ function WorkoutFeedCard({
       window.clearTimeout(timer)
     }
   }, [showStravaHint])
+
+  useEffect(() => {
+    setActiveMediaIndex(0)
+  }, [runId, shouldRenderMediaCarousel, photos.length])
+
+  function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
+    const container = event.currentTarget
+
+    if (container.clientWidth <= 0) {
+      return
+    }
+
+    const nextIndex = Math.round(container.scrollLeft / container.clientWidth)
+    setActiveMediaIndex(Math.max(0, Math.min(nextIndex, totalMediaSlides - 1)))
+  }
+
+  function scrollToMediaSlide(index: number) {
+    const container = mediaScrollRef.current
+
+    if (!container) {
+      return
+    }
+
+    const boundedIndex = Math.max(0, Math.min(index, totalMediaSlides - 1))
+
+    container.scrollTo({
+      left: container.clientWidth * boundedIndex,
+      behavior: 'smooth',
+    })
+    setActiveMediaIndex(boundedIndex)
+  }
 
   return (
     <div
@@ -258,7 +293,84 @@ function WorkoutFeedCard({
         ) : null}
       </div>
 
-      {showMapPreview && mapPreviewUrl ? (
+      {shouldRenderMediaCarousel && mapPreviewUrl ? (
+        <div className="mt-3.5" onClick={(event) => event.stopPropagation()}>
+          <div
+            ref={mediaScrollRef}
+            className="overflow-x-auto overflow-y-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden dark:ring-white/10"
+            onScroll={handleMediaScroll}
+          >
+            <div className="flex">
+              <div className="min-w-full shrink-0 snap-start">
+                <div className="relative aspect-[2.15/1] w-full">
+                  <img
+                    src={mapPreviewUrl}
+                    alt="Предпросмотр маршрута"
+                    className="h-full w-full rounded-xl object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                    onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+                  />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                      <span>{distanceLabel}</span>
+                      <span className="text-white/75">•</span>
+                      <span>{paceWithUnit}</span>
+                      <span className="text-white/75">•</span>
+                      <span>{movingTimeLabel}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {photos.map((photo, index) => (
+                <div key={photo.id} className="min-w-full shrink-0 snap-start">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPhotoIndex(index)}
+                    className="block w-full"
+                    aria-label={`Открыть фото тренировки ${index + 1}`}
+                  >
+                    <div className="relative aspect-[2.15/1] w-full">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.thumbnail_url ?? photo.public_url}
+                        alt={`Фото тренировки ${displayTitle}`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                      />
+                    </div>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-center gap-2">
+            {Array.from({ length: totalMediaSlides }, (_, index) => (
+              <button
+                key={`media-dot-${index}`}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  scrollToMediaSlide(index)
+                }}
+                className={`h-1.5 rounded-full transition-all ${
+                  index === activeMediaIndex ? 'w-4 bg-[var(--text-primary)]' : 'w-1.5 bg-black/20 dark:bg-white/25'
+                }`}
+                aria-label={`Открыть слайд ${index + 1}`}
+              />
+            ))}
+          </div>
+        </div>
+      ) : showMapPreview && mapPreviewUrl ? (
         <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
           <div className="relative aspect-[2.15/1] w-full">
             <img
@@ -295,7 +407,7 @@ function WorkoutFeedCard({
         </div>
       )}
 
-      {previewPhoto ? (
+      {!showMapPreview && previewPhoto ? (
         <button
           type="button"
           onClick={(event) => {
