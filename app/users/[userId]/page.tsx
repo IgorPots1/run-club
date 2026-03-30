@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
-import { buildActivityWindowStats } from '@/lib/activity'
+import { buildActivityWindowStats, buildLast30DayWeeklyVolume } from '@/lib/activity'
 import { formatDistanceKm, formatDurationCompact } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -138,6 +138,8 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
   const activity7Days = buildActivityWindowStats(publicRuns, { days: 7 })
   const activity30Days = buildActivityWindowStats(publicRuns)
+  const weeklyVolumeBuckets = buildLast30DayWeeklyVolume(publicRuns)
+  const maxWeeklyVolumeDistance = Math.max(...weeklyVolumeBuckets.map((bucket) => bucket.totalDistanceKm), 0)
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
   return (
@@ -236,19 +238,49 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
         <section className="app-card rounded-2xl border p-4 shadow-sm sm:p-5">
           <h2 className="app-text-primary text-base font-semibold">Бег за 30 дней</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+            <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {formatDistanceKm(activity30Days.totalDistanceKm)} км
               </p>
               <p className="app-text-secondary mt-1.5 text-sm">Пробег</p>
             </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+            <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {activity30Days.runsCount}
               </p>
               <p className="app-text-secondary mt-1.5 text-sm">Пробежки</p>
             </div>
-            <div className="app-surface-muted col-span-2 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+            <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+              <p className="app-text-secondary text-sm">Объем по неделям</p>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {weeklyVolumeBuckets.map((bucket) => {
+                  const barHeightPercent =
+                    maxWeeklyVolumeDistance > 0
+                      ? Math.max(10, Math.round((bucket.totalDistanceKm / maxWeeklyVolumeDistance) * 100))
+                      : 0
+
+                  return (
+                    <div key={bucket.label} className="flex flex-col items-center gap-2">
+                      <div className="flex h-20 w-full items-end justify-center rounded-xl bg-black/[0.05] p-1 dark:bg-white/[0.06]">
+                        <span
+                          className={`block w-full rounded-lg ${
+                            bucket.isCurrent
+                              ? 'app-accent-bg opacity-95'
+                              : 'bg-black/20 dark:bg-white/20'
+                          }`}
+                          style={{ height: `${barHeightPercent}%` }}
+                          aria-label={`Неделя ${bucket.label}: ${formatDistanceKm(bucket.totalDistanceKm)} км`}
+                        />
+                      </div>
+                      <span className="app-text-muted text-[11px] font-medium leading-none">
+                        {bucket.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {formatDurationCompact(activity30Days.totalMovingTimeSeconds)}
               </p>

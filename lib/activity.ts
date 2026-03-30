@@ -31,6 +31,12 @@ export type ActivityWindowStats = {
   totalMovingTimeSeconds: number
 }
 
+export type ActivityVolumeBucket = {
+  label: string
+  totalDistanceKm: number
+  isCurrent: boolean
+}
+
 function startOfDay(date: Date) {
   const next = new Date(date)
   next.setHours(0, 0, 0, 0)
@@ -236,4 +242,39 @@ export function buildActivityWindowStats(
     activeDaysCount: activeDateKeys.size,
     totalMovingTimeSeconds: filteredRuns.reduce((sum, run) => sum + Math.max(0, Number(run.moving_time_seconds ?? 0)), 0),
   }
+}
+
+export function buildLast30DayWeeklyVolume(
+  runs: ActivityWindowRun[],
+  now = new Date()
+): ActivityVolumeBucket[] {
+  const end = addDays(startOfDay(now), 1)
+  const boundaries = [
+    addDays(end, -30),
+    addDays(end, -21),
+    addDays(end, -14),
+    addDays(end, -7),
+    end,
+  ]
+
+  return Array.from({ length: 4 }, (_, index) => {
+    const start = boundaries[index]
+    const bucketEnd = boundaries[index + 1]
+
+    const totalDistanceKm = runs.reduce((sum, run) => {
+      const createdAt = new Date(run.created_at)
+
+      if (Number.isNaN(createdAt.getTime()) || createdAt < start || createdAt >= bucketEnd) {
+        return sum
+      }
+
+      return sum + Math.max(0, Number(run.distance_km ?? 0))
+    }, 0)
+
+    return {
+      label: String(index + 1),
+      totalDistanceKm,
+      isCurrent: index === 3,
+    }
+  })
 }
