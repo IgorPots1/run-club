@@ -32,6 +32,8 @@ type PublicRunStatRow = {
   moving_time_seconds: number | null
 }
 
+const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
+
 function formatDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -54,10 +56,16 @@ function buildRecent7DayActivity(runs: PublicRunStatRow[], now = new Date()) {
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(today)
     date.setDate(today.getDate() - (6 - index))
+    const weekdayIndex = date.getDay()
+    const normalizedWeekdayIndex = weekdayIndex === 0 ? 6 : weekdayIndex - 1
+    const dateKey = formatDateKey(date)
+    const runsCount = runsCountByDate[dateKey] ?? 0
 
     return {
-      dateKey: formatDateKey(date),
-      runsCount: runsCountByDate[formatDateKey(date)] ?? 0,
+      dateKey,
+      weekdayLabel: WEEKDAY_LABELS[normalizedWeekdayIndex] ?? '',
+      runsCount,
+      isActive: runsCount > 0,
       isToday: index === 6,
     }
   })
@@ -118,8 +126,6 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   }
 
   const totalXp = publicRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0)
-  const totalDistance = publicRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0)
-  const totalRuns = publicRuns.length
   const levelProgress = getLevelProgressFromXP(totalXp)
   const displayName = getProfileDisplayName(
     {
@@ -130,6 +136,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     'Бегун'
   )
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
+  const activity7Days = buildActivityWindowStats(publicRuns, { days: 7 })
   const activity30Days = buildActivityWindowStats(publicRuns)
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
 
@@ -183,82 +190,69 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                 <p className="app-text-secondary text-xs font-medium">
                   Последние 7 дней
                 </p>
-                <div className="mt-2 flex items-center justify-center gap-1.5">
+                <div className="mt-3 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
+                  <div className="grid grid-cols-7 gap-2">
                   {recent7DayActivity.map((day) => {
-                    const visibleDotsCount = Math.min(day.runsCount, 3)
-
                     return (
                       <div
                         key={day.dateKey}
-                        className={`flex h-8 w-8 items-center justify-center rounded-xl ${
-                          day.isToday
-                            ? 'border border-black/15 bg-black/[0.04] dark:border-white/15 dark:bg-white/[0.08]'
-                            : 'app-surface-muted'
-                        }`}
-                        aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${day.runsCount} тренировок`}
+                        className="flex min-w-0 flex-col items-center gap-1.5"
+                        aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${day.runsCount} пробежек`}
                       >
-                        {visibleDotsCount === 0 ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-black/20 dark:bg-white/20" aria-hidden="true" />
-                        ) : (
-                          <div className="flex items-center gap-1" aria-hidden="true">
-                            {Array.from({ length: visibleDotsCount }, (_, index) => (
-                              <span
-                                key={`${day.dateKey}-dot-${index}`}
-                                className={`h-1.5 w-1.5 rounded-full ${
-                                  day.isToday ? 'bg-black dark:bg-white' : 'bg-black/65 dark:bg-white/75'
-                                }`}
-                              />
-                            ))}
-                          </div>
-                        )}
+                        <span className="app-text-muted text-[11px] font-medium leading-none">
+                          {day.weekdayLabel}
+                        </span>
+                        <span
+                          className={`block h-9 w-full rounded-xl ${
+                            day.isActive
+                              ? 'app-accent-bg shadow-[0_4px_12px_rgba(0,0,0,0.14)]'
+                              : 'bg-black/[0.05] dark:bg-white/[0.07]'
+                          } ${day.isToday ? 'ring-1 ring-black/15 ring-offset-2 ring-offset-transparent dark:ring-white/20' : ''}`}
+                          aria-hidden="true"
+                        />
                       </div>
                     )
                   })}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
-              <div className="app-surface-muted rounded-2xl px-3 py-3">
-                <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
-                  {formatDistanceKm(totalDistance)}
-                </p>
-                <p className="app-text-secondary mt-2 text-sm">км</p>
-              </div>
-              <div className="app-surface-muted rounded-2xl px-3 py-3">
-                <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
-                  {totalRuns}
-                </p>
-                <p className="app-text-secondary mt-2 text-sm">тренировок</p>
+              <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
+                <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+                  <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
+                    {formatDistanceKm(activity7Days.totalDistanceKm)} км
+                  </p>
+                  <p className="app-text-secondary mt-2 text-sm">Пробег</p>
+                </div>
+                <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+                  <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
+                    {activity7Days.runsCount}
+                  </p>
+                  <p className="app-text-secondary mt-2 text-sm">Пробежки</p>
+                </div>
               </div>
             </div>
           </div>
         </section>
         <section className="app-card rounded-2xl border p-4 shadow-sm sm:p-5">
-          <h2 className="app-text-primary text-base font-semibold">Активность за 30 дней</h2>
+          <h2 className="app-text-primary text-base font-semibold">Бег за 30 дней</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="app-surface-muted rounded-2xl px-3 py-3">
+            <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {formatDistanceKm(activity30Days.totalDistanceKm)} км
               </p>
-              <p className="app-text-secondary mt-1.5 text-sm">Дистанция</p>
+              <p className="app-text-secondary mt-1.5 text-sm">Пробег</p>
             </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-3">
+            <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {activity30Days.runsCount}
               </p>
-              <p className="app-text-secondary mt-1.5 text-sm">Тренировки</p>
+              <p className="app-text-secondary mt-1.5 text-sm">Пробежки</p>
             </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-3">
-              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
-                {activity30Days.activeDaysCount}
-              </p>
-              <p className="app-text-secondary mt-1.5 text-sm">Активные дни</p>
-            </div>
-            <div className="app-surface-muted rounded-2xl px-3 py-3">
+            <div className="app-surface-muted col-span-2 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
               <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
                 {formatDurationCompact(activity30Days.totalMovingTimeSeconds)}
               </p>
-              <p className="app-text-secondary mt-1.5 text-sm">Время</p>
+              <p className="app-text-secondary mt-1.5 text-sm">В движении</p>
             </div>
           </div>
         </section>
