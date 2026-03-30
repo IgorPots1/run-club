@@ -79,6 +79,15 @@ type StravaConnectionRow = {
   status: string
 }
 
+type ExistingStravaRunRow = {
+  id: string
+  user_id: string
+  name: string | null
+  description: string | null
+  name_manually_edited: boolean
+  description_manually_edited: boolean
+}
+
 type StravaSyncRowErrorDetail = {
   activityId: string
   field?: string
@@ -1495,7 +1504,7 @@ export async function importStravaActivityForUser(
   const payload = buildRunInsertPayload(userId, activityForImport)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id, user_id')
+    .select('id, user_id, name, description, name_manually_edited, description_manually_edited')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -1504,7 +1513,9 @@ export async function importStravaActivityForUser(
     throw new Error(existingRunError.message)
   }
 
-  if (!existingRun) {
+  const normalizedExistingRun = (existingRun as ExistingStravaRunRow | null) ?? null
+
+  if (!normalizedExistingRun) {
     console.info('[strava-webhook-debug] insert_branch', {
       userId,
       activityId: activityForImport.id,
@@ -1519,15 +1530,15 @@ export async function importStravaActivityForUser(
 
     if (insertError) {
       // #region agent log
-      options.debugRunId
-        ? fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:insert_error', message: 'Run insert failed', data: { userId, externalId: payload.external_id, errorCode: insertError.code ?? null, errorMessage: insertError.message }, timestamp: Date.now() }) }).catch(() => {})
-        : undefined
+      if (options.debugRunId) {
+        fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:insert_error', message: 'Run insert failed', data: { userId, externalId: payload.external_id, errorCode: insertError.code ?? null, errorMessage: insertError.message }, timestamp: Date.now() }) }).catch(() => {})
+      }
       // #endregion
       if (isUniqueViolationError(insertError)) {
         // #region agent log
-        options.debugRunId
-          ? fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:unique_violation', message: 'Run insert hit unique constraint', data: { userId, externalId: payload.external_id, updateExisting: Boolean(options.updateExisting) }, timestamp: Date.now() }) }).catch(() => {})
-          : undefined
+        if (options.debugRunId) {
+          fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:unique_violation', message: 'Run insert hit unique constraint', data: { userId, externalId: payload.external_id, updateExisting: Boolean(options.updateExisting) }, timestamp: Date.now() }) }).catch(() => {})
+        }
         // #endregion
         return {
           status: options.updateExisting ? 'updated' : 'skipped_existing',
@@ -1554,19 +1565,19 @@ export async function importStravaActivityForUser(
     }
   }
 
-  const requiresOwnerRepair = existingRun.user_id !== userId
+  const requiresOwnerRepair = normalizedExistingRun.user_id !== userId
 
   console.info('[strava-webhook-debug] update_branch', {
     userId,
-    runId: existingRun.id,
+    runId: normalizedExistingRun.id,
     activityId: activityForImport.id,
     externalId: payload.external_id,
     requiresOwnerRepair,
   })
 
-  if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activityForImport.id })) {
+  if (shouldDebugRunDetailSeries({ runId: normalizedExistingRun.id, activityId: activityForImport.id })) {
     console.info('[run-detail-debug] target_run_selected_for_processing', {
-      runId: existingRun.id,
+      runId: normalizedExistingRun.id,
       activityId: activityForImport.id,
       path: !options.updateExisting && !requiresOwnerRepair ? 'skipped_existing_branch' : 'update_existing_branch',
       accessTokenPresent: Boolean(options.accessToken),
@@ -1575,17 +1586,17 @@ export async function importStravaActivityForUser(
   }
 
   if (!options.updateExisting && !requiresOwnerRepair) {
-    if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activityForImport.id })) {
+    if (shouldDebugRunDetailSeries({ runId: normalizedExistingRun.id, activityId: activityForImport.id })) {
       console.warn('[run-detail-debug] target_run_skipped', {
-        runId: existingRun.id,
+        runId: normalizedExistingRun.id,
         activityId: activityForImport.id,
         reason: 'existing_run_without_update',
       })
     }
     // #region agent log
-    options.debugRunId
-      ? fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:duplicate_skip', message: 'Skipping existing Strava run', data: { userId, externalId: payload.external_id, existingRunUserId: existingRun.user_id }, timestamp: Date.now() }) }).catch(() => {})
-      : undefined
+    if (options.debugRunId) {
+      fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:duplicate_skip', message: 'Skipping existing Strava run', data: { userId, externalId: payload.external_id, existingRunUserId: normalizedExistingRun.user_id }, timestamp: Date.now() }) }).catch(() => {})
+    }
     // #endregion
     return {
       status: 'skipped_existing',
@@ -1593,38 +1604,74 @@ export async function importStravaActivityForUser(
     }
   }
 
+  const runUpdatePayload: {
+    user_id: string
+    title: string
+    distance_km: number
+    distance_meters: number
+    duration_minutes: number
+    duration_seconds: number
+    moving_time_seconds: number
+    elapsed_time_seconds: number
+    average_pace_seconds: number
+    elevation_gain_meters: number
+    average_heartrate: number | null
+    max_heartrate: number | null
+    map_polyline: string | null
+    calories: number | null
+    average_cadence: number | null
+    raw_strava_payload: Record<string, unknown> | null
+    description?: string | null
+    photo_count: number | null
+    city: string | null
+    region: string | null
+    country: string | null
+    sport_type: string | null
+    achievement_count: number | null
+    strava_synced_at: string
+    created_at: string
+    xp: number
+    name?: string
+  } = {
+    user_id: payload.user_id,
+    title: payload.title,
+    distance_km: payload.distance_km,
+    distance_meters: payload.distance_meters,
+    duration_minutes: payload.duration_minutes,
+    duration_seconds: payload.duration_seconds,
+    moving_time_seconds: payload.moving_time_seconds,
+    elapsed_time_seconds: payload.elapsed_time_seconds,
+    average_pace_seconds: payload.average_pace_seconds,
+    elevation_gain_meters: payload.elevation_gain_meters,
+    average_heartrate: payload.average_heartrate,
+    max_heartrate: payload.max_heartrate,
+    map_polyline: payload.map_polyline,
+    calories: payload.calories,
+    average_cadence: payload.average_cadence,
+    raw_strava_payload: payload.raw_strava_payload,
+    photo_count: payload.photo_count,
+    city: payload.city,
+    region: payload.region,
+    country: payload.country,
+    sport_type: payload.sport_type,
+    achievement_count: payload.achievement_count,
+    strava_synced_at: payload.strava_synced_at,
+    created_at: payload.created_at,
+    xp: payload.xp,
+  }
+
+  if (!normalizedExistingRun.name_manually_edited) {
+    runUpdatePayload.name = payload.name
+  }
+
+  if (!normalizedExistingRun.description_manually_edited) {
+    runUpdatePayload.description = payload.description
+  }
+
   const { error: updateError } = await supabase
     .from('runs')
-    .update({
-      user_id: payload.user_id,
-      name: payload.name,
-      title: payload.title,
-      distance_km: payload.distance_km,
-      distance_meters: payload.distance_meters,
-      duration_minutes: payload.duration_minutes,
-      duration_seconds: payload.duration_seconds,
-      moving_time_seconds: payload.moving_time_seconds,
-      elapsed_time_seconds: payload.elapsed_time_seconds,
-      average_pace_seconds: payload.average_pace_seconds,
-      elevation_gain_meters: payload.elevation_gain_meters,
-      average_heartrate: payload.average_heartrate,
-      max_heartrate: payload.max_heartrate,
-      map_polyline: payload.map_polyline,
-      calories: payload.calories,
-      average_cadence: payload.average_cadence,
-      raw_strava_payload: payload.raw_strava_payload,
-      description: payload.description,
-      photo_count: payload.photo_count,
-      city: payload.city,
-      region: payload.region,
-      country: payload.country,
-      sport_type: payload.sport_type,
-      achievement_count: payload.achievement_count,
-      strava_synced_at: payload.strava_synced_at,
-      created_at: payload.created_at,
-      xp: payload.xp,
-    })
-    .eq('id', existingRun.id)
+    .update(runUpdatePayload)
+    .eq('id', normalizedExistingRun.id)
 
   if (updateError) {
     throw new Error(updateError.message)
@@ -1634,18 +1681,18 @@ export async function importStravaActivityForUser(
     const { data: existingSeriesRow, error: existingSeriesError } = await supabase
       .from('run_detail_series')
       .select('run_id')
-      .eq('run_id', existingRun.id)
+      .eq('run_id', normalizedExistingRun.id)
       .maybeSingle()
 
     if (existingSeriesError) {
       console.warn('Strava run detail series existence check failed', {
-        runId: existingRun.id,
+        runId: normalizedExistingRun.id,
           activityId: activityForImport.id,
         error: existingSeriesError.message,
       })
     } else if (!existingSeriesRow) {
       console.info('Strava run detail series fallback sync triggered', {
-        runId: existingRun.id,
+        runId: normalizedExistingRun.id,
           activityId: activityForImport.id,
         fallback_reason: 'missing_detail_series',
       })
@@ -1653,14 +1700,14 @@ export async function importStravaActivityForUser(
 
     await syncRunSupplementalStravaDataForActivity(
       supabase,
-      existingRun.id,
+      normalizedExistingRun.id,
       activityForImport.id,
       options.accessToken,
       options.debugRunId
     )
-  } else if (shouldDebugRunDetailSeries({ runId: existingRun.id, activityId: activityForImport.id })) {
+  } else if (shouldDebugRunDetailSeries({ runId: normalizedExistingRun.id, activityId: activityForImport.id })) {
     console.warn('[run-detail-debug] target_run_skipped', {
-      runId: existingRun.id,
+      runId: normalizedExistingRun.id,
       activityId: activityForImport.id,
       reason: 'missing_access_token',
     })
