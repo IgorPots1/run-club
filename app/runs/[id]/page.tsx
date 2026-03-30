@@ -1226,38 +1226,6 @@ export default function RunDetailsPage() {
   return (
     <WorkoutDetailShell title="Тренировка">
     <div className="space-y-4">
-      <section className="app-card rounded-2xl border p-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <ParticipantIdentity
-            avatarUrl={author?.avatar_url ?? null}
-            displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
-            level={authorLevel}
-            href={`/users/${run.user_id}`}
-            size="md"
-          />
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
-              {formatRunTimestampLabel(run.created_at, run.external_source)}
-            </p>
-            {run.external_source === 'strava' ? (
-              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
-                <StravaIcon />
-                Strava
-              </span>
-            ) : null}
-            {isOwner && !isEditingDetails ? (
-              <button
-                type="button"
-                onClick={handleStartEditingDetails}
-                className="app-text-muted text-xs font-medium"
-              >
-                Редактировать
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
       {runPhotos.length > 0 || isOwner ? (
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
@@ -1318,8 +1286,38 @@ export default function RunDetailsPage() {
       ) : null}
 
       <section className="app-card rounded-2xl border p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <ParticipantIdentity
+            avatarUrl={author?.avatar_url ?? null}
+            displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
+            level={authorLevel}
+            href={`/users/${run.user_id}`}
+            size="md"
+          />
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
+              {formatRunTimestampLabel(run.created_at, run.external_source)}
+            </p>
+            {run.external_source === 'strava' ? (
+              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
+                <StravaIcon />
+                Strava
+              </span>
+            ) : null}
+            {isOwner && !isEditingDetails ? (
+              <button
+                type="button"
+                onClick={handleStartEditingDetails}
+                className="app-text-muted text-xs font-medium"
+              >
+                Редактировать
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         {isEditingDetails ? (
-          <div className="space-y-4">
+          <div className="mt-3 space-y-4">
             <div>
               <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
                 Название
@@ -1378,7 +1376,7 @@ export default function RunDetailsPage() {
           </div>
         ) : (
           <>
-            <h1 className="app-text-primary break-words text-base font-medium">{getRunTitle(run)}</h1>
+            <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
             {runDescription ? (
               <div className="mt-2">
                 <p
