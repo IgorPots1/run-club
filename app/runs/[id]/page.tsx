@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { Map } from 'lucide-react'
+import { Map, X } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -557,6 +557,7 @@ export default function RunDetailsPage() {
   const [editedDescription, setEditedDescription] = useState('')
   const [saveDetailsError, setSaveDetailsError] = useState('')
   const [savingDetails, setSavingDetails] = useState(false)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
 
   async function handleCommentSubmit(comment: string) {
     if (!user || !run) {
@@ -768,6 +769,37 @@ export default function RunDetailsPage() {
   }, [isEditingDetails, run])
 
   useEffect(() => {
+    if (selectedPhotoIndex == null) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [selectedPhotoIndex])
+
+  useEffect(() => {
+    if (selectedPhotoIndex == null) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSelectedPhotoIndex(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedPhotoIndex])
+
+  useEffect(() => {
     if (loading || !user || !run) {
       return
     }
@@ -909,6 +941,10 @@ export default function RunDetailsPage() {
   const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
   const hasPendingDetailChanges = hasNameChanged || hasDescriptionChanged
+  const selectedPhoto =
+    selectedPhotoIndex != null && selectedPhotoIndex >= 0 && selectedPhotoIndex < runPhotos.length
+      ? runPhotos[selectedPhotoIndex]
+      : null
 
   function handleStartEditingDetails() {
     if (!isOwner || !run) {
@@ -1395,9 +1431,12 @@ export default function RunDetailsPage() {
             <div className="mt-3 overflow-x-auto pb-1">
               <div className="flex min-w-max gap-3">
                 {runPhotos.map((photo, index) => (
-                  <div
+                  <button
                     key={photo.id}
-                    className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm"
+                    type="button"
+                    onClick={() => setSelectedPhotoIndex(index)}
+                    className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm transition-transform active:scale-[0.99]"
+                    aria-label={`Открыть фото тренировки ${index + 1}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -1408,7 +1447,7 @@ export default function RunDetailsPage() {
                       decoding="async"
                       draggable={false}
                     />
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1452,6 +1491,39 @@ export default function RunDetailsPage() {
 
       <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
     </div>
+
+    {selectedPhoto ? (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Просмотр фото тренировки"
+        onClick={() => setSelectedPhotoIndex(null)}
+      >
+        <button
+          type="button"
+          onClick={() => setSelectedPhotoIndex(null)}
+          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors active:scale-[0.98]"
+          aria-label="Закрыть фото"
+        >
+          <X className="h-5 w-5" strokeWidth={2} />
+        </button>
+
+        <div
+          className="flex max-h-full w-full items-center justify-center"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={selectedPhoto.public_url}
+            alt={`Фото тренировки ${selectedPhotoIndex + 1}`}
+            className="max-h-[calc(100vh-5rem)] w-auto max-w-full rounded-2xl object-contain shadow-2xl"
+            decoding="async"
+            draggable={false}
+          />
+        </div>
+      </div>
+    ) : null}
     </WorkoutDetailShell>
   )
 }
