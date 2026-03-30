@@ -4,6 +4,7 @@ import { memo, useEffect, useState, type ReactNode } from 'react'
 import { Heart, LoaderCircle, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 
@@ -153,8 +154,11 @@ function WorkoutFeedCard({
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const normalizedDescription = toNullableTrimmedText(description)
+  const previewPhoto = photos[0] ?? null
+  const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
@@ -291,6 +295,35 @@ function WorkoutFeedCard({
         </div>
       )}
 
+      {previewPhoto ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setSelectedPhotoIndex(0)
+          }}
+          className="mt-2 block overflow-hidden rounded-2xl bg-[var(--surface-muted)] text-left shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+          aria-label="Открыть фото тренировки"
+        >
+          <div className="relative aspect-[2.15/1] w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewPhoto.thumbnail_url ?? previewPhoto.public_url}
+              alt={`Фото тренировки ${displayTitle}`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+            />
+            {additionalPhotosCount > 0 ? (
+              <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                +{additionalPhotosCount}
+              </div>
+            ) : null}
+          </div>
+        </button>
+      ) : null}
+
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
         <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <FeedActionButton
@@ -317,6 +350,12 @@ function WorkoutFeedCard({
           {stravaBadge}
         </div>
       </div>
+
+      <RunPhotoLightbox
+        photos={photos}
+        selectedIndex={selectedPhotoIndex}
+        onClose={() => setSelectedPhotoIndex(null)}
+      />
     </div>
   )
 }
