@@ -30,6 +30,8 @@ export type StravaActivitySummary = {
   start_date: string
   description?: string | null
   achievement_count?: number | null
+  photo_count?: number | null
+  total_photo_count?: number | null
   location_city?: string | null
   location_state?: string | null
   location_country?: string | null
@@ -49,6 +51,22 @@ export type StravaActivitySummary = {
     polyline?: string | null
   } | null
   laps?: StravaLapSummary[] | null
+}
+
+export type StravaActivityPhoto = {
+  id?: number | null
+  unique_id?: string | null
+  activity_id?: number | null
+  resource_state?: number | null
+  ref?: string | null
+  uid?: string | null
+  caption?: string | null
+  type?: string | null
+  source?: number | null
+  uploaded_at?: string | null
+  created_at?: string | null
+  location?: [number, number] | null
+  urls?: Record<string, string> | null
 }
 
 export type StravaLapSummary = {

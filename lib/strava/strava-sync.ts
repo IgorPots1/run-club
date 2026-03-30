@@ -3,6 +3,7 @@ import 'server-only'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import {
   fetchStravaActivityById,
+  fetchStravaActivityPhotos,
   fetchActivityStreams,
   fetchStravaActivities,
   isStravaAuthError,
@@ -11,6 +12,7 @@ import {
   StravaApiError,
 } from './strava-client'
 import type {
+  StravaActivityPhoto,
   StravaActivityStreams,
   StravaActivitySummary,
   StravaActivityType,
@@ -150,6 +152,16 @@ type RunLapUpsertPayload = {
   pace_seconds_per_km: number | null
 }
 
+type RunPhotoUpsertPayload = {
+  run_id: string
+  source: string
+  source_photo_id: string
+  public_url: string
+  thumbnail_url: string | null
+  sort_order: number
+  metadata: Record<string, unknown> | null
+}
+
 type RunLapsSyncStatus =
   | 'fetched_and_saved'
   | 'fetched_but_not_saved'
@@ -285,15 +297,27 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-function toPhotoCount(activity: Pick<StravaActivitySummary, 'photos'>) {
+function toPhotoCount(activity: Pick<StravaActivitySummary, 'photos' | 'photo_count' | 'total_photo_count'>) {
+  if (Number.isFinite(activity.total_photo_count)) {
+    return Math.max(0, Math.round(Number(activity.total_photo_count)))
+  }
+
   const photos = activity.photos
 
   if (!photos) {
+    if (Number.isFinite(activity.photo_count)) {
+      return Math.max(0, Math.round(Number(activity.photo_count)))
+    }
+
     return null
   }
 
   if (Number.isFinite(photos.count)) {
     return Math.max(0, Math.round(Number(photos.count)))
+  }
+
+  if (Number.isFinite(activity.photo_count)) {
+    return Math.max(0, Math.round(Number(activity.photo_count)))
   }
 
   if (photos.primary && typeof photos.primary === 'object') {
@@ -303,9 +327,9 @@ function toPhotoCount(activity: Pick<StravaActivitySummary, 'photos'>) {
   return null
 }
 
-function toRawStravaPayload(activity: StravaActivitySummary) {
+function toRawJsonObject(value: unknown) {
   try {
-    const serialized = JSON.stringify(activity)
+    const serialized = JSON.stringify(value)
 
     if (!serialized) {
       return null
@@ -318,6 +342,77 @@ function toRawStravaPayload(activity: StravaActivitySummary) {
   } catch {
     return null
   }
+}
+
+function toRawStravaPayload(activity: StravaActivitySummary) {
+  return toRawJsonObject(activity)
+}
+
+function toStravaPhotoSourcePhotoId(photo: StravaActivityPhoto) {
+  const uniqueId = toNullableTrimmedText(photo.unique_id)
+
+  if (uniqueId) {
+    return uniqueId
+  }
+
+  const uid = toNullableTrimmedText(photo.uid)
+
+  if (uid) {
+    return uid
+  }
+
+  if (Number.isFinite(photo.id)) {
+    return String(Math.round(Number(photo.id)))
+  }
+
+  return toNullableTrimmedText(photo.ref)
+}
+
+function getSortedPhotoUrlEntries(urls: StravaActivityPhoto['urls']) {
+  return Object.entries(urls ?? {})
+    .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : ''] as const)
+    .filter(([, value]) => value.length > 0)
+    .sort(([leftKey], [rightKey]) => {
+      const leftSize = Number(leftKey)
+      const rightSize = Number(rightKey)
+
+      if (Number.isFinite(leftSize) && Number.isFinite(rightSize)) {
+        return leftSize - rightSize
+      }
+
+      if (Number.isFinite(leftSize)) {
+        return -1
+      }
+
+      if (Number.isFinite(rightSize)) {
+        return 1
+      }
+
+      return leftKey.localeCompare(rightKey)
+    })
+}
+
+function buildRunPhotoUpsertPayloads(runId: string, photos: StravaActivityPhoto[]): RunPhotoUpsertPayload[] {
+  return photos.flatMap((photo, index) => {
+    const sourcePhotoId = toStravaPhotoSourcePhotoId(photo)
+    const urlEntries = getSortedPhotoUrlEntries(photo.urls)
+    const publicUrl = urlEntries[urlEntries.length - 1]?.[1] ?? null
+    const thumbnailUrl = urlEntries[0]?.[1] ?? publicUrl
+
+    if (!sourcePhotoId || !publicUrl) {
+      return []
+    }
+
+    return [{
+      run_id: runId,
+      source: STRAVA_EXTERNAL_SOURCE,
+      source_photo_id: sourcePhotoId,
+      public_url: publicUrl,
+      thumbnail_url: thumbnailUrl,
+      sort_order: index,
+      metadata: toRawJsonObject(photo),
+    }]
+  })
 }
 
 async function getStravaActivityForImport(
@@ -826,6 +921,74 @@ async function syncRunLapsForActivity(
   }
 }
 
+async function syncRunPhotosForActivity(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  runId: string,
+  activityId: number,
+  accessToken: string,
+  debugRunId?: string
+) {
+  const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
+
+  try {
+    const photos = await fetchStravaActivityPhotos(accessToken, activityId)
+    const photoRows = buildRunPhotoUpsertPayloads(runId, photos)
+
+    if (photoRows.length === 0) {
+      if (shouldDebug) {
+        console.info('[run-detail-debug] run_photos_sync_skipped', {
+          runId,
+          activityId,
+          fetchedCount: Array.isArray(photos) ? photos.length : 0,
+          reason: 'no_valid_photos',
+        })
+      }
+
+      return false
+    }
+
+    const { error } = await supabase
+      .from('run_photos')
+      .upsert(photoRows, { onConflict: 'run_id,source,source_photo_id' })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    console.info('Strava run photos synced', {
+      runId,
+      activityId,
+      photosCount: photoRows.length,
+    })
+
+    if (shouldDebug || matchesDebugRunId(runId, debugRunId)) {
+      console.info('[run-detail-debug] run_photos_sync_succeeded', {
+        runId,
+        activityId,
+        photosCount: photoRows.length,
+      })
+    }
+
+    return true
+  } catch (caughtError) {
+    console.warn('Strava run photos sync skipped', {
+      runId,
+      activityId,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown photo sync error',
+    })
+
+    if (shouldDebug || matchesDebugRunId(runId, debugRunId)) {
+      console.warn('[run-detail-debug] run_photos_sync_failed', {
+        runId,
+        activityId,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown photo sync error',
+      })
+    }
+
+    return false
+  }
+}
+
 async function syncRunSupplementalStravaDataForActivity(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   runId: string,
@@ -847,8 +1010,15 @@ async function syncRunSupplementalStravaDataForActivity(
     accessToken,
     debugRunId
   )
+  const photosSynced = await syncRunPhotosForActivity(
+    supabase,
+    runId,
+    activityId,
+    accessToken,
+    debugRunId
+  )
 
-  return detailSeriesSynced || lapsSyncResult.synced
+  return detailSeriesSynced || lapsSyncResult.synced || photosSynced
 }
 
 async function backfillMissingRunDetailSeriesForUser(

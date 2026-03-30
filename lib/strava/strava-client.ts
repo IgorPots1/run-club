@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type {
+  StravaActivityPhoto,
   StravaActivityStreams,
   StravaActivitySummary,
   StravaTokenExchangeResponse,
@@ -193,6 +194,31 @@ export async function fetchStravaActivityById(
   const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
 
   return JSON.parse(responseText) as StravaActivitySummary
+}
+
+export async function fetchStravaActivityPhotos(
+  accessToken: string,
+  activityId: number | string,
+  size = 600
+): Promise<StravaActivityPhoto[]> {
+  const params = new URLSearchParams({
+    photo_sources: 'true',
+    size: String(size),
+  })
+
+  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}/photos?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw buildStravaApiError('Strava activity photos fetch failed', response.status, await readErrorBody(response))
+  }
+
+  const responseText = new TextDecoder('utf-8').decode(await response.arrayBuffer())
+  return JSON.parse(responseText) as StravaActivityPhoto[]
 }
 
 export async function fetchActivityStreams(

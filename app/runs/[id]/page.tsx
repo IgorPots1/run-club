@@ -80,6 +80,13 @@ type RunLapRow = {
   average_heartrate: number | null
 }
 
+type RunPhotoRow = {
+  id: string
+  public_url: string
+  thumbnail_url: string | null
+  sort_order: number
+}
+
 type BreakdownRow = {
   index: number
   distanceMeters: number
@@ -536,6 +543,7 @@ export default function RunDetailsPage() {
   const [run, setRun] = useState<RunDetailsRow | null>(null)
   const [runSeries, setRunSeries] = useState<RunDetailSeriesRow>(EMPTY_RUN_DETAIL_SERIES)
   const [runLaps, setRunLaps] = useState<RunLapRow[]>([])
+  const [runPhotos, setRunPhotos] = useState<RunPhotoRow[]>([])
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
   const [likesCount, setLikesCount] = useState(0)
@@ -611,7 +619,8 @@ export default function RunDetailsPage() {
         if (isMounted) {
           setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
-            setRunLaps([])
+          setRunLaps([])
+          setRunPhotos([])
           setLoading(false)
         }
         return
@@ -621,7 +630,8 @@ export default function RunDetailsPage() {
         if (isMounted) {
           setError('Тренировка не найдена')
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
-            setRunLaps([])
+          setRunLaps([])
+          setRunPhotos([])
           setLoading(false)
         }
         return
@@ -640,6 +650,7 @@ export default function RunDetailsPage() {
             setRun(null)
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
+            setRunPhotos([])
           }
           return
         }
@@ -650,11 +661,12 @@ export default function RunDetailsPage() {
             setRun(null)
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
+            setRunPhotos([])
           }
           return
         }
 
-        const [profileResult, likesResult, seriesResult, lapsResult, totalXpByUser] = await Promise.all([
+        const [profileResult, likesResult, seriesResult, lapsResult, photosResult, totalXpByUser] = await Promise.all([
           supabase
             .from('profiles')
             .select('id, name, nickname, email, avatar_url')
@@ -674,6 +686,13 @@ export default function RunDetailsPage() {
             .select('lap_index, distance_meters, elapsed_time_seconds, pace_seconds_per_km, average_heartrate')
             .eq('run_id', runData.id)
             .order('lap_index', { ascending: true }),
+          supabase
+            .from('run_photos')
+            .select('id, public_url, thumbnail_url, sort_order, created_at')
+            .eq('run_id', runData.id)
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true }),
           loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
         ])
 
@@ -701,6 +720,15 @@ export default function RunDetailsPage() {
         setRun(runData as RunDetailsRow)
         setRunSeries(normalizedRunSeries)
         setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
+        setRunPhotos(
+          ((photosResult.data as Array<RunPhotoRow & { created_at?: string | null }> | null) ?? []).filter(
+            (photo): photo is RunPhotoRow =>
+              typeof photo.id === 'string' &&
+              typeof photo.public_url === 'string' &&
+              photo.public_url.trim().length > 0 &&
+              Number.isFinite(photo.sort_order)
+          )
+        )
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
         setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
         setLikesCount(Number(likesResult.count ?? 0))
@@ -712,6 +740,7 @@ export default function RunDetailsPage() {
           setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
+          setRunPhotos([])
           setComments([])
         }
       } finally {
@@ -1353,6 +1382,32 @@ export default function RunDetailsPage() {
                     <span>{row.durationLabel}</span>
                     <span>{row.paceLabel}</span>
                     {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {runPhotos.length > 0 ? (
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
+            <div className="mt-3 overflow-x-auto pb-1">
+              <div className="flex min-w-max gap-3">
+                {runPhotos.map((photo, index) => (
+                  <div
+                    key={photo.id}
+                    className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.thumbnail_url ?? photo.public_url}
+                      alt={`Фото тренировки ${index + 1}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                    />
                   </div>
                 ))}
               </div>
