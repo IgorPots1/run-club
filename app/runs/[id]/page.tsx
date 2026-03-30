@@ -1227,141 +1227,202 @@ export default function RunDetailsPage() {
     <WorkoutDetailShell title="Тренировка">
     <div className="space-y-4">
       <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <ParticipantIdentity
-              avatarUrl={author?.avatar_url ?? null}
-              displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
-              level={authorLevel}
-              href={`/users/${run.user_id}`}
-              size="md"
-            />
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
-                {formatRunTimestampLabel(run.created_at, run.external_source)}
-              </p>
-              {run.external_source === 'strava' ? (
-                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
-                  <StravaIcon />
-                  Strava
-                </span>
-              ) : null}
-              {isOwner && !isEditingDetails ? (
-                <button
-                  type="button"
-                  onClick={handleStartEditingDetails}
-                  className="app-text-muted text-xs font-medium"
-                >
-                  Редактировать
-                </button>
-              ) : null}
-            </div>
+        <div className="flex items-start justify-between gap-3">
+          <ParticipantIdentity
+            avatarUrl={author?.avatar_url ?? null}
+            displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
+            level={authorLevel}
+            href={`/users/${run.user_id}`}
+            size="md"
+          />
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
+              {formatRunTimestampLabel(run.created_at, run.external_source)}
+            </p>
+            {run.external_source === 'strava' ? (
+              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
+                <StravaIcon />
+                Strava
+              </span>
+            ) : null}
+            {isOwner && !isEditingDetails ? (
+              <button
+                type="button"
+                onClick={handleStartEditingDetails}
+                className="app-text-muted text-xs font-medium"
+              >
+                Редактировать
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      {runPhotos.length > 0 || isOwner ? (
+        <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={handleOpenPhotoPicker}
+                disabled={uploadingPhotos}
+                className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {uploadingPhotos ? 'Загружаем...' : 'Добавить фото'}
+              </button>
+            ) : null}
           </div>
 
-          {isEditingDetails ? (
-            <div className="mt-3 space-y-4">
-              <div>
-                <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
-                  Название
-                </label>
-                <input
-                  id="run-name"
-                  type="text"
-                  value={editedName}
-                  onChange={(event) => {
-                    setEditedName(event.target.value)
-                    setSaveDetailsError('')
-                  }}
-                  placeholder="Введите название"
-                  disabled={savingDetails}
-                  className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
-                />
-              </div>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(event) => void handlePhotoInputChange(event)}
+            className="hidden"
+          />
 
-              <div>
-                <label htmlFor="run-description" className="app-text-secondary text-sm font-medium">
-                  Описание
-                </label>
-                <textarea
-                  id="run-description"
-                  value={editedDescription}
-                  onChange={(event) => {
-                    setEditedDescription(event.target.value)
-                    setSaveDetailsError('')
-                  }}
-                  placeholder="Добавьте описание"
-                  disabled={savingDetails}
-                  className="app-input mt-1 min-h-28 w-full rounded-lg border px-3 py-2"
-                />
-              </div>
+          {uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
 
-              {saveDetailsError ? <p className="text-sm text-red-600">{saveDetailsError}</p> : null}
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleCancelEditingDetails}
-                  disabled={savingDetails}
-                  className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveDetails()}
-                  disabled={savingDetails || !hasPendingDetailChanges}
-                  className="app-button-primary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {savingDetails ? 'Сохраняем...' : 'Сохранить'}
-                </button>
+          {runPhotos.length > 0 ? (
+            <div className="mt-3 overflow-x-auto pb-1">
+              <div className="flex min-w-max gap-3">
+                {runPhotos.map((photo, index) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setSelectedPhotoIndex(index)}
+                    className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm transition-transform active:scale-[0.99]"
+                    aria-label={`Открыть фото тренировки ${index + 1}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.thumbnail_url ?? photo.public_url}
+                      alt={`Фото тренировки ${index + 1}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                    />
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
-            <>
-              <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
-              {runDescription ? (
-                <div className="mt-2">
-                  <p
-                    className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
-                      descriptionExpanded ? '' : 'line-clamp-2'
-                    }`}
-                  >
-                    {runDescription}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => setDescriptionExpanded((prev) => !prev)}
-                    className="app-text-muted mt-0.5 text-xs font-medium"
-                  >
-                    {descriptionExpanded ? 'Скрыть' : 'Читать'}
-                  </button>
-                </div>
-              ) : null}
-            </>
+            <p className="app-text-secondary mt-3 text-sm">
+              Добавьте фотографии тренировки, чтобы они появились в галерее.
+            </p>
           )}
+        </section>
+      ) : null}
 
-          <div className="mt-2.5 text-sm">
-            <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
-          </div>
+      <section className="app-card rounded-2xl border p-4 shadow-sm">
+        {isEditingDetails ? (
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
+                Название
+              </label>
+              <input
+                id="run-name"
+                type="text"
+                value={editedName}
+                onChange={(event) => {
+                  setEditedName(event.target.value)
+                  setSaveDetailsError('')
+                }}
+                placeholder="Введите название"
+                disabled={savingDetails}
+                className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Расстояние</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.distanceLabel ?? '—'}</p>
+            <div>
+              <label htmlFor="run-description" className="app-text-secondary text-sm font-medium">
+                Описание
+              </label>
+              <textarea
+                id="run-description"
+                value={editedDescription}
+                onChange={(event) => {
+                  setEditedDescription(event.target.value)
+                  setSaveDetailsError('')
+                }}
+                placeholder="Добавьте описание"
+                disabled={savingDetails}
+                className="app-input mt-1 min-h-28 w-full rounded-lg border px-3 py-2"
+              />
             </div>
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Время в движении</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.movingTimeLabel || details.durationLabel || '—'}</p>
-            </div>
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Средний темп</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.paceLabel ?? '—'}</p>
-            </div>
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Набор высоты</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
+
+            {saveDetailsError ? <p className="text-sm text-red-600">{saveDetailsError}</p> : null}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCancelEditingDetails}
+                disabled={savingDetails}
+                className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveDetails()}
+                disabled={savingDetails || !hasPendingDetailChanges}
+                className="app-button-primary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingDetails ? 'Сохраняем...' : 'Сохранить'}
+              </button>
             </div>
           </div>
+        ) : (
+          <>
+            <h1 className="app-text-primary break-words text-base font-medium">{getRunTitle(run)}</h1>
+            {runDescription ? (
+              <div className="mt-2">
+                <p
+                  className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
+                    descriptionExpanded ? '' : 'line-clamp-2'
+                  }`}
+                >
+                  {runDescription}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setDescriptionExpanded((prev) => !prev)}
+                  className="app-text-muted mt-0.5 text-xs font-medium"
+                >
+                  {descriptionExpanded ? 'Скрыть' : 'Читать'}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        <div className="mt-2.5 text-sm">
+          <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
+          <div className="grid content-start gap-1.5">
+            <p className="app-text-secondary text-sm leading-tight">Расстояние</p>
+            <p className="app-text-primary text-lg font-semibold leading-tight">{details.distanceLabel ?? '—'}</p>
+          </div>
+          <div className="grid content-start gap-1.5">
+            <p className="app-text-secondary text-sm leading-tight">Время в движении</p>
+            <p className="app-text-primary text-lg font-semibold leading-tight">{details.movingTimeLabel || details.durationLabel || '—'}</p>
+          </div>
+          <div className="grid content-start gap-1.5">
+            <p className="app-text-secondary text-sm leading-tight">Средний темп</p>
+            <p className="app-text-primary text-lg font-semibold leading-tight">{details.paceLabel ?? '—'}</p>
+          </div>
+          <div className="grid content-start gap-1.5">
+            <p className="app-text-secondary text-sm leading-tight">Набор высоты</p>
+            <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
+          </div>
+        </div>
       </section>
 
       {shouldRenderHeartRateChart ? (
@@ -1530,65 +1591,6 @@ export default function RunDetailsPage() {
                 ))}
               </div>
             </div>
-          </section>
-        ) : null}
-
-        {runPhotos.length > 0 || isOwner ? (
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
-              {isOwner ? (
-                <button
-                  type="button"
-                  onClick={handleOpenPhotoPicker}
-                  disabled={uploadingPhotos}
-                  className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {uploadingPhotos ? 'Загружаем...' : 'Добавить фото'}
-                </button>
-              ) : null}
-            </div>
-
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => void handlePhotoInputChange(event)}
-              className="hidden"
-            />
-
-            {uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
-
-            {runPhotos.length > 0 ? (
-              <div className="mt-3 overflow-x-auto pb-1">
-                <div className="flex min-w-max gap-3">
-                  {runPhotos.map((photo, index) => (
-                    <button
-                      key={photo.id}
-                      type="button"
-                      onClick={() => setSelectedPhotoIndex(index)}
-                      className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm transition-transform active:scale-[0.99]"
-                      aria-label={`Открыть фото тренировки ${index + 1}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.thumbnail_url ?? photo.public_url}
-                        alt={`Фото тренировки ${index + 1}`}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                        draggable={false}
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="app-text-secondary mt-3 text-sm">
-                Добавьте фотографии тренировки, чтобы они появились в галерее.
-              </p>
-            )}
           </section>
         ) : null}
 
