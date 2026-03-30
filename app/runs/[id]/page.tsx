@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Map, X } from 'lucide-react'
 import {
   Area,
@@ -22,6 +22,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import { createRunComment, loadRunComments, type RunCommentItem } from '@/lib/run-comments'
+import { uploadRunPhoto } from '@/lib/storage/uploadRunPhoto'
 import { supabase } from '@/lib/supabase'
 import { getLevelFromXP } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
@@ -85,7 +86,10 @@ type RunPhotoRow = {
   public_url: string
   thumbnail_url: string | null
   sort_order: number
+  created_at?: string | null
 }
+
+type InsertedRunPhotoRow = RunPhotoRow
 
 type BreakdownRow = {
   index: number
@@ -558,6 +562,9 @@ export default function RunDetailsPage() {
   const [saveDetailsError, setSaveDetailsError] = useState('')
   const [savingDetails, setSavingDetails] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
+  const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [uploadPhotosError, setUploadPhotosError] = useState('')
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
 
   async function handleCommentSubmit(comment: string) {
     if (!user || !run) {
@@ -579,6 +586,105 @@ export default function RunDetailsPage() {
     const refreshedComments = await loadRunComments(run.id)
     setComments(refreshedComments)
     setCommentsError('')
+  }
+
+  function handleOpenPhotoPicker() {
+    if (!photoInputRef.current || uploadingPhotos || !isOwner) {
+      return
+    }
+
+    photoInputRef.current.value = ''
+    photoInputRef.current.click()
+  }
+
+  async function handlePhotoInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.target
+    const files = Array.from(input.files ?? [])
+    input.value = ''
+
+    if (files.length === 0) {
+      return
+    }
+
+    if (!user || !run || !isOwner || uploadingPhotos) {
+      setUploadPhotosError('Добавлять фото может только владелец тренировки')
+      return
+    }
+
+    if (files.some((file) => !file.type.startsWith('image/'))) {
+      setUploadPhotosError('Можно загрузить только изображения')
+      return
+    }
+
+    setUploadingPhotos(true)
+    setUploadPhotosError('')
+
+    try {
+      const baseSortOrder = runPhotos.reduce((maxValue, photo) => Math.max(maxValue, photo.sort_order), -1) + 1
+      const insertedRows: InsertedRunPhotoRow[] = []
+
+      for (const [index, file] of files.entries()) {
+        const { path, publicUrl } = await uploadRunPhoto({
+          file,
+          userId: user.id,
+          runId: run.id,
+          index,
+        })
+
+        const insertPayload = {
+          run_id: run.id,
+          source: 'manual',
+          source_photo_id: path,
+          public_url: publicUrl,
+          thumbnail_url: null,
+          sort_order: baseSortOrder + index,
+          metadata: {
+            storage_path: path,
+            original_file_name: file.name,
+            mime_type: file.type || null,
+            size_bytes: Number.isFinite(file.size) ? file.size : null,
+          },
+        }
+
+        const { data: insertedPhoto, error: insertError } = await supabase
+          .from('run_photos')
+          .insert(insertPayload)
+          .select('id, public_url, thumbnail_url, sort_order, created_at')
+          .single()
+
+        if (insertError) {
+          throw insertError
+        }
+
+        if (insertedPhoto) {
+          insertedRows.push(insertedPhoto as InsertedRunPhotoRow)
+        }
+      }
+
+      if (insertedRows.length > 0) {
+        setRunPhotos((currentPhotos) =>
+          [...currentPhotos, ...insertedRows].sort((left, right) => {
+            if (left.sort_order !== right.sort_order) {
+              return left.sort_order - right.sort_order
+            }
+
+            const leftCreatedAt = left.created_at ?? ''
+            const rightCreatedAt = right.created_at ?? ''
+
+            if (leftCreatedAt !== rightCreatedAt) {
+              return leftCreatedAt.localeCompare(rightCreatedAt)
+            }
+
+            return left.id.localeCompare(right.id)
+          })
+        )
+      }
+    } catch (caughtError) {
+      console.error('Failed to upload run photos', caughtError)
+      setUploadPhotosError('Не удалось загрузить фото')
+    } finally {
+      setUploadingPhotos(false)
+    }
   }
 
   useEffect(() => {
@@ -1425,32 +1531,62 @@ export default function RunDetailsPage() {
           </section>
         ) : null}
 
-        {runPhotos.length > 0 ? (
+        {runPhotos.length > 0 || isOwner ? (
           <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
-            <div className="mt-3 overflow-x-auto pb-1">
-              <div className="flex min-w-max gap-3">
-                {runPhotos.map((photo, index) => (
-                  <button
-                    key={photo.id}
-                    type="button"
-                    onClick={() => setSelectedPhotoIndex(index)}
-                    className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm transition-transform active:scale-[0.99]"
-                    aria-label={`Открыть фото тренировки ${index + 1}`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.thumbnail_url ?? photo.public_url}
-                      alt={`Фото тренировки ${index + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                      draggable={false}
-                    />
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
+              {isOwner ? (
+                <button
+                  type="button"
+                  onClick={handleOpenPhotoPicker}
+                  disabled={uploadingPhotos}
+                  className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploadingPhotos ? 'Загружаем...' : 'Добавить фото'}
+                </button>
+              ) : null}
             </div>
+
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(event) => void handlePhotoInputChange(event)}
+              className="hidden"
+            />
+
+            {uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
+
+            {runPhotos.length > 0 ? (
+              <div className="mt-3 overflow-x-auto pb-1">
+                <div className="flex min-w-max gap-3">
+                  {runPhotos.map((photo, index) => (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      onClick={() => setSelectedPhotoIndex(index)}
+                      className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm transition-transform active:scale-[0.99]"
+                      aria-label={`Открыть фото тренировки ${index + 1}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.thumbnail_url ?? photo.public_url}
+                        alt={`Фото тренировки ${index + 1}`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="app-text-secondary mt-3 text-sm">
+                Добавьте фотографии тренировки, чтобы они появились в галерее.
+              </p>
+            )}
           </section>
         ) : null}
 
