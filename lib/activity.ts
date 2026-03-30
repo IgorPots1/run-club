@@ -19,10 +19,14 @@ export type ActivityChartPoint = {
 }
 
 export type ActivityTrendPoint = ActivityChartPoint & {
+  index: number
   xKey: string
   axisLabel: string
+  monthKey: string
+  monthLabel: string
   rangeLabel: string
   isCurrent: boolean
+  isComplete: boolean
 }
 
 export type ActivitySummary = {
@@ -258,6 +262,7 @@ export function buildRollingWeeklyDistanceChart(
   const safeWeeks = Math.max(1, Math.floor(weeks))
   const currentWeekStart = startOfWeek(now)
   const firstWeekStart = addDays(currentWeekStart, -(safeWeeks - 1) * 7)
+  const nextDayStart = addDays(startOfDay(now), 1)
 
   function buildRangeLabel(weekStart: Date, weekEndInclusive: Date) {
     const sameMonth =
@@ -286,6 +291,7 @@ export function buildRollingWeeklyDistanceChart(
     }, 0)
 
     return {
+      index,
       label:
         index === 0 || bucketStart.getMonth() !== addDays(bucketStart, -7).getMonth()
           ? formatMonthLabel(bucketStart)
@@ -296,8 +302,11 @@ export function buildRollingWeeklyDistanceChart(
         index === 0 || bucketStart.getMonth() !== addDays(bucketStart, -7).getMonth()
           ? formatMonthLabel(bucketStart)
           : '',
+      monthKey: `${bucketStart.getFullYear()}-${bucketStart.getMonth() + 1}`,
+      monthLabel: formatMonthLabel(bucketStart),
       rangeLabel: buildRangeLabel(bucketStart, bucketEndInclusive),
       isCurrent: index === safeWeeks - 1,
+      isComplete: bucketEnd <= nextDayStart,
     }
   })
 }
