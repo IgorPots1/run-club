@@ -1021,6 +1021,34 @@ async function syncRunSupplementalStravaDataForActivity(
   return detailSeriesSynced || lapsSyncResult.synced || photosSynced
 }
 
+async function syncRunSupplementalStravaDataIfAvailable(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  runId: string,
+  activityId: number,
+  accessToken?: string,
+  debugRunId?: string
+) {
+  if (!accessToken) {
+    if (shouldDebugRunDetailSeries({ runId, activityId })) {
+      console.warn('[run-detail-debug] target_run_skipped', {
+        runId,
+        activityId,
+        reason: 'missing_access_token',
+      })
+    }
+
+    return false
+  }
+
+  return syncRunSupplementalStravaDataForActivity(
+    supabase,
+    runId,
+    activityId,
+    accessToken,
+    debugRunId
+  )
+}
+
 async function backfillMissingRunDetailSeriesForUser(
   userId: string,
   accessToken: string,
@@ -1705,6 +1733,27 @@ export async function importStravaActivityForUser(
       }
       // #endregion
       if (isUniqueViolationError(insertError)) {
+        const { data: conflictingRun, error: conflictingRunError } = await supabase
+          .from('runs')
+          .select('id')
+          .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+          .eq('external_id', payload.external_id)
+          .maybeSingle()
+
+        if (conflictingRunError) {
+          throw new Error(conflictingRunError.message)
+        }
+
+        if (conflictingRun?.id) {
+          await syncRunSupplementalStravaDataIfAvailable(
+            supabase,
+            conflictingRun.id,
+            activityForImport.id,
+            options.accessToken,
+            options.debugRunId
+          )
+        }
+
         // #region agent log
         if (options.debugRunId) {
           fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:unique_violation', message: 'Run insert hit unique constraint', data: { userId, externalId: payload.external_id, updateExisting: Boolean(options.updateExisting) }, timestamp: Date.now() }) }).catch(() => {})
@@ -1756,13 +1805,13 @@ export async function importStravaActivityForUser(
   }
 
   if (!options.updateExisting && !requiresOwnerRepair) {
-    if (shouldDebugRunDetailSeries({ runId: normalizedExistingRun.id, activityId: activityForImport.id })) {
-      console.warn('[run-detail-debug] target_run_skipped', {
-        runId: normalizedExistingRun.id,
-        activityId: activityForImport.id,
-        reason: 'existing_run_without_update',
-      })
-    }
+    await syncRunSupplementalStravaDataIfAvailable(
+      supabase,
+      normalizedExistingRun.id,
+      activityForImport.id,
+      options.accessToken,
+      options.debugRunId
+    )
     // #region agent log
     if (options.debugRunId) {
       fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:duplicate_skip', message: 'Skipping existing Strava run', data: { userId, externalId: payload.external_id, existingRunUserId: normalizedExistingRun.user_id }, timestamp: Date.now() }) }).catch(() => {})
