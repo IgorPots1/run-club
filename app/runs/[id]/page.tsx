@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Map } from 'lucide-react'
+import { Map, X } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -15,7 +15,6 @@ import {
 } from 'recharts'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunCommentsSection from '@/components/RunCommentsSection'
-import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
@@ -876,6 +875,37 @@ export default function RunDetailsPage() {
   }, [isEditingDetails, run])
 
   useEffect(() => {
+    if (selectedPhotoIndex == null) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [selectedPhotoIndex])
+
+  useEffect(() => {
+    if (selectedPhotoIndex == null) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSelectedPhotoIndex(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedPhotoIndex])
+
+  useEffect(() => {
     if (loading || !user || !run) {
       return
     }
@@ -1017,6 +1047,12 @@ export default function RunDetailsPage() {
   const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
   const hasPendingDetailChanges = hasNameChanged || hasDescriptionChanged
+  const selectedPhotoNumber =
+    selectedPhotoIndex !== null ? selectedPhotoIndex + 1 : 1
+  const selectedPhoto =
+    selectedPhotoIndex != null && selectedPhotoIndex >= 0 && selectedPhotoIndex < runPhotos.length
+      ? runPhotos[selectedPhotoIndex]
+      : null
 
   function handleStartEditingDetails() {
     if (!isOwner || !run) {
@@ -1594,12 +1630,38 @@ export default function RunDetailsPage() {
       <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
     </div>
 
-    <RunPhotoLightbox
-      photos={runPhotos}
-      selectedIndex={selectedPhotoIndex}
-      onClose={() => setSelectedPhotoIndex(null)}
-      getAlt={(index) => `Фото тренировки ${index + 1}`}
-    />
+    {selectedPhoto ? (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Просмотр фото тренировки"
+        onClick={() => setSelectedPhotoIndex(null)}
+      >
+        <button
+          type="button"
+          onClick={() => setSelectedPhotoIndex(null)}
+          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors active:scale-[0.98]"
+          aria-label="Закрыть фото"
+        >
+          <X className="h-5 w-5" strokeWidth={2} />
+        </button>
+
+        <div
+          className="flex max-h-full w-full items-center justify-center"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={selectedPhoto.public_url}
+            alt={`Фото тренировки ${selectedPhotoNumber}`}
+            className="max-h-[calc(100vh-5rem)] w-auto max-w-full rounded-2xl object-contain shadow-2xl"
+            decoding="async"
+            draggable={false}
+          />
+        </div>
+      </div>
+    ) : null}
     </WorkoutDetailShell>
   )
 }
