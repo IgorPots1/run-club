@@ -1,5 +1,6 @@
 'use client'
 
+import type { TouchEvent as ReactTouchEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
@@ -14,6 +15,11 @@ type RunPhotoLightboxProps = {
   getAlt?: (index: number) => string
 }
 
+type DragGestureAxis = 'undetermined' | 'horizontal' | 'vertical'
+
+const DRAG_CLOSE_THRESHOLD_PX = 140
+const DRAG_DIRECTION_THRESHOLD_PX = 10
+
 export default function RunPhotoLightbox({
   photos,
   selectedIndex,
@@ -23,8 +29,16 @@ export default function RunPhotoLightbox({
   const [activeIndex, setActiveIndex] = useState(() =>
     Math.max(0, Math.min(selectedIndex ?? 0, photos.length - 1))
   )
+  const [dragOffsetY, setDragOffsetY] = useState(0)
+  const [isVerticalDragging, setIsVerticalDragging] = useState(false)
   const activeIndexRef = useRef(activeIndex)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const dragGestureRef = useRef({
+    startX: 0,
+    startY: 0,
+    axis: 'undetermined' as DragGestureAxis,
+    isActive: false,
+  })
 
   const scrollToPhoto = useCallback(
     (index: number, behavior: ScrollBehavior) => {
@@ -139,6 +153,92 @@ export default function RunPhotoLightbox({
     setActiveIndex((currentIndex) => (currentIndex === boundedIndex ? currentIndex : boundedIndex))
   }
 
+  function handleTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 1) {
+      return
+    }
+
+    const touch = event.touches[0]
+    dragGestureRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      axis: 'undetermined',
+      isActive: true,
+    }
+    setIsVerticalDragging(false)
+  }
+
+  function handleTouchMove(event: ReactTouchEvent<HTMLDivElement>) {
+    if (!dragGestureRef.current.isActive || event.touches.length !== 1) {
+      return
+    }
+
+    const touch = event.touches[0]
+    const deltaX = touch.clientX - dragGestureRef.current.startX
+    const deltaY = touch.clientY - dragGestureRef.current.startY
+    const absoluteDeltaX = Math.abs(deltaX)
+    const absoluteDeltaY = Math.abs(deltaY)
+
+    if (dragGestureRef.current.axis === 'undetermined') {
+      if (
+        absoluteDeltaX < DRAG_DIRECTION_THRESHOLD_PX &&
+        absoluteDeltaY < DRAG_DIRECTION_THRESHOLD_PX
+      ) {
+        return
+      }
+
+      dragGestureRef.current.axis =
+        deltaY > 0 && absoluteDeltaY > absoluteDeltaX ? 'vertical' : 'horizontal'
+    }
+
+    if (dragGestureRef.current.axis !== 'vertical') {
+      return
+    }
+
+    event.preventDefault()
+
+    const nextDragOffset = Math.max(0, deltaY)
+
+    setIsVerticalDragging(true)
+    setDragOffsetY(nextDragOffset)
+  }
+
+  function resetVerticalDrag() {
+    dragGestureRef.current = {
+      startX: 0,
+      startY: 0,
+      axis: 'undetermined',
+      isActive: false,
+    }
+    setIsVerticalDragging(false)
+  }
+
+  function handleTouchEnd() {
+    if (!dragGestureRef.current.isActive) {
+      return
+    }
+
+    const shouldClose = dragGestureRef.current.axis === 'vertical' && dragOffsetY >= DRAG_CLOSE_THRESHOLD_PX
+
+    resetVerticalDrag()
+
+    if (shouldClose) {
+      onClose()
+      return
+    }
+
+    setDragOffsetY(0)
+  }
+
+  function handleTouchCancel() {
+    if (!dragGestureRef.current.isActive) {
+      return
+    }
+
+    resetVerticalDrag()
+    setDragOffsetY(0)
+  }
+
   if (selectedIndex == null || selectedIndex < 0 || selectedIndex >= photos.length) {
     return null
   }
@@ -146,17 +246,25 @@ export default function RunPhotoLightbox({
   const activePhotoNumber = activeIndex + 1
   const canGoToPreviousPhoto = activeIndex > 0
   const canGoToNextPhoto = activeIndex < photos.length - 1
+  const backdropOpacity = Math.max(0.55, 0.95 - Math.min(dragOffsetY / 320, 0.4))
+  const viewerTransform = dragOffsetY > 0 ? `translateY(${dragOffsetY}px)` : undefined
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Просмотр фото тренировки">
       <button
         type="button"
-        className="absolute inset-0 bg-black/95"
+        className="absolute inset-0 bg-black transition-opacity duration-200"
         aria-label="Закрыть просмотр фото"
         onClick={onClose}
+        style={{ opacity: backdropOpacity }}
       />
 
-      <div className="relative z-10 flex h-full w-full items-center justify-center">
+      <div
+        className={`relative z-10 flex h-full w-full items-center justify-center ${
+          isVerticalDragging ? '' : 'transition-transform duration-200 ease-out'
+        }`}
+        style={{ transform: viewerTransform }}
+      >
         <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-full bg-black/45 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
           {activePhotoNumber} / {photos.length}
         </div>
@@ -190,6 +298,10 @@ export default function RunPhotoLightbox({
           ref={scrollContainerRef}
           className="h-full w-full overflow-x-auto overflow-y-hidden overscroll-x-contain overscroll-y-none snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           onScroll={handleScroll}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
         >
           <div className="grid h-full grid-flow-col auto-cols-[100%]">
             {photos.map((photo, index) => (
