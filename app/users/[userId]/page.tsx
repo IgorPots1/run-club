@@ -192,44 +192,52 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                 <p className="app-text-secondary text-xs font-medium">
                   Последние 7 дней
                 </p>
-                <div className="mt-3 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
+                <div className="app-surface-muted mt-3 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
                   <div className="grid grid-cols-7 gap-2">
-                  {recent7DayActivity.map((day) => {
-                    return (
-                      <div
-                        key={day.dateKey}
-                        className="flex min-w-0 flex-col items-center gap-1.5"
-                        aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${day.runsCount} пробежек`}
-                      >
-                        <span className="app-text-muted text-[11px] font-medium leading-none">
-                          {day.weekdayLabel}
-                        </span>
-                        <span
-                          className={`block h-9 w-full rounded-xl ${
-                            day.isActive
-                              ? 'app-accent-bg shadow-[0_4px_12px_rgba(0,0,0,0.14)]'
-                              : 'bg-black/[0.05] dark:bg-white/[0.07]'
-                          } ${day.isToday ? 'ring-1 ring-black/15 ring-offset-2 ring-offset-transparent dark:ring-white/20' : ''}`}
-                          aria-hidden="true"
-                        />
-                      </div>
-                    )
-                  })}
+                    {recent7DayActivity.map((day) => {
+                      return (
+                        <div
+                          key={day.dateKey}
+                          className="flex min-w-0 flex-col items-center gap-1.5"
+                          aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${day.runsCount} пробежек`}
+                        >
+                          <span className="app-text-muted text-[11px] font-medium leading-none">
+                            {day.weekdayLabel}
+                          </span>
+                          <span
+                            className={`flex h-11 w-full items-end rounded-lg border p-1 ${
+                              day.isToday
+                                ? 'border-black/15 bg-black/[0.04] dark:border-white/15 dark:bg-white/[0.06]'
+                                : 'border-black/[0.04] bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.04]'
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <span
+                              className={`block w-full rounded-md transition-colors ${
+                                day.isActive
+                                  ? 'app-accent-bg h-[60%] opacity-90'
+                                  : 'h-[18%] bg-black/[0.08] dark:bg-white/[0.10]'
+                              }`}
+                            />
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
               <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
-                <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-                  <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
+                <div className="app-surface-muted rounded-2xl px-3 py-2.5 ring-1 ring-black/5 dark:ring-white/10">
+                  <p className="app-text-primary text-[1.15rem] font-semibold leading-none sm:text-[1.3rem]">
                     {formatDistanceKm(activity7Days.totalDistanceKm)} км
                   </p>
-                  <p className="app-text-secondary mt-2 text-sm">Пробег</p>
+                  <p className="app-text-secondary mt-1.5 text-sm">Пробег</p>
                 </div>
-                <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-                  <p className="app-text-primary text-[1.25rem] font-semibold leading-none sm:text-[1.45rem]">
+                <div className="app-surface-muted rounded-2xl px-3 py-2.5 ring-1 ring-black/5 dark:ring-white/10">
+                  <p className="app-text-primary text-[1.15rem] font-semibold leading-none sm:text-[1.3rem]">
                     {activity7Days.runsCount}
                   </p>
-                  <p className="app-text-secondary mt-2 text-sm">Пробежки</p>
+                  <p className="app-text-secondary mt-1.5 text-sm">Пробежки</p>
                 </div>
               </div>
             </div>
