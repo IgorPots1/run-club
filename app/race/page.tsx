@@ -50,6 +50,38 @@ function getProjectedRank(args: {
   return higherOrTiedRowsCount + 1
 }
 
+function getRowHighlightClass(args: {
+  isCurrentUser: boolean
+  gapAbove: number | null
+  gapBelow: number | null
+}) {
+  const { isCurrentUser, gapAbove, gapBelow } = args
+
+  if (isCurrentUser) {
+    return 'app-card app-surface-muted ring-1 ring-black/10 dark:ring-white/15'
+  }
+
+  const nearestGap = [gapAbove, gapBelow]
+    .filter((gap): gap is number => typeof gap === 'number')
+    .reduce<number | null>((smallestGap, gap) => {
+      if (smallestGap === null) {
+        return gap
+      }
+
+      return Math.min(smallestGap, gap)
+    }, null)
+
+  if (nearestGap !== null && nearestGap <= 20) {
+    return 'app-card bg-black/[0.025] ring-1 ring-black/5 dark:bg-white/[0.04] dark:ring-white/10'
+  }
+
+  if (nearestGap !== null && nearestGap <= 40) {
+    return 'app-card bg-black/[0.015] dark:bg-white/[0.025]'
+  }
+
+  return 'app-card'
+}
+
 export default function RacePage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -224,17 +256,21 @@ export default function RacePage() {
               ) : null}
 
               <div className="mt-4 space-y-2">
-                {rows.map((row) => {
+                {rows.map((row, index) => {
                   const isCurrentUser = row.user_id === user.id
+                  const previousRow = index > 0 ? rows[index - 1] : null
+                  const nextRow = index < rows.length - 1 ? rows[index + 1] : null
+                  const gapAbove = previousRow ? Math.max(previousRow.totalXp - row.totalXp, 0) : null
+                  const gapBelow = nextRow ? Math.max(row.totalXp - nextRow.totalXp, 0) : null
 
                   return (
                     <div
                       key={row.user_id}
-                      className={`rounded-2xl border p-4 shadow-sm ${
-                        isCurrentUser
-                          ? 'app-card app-surface-muted ring-1 ring-black/10 dark:ring-white/15'
-                          : 'app-card'
-                      }`}
+                      className={`rounded-2xl border p-4 shadow-sm ${getRowHighlightClass({
+                        isCurrentUser,
+                        gapAbove,
+                        gapBelow,
+                      })}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
