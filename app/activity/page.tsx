@@ -15,7 +15,7 @@ import {
   type ActivityPeriod,
 } from '@/lib/activity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
+import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { ensureProfileExists } from '@/lib/profiles'
 import { loadUserRaceBadgeAwards } from '@/lib/race-results-client'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
@@ -158,6 +158,25 @@ function getAchievementRankClass(badgeCode: string | null | undefined) {
   }
 
   return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
+}
+
+function getAchievementSubtitle(args: {
+  badgeCode: string | null | undefined
+  rank: number | null | undefined
+  starts_at: string | null
+  ends_at: string | null
+  timezone: string | null
+  participantCount: number | null | undefined
+}) {
+  const { badgeCode, rank, starts_at, ends_at, timezone, participantCount } = args
+  const dateRangeLabel = formatRaceWeekDateRange({ starts_at, ends_at, timezone })
+  const placementLabel = formatRacePlacementLabel({
+    badgeCode,
+    rank,
+    totalParticipants: participantCount,
+  })
+
+  return placementLabel ? `${dateRangeLabel} • ${placementLabel}` : dateRangeLabel
 }
 
 export default function ActivityPage() {
@@ -400,7 +419,14 @@ export default function ActivityPage() {
                             {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
                           </p>
                           <p className="app-text-secondary mt-1 text-sm">
-                            {formatRaceWeekDateRange(badge)}
+                            {getAchievementSubtitle({
+                              badgeCode: badge.badge_code,
+                              rank: badge.source_rank,
+                              starts_at: badge.starts_at,
+                              ends_at: badge.ends_at,
+                              timezone: badge.timezone,
+                              participantCount: badge.participant_count,
+                            })}
                           </p>
                         </div>
                         {badge.source_rank ? (
@@ -423,7 +449,14 @@ export default function ActivityPage() {
                             {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
                           </p>
                           <p className="app-text-secondary mt-1 text-sm">
-                            {formatRaceWeekDateRange(badge)}
+                            {getAchievementSubtitle({
+                              badgeCode: badge.badge_code,
+                              rank: badge.source_rank,
+                              starts_at: badge.starts_at,
+                              ends_at: badge.ends_at,
+                              timezone: badge.timezone,
+                              participantCount: badge.participant_count,
+                            })}
                           </p>
                         </div>
                         {badge.source_rank ? (

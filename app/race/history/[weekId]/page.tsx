@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import InnerPageHeader from '@/components/InnerPageHeader'
+import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import {
   loadFinalizedRaceWeek,
   loadLatestFinalizedRaceWeek,
+  loadRaceWeekParticipantCount,
   loadRaceWeekTopResults,
   loadRaceWeekUserBadge,
   loadRaceWeekUserResult,
@@ -15,43 +17,6 @@ type PageProps = {
   params: Promise<{
     weekId: string
   }>
-}
-
-function formatRaceWeekDateRange(week: RaceWeekSummary) {
-  const startsAt = new Date(week.startsAt)
-  const endsAtInclusive = new Date(new Date(week.endsAt).getTime() - 1)
-
-  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAtInclusive.getTime())) {
-    return 'Даты недели неизвестны'
-  }
-
-  const formatter = new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: week.timezone,
-  })
-
-  return `${formatter.format(startsAt)} - ${formatter.format(endsAtInclusive)}`
-}
-
-function getBadgeLabel(badgeCode: string | null | undefined, rank: number | null | undefined) {
-  if (badgeCode === 'race_week_winner') {
-    return 'Победитель недели'
-  }
-
-  if (badgeCode === 'race_week_top_3') {
-    return 'Топ-3'
-  }
-
-  if (badgeCode === 'race_week_top_10') {
-    return 'Топ-10'
-  }
-
-  if (typeof rank === 'number' && rank > 0) {
-    return `#${rank}`
-  }
-
-  return 'Без бейджа'
 }
 
 function getTopRowClass(rank: number, isCurrentUser: boolean) {
@@ -73,11 +38,12 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
     redirect('/login')
   }
 
-  const [week, topResults, userResult, badge] = await Promise.all([
+  const [week, topResults, userResult, badge, totalParticipants] = await Promise.all([
     loadFinalizedRaceWeek(weekId),
     loadRaceWeekTopResults(weekId),
     loadRaceWeekUserResult(weekId, user.id),
     loadRaceWeekUserBadge(weekId, user.id),
+    loadRaceWeekParticipantCount(weekId),
   ])
 
   if (!week) {
@@ -107,7 +73,12 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
     )
   }
 
-  const badgeLabel = getBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null)
+  const badgeLabel = getRaceBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null)
+  const placementLabel = formatRacePlacementLabel({
+    badgeCode: badge?.badgeCode,
+    rank: badge?.sourceRank ?? userResult?.rank ?? null,
+    totalParticipants,
+  })
 
   return (
     <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
@@ -121,6 +92,9 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
           {userResult ? (
             <div className="app-surface-muted mt-4 rounded-2xl p-4">
               <p className="app-text-primary text-sm font-semibold">Твой результат</p>
+              {placementLabel ? (
+                <p className="app-text-secondary mt-1 text-sm">{placementLabel}</p>
+              ) : null}
               <div className="mt-3 grid grid-cols-3 gap-3">
                 <div>
                   <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
