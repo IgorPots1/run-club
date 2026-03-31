@@ -9,7 +9,6 @@ import {
   loadRaceWeekTopResults,
   loadRaceWeekUserBadge,
   loadRaceWeekUserResult,
-  type RaceWeekSummary,
 } from '@/lib/race-results'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 

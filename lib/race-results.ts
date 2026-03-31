@@ -70,6 +70,10 @@ type RaceWeekBadgeDbRow = {
   awarded_at: string
 }
 
+type RaceWeekResultIdDbRow = {
+  id: string
+}
+
 function toSafeNumber(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
   return Number.isFinite(numericValue) ? Number(numericValue) : 0
@@ -209,4 +213,18 @@ export async function loadRaceWeekUserBadge(weekId: string, userId: string) {
   }
 
   return mapBadgeAward((data as RaceWeekBadgeDbRow | null) ?? null)
+}
+
+export async function loadRaceWeekParticipantCount(weekId: string) {
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase
+    .from('race_week_results')
+    .select('id')
+    .eq('race_week_id', weekId)
+
+  if (error) {
+    throw new Error('Не удалось загрузить количество участников недели')
+  }
+
+  return ((data as RaceWeekResultIdDbRow[] | null) ?? []).length
 }

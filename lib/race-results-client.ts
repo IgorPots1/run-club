@@ -41,6 +41,7 @@ export type UserRaceBadgeAwardSummary = {
   starts_at: string | null
   ends_at: string | null
   timezone: string | null
+  participant_count: number | null
 }
 
 type RaceWeekDbRow = {
@@ -82,6 +83,11 @@ type RaceWeekBadgeDbRow = {
   source_type: string
   source_rank: number | string | null
   awarded_at: string
+}
+
+type RaceWeekResultWeekIdDbRow = {
+  id: string
+  race_week_id: string
 }
 
 function toSafeNumber(value: number | string | null | undefined) {
@@ -221,20 +227,38 @@ export async function loadUserRaceBadgeAwards(userId: string, limit = 3): Promis
       starts_at: null,
       ends_at: null,
       timezone: null,
+      participant_count: null,
     }))
   }
 
-  const { data: raceWeeks, error: raceWeeksError } = await supabase
-    .from('race_weeks')
-    .select('id, starts_at, ends_at, timezone')
-    .in('id', raceWeekIds)
+  const [{ data: raceWeeks, error: raceWeeksError }, { data: raceWeekResults, error: raceWeekResultsError }] = await Promise.all([
+    supabase
+      .from('race_weeks')
+      .select('id, starts_at, ends_at, timezone')
+      .in('id', raceWeekIds),
+    supabase
+      .from('race_week_results')
+      .select('id, race_week_id')
+      .in('race_week_id', raceWeekIds),
+  ])
 
   if (raceWeeksError) {
     throw new Error('Не удалось загрузить недели гонки для достижений')
   }
 
+  if (raceWeekResultsError) {
+    throw new Error('Не удалось загрузить участников недели для достижений')
+  }
+
   const raceWeeksById = new Map(
     (((raceWeeks as RaceWeekDateRangeDbRow[] | null) ?? [])).map((week) => [week.id, week] as const)
+  )
+  const participantCountsByWeekId = (((raceWeekResults as RaceWeekResultWeekIdDbRow[] | null) ?? [])).reduce<Record<string, number>>(
+    (totals, row) => {
+      totals[row.race_week_id] = (totals[row.race_week_id] ?? 0) + 1
+      return totals
+    },
+    {}
   )
 
   return awards.map((award) => {
@@ -245,6 +269,7 @@ export async function loadUserRaceBadgeAwards(userId: string, limit = 3): Promis
       starts_at: week?.starts_at ?? null,
       ends_at: week?.ends_at ?? null,
       timezone: week?.timezone ?? null,
+      participant_count: award.race_week_id ? (participantCountsByWeekId[award.race_week_id] ?? 0) : null,
     }
   })
 }

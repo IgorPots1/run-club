@@ -26,6 +26,36 @@ export function getRaceBadgeLabel(badgeCode: string | null | undefined, rank: nu
   return 'Без бейджа'
 }
 
+export function formatRacePlacementLabel(args: {
+  badgeCode: string | null | undefined
+  rank: number | null | undefined
+  totalParticipants: number | null | undefined
+}) {
+  const { badgeCode, rank, totalParticipants } = args
+
+  if (!Number.isFinite(totalParticipants) || (totalParticipants ?? 0) <= 0) {
+    return ''
+  }
+
+  if (badgeCode === 'race_week_winner') {
+    return `1 из ${totalParticipants} участников`
+  }
+
+  if (badgeCode === 'race_week_top_3') {
+    return `Топ-3 из ${totalParticipants} участников`
+  }
+
+  if (badgeCode === 'race_week_top_10') {
+    return `Топ-10 из ${totalParticipants} участников`
+  }
+
+  if (typeof rank === 'number' && rank > 0) {
+    return `#${rank} из ${totalParticipants} участников`
+  }
+
+  return ''
+}
+
 export function formatRaceWeekDateRange(week: RaceBadgeWeekDateRange) {
   const startsAt = week.startsAt ?? week.starts_at ?? null
   const endsAt = week.endsAt ?? week.ends_at ?? null
