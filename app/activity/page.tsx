@@ -396,6 +396,25 @@ export default function ActivityPage() {
           </div>
         </div>
 
+        <div className="app-card mb-5 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mb-8 md:p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="app-text-primary text-base font-semibold">Кроссовки</p>
+              <p className="app-text-secondary mt-1 text-sm">
+                Добавляй пары и следи за их пробегом в одном месте.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Link
+                href="/activity/shoes"
+                className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
+              >
+                Открыть кроссовки
+              </Link>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1 md:mb-8 md:flex-wrap md:gap-2.5 md:overflow-visible">
           {PERIOD_OPTIONS.map((option) => (
             <button
