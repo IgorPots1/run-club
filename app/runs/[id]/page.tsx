@@ -533,7 +533,7 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description'> | null | undefined) {
+function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id'> | null | undefined) {
   return {
     name: run?.name ?? '',
     description: run?.description ?? '',
