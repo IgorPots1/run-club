@@ -108,6 +108,16 @@ function toSafeNonNegativeInteger(value: number | string | null | undefined) {
   return Math.max(0, Math.trunc(Number(numericValue)))
 }
 
+function normalizeMaxDistanceMeters(value: number | string | null | undefined) {
+  const numericValue = typeof value === 'string' ? Number(value) : value
+
+  if (!Number.isFinite(numericValue) || Number(numericValue) <= 0) {
+    return DEFAULT_MAX_DISTANCE_METERS
+  }
+
+  return Math.trunc(Number(numericValue))
+}
+
 function normalizeSearchQuery(query: string) {
   return query.trim().replace(/\s+/g, ' ')
 }
@@ -240,9 +250,10 @@ function mapUserShoe(row: UserShoeDbRow, shoeModelById: Record<string, ShoeModel
   const model = row.shoe_model_id ? shoeModelById[row.shoe_model_id] ?? null : null
   const customName = toNullableTrimmedText(row.custom_name)
   const currentDistanceMeters = toSafeNonNegativeInteger(row.current_distance_meters)
+  const maxDistanceMeters = normalizeMaxDistanceMeters(row.max_distance_meters)
   const usageMetrics = getUserShoeUsageMetrics({
     currentDistanceMeters,
-    maxDistanceMeters: row.max_distance_meters ?? DEFAULT_MAX_DISTANCE_METERS,
+    maxDistanceMeters,
   })
 
   return {
