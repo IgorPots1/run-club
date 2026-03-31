@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { reverseGeocode } from '@/lib/geocoding/mapbox'
 import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import {
@@ -87,6 +88,9 @@ type ExistingStravaRunRow = {
   user_id: string
   name: string | null
   description: string | null
+  city: string | null
+  region: string | null
+  country: string | null
   shoe_id: string | null
   distance_meters: number | null
   name_manually_edited: boolean
@@ -298,6 +302,28 @@ function toNullableTrimmedText(value: string | null | undefined) {
 
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function getReverseGeocodeCoordinates(
+  activity: Pick<StravaActivitySummary, 'start_latlng' | 'end_latlng'>
+) {
+  const coordinates = Array.isArray(activity.start_latlng) && activity.start_latlng.length === 2
+    ? activity.start_latlng
+    : Array.isArray(activity.end_latlng) && activity.end_latlng.length === 2
+      ? activity.end_latlng
+      : null
+
+  if (!coordinates) {
+    return null
+  }
+
+  const [lat, lng] = coordinates
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null
+  }
+
+  return { lat, lng }
 }
 
 function toPhotoCount(activity: Pick<StravaActivitySummary, 'photos' | 'photo_count' | 'total_photo_count'>) {
@@ -1778,7 +1804,7 @@ export async function importStravaActivityForUser(
   const payload = buildRunInsertPayload(userId, activityForImport)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id, user_id, name, description, shoe_id, distance_meters, name_manually_edited, description_manually_edited')
+    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, name_manually_edited, description_manually_edited')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -1788,6 +1814,37 @@ export async function importStravaActivityForUser(
   }
 
   const normalizedExistingRun = (existingRun as ExistingStravaRunRow | null) ?? null
+  let finalCity = payload.city
+  let finalRegion = payload.region
+  let finalCountry = payload.country
+
+  if (!finalCity) {
+    if (normalizedExistingRun?.city) {
+      finalCity = normalizedExistingRun.city
+      finalRegion = normalizedExistingRun.region
+      finalCountry = normalizedExistingRun.country
+    } else {
+      const coordinates = getReverseGeocodeCoordinates(activityForImport)
+
+      if (coordinates) {
+        const geocodedLocation = await reverseGeocode(coordinates.lat, coordinates.lng)
+
+        if (geocodedLocation) {
+          finalCity = geocodedLocation.city
+          finalRegion = geocodedLocation.region
+          finalCountry = geocodedLocation.country
+        }
+      }
+    }
+  }
+
+  finalCity = finalCity ?? normalizedExistingRun?.city ?? null
+  finalRegion = finalRegion ?? normalizedExistingRun?.region ?? null
+  finalCountry = finalCountry ?? normalizedExistingRun?.country ?? null
+
+  payload.city = finalCity
+  payload.region = finalRegion
+  payload.country = finalCountry
 
   if (!normalizedExistingRun) {
     console.info('[strava-webhook-debug] insert_branch', {
