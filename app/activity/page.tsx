@@ -1,11 +1,12 @@
 'use client'
 
-import { CheckCircle2, Trophy } from 'lucide-react'
+import { CheckCircle2, LoaderCircle, Trash2, Trophy } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import ActivityDistanceChart from '@/components/ActivityDistanceChart'
+import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import { getBootstrapUser } from '@/lib/auth'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -18,7 +19,8 @@ import {
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
-import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
+import { deleteRun } from '@/lib/runs'
+import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
 const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
   { id: 'week', label: 'Неделя' },
@@ -209,6 +211,10 @@ export default function ActivityPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
+  const [actionError, setActionError] = useState('')
+  const [pendingDeleteRun, setPendingDeleteRun] = useState<ActivityRunRow | null>(null)
+  const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
+  const suppressNextRunsUpdatedRefreshRef = useRef(false)
 
   useEffect(() => {
     let isMounted = true
@@ -277,11 +283,17 @@ export default function ActivityPage() {
         ? 'Дистанция по годам'
         : 'Дистанция по дням'
   const shouldRenderEmptyState = summary.chartData.length === 0
+  const deletingActiveRun = pendingDeleteRun ? deletingRunIds.includes(pendingDeleteRun.id) : false
 
   useEffect(() => {
     if (!user) return
 
     function handleRunsUpdated() {
+      if (suppressNextRunsUpdatedRefreshRef.current) {
+        suppressNextRunsUpdatedRefreshRef.current = false
+        return
+      }
+
       void mutate()
     }
 
@@ -299,6 +311,51 @@ export default function ActivityPage() {
       window.removeEventListener('storage', handleStorage)
     }
   }, [mutate, user])
+
+  const handleRequestDelete = useCallback((run: ActivityRunRow) => {
+    if (!user || run.user_id !== user.id || deletingRunIds.includes(run.id)) {
+      return
+    }
+
+    setActionError('')
+    setPendingDeleteRun(run)
+  }, [deletingRunIds, user])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!user || !pendingDeleteRun || pendingDeleteRun.user_id !== user.id) {
+      return
+    }
+
+    const runId = pendingDeleteRun.id
+
+    if (deletingRunIds.includes(runId)) {
+      return
+    }
+
+    setActionError('')
+    setDeletingRunIds((prev) => [...prev, runId])
+
+    try {
+      const { error: deleteError } = await deleteRun(runId)
+
+      if (deleteError) {
+        setActionError('Не удалось удалить тренировку')
+        return
+      }
+
+      await mutate(
+        (currentRuns) => (currentRuns ?? []).filter((run) => run.id !== runId),
+        { revalidate: false }
+      )
+      setPendingDeleteRun(null)
+      suppressNextRunsUpdatedRefreshRef.current = true
+      dispatchRunsUpdatedEvent()
+    } catch {
+      setActionError('Не удалось удалить тренировку')
+    } finally {
+      setDeletingRunIds((prev) => prev.filter((id) => id !== runId))
+    }
+  }, [deletingRunIds, mutate, pendingDeleteRun, user])
 
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
@@ -510,6 +567,7 @@ export default function ActivityPage() {
         {!isLoading && !error ? (
           <section className="mt-5 md:mt-8">
             <h2 className="app-text-primary mb-3 text-lg font-semibold">Тренировки</h2>
+            {actionError ? <p className="mb-3 text-sm text-red-600">{actionError}</p> : null}
             {filteredRuns.length === 0 ? (
               <div className="app-card rounded-2xl p-5 text-center shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-6">
                 <p className="app-text-secondary text-sm">За этот период тренировок нет</p>
@@ -517,13 +575,12 @@ export default function ActivityPage() {
             ) : (
               <div className="space-y-4">
                 {filteredRuns.map((run) => (
-                  <Link
+                  <div
                     key={run.id}
-                    href={`/runs/${run.id}`}
-                    className="compact-run-card app-card block overflow-hidden rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md"
+                    className="compact-run-card app-card overflow-hidden rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md"
                   >
-                    <div className="compact-run-card-layout flex flex-col gap-3">
-                      <div className="min-w-0 flex-1">
+                    <div className="compact-run-card-layout flex items-start gap-3">
+                      <Link href={`/runs/${run.id}`} className="min-w-0 flex-1">
                         <p className="app-text-primary break-words text-base font-semibold">
                           {getRunDisplayName(run)}
                         </p>
@@ -537,15 +594,47 @@ export default function ActivityPage() {
                         <div className="compact-run-card-like">
                           <p className="app-text-secondary text-sm">⚡ +{Math.max(0, Math.round(Number(run.xp ?? 0)))} XP</p>
                         </div>
-                      </div>
+                      </Link>
+                      {run.user_id === user.id ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestDelete(run)}
+                          disabled={deletingRunIds.includes(run.id)}
+                          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-red-500/20 px-3 py-2 text-red-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25"
+                          aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
+                        >
+                          {deletingRunIds.includes(run.id) ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
+                          )}
+                        </button>
+                      ) : null}
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}
           </section>
         ) : null}
       </div>
+      <ConfirmActionSheet
+        open={Boolean(pendingDeleteRun)}
+        title="Удалить тренировку?"
+        description="Это действие нельзя отменить."
+        confirmLabel={deletingActiveRun ? 'Удаляем...' : 'Удалить'}
+        cancelLabel="Отмена"
+        loading={deletingActiveRun}
+        destructive
+        onConfirm={() => {
+          void handleConfirmDelete()
+        }}
+        onCancel={() => {
+          if (!deletingActiveRun) {
+            setPendingDeleteRun(null)
+          }
+        }}
+      />
     </main>
   )
 }

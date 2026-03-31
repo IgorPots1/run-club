@@ -8,6 +8,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
+import { deleteRun } from '@/lib/runs'
 import { supabase } from '../../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -140,13 +141,6 @@ function formatRunPace(run: Pick<Run, 'distance_km' | 'duration_minutes' | 'dura
   return formatPaceLabel(totalSeconds, run.distance_km)
 }
 
-function formatRunPaceFromMinutes(distanceKm: number, durationMinutes: number) {
-  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return ''
-  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return ''
-
-  return formatPaceLabel(Math.round(durationMinutes * 60), distanceKm)
-}
-
 function getRunDisplayName(run: Pick<Run, 'name' | 'title'>) {
   return run.name?.trim() || run.title?.trim() || DEFAULT_WORKOUT_NAME
 }
@@ -264,12 +258,6 @@ function CalendarDatePickerSheet({
 }: CalendarDatePickerSheetProps) {
   const fallbackDate = useMemo(() => parseDateValue(maxDate) ?? new Date(), [maxDate])
   const [visibleMonth, setVisibleMonth] = useState(() => getMonthStart(parseDateValue(selectedDate) ?? fallbackDate))
-
-  useEffect(() => {
-    if (!open) return
-
-    setVisibleMonth(getMonthStart(parseDateValue(selectedDate) ?? fallbackDate))
-  }, [fallbackDate, open, selectedDate, maxDate])
 
   if (!open) return null
 
@@ -807,7 +795,7 @@ export default function RunsPage() {
     setDeletingRunIds((prev) => [...prev, id])
 
     try {
-      const { error } = await supabase.from('runs').delete().eq('id', id)
+      const { error } = await deleteRun(id)
 
       if (error) {
         setError('Не удалось удалить тренировку')
@@ -1057,6 +1045,7 @@ export default function RunsPage() {
       </div>
       </div>
       <CalendarDatePickerSheet
+        key={`${selectedDate}:${todayDateValue}`}
         open={runDatePickerOpen}
         selectedDate={selectedDate}
         maxDate={todayDateValue}

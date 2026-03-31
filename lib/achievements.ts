@@ -40,6 +40,7 @@ type ChallengeDbRow = {
 export type UserAchievement = {
   id: string
   source_type: 'weekly_race' | 'challenge'
+  badge_code?: string | null
   label: string
   date: string
   subtitle: string
@@ -190,6 +191,7 @@ export async function loadUserAchievements(userId: string): Promise<UserAchievem
     return {
       id: `race-${award.id}`,
       source_type: 'weekly_race',
+      badge_code: award.badge_code,
       label: getRaceBadgeLabel(award.badge_code, rank),
       date: award.awarded_at,
       subtitle: subtitle ? `${dateRangeLabel} • ${subtitle}` : dateRangeLabel,
@@ -208,6 +210,7 @@ export async function loadUserAchievements(userId: string): Promise<UserAchievem
     achievements.push({
       id: `challenge-${completion.challenge_id}`,
       source_type: 'challenge',
+      badge_code: 'challenge_completion',
       label: challenge.title,
       date: completion.completed_at,
       subtitle: getChallengeSubtitle(challenge),
