@@ -1,5 +1,6 @@
 'use client'
 
+import { CheckCircle2, Trophy } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -143,11 +144,15 @@ function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type
   const badgeCode = achievement.badge_code
 
   if (badgeCode === 'race_week_winner') {
-    return 'app-card rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-sm dark:border-amber-400/25 dark:bg-amber-400/10'
+    return 'app-card rounded-2xl border border-amber-300/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-400/30 dark:bg-amber-400/12'
   }
 
   if (badgeCode === 'race_week_top_3') {
     return 'app-card rounded-2xl border border-slate-300/70 bg-slate-50/85 p-4 shadow-sm dark:border-slate-400/25 dark:bg-slate-400/10'
+  }
+
+  if (badgeCode === 'race_week_top_10') {
+    return 'app-card rounded-2xl border border-black/[0.07] bg-black/[0.025] p-4 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.045]'
   }
 
   return 'app-card app-surface-muted rounded-2xl border border-black/[0.05] p-4 shadow-sm dark:border-white/[0.08]'
@@ -165,8 +170,30 @@ function getAchievementRankClass(badgeCode: string | null | undefined) {
   return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
 }
 
-function getAchievementIcon(sourceType: UserAchievement['source_type']) {
-  return sourceType === 'weekly_race' ? '🏆' : '🎯'
+function getAchievementIconWrapperClass(achievement: Pick<UserAchievement, 'source_type' | 'badge_code'>) {
+  if (achievement.source_type === 'challenge') {
+    return 'border border-emerald-300/70 bg-emerald-100/90 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
+  }
+
+  if (achievement.badge_code === 'race_week_winner') {
+    return 'border border-amber-300/80 bg-amber-100/90 text-amber-700 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  if (achievement.badge_code === 'race_week_top_3') {
+    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
+  }
+
+  return 'border border-black/[0.06] bg-black/[0.04] text-black/65 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
+}
+
+function AchievementIcon({ achievement }: { achievement: Pick<UserAchievement, 'source_type' | 'badge_code'> }) {
+  const iconClassName = 'h-[18px] w-[18px]'
+
+  if (achievement.source_type === 'challenge') {
+    return <CheckCircle2 className={iconClassName} strokeWidth={2} />
+  }
+
+  return <Trophy className={iconClassName} strokeWidth={2} />
 }
 
 function getCompactAchievementSubtitle(achievement: Pick<UserAchievement, 'source_type' | 'subtitle'>) {
@@ -417,14 +444,21 @@ export default function ActivityPage() {
                       className={`${getAchievementCardClass(achievement)} block w-full cursor-pointer text-left transition-transform transition-shadow hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="app-text-primary text-base font-semibold">
-                            <span className="mr-2" aria-hidden="true">{getAchievementIcon(achievement.source_type)}</span>
-                            {achievement.label}
-                          </p>
-                          <p className="app-text-secondary mt-1 text-sm">
-                            {getCompactAchievementSubtitle(achievement)}
-                          </p>
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAchievementIconWrapperClass(achievement)}`}
+                            aria-hidden="true"
+                          >
+                            <AchievementIcon achievement={achievement} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="app-text-primary text-base font-semibold">
+                              {achievement.label}
+                            </p>
+                            <p className="app-text-secondary mt-1 text-sm">
+                              {getCompactAchievementSubtitle(achievement)}
+                            </p>
+                          </div>
                         </div>
                         {achievement.rank ? (
                           <p
@@ -441,14 +475,21 @@ export default function ActivityPage() {
                       className={getAchievementCardClass(achievement)}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="app-text-primary text-base font-semibold">
-                            <span className="mr-2" aria-hidden="true">{getAchievementIcon(achievement.source_type)}</span>
-                            {achievement.label}
-                          </p>
-                          <p className="app-text-secondary mt-1 text-sm">
-                            {getCompactAchievementSubtitle(achievement)}
-                          </p>
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAchievementIconWrapperClass(achievement)}`}
+                            aria-hidden="true"
+                          >
+                            <AchievementIcon achievement={achievement} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="app-text-primary text-base font-semibold">
+                              {achievement.label}
+                            </p>
+                            <p className="app-text-secondary mt-1 text-sm">
+                              {getCompactAchievementSubtitle(achievement)}
+                            </p>
+                          </div>
                         </div>
                         {achievement.source_type === 'weekly_race' && achievement.rank ? (
                           <p
