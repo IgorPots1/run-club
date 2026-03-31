@@ -15,7 +15,9 @@ import {
   type ActivityPeriod,
 } from '@/lib/activity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { ensureProfileExists } from '@/lib/profiles'
+import { loadUserRaceBadgeAwards } from '@/lib/race-results-client'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
 const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
@@ -182,6 +184,21 @@ export default function ActivityPage() {
       focusThrottleInterval: 15000,
     }
   )
+  const {
+    data: badgeAwards,
+    error: badgeAwardsError,
+    isLoading: isBadgeAwardsLoading,
+  } = useSWR(
+    user ? (['activity-race-badges', user.id] as const) : null,
+    ([, userId]: readonly [string, string]) => loadUserRaceBadgeAwards(userId),
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 60000,
+      focusThrottleInterval: 60000,
+    }
+  )
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
   const filteredRuns = useMemo(() => getRunsForPeriod(runs ?? [], period), [runs, period])
@@ -326,6 +343,49 @@ export default function ActivityPage() {
             </div>
           </>
         )}
+
+        {!isLoading && !error ? (
+          <section className="mt-5 md:mt-8">
+            <h2 className="app-text-primary mb-3 text-lg font-semibold">Достижения</h2>
+            {isBadgeAwardsLoading && !badgeAwards ? (
+              <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+                <div className="skeleton-line h-4 w-32" />
+                <div className="mt-3 skeleton-line h-4 w-24" />
+              </div>
+            ) : badgeAwardsError ? (
+              <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+                <p className="text-sm text-red-600">Не удалось загрузить достижения</p>
+              </div>
+            ) : !badgeAwards || badgeAwards.length === 0 ? (
+              <div className="app-card rounded-2xl p-5 text-center shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-6">
+                <p className="app-text-secondary text-sm">Пока нет достижений в гонке недели</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {badgeAwards.slice(0, 3).map((badge) => (
+                  <div
+                    key={`${badge.race_week_id ?? 'no-week'}-${badge.badge_code}`}
+                    className="app-card rounded-2xl border p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="app-text-primary text-sm font-semibold">
+                          {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
+                        </p>
+                        <p className="app-text-secondary mt-1 text-sm">
+                          {formatRaceWeekDateRange(badge)}
+                        </p>
+                      </div>
+                      {badge.source_rank ? (
+                        <p className="app-text-secondary shrink-0 text-sm font-medium">#{badge.source_rank}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         {!isLoading && !error ? (
           <section className="mt-5 md:mt-8">
