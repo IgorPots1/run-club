@@ -1,12 +1,13 @@
 'use client'
 
-import { Footprints, LoaderCircle, Search } from 'lucide-react'
+import { Footprints, LoaderCircle, PencilLine, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import {
   createUserShoe,
   loadUserShoes,
   searchShoeModels,
+  updateUserShoe,
   type ShoeModel,
   type UserShoeRecord,
 } from '@/lib/shoes-client'
@@ -47,6 +48,46 @@ function formatDistanceKmValue(value: number) {
 
 function formatDistanceMetersAsKm(value: number) {
   return formatDistanceKmValue(Math.max(0, value) / 1000)
+}
+
+function getWearProgressFillPercent(usagePercent: number) {
+  if (!Number.isFinite(usagePercent)) {
+    return 0
+  }
+
+  return Math.min(100, Math.max(0, usagePercent))
+}
+
+function getWearBarClassName(wearStatus: UserShoeRecord['wearStatus']) {
+  if (wearStatus === 'fresh') {
+    return 'from-emerald-500 to-emerald-400'
+  }
+
+  if (wearStatus === 'ok') {
+    return 'from-sky-500 to-cyan-400'
+  }
+
+  if (wearStatus === 'warning') {
+    return 'from-amber-500 to-orange-400'
+  }
+
+  return 'from-rose-500 to-red-500'
+}
+
+function getWearBadgeClassName(wearStatus: UserShoeRecord['wearStatus']) {
+  if (wearStatus === 'fresh') {
+    return 'border border-emerald-300/70 bg-emerald-100/85 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
+  }
+
+  if (wearStatus === 'ok') {
+    return 'border border-sky-300/70 bg-sky-100/85 text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-100'
+  }
+
+  if (wearStatus === 'warning') {
+    return 'border border-amber-300/70 bg-amber-100/85 text-amber-700 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  return 'border border-rose-300/70 bg-rose-100/85 text-rose-700 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-100'
 }
 
 function getInitials(label: string) {
@@ -141,6 +182,7 @@ export default function ShoesPageClient({
   initialShoes,
   initialPopularModels,
 }: ShoesPageClientProps) {
+  const [editingShoeId, setEditingShoeId] = useState<string | null>(null)
   const [modelQuery, setModelQuery] = useState('')
   const [modelResults, setModelResults] = useState<ShoeModel[]>(initialPopularModels)
   const [loadingModelResults, setLoadingModelResults] = useState(false)
@@ -148,16 +190,20 @@ export default function ShoesPageClient({
   const [customName, setCustomName] = useState('')
   const [nickname, setNickname] = useState('')
   const [distanceKmInput, setDistanceKmInput] = useState('')
+  const [maxDistanceKmInput, setMaxDistanceKmInput] = useState('800')
   const [isActive, setIsActive] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
   const [searchError, setSearchError] = useState('')
   const trimmedQuery = modelQuery.trim()
   const parsedDistanceKm = parseDistanceKmInput(distanceKmInput)
+  const parsedMaxDistanceKm = parseDistanceKmInput(maxDistanceKmInput)
   const canSubmit =
     !submitting &&
     parsedDistanceKm !== null &&
     parsedDistanceKm >= 0 &&
+    parsedMaxDistanceKm !== null &&
+    parsedMaxDistanceKm > 0 &&
     (Boolean(selectedModel) || Boolean(toNullableTrimmedText(customName)))
 
   const {
@@ -231,6 +277,11 @@ export default function ShoesPageClient({
     return 'Выбери модель или укажи свое название'
   }, [customName, selectedModel])
 
+  const editingShoe = useMemo(
+    () => shoes?.find((shoe) => shoe.id === editingShoeId) ?? null,
+    [editingShoeId, shoes]
+  )
+
   function handleDistanceInputChange(nextValue: string) {
     const normalizedValue = nextValue.replace(',', '.')
 
@@ -239,6 +290,49 @@ export default function ShoesPageClient({
     }
 
     setDistanceKmInput(normalizedValue)
+  }
+
+  function handleMaxDistanceInputChange(nextValue: string) {
+    const normalizedValue = nextValue.replace(',', '.')
+
+    if (!/^\d*([.]\d{0,2})?$/.test(normalizedValue)) {
+      return
+    }
+
+    setMaxDistanceKmInput(normalizedValue)
+  }
+
+  function resetForm() {
+    setEditingShoeId(null)
+    setSelectedModel(null)
+    setModelQuery('')
+    setModelResults(initialPopularModels)
+    setCustomName('')
+    setNickname('')
+    setDistanceKmInput('')
+    setMaxDistanceKmInput('800')
+    setIsActive(true)
+    setFormError('')
+  }
+
+  function handleStartEditingShoe(shoe: UserShoeRecord) {
+    setEditingShoeId(shoe.id)
+    setSelectedModel(
+      shoe.model
+        ? {
+            ...shoe.model,
+            isPopular: false,
+          }
+        : null
+    )
+    setModelQuery('')
+    setModelResults(initialPopularModels)
+    setCustomName(shoe.customName ?? '')
+    setNickname(shoe.nickname ?? '')
+    setDistanceKmInput(formatDistanceMetersAsKm(shoe.currentDistanceMeters))
+    setMaxDistanceKmInput(formatDistanceMetersAsKm(shoe.maxDistanceMeters))
+    setIsActive(shoe.isActive)
+    setFormError('')
   }
 
   async function handleCreateShoe(event: React.FormEvent<HTMLFormElement>) {
@@ -260,30 +354,42 @@ export default function ShoesPageClient({
       return
     }
 
+    if (parsedMaxDistanceKm === null || parsedMaxDistanceKm <= 0) {
+      setFormError('Укажи корректный ресурс пары в километрах')
+      return
+    }
+
     setSubmitting(true)
     setFormError('')
 
     try {
-      const createdShoe = await createUserShoe({
+      const payload = {
         shoeModelId: selectedModel?.id ?? null,
         customName: selectedModel ? null : normalizedCustomName,
         nickname: toNullableTrimmedText(nickname),
         currentDistanceMeters: Math.round(parsedDistanceKm * 1000),
+        maxDistanceMeters: Math.round(parsedMaxDistanceKm * 1000),
         isActive,
-      })
+      }
 
-      await mutate(
-        (currentShoes) => [createdShoe, ...(currentShoes ?? [])],
-        { revalidate: false }
-      )
+      if (editingShoeId) {
+        const updatedShoe = await updateUserShoe(editingShoeId, payload)
 
-      setSelectedModel(null)
-      setModelQuery('')
-      setModelResults(initialPopularModels)
-      setCustomName('')
-      setNickname('')
-      setDistanceKmInput('')
-      setIsActive(true)
+        await mutate(
+          (currentShoes) =>
+            (currentShoes ?? []).map((shoe) => (shoe.id === updatedShoe.id ? updatedShoe : shoe)),
+          { revalidate: false }
+        )
+      } else {
+        const createdShoe = await createUserShoe(payload)
+
+        await mutate(
+          (currentShoes) => [createdShoe, ...(currentShoes ?? [])],
+          { revalidate: false }
+        )
+      }
+
+      resetForm()
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Не удалось сохранить кроссовки')
     } finally {
@@ -295,10 +401,25 @@ export default function ShoesPageClient({
     <>
       <form onSubmit={handleCreateShoe} className="app-card mt-4 space-y-4 rounded-2xl border p-4 shadow-sm">
         <div>
-          <h2 className="app-text-primary text-lg font-semibold">Добавить пару</h2>
-          <p className="app-text-secondary mt-1 text-sm">
-            Выбери популярную модель или задай свое название вручную.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="app-text-primary text-lg font-semibold">
+                {editingShoe ? 'Редактировать пару' : 'Добавить пару'}
+              </h2>
+              <p className="app-text-secondary mt-1 text-sm">
+                Выбери популярную модель или задай свое название вручную.
+              </p>
+            </div>
+            {editingShoe ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="app-button-secondary min-h-10 shrink-0 rounded-lg border px-3 py-2 text-sm"
+              >
+                Отмена
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div>
@@ -417,6 +538,25 @@ export default function ShoesPageClient({
           </div>
         </div>
 
+        <div>
+          <label htmlFor="shoe-max-distance-km" className="app-text-secondary mb-1 block text-sm">
+            Ресурс пары, км
+          </label>
+          <input
+            id="shoe-max-distance-km"
+            type="text"
+            inputMode="decimal"
+            placeholder="800"
+            value={maxDistanceKmInput}
+            onChange={(event) => handleMaxDistanceInputChange(event.target.value)}
+            disabled={submitting}
+            className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
+          />
+          <p className="app-text-secondary mt-2 text-xs">
+            Если не указывать отдельно, используем стандартные 800 км.
+          </p>
+        </div>
+
         <div className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3">
           <div>
             <p className="app-text-primary text-sm font-medium">Активная пара</p>
@@ -432,7 +572,7 @@ export default function ShoesPageClient({
             canSubmit ? 'app-button-primary shadow-sm' : 'app-button-secondary text-[var(--text-muted)]'
           }`}
         >
-          {submitting ? 'Сохраняем...' : 'Добавить кроссовки'}
+          {submitting ? 'Сохраняем...' : editingShoe ? 'Сохранить изменения' : 'Добавить кроссовки'}
         </button>
 
         {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
@@ -470,21 +610,58 @@ export default function ShoesPageClient({
                         <p className="app-text-secondary mt-1 text-sm">{shoe.nickname}</p>
                       ) : null}
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        shoe.isActive
-                          ? 'border border-emerald-300/70 bg-emerald-100/80 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
-                          : 'border border-black/[0.07] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/75'
-                      }`}
-                    >
-                      {shoe.isActive ? 'Активные' : 'Неактивные'}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(shoe.wearStatus)}`}
+                      >
+                        {shoe.wearStatusLabel}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          shoe.isActive
+                            ? 'border border-emerald-300/70 bg-emerald-100/80 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
+                            : 'border border-black/[0.07] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/75'
+                        }`}
+                      >
+                        {shoe.isActive ? 'Активные' : 'Неактивные'}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="app-text-secondary mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                    <p>{formatDistanceMetersAsKm(shoe.currentDistanceMeters)} км</p>
+                    <p>
+                      {formatDistanceMetersAsKm(shoe.currentDistanceMeters)} / {formatDistanceMetersAsKm(shoe.maxDistanceMeters)} км
+                    </p>
                     {shoe.model?.brand ? <p>• {shoe.model.brand}</p> : null}
                     {shoe.model?.category ? <p>• {shoe.model.category}</p> : null}
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(shoe.wearStatus)}`}
+                        style={{ width: `${getWearProgressFillPercent(shoe.usagePercent)}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                      <p className="app-text-secondary">
+                        {shoe.usagePercent < 100
+                          ? `Осталось ~${formatDistanceMetersAsKm(Math.max(0, shoe.remainingDistanceMeters))} км`
+                          : 'Пора менять'}
+                      </p>
+                      <p className="app-text-muted">{Math.round(shoe.usagePercent)}%</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditingShoe(shoe)}
+                      className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <PencilLine className="h-4 w-4" strokeWidth={1.9} />
+                      Изменить
+                    </button>
                   </div>
                 </div>
               </div>

@@ -8,6 +8,7 @@ type CreateUserShoeRequestBody = {
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters?: number | null
+  maxDistanceMeters?: number | null
   isActive?: boolean | null
 }
 
@@ -83,6 +84,7 @@ export async function POST(request: Request) {
     customName: body?.customName ?? null,
     nickname: body?.nickname ?? null,
     currentDistanceMeters: Number(body?.currentDistanceMeters ?? 0),
+    maxDistanceMeters: body?.maxDistanceMeters ?? null,
     isActive: body?.isActive ?? true,
   }
 
@@ -101,6 +103,7 @@ export async function POST(request: Request) {
     const status = (
       errorMessage === 'shoe_model_id_or_custom_name_required' ||
       errorMessage === 'current_distance_meters_must_be_non_negative' ||
+      errorMessage === 'max_distance_meters_must_be_positive' ||
       errorMessage === 'is_active_must_be_boolean'
     )
       ? 400

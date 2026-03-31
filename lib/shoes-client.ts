@@ -25,6 +25,11 @@ export type UserShoeRecord = {
   customName: string | null
   nickname: string | null
   currentDistanceMeters: number
+  maxDistanceMeters: number
+  usagePercent: number
+  remainingDistanceMeters: number
+  wearStatus: 'fresh' | 'ok' | 'warning' | 'replace'
+  wearStatusLabel: 'Свежие' | 'Рабочие' | 'На исходе' | 'Под замену'
   photoUrl: string | null
   isActive: boolean
   shoeModelId: string | null
@@ -37,6 +42,16 @@ export type CreateUserShoeInput = {
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters: number
+  maxDistanceMeters?: number | null
+  isActive?: boolean
+}
+
+export type UpdateUserShoeInput = {
+  shoeModelId?: string | null
+  customName?: string | null
+  nickname?: string | null
+  currentDistanceMeters: number
+  maxDistanceMeters?: number | null
   isActive?: boolean
 }
 
@@ -75,6 +90,8 @@ type CreateUserShoeResponse =
       ok: false
       error?: string
     }
+
+type UpdateUserShoeResponse = CreateUserShoeResponse
 
 export async function loadUserShoes(): Promise<UserShoeRecord[]> {
   const selectionData = await loadUserShoeSelectionData()
@@ -150,6 +167,29 @@ export async function createUserShoe(input: CreateUserShoeInput): Promise<UserSh
       payload && 'error' in payload && typeof payload.error === 'string'
         ? payload.error
         : 'Не удалось сохранить кроссовки'
+    )
+  }
+
+  return payload.shoe
+}
+
+export async function updateUserShoe(shoeId: string, input: UpdateUserShoeInput): Promise<UserShoeRecord> {
+  const response = await fetch(`/api/shoes/${shoeId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(input),
+  })
+
+  const payload = await response.json().catch(() => null) as UpdateUserShoeResponse | null
+
+  if (!response.ok || !payload?.ok || !payload.shoe) {
+    throw new Error(
+      payload && 'error' in payload && typeof payload.error === 'string'
+        ? payload.error
+        : 'Не удалось обновить кроссовки'
     )
   }
 

@@ -20,6 +20,7 @@ type UserShoeDbRow = {
   custom_name: string | null
   nickname: string | null
   current_distance_meters: number | string | null
+  max_distance_meters: number | string | null
   photo_url: string | null
   is_active: boolean | null
   created_at: string
@@ -52,6 +53,11 @@ export type UserShoeRecord = {
   customName: string | null
   nickname: string | null
   currentDistanceMeters: number
+  maxDistanceMeters: number
+  usagePercent: number
+  remainingDistanceMeters: number
+  wearStatus: 'fresh' | 'ok' | 'warning' | 'replace'
+  wearStatusLabel: 'Свежие' | 'Рабочие' | 'На исходе' | 'Под замену'
   photoUrl: string | null
   isActive: boolean
   shoeModelId: string | null
@@ -64,6 +70,7 @@ export type UserShoeInput = {
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters: number
+  maxDistanceMeters?: number | null
   photoUrl?: string | null
   isActive: boolean
 }
@@ -73,12 +80,14 @@ type NormalizedUserShoeInput = {
   customName: string | null
   nickname: string | null
   currentDistanceMeters: number
+  maxDistanceMeters: number
   photoUrl: string | null
   isActive: boolean
 }
 
 const SHOE_MODEL_SELECT =
   'id, brand, model, version, full_name, image_url, category, is_popular'
+const DEFAULT_MAX_DISTANCE_METERS = 800000
 
 function toNullableTrimmedText(value: string | null | undefined) {
   if (typeof value !== 'string') {
@@ -105,6 +114,53 @@ function normalizeSearchQuery(query: string) {
 
 function buildSearchPattern(query: string) {
   return `%${query}%`
+}
+
+function getWearStatus(usagePercent: number) {
+  if (usagePercent < 50) {
+    return {
+      wearStatus: 'fresh' as const,
+      wearStatusLabel: 'Свежие' as const,
+    }
+  }
+
+  if (usagePercent < 80) {
+    return {
+      wearStatus: 'ok' as const,
+      wearStatusLabel: 'Рабочие' as const,
+    }
+  }
+
+  if (usagePercent < 100) {
+    return {
+      wearStatus: 'warning' as const,
+      wearStatusLabel: 'На исходе' as const,
+    }
+  }
+
+  return {
+    wearStatus: 'replace' as const,
+    wearStatusLabel: 'Под замену' as const,
+  }
+}
+
+function getUserShoeUsageMetrics(input: {
+  currentDistanceMeters: number
+  maxDistanceMeters: number
+}) {
+  const safeMaxDistanceMeters = Math.max(1, toSafeNonNegativeInteger(input.maxDistanceMeters))
+  const safeCurrentDistanceMeters = toSafeNonNegativeInteger(input.currentDistanceMeters)
+  const usagePercent = (safeCurrentDistanceMeters / safeMaxDistanceMeters) * 100
+  const remainingDistanceMeters = safeMaxDistanceMeters - safeCurrentDistanceMeters
+  const wearStatus = getWearStatus(usagePercent)
+
+  return {
+    maxDistanceMeters: safeMaxDistanceMeters,
+    usagePercent,
+    remainingDistanceMeters,
+    wearStatus: wearStatus.wearStatus,
+    wearStatusLabel: wearStatus.wearStatusLabel,
+  }
 }
 
 function mapShoeModel(row: ShoeModelDbRow): ShoeModel {
@@ -183,13 +239,23 @@ function compareShoeModelsForSearch(left: ShoeModel, right: ShoeModel, query: st
 function mapUserShoe(row: UserShoeDbRow, shoeModelById: Record<string, ShoeModel>): UserShoeRecord {
   const model = row.shoe_model_id ? shoeModelById[row.shoe_model_id] ?? null : null
   const customName = toNullableTrimmedText(row.custom_name)
+  const currentDistanceMeters = toSafeNonNegativeInteger(row.current_distance_meters)
+  const usageMetrics = getUserShoeUsageMetrics({
+    currentDistanceMeters,
+    maxDistanceMeters: row.max_distance_meters ?? DEFAULT_MAX_DISTANCE_METERS,
+  })
 
   return {
     id: row.id,
     displayName: model?.fullName ?? customName ?? 'Кроссовки',
     customName,
     nickname: toNullableTrimmedText(row.nickname),
-    currentDistanceMeters: toSafeNonNegativeInteger(row.current_distance_meters),
+    currentDistanceMeters,
+    maxDistanceMeters: usageMetrics.maxDistanceMeters,
+    usagePercent: usageMetrics.usagePercent,
+    remainingDistanceMeters: usageMetrics.remainingDistanceMeters,
+    wearStatus: usageMetrics.wearStatus,
+    wearStatusLabel: usageMetrics.wearStatusLabel,
     photoUrl: toNullableTrimmedText(row.photo_url),
     isActive: Boolean(row.is_active),
     shoeModelId: row.shoe_model_id,
@@ -204,6 +270,10 @@ function normalizeUserShoeInput(input: UserShoeInput): NormalizedUserShoeInput {
   const nickname = toNullableTrimmedText(input.nickname)
   const photoUrl = toNullableTrimmedText(input.photoUrl)
   const currentDistanceMeters = Number(input.currentDistanceMeters)
+  const maxDistanceMeters =
+    input.maxDistanceMeters == null
+      ? DEFAULT_MAX_DISTANCE_METERS
+      : Number(input.maxDistanceMeters)
 
   if (!shoeModelId && !customName) {
     throw new Error('shoe_model_id_or_custom_name_required')
@@ -211,6 +281,10 @@ function normalizeUserShoeInput(input: UserShoeInput): NormalizedUserShoeInput {
 
   if (!Number.isFinite(currentDistanceMeters) || currentDistanceMeters < 0) {
     throw new Error('current_distance_meters_must_be_non_negative')
+  }
+
+  if (!Number.isFinite(maxDistanceMeters) || maxDistanceMeters <= 0) {
+    throw new Error('max_distance_meters_must_be_positive')
   }
 
   if (typeof input.isActive !== 'boolean') {
@@ -222,6 +296,7 @@ function normalizeUserShoeInput(input: UserShoeInput): NormalizedUserShoeInput {
     customName,
     nickname,
     currentDistanceMeters: Math.trunc(currentDistanceMeters),
+    maxDistanceMeters: Math.trunc(maxDistanceMeters),
     photoUrl,
     isActive: input.isActive,
   }
@@ -324,7 +399,7 @@ export async function listUserShoes(userId: string): Promise<UserShoeRecord[]> {
   const { data, error } = await supabase
     .from('user_shoes')
     .select(
-      'id, user_id, shoe_model_id, custom_name, nickname, current_distance_meters, photo_url, is_active, created_at'
+      'id, user_id, shoe_model_id, custom_name, nickname, current_distance_meters, max_distance_meters, photo_url, is_active, created_at'
     )
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
@@ -348,7 +423,7 @@ export async function getUserShoeById(userId: string, shoeId: string): Promise<U
   const { data, error } = await supabase
     .from('user_shoes')
     .select(
-      'id, user_id, shoe_model_id, custom_name, nickname, current_distance_meters, photo_url, is_active, created_at'
+      'id, user_id, shoe_model_id, custom_name, nickname, current_distance_meters, max_distance_meters, photo_url, is_active, created_at'
     )
     .eq('user_id', userId)
     .eq('id', shoeId)
@@ -382,6 +457,7 @@ export async function createUserShoe(userId: string, input: UserShoeInput): Prom
       custom_name: normalizedInput.customName,
       nickname: normalizedInput.nickname,
       current_distance_meters: normalizedInput.currentDistanceMeters,
+      max_distance_meters: normalizedInput.maxDistanceMeters,
       photo_url: normalizedInput.photoUrl,
       is_active: normalizedInput.isActive,
     })
@@ -415,6 +491,7 @@ export async function updateUserShoe(
       custom_name: normalizedInput.customName,
       nickname: normalizedInput.nickname,
       current_distance_meters: normalizedInput.currentDistanceMeters,
+      max_distance_meters: normalizedInput.maxDistanceMeters,
       photo_url: normalizedInput.photoUrl,
       is_active: normalizedInput.isActive,
     })
