@@ -9,10 +9,12 @@ import { getBootstrapUser } from '@/lib/auth'
 import type { User } from '@supabase/supabase-js'
 import {
   buildActivitySummary,
+  getRunsForPeriod,
+  type ActivityRunRow,
   loadActivityRuns,
   type ActivityPeriod,
 } from '@/lib/activity'
-import { formatDistanceKm } from '@/lib/format'
+import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
@@ -23,8 +25,113 @@ const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
   { id: 'all', label: 'Все' },
 ]
 
+const DEFAULT_WORKOUT_NAME = 'Бег'
+
 function formatDistance(value: number) {
   return formatDistanceKm(value)
+}
+
+function formatTwoDigits(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function getRunDisplayName(run: Pick<ActivityRunRow, 'name' | 'title'>) {
+  return run.name?.trim() || run.title?.trim() || DEFAULT_WORKOUT_NAME
+}
+
+function getRunDurationSeconds(run: Pick<ActivityRunRow, 'duration_minutes' | 'duration_seconds'>) {
+  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
+    return Math.round(run.duration_seconds ?? 0)
+  }
+
+  return Math.round(Number(run.duration_minutes ?? 0) * 60)
+}
+
+function formatDurationMinutesLabel(totalMinutes: number) {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
+    return '0 мин'
+  }
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} мин`
+  }
+
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (minutes === 0) {
+    return `${hours} ч`
+  }
+
+  return `${hours} ч ${minutes} мин`
+}
+
+function formatPreciseDurationLabel(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return '0:00'
+  }
+
+  const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
+  }
+
+  return `${minutes}:${formatTwoDigits(seconds)}`
+}
+
+function formatRunDurationLabel(run: Pick<ActivityRunRow, 'duration_minutes' | 'duration_seconds'>) {
+  const totalSeconds = getRunDurationSeconds(run)
+
+  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
+    return formatPreciseDurationLabel(totalSeconds)
+  }
+
+  return formatDurationMinutesLabel(Number(run.duration_minutes ?? 0))
+}
+
+function formatPreciseDistanceKm(value: number) {
+  const fixed = value.toFixed(2)
+
+  if (fixed.endsWith('00')) {
+    return value.toFixed(1)
+  }
+
+  if (fixed.endsWith('0')) {
+    return fixed.slice(0, -1)
+  }
+
+  return fixed
+}
+
+function formatDistanceKmLabel(run: Pick<ActivityRunRow, 'distance_km' | 'external_source'>) {
+  const distanceValue = Number(run.distance_km ?? 0)
+
+  if (run.external_source === 'strava') {
+    return formatPreciseDistanceKm(distanceValue)
+  }
+
+  return formatDistanceKm(distanceValue)
+}
+
+function formatPaceLabel(totalSeconds: number, distanceKm: number) {
+  if (distanceKm <= 0 || totalSeconds <= 0) return ''
+
+  const paceSeconds = Math.round(totalSeconds / distanceKm)
+  const minutes = Math.floor(paceSeconds / 60)
+  const seconds = paceSeconds % 60
+
+  return `${minutes}:${formatTwoDigits(seconds)}/км`
+}
+
+function formatRunPace(run: Pick<ActivityRunRow, 'distance_km' | 'duration_minutes' | 'duration_seconds'>) {
+  const totalSeconds = getRunDurationSeconds(run)
+  const distanceValue = Number(run.distance_km ?? 0)
+
+  return formatPaceLabel(totalSeconds, distanceValue)
 }
 
 export default function ActivityPage() {
@@ -77,6 +184,7 @@ export default function ActivityPage() {
   )
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
+  const filteredRuns = useMemo(() => getRunsForPeriod(runs ?? [], period), [runs, period])
   const chartTitle =
     period === 'year'
       ? 'Дистанция по месяцам'
@@ -132,16 +240,10 @@ export default function ActivityPage() {
             <div>
               <p className="app-text-primary text-base font-semibold">Тренировки</p>
               <p className="app-text-secondary mt-1 text-sm">
-                Открой список тренировок или перейди к добавлению новой.
+                Добавь новую тренировку и смотри историю ниже.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Link
-                href="/runs"
-                className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
-              >
-                Мои тренировки
-              </Link>
               <Link
                 href="/runs"
                 className="app-button-primary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
@@ -224,6 +326,45 @@ export default function ActivityPage() {
             </div>
           </>
         )}
+
+        {!isLoading && !error ? (
+          <section className="mt-5 md:mt-8">
+            <h2 className="app-text-primary mb-3 text-lg font-semibold">Тренировки</h2>
+            {filteredRuns.length === 0 ? (
+              <div className="app-card rounded-2xl p-5 text-center shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-6">
+                <p className="app-text-secondary text-sm">За этот период тренировок нет</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredRuns.map((run) => (
+                  <Link
+                    key={run.id}
+                    href={`/runs/${run.id}`}
+                    className="compact-run-card app-card block overflow-hidden rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <div className="compact-run-card-layout flex flex-col gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="app-text-primary break-words text-base font-semibold">
+                          {getRunDisplayName(run)}
+                        </p>
+                        <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
+                          {formatDistanceKmLabel(run)} км • {formatRunDurationLabel(run)}
+                          {formatRunPace(run) ? ` • ${formatRunPace(run)}` : ''}
+                        </p>
+                        <p className="compact-run-card-secondary compact-run-card-meta app-text-muted mt-1 text-sm">
+                          {formatRunTimestampLabel(run.created_at, run.external_source)}
+                        </p>
+                        <div className="compact-run-card-like">
+                          <p className="app-text-secondary text-sm">⚡ +{Math.max(0, Math.round(Number(run.xp ?? 0)))} XP</p>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
       </div>
     </main>
   )

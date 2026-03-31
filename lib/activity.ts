@@ -2,9 +2,16 @@ import { supabase } from './supabase'
 
 export type ActivityPeriod = 'week' | 'month' | 'year' | 'all'
 
-type ActivityRunRow = {
+export type ActivityRunRow = {
+  id: string
+  name: string | null
+  title?: string | null
   distance_km: number | null
+  duration_minutes?: number | null
+  duration_seconds?: number | null
+  xp?: number | null
   created_at: string
+  external_source?: string | null
 }
 
 export type ActivityWindowRun = {
@@ -86,6 +93,51 @@ function addMonths(date: Date, months: number) {
   return new Date(date.getFullYear(), date.getMonth() + months, 1)
 }
 
+function getActivityPeriodDateRange(period: ActivityPeriod, now: Date) {
+  if (period === 'week') {
+    const start = startOfWeek(now)
+    return {
+      start,
+      end: addDays(start, 7),
+    }
+  }
+
+  if (period === 'month') {
+    const start = startOfMonth(now)
+    return {
+      start,
+      end: endOfMonth(now),
+    }
+  }
+
+  if (period === 'year') {
+    const start = startOfYear(now)
+    return {
+      start,
+      end: endOfYear(now),
+    }
+  }
+
+  return null
+}
+
+function getDistanceValue(run: ActivityRunRow) {
+  return Number(run.distance_km ?? 0)
+}
+
+function filterRunsByPeriod(runs: ActivityRunRow[], period: ActivityPeriod, now: Date) {
+  const range = getActivityPeriodDateRange(period, now)
+
+  if (!range) {
+    return [...runs]
+  }
+
+  return runs.filter((run) => {
+    const createdAt = new Date(run.created_at)
+    return createdAt >= range.start && createdAt < range.end
+  })
+}
+
 const RUSSIAN_MONTH_LABELS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'] as const
 const RUSSIAN_WEEKDAY_LABELS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'] as const
 const RUSSIAN_LONG_MONTH_LABELS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'] as const
@@ -129,7 +181,7 @@ function buildDistanceMapByKey(runs: Array<{ distance: number; createdAt: Date }
 export async function loadActivityRuns(userId: string) {
   const { data, error } = await supabase
     .from('runs')
-    .select('distance_km, created_at')
+    .select('id, name, title, distance_km, duration_minutes, duration_seconds, xp, created_at, external_source')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
@@ -140,16 +192,25 @@ export async function loadActivityRuns(userId: string) {
   return (data as ActivityRunRow[] | null) ?? []
 }
 
+export function getRunsForPeriod(runs: ActivityRunRow[], period: ActivityPeriod) {
+  const filteredRuns = filterRunsByPeriod(runs, period, new Date())
+
+  return filteredRuns.sort(
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  )
+}
+
 export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPeriod): ActivitySummary {
   const now = new Date()
   const normalizedRuns = runs.map((run) => ({
-    distance: Number(run.distance_km ?? 0),
+    distance: getDistanceValue(run),
     createdAt: new Date(run.created_at),
   }))
 
   if (period === 'week') {
-    const start = startOfWeek(now)
-    const end = addDays(start, 7)
+    const range = getActivityPeriodDateRange(period, now)
+    const start = range?.start ?? startOfWeek(now)
+    const end = range?.end ?? addDays(start, 7)
     const days = Array.from({ length: 7 }, (_, index) => addDays(start, index))
     const filteredRuns = normalizedRuns.filter((run) => run.createdAt >= start && run.createdAt < end)
 
@@ -166,8 +227,9 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
   }
 
   if (period === 'month') {
-    const start = startOfMonth(now)
-    const end = endOfMonth(now)
+    const range = getActivityPeriodDateRange(period, now)
+    const start = range?.start ?? startOfMonth(now)
+    const end = range?.end ?? endOfMonth(now)
     const filteredRuns = normalizedRuns.filter((run) => run.createdAt >= start && run.createdAt < end)
     const distanceByDay = buildDistanceMapByKey(filteredRuns, (date) => date.getDate())
     const daysWithWorkouts = Object.keys(distanceByDay)
@@ -186,8 +248,9 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
   }
 
   if (period === 'year') {
-    const start = startOfYear(now)
-    const end = endOfYear(now)
+    const range = getActivityPeriodDateRange(period, now)
+    const start = range?.start ?? startOfYear(now)
+    const end = range?.end ?? endOfYear(now)
     const months = Array.from({ length: 12 }, (_, index) => new Date(now.getFullYear(), index, 1))
     const filteredRuns = normalizedRuns.filter((run) => run.createdAt >= start && run.createdAt < end)
     const distanceByMonth = buildDistanceMapByKey(filteredRuns, (date) => date.getMonth())
