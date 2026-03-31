@@ -32,6 +32,24 @@ function getStatusText(args: {
   return ''
 }
 
+function getProjectedRank(args: {
+  rows: WeeklyXpLeaderboard['rows']
+  currentUserId: string
+  projectedXp: number
+}) {
+  const { rows, currentUserId, projectedXp } = args
+
+  const higherOrTiedRowsCount = rows.filter((row) => {
+    if (row.user_id === currentUserId) {
+      return false
+    }
+
+    return row.totalXp >= projectedXp
+  }).length
+
+  return higherOrTiedRowsCount + 1
+}
+
 export default function RacePage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -88,6 +106,40 @@ export default function RacePage() {
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
+  const thirdPlaceRow = rows.find((row) => row.rank === 3) ?? null
+  const gapToTop3 = useMemo(() => {
+    if (!currentUserRow || currentUserRow.rank <= 3 || !thirdPlaceRow) {
+      return null
+    }
+
+    return Math.max(thirdPlaceRow.totalXp - currentUserRow.totalXp, 0)
+  }, [currentUserRow, thirdPlaceRow])
+  const movementEstimateText = useMemo(() => {
+    if (!currentUserRow || rows.length === 0) {
+      return ''
+    }
+
+    const projectedRank50 = getProjectedRank({
+      rows,
+      currentUserId: currentUserRow.user_id,
+      projectedXp: currentUserRow.totalXp + 50,
+    })
+    const projectedRank100 = getProjectedRank({
+      rows,
+      currentUserId: currentUserRow.user_id,
+      projectedXp: currentUserRow.totalXp + 100,
+    })
+
+    const gainedPositions50 = Math.max((currentUserRow.rank ?? 0) - projectedRank50, 0)
+    const gainedPositions100 = Math.max((currentUserRow.rank ?? 0) - projectedRank100, 0)
+    const bestGain = Math.max(gainedPositions50, gainedPositions100)
+
+    if (bestGain <= 0) {
+      return ''
+    }
+
+    return `Еще одна тренировка может поднять тебя на ${bestGain} ${bestGain === 1 ? 'позицию' : bestGain < 5 ? 'позиции' : 'позиций'}`
+  }, [currentUserRow, rows])
   const statusText = useMemo(
     () => getStatusText({
       rank: currentUserRow?.rank ?? 0,
@@ -143,6 +195,15 @@ export default function RacePage() {
                       <p className="app-text-secondary mt-1 text-sm">{currentUserRow.totalXp} XP</p>
                       {statusText ? (
                         <p className="app-text-primary mt-2 text-sm font-medium">{statusText}</p>
+                      ) : null}
+                      {gapToTop3 !== null && gapToTop3 > 0 ? (
+                        <p className="app-text-secondary mt-2 text-sm">До подиума: {gapToTop3} XP</p>
+                      ) : null}
+                      {gapToBehind !== null && gapToBehind <= 20 ? (
+                        <p className="app-text-secondary mt-2 text-sm">Тебя догоняют: отрыв всего {gapToBehind} XP</p>
+                      ) : null}
+                      {movementEstimateText ? (
+                        <p className="app-text-secondary mt-2 text-sm">{movementEstimateText}</p>
                       ) : null}
                     </div>
                     <div className="shrink-0 text-right text-sm">
