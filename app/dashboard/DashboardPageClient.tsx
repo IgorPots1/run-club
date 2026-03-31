@@ -8,6 +8,13 @@ import useSWR from 'swr'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
+import {
+  loadLatestFinalizedRaceWeek,
+  loadRaceWeekUserBadge,
+  loadRaceWeekUserResult,
+  type RaceWeekResultRow,
+  type RaceWeekSummary,
+} from '@/lib/race-results-client'
 import { loadDashboardOverview, type DashboardOverview } from '@/lib/dashboard'
 import { formatDistanceKm } from '@/lib/format'
 import type { ChallengeWithProgress } from '@/lib/challenges'
@@ -39,6 +46,32 @@ type DashboardInitialLevelProgress = {
   currentLevelXp: number
   xpToNextLevel: number
   progressPercent: number
+}
+
+type LastWeekResultsCardData = {
+  weekId: string
+  userResult: RaceWeekResultRow | null
+  badgeText: string
+}
+
+function getRaceBadgeText(badgeCode: string | null | undefined, rank: number | null | undefined) {
+  if (badgeCode === 'race_week_winner') {
+    return 'Победитель недели'
+  }
+
+  if (badgeCode === 'race_week_top_3') {
+    return 'Топ-3'
+  }
+
+  if (badgeCode === 'race_week_top_10') {
+    return 'Топ-10'
+  }
+
+  if (typeof rank === 'number' && rank > 0) {
+    return `#${rank}`
+  }
+
+  return 'Без бейджа'
 }
 
 export default function DashboardPageClient({
@@ -81,6 +114,7 @@ export default function DashboardPageClient({
   }), [])
   const overviewKey = ['dashboard-overview', initialUser.id] as const
   const weeklyRaceKey = shouldLoadSecondaryContent ? (['weekly-race', initialUser.id] as const) : null
+  const latestFinalizedRaceWeekKey = shouldLoadSecondaryContent ? (['latest-finalized-race-week'] as const) : null
   const initialOverview = useMemo<DashboardOverview>(() => ({
     stats: initialStats,
     profileSummary: initialProfileSummary,
@@ -107,6 +141,42 @@ export default function DashboardPageClient({
   } = useSWR<WeeklyXpLeaderboard>(weeklyRaceKey, ([, userId]: readonly [string, string]) => loadWeeklyXpLeaderboard(userId), {
     ...swrBaseOptions,
   })
+
+  const {
+    data: latestFinalizedRaceWeek,
+  } = useSWR<RaceWeekSummary | null>(
+    latestFinalizedRaceWeekKey,
+    () => loadLatestFinalizedRaceWeek(),
+    {
+      ...swrBaseOptions,
+      dedupingInterval: 60000,
+      focusThrottleInterval: 60000,
+    }
+  )
+
+  const lastWeekResultsKey = shouldLoadSecondaryContent && latestFinalizedRaceWeek?.id
+    ? (['last-week-results', latestFinalizedRaceWeek.id, initialUser.id] as const)
+    : null
+
+  const {
+    data: lastWeekResults,
+  } = useSWR<LastWeekResultsCardData>(
+    lastWeekResultsKey,
+    ([, weekId, userId]: readonly [string, string, string]) =>
+      Promise.all([
+        loadRaceWeekUserResult(weekId, userId),
+        loadRaceWeekUserBadge(weekId, userId),
+      ]).then(([userResult, badge]) => ({
+        weekId,
+        userResult,
+        badgeText: getRaceBadgeText(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null),
+      })),
+    {
+      ...swrBaseOptions,
+      dedupingInterval: 60000,
+      focusThrottleInterval: 60000,
+    }
+  )
 
   const refreshDashboardData = useCallback(() => {
     if (refreshDashboardDataPromiseRef.current) {
@@ -190,6 +260,13 @@ export default function DashboardPageClient({
     : 'Загружаем прогресс...'
   const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
   const weeklyLeaderboardLoading = !shouldLoadSecondaryContent || weeklyRaceLoading
+  const lastWeekResultsCard = latestFinalizedRaceWeek && lastWeekResults
+    ? {
+        weekId: latestFinalizedRaceWeek.id,
+        userResult: lastWeekResults.userResult,
+        badgeText: lastWeekResults.badgeText,
+      }
+    : null
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -374,6 +451,40 @@ export default function DashboardPageClient({
               error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
             />
           </div>
+          {lastWeekResultsCard ? (
+            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="app-text-primary text-lg font-semibold">🏆 Итоги прошлой недели</h2>
+                  {lastWeekResultsCard.userResult ? (
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <div>
+                        <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
+                        <p className="app-text-primary mt-1 text-lg font-semibold">#{lastWeekResultsCard.userResult.rank}</p>
+                      </div>
+                      <div>
+                        <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
+                        <p className="app-text-primary mt-1 text-lg font-semibold">{lastWeekResultsCard.userResult.totalXp}</p>
+                      </div>
+                      <div>
+                        <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
+                        <p className="app-text-primary mt-1 text-sm font-semibold">{lastWeekResultsCard.badgeText}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="app-text-secondary mt-3 text-sm">Ты не участвовал</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/race/history/${lastWeekResultsCard.weekId}`)}
+                  className="app-button-secondary min-h-10 shrink-0 rounded-lg border px-3 py-2 text-sm"
+                >
+                  Открыть
+                </button>
+              </div>
+            </div>
+          ) : null}
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
           <InfiniteWorkoutFeed
             currentUserId={initialUser.id}
