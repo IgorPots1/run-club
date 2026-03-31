@@ -387,28 +387,55 @@ export default function ActivityPage() {
             ) : (
               <div className="space-y-3">
                 {badgeAwards.slice(0, 3).map((badge) => (
-                  <div
-                    key={`${badge.race_week_id ?? 'no-week'}-${badge.badge_code}`}
-                    className={getAchievementCardClass(badge.badge_code)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="app-text-primary text-base font-semibold">
-                          {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
-                        </p>
-                        <p className="app-text-secondary mt-1 text-sm">
-                          {formatRaceWeekDateRange(badge)}
-                        </p>
+                  badge.race_week_id ? (
+                    <button
+                      key={`${badge.race_week_id}-${badge.badge_code}`}
+                      type="button"
+                      onClick={() => router.push(`/race/history/${badge.race_week_id}`)}
+                      className={`${getAchievementCardClass(badge.badge_code)} block w-full cursor-pointer text-left transition-transform transition-shadow hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="app-text-primary text-base font-semibold">
+                            {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
+                          </p>
+                          <p className="app-text-secondary mt-1 text-sm">
+                            {formatRaceWeekDateRange(badge)}
+                          </p>
+                        </div>
+                        {badge.source_rank ? (
+                          <p
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(badge.badge_code)}`}
+                          >
+                            #{badge.source_rank}
+                          </p>
+                        ) : null}
                       </div>
-                      {badge.source_rank ? (
-                        <p
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(badge.badge_code)}`}
-                        >
-                          #{badge.source_rank}
-                        </p>
-                      ) : null}
+                    </button>
+                  ) : (
+                    <div
+                      key={`no-week-${badge.badge_code}`}
+                      className={getAchievementCardClass(badge.badge_code)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="app-text-primary text-base font-semibold">
+                            {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
+                          </p>
+                          <p className="app-text-secondary mt-1 text-sm">
+                            {formatRaceWeekDateRange(badge)}
+                          </p>
+                        </div>
+                        {badge.source_rank ? (
+                          <p
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(badge.badge_code)}`}
+                          >
+                            #{badge.source_rank}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
+                  )
                 ))}
               </div>
             )}
