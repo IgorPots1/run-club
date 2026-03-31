@@ -175,45 +175,59 @@ export async function loadCompletedChallengeIds(userId: string) {
 }
 
 export async function awardChallengeCompletion(
-  userId: string,
+  _userId: string,
   challengeId: string,
   _xpAwarded: number
 ): Promise<ChallengeCompletionResult> {
-  const insertPayload = {
-    user_id: userId,
-    challenge_id: challengeId,
-    completed_at: new Date().toISOString(),
-  }
-  const { error } = await supabase.from('user_challenges').insert(insertPayload)
+  try {
+    const response = await fetch('/api/challenges/complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        challengeId,
+      }),
+    })
 
-  if (!error) {
+    const payload = await response.json().catch(() => null) as
+      | {
+          ok?: boolean
+          duplicate?: boolean
+          error?: string
+        }
+      | null
+
+    if (response.ok && payload?.ok) {
+      return {
+        success: true,
+        duplicate: payload.duplicate === true,
+        error: null,
+      }
+    }
+
+    console.error('[user_challenges] failed to persist challenge completion via api', {
+      challengeId,
+      status: response.status,
+      error: payload?.error ?? 'challenge_completion_request_failed',
+    })
+
     return {
-      success: true,
+      success: false,
       duplicate: false,
-      error: null,
+      error: payload?.error ?? 'challenge_completion_request_failed',
     }
-  }
+  } catch (error) {
+    console.error('[user_challenges] failed to persist challenge completion via api', {
+      challengeId,
+      error,
+    })
 
-  if (error.code === '23505') {
     return {
-      success: true,
-      duplicate: true,
-      error: null,
+      success: false,
+      duplicate: false,
+      error,
     }
-  }
-
-  console.error('[user_challenges] failed to persist challenge completion', {
-    userId,
-    challengeId,
-    code: error.code,
-    message: error.message,
-    details: error.details,
-    hint: error.hint,
-  })
-
-  return {
-    success: false,
-    duplicate: false,
-    error,
   }
 }
