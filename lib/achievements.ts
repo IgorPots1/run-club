@@ -91,6 +91,51 @@ function compareByDateDesc(left: Pick<UserAchievement, 'date' | 'id'>, right: Pi
   return right.id.localeCompare(left.id)
 }
 
+function isMissingChallengeKindColumnError(error: { code?: string | null; message?: string | null }) {
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    Boolean(error.message?.includes('challenges.kind')) ||
+    Boolean(error.message?.includes("'kind' column of 'challenges'"))
+  )
+}
+
+async function loadChallengesByIds(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  challengeIds: string[]
+) {
+  if (challengeIds.length === 0) {
+    return [] as ChallengeDbRow[]
+  }
+
+  const primaryResult = await supabase
+    .from('challenges')
+    .select('id, title, description, xp_reward, kind')
+    .in('id', challengeIds)
+
+  if (!primaryResult.error) {
+    return (primaryResult.data as ChallengeDbRow[] | null) ?? []
+  }
+
+  if (!isMissingChallengeKindColumnError(primaryResult.error)) {
+    throw primaryResult.error
+  }
+
+  const fallbackResult = await supabase
+    .from('challenges')
+    .select('id, title, description, xp_reward')
+    .in('id', challengeIds)
+
+  if (fallbackResult.error) {
+    throw fallbackResult.error
+  }
+
+  return (((fallbackResult.data as Array<Omit<ChallengeDbRow, 'kind'>> | null) ?? [])).map((challenge) => ({
+    ...challenge,
+    kind: null,
+  }))
+}
+
 export async function loadUserAchievements(userId: string): Promise<UserAchievement[]> {
   const supabase = await createSupabaseServerClient()
 
@@ -144,12 +189,9 @@ export async function loadUserAchievements(userId: string): Promise<UserAchievem
           .select('id, race_week_id')
           .in('race_week_id', raceWeekIds)
       : Promise.resolve({ data: [] as RaceWeekResultWeekIdDbRow[], error: null }),
-    challengeIds.length > 0
-      ? supabase
-          .from('challenges')
-          .select('id, title, description, xp_reward, kind')
-          .in('id', challengeIds)
-      : Promise.resolve({ data: [] as ChallengeDbRow[], error: null }),
+    loadChallengesByIds(supabase, challengeIds)
+      .then((data) => ({ data, error: null }))
+      .catch((error: unknown) => ({ data: [] as ChallengeDbRow[], error })),
   ])
 
   if (raceWeeksError) {
