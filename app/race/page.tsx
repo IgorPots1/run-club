@@ -231,19 +231,20 @@ export default function RacePage() {
                     <div
                       key={row.user_id}
                       className={`rounded-2xl border p-4 shadow-sm ${
-                        isCurrentUser ? 'app-card ring-1 ring-black/10 dark:ring-white/15' : 'app-card'
+                        isCurrentUser
+                          ? 'app-card app-surface-muted ring-1 ring-black/10 dark:ring-white/15'
+                          : 'app-card'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="app-text-primary truncate text-sm font-medium">
+                          <p className={`app-text-primary truncate text-sm ${isCurrentUser ? 'font-semibold' : 'font-medium'}`}>
                             {row.rank}. {row.displayName}
                           </p>
-                          {isCurrentUser ? (
-                            <p className="app-text-secondary mt-1 text-xs">Это ты</p>
-                          ) : null}
                         </div>
-                        <p className="app-text-primary shrink-0 text-sm font-semibold">{row.totalXp} XP</p>
+                        <p className={`app-text-primary shrink-0 text-sm ${isCurrentUser ? 'font-semibold' : 'font-medium'}`}>
+                          {row.totalXp} XP
+                        </p>
                       </div>
                     </div>
                   )
