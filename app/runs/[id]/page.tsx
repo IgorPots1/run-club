@@ -23,6 +23,8 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import { createRunComment, loadRunComments, type RunCommentItem } from '@/lib/run-comments'
+import { updateRun } from '@/lib/runs'
+import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
 import { uploadRunPhoto } from '@/lib/storage/uploadRunPhoto'
 import { supabase } from '@/lib/supabase'
 import { getLevelFromXP } from '@/lib/xp'
@@ -34,6 +36,7 @@ type RunDetailsRow = {
   name: string | null
   title?: string | null
   description?: string | null
+  shoe_id?: string | null
   name_manually_edited?: boolean
   description_manually_edited?: boolean
   city?: string | null
@@ -107,10 +110,10 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, description, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, description, shoe_id, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
-  'id, user_id, name, title, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
+  'id, user_id, name, title, shoe_id, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
 
 type QueryErrorLike = {
   code?: string | null
@@ -534,6 +537,7 @@ function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description'> | null
   return {
     name: run?.name ?? '',
     description: run?.description ?? '',
+    shoeId: run?.shoe_id ?? '',
   }
 }
 
@@ -560,8 +564,11 @@ export default function RunDetailsPage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [editedName, setEditedName] = useState('')
   const [editedDescription, setEditedDescription] = useState('')
+  const [editedShoeId, setEditedShoeId] = useState('')
   const [saveDetailsError, setSaveDetailsError] = useState('')
   const [savingDetails, setSavingDetails] = useState(false)
+  const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
+  const [loadingShoes, setLoadingShoes] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
@@ -873,7 +880,43 @@ export default function RunDetailsPage() {
     const nextDraft = getRunEditDraft(run)
     setEditedName(nextDraft.name)
     setEditedDescription(nextDraft.description)
+    setEditedShoeId(nextDraft.shoeId)
   }, [isEditingDetails, run])
+
+  useEffect(() => {
+    let isMounted = true
+
+    if (!user || !run || user.id !== run.user_id) {
+      setAvailableShoes([])
+      setLoadingShoes(false)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setLoadingShoes(true)
+
+    void loadUserShoeSelectionData()
+      .then((selectionData) => {
+        if (isMounted) {
+          setAvailableShoes(selectionData.shoes)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAvailableShoes([])
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingShoes(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [run, user])
 
   useEffect(() => {
     if (loading || !user || !run) {
@@ -1014,9 +1057,12 @@ export default function RunDetailsPage() {
   const isOwner = Boolean(user && run && user.id === run.user_id)
   const normalizedEditedName = toNullableTrimmedText(editedName)
   const normalizedEditedDescription = toNullableTrimmedText(editedDescription)
+  const normalizedEditedShoeId = editedShoeId.trim() || null
   const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
-  const hasPendingDetailChanges = hasNameChanged || hasDescriptionChanged
+  const hasShoeChanged = normalizedEditedShoeId !== (run?.shoe_id ?? null)
+  const hasPendingDetailChanges = hasNameChanged || hasDescriptionChanged || hasShoeChanged
+  const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
 
   function handleStartEditingDetails() {
     if (!isOwner || !run) {
@@ -1026,6 +1072,7 @@ export default function RunDetailsPage() {
     const nextDraft = getRunEditDraft(run)
     setEditedName(nextDraft.name)
     setEditedDescription(nextDraft.description)
+    setEditedShoeId(nextDraft.shoeId)
     setSaveDetailsError('')
     setIsEditingDetails(true)
   }
@@ -1034,6 +1081,7 @@ export default function RunDetailsPage() {
     const nextDraft = getRunEditDraft(run)
     setEditedName(nextDraft.name)
     setEditedDescription(nextDraft.description)
+    setEditedShoeId(nextDraft.shoeId)
     setSaveDetailsError('')
     setIsEditingDetails(false)
   }
@@ -1057,15 +1105,29 @@ export default function RunDetailsPage() {
       updates.description_manually_edited = true
     }
 
+    if (hasShoeChanged) {
+      updates.shoe_id = normalizedEditedShoeId
+    }
+
     setSavingDetails(true)
     setSaveDetailsError('')
 
     try {
-      const { error: updateError } = await supabase
-        .from('runs')
-        .update(updates)
-        .eq('id', run.id)
-        .eq('user_id', user.id)
+      const { error: updateError } = await updateRun(run.id, {
+        name: Object.prototype.hasOwnProperty.call(updates, 'name') ? (updates.name ?? null) : undefined,
+        description: Object.prototype.hasOwnProperty.call(updates, 'description')
+          ? (updates.description ?? null)
+          : undefined,
+        nameManuallyEdited: Object.prototype.hasOwnProperty.call(updates, 'name_manually_edited')
+          ? Boolean(updates.name_manually_edited)
+          : undefined,
+        descriptionManuallyEdited: Object.prototype.hasOwnProperty.call(updates, 'description_manually_edited')
+          ? Boolean(updates.description_manually_edited)
+          : undefined,
+        shoeId: Object.prototype.hasOwnProperty.call(updates, 'shoe_id')
+          ? (updates.shoe_id ?? null)
+          : undefined,
+      })
 
       if (updateError) {
         setSaveDetailsError('Не удалось сохранить изменения')
@@ -1075,6 +1137,7 @@ export default function RunDetailsPage() {
       setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
       setEditedName(nextName ?? '')
       setEditedDescription(nextDescription ?? '')
+      setEditedShoeId(normalizedEditedShoeId ?? '')
       setDescriptionExpanded(false)
       setIsEditingDetails(false)
     } catch {
@@ -1317,6 +1380,30 @@ export default function RunDetailsPage() {
               />
             </div>
 
+            <div>
+              <label htmlFor="run-shoe" className="app-text-secondary text-sm font-medium">
+                Кроссовки
+              </label>
+              <select
+                id="run-shoe"
+                value={editedShoeId}
+                onChange={(event) => {
+                  setEditedShoeId(event.target.value)
+                  setSaveDetailsError('')
+                }}
+                disabled={savingDetails || loadingShoes}
+                className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+              >
+                <option value="">Без кроссовок</option>
+                {availableShoes.map((shoe) => (
+                  <option key={shoe.id} value={shoe.id}>
+                    {shoe.displayName}
+                    {shoe.nickname ? ` (${shoe.nickname})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {saveDetailsError ? <p className="text-sm text-red-600">{saveDetailsError}</p> : null}
 
             <div className="flex flex-wrap justify-end gap-2">
@@ -1341,6 +1428,12 @@ export default function RunDetailsPage() {
         ) : (
           <>
             <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
+            {currentAssignedShoe ? (
+              <p className="app-text-secondary mt-2 text-sm">
+                Кроссовки: {currentAssignedShoe.displayName}
+                {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
+              </p>
+            ) : null}
             {runDescription ? (
               <div className="mt-2">
                 <p

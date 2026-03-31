@@ -8,8 +8,8 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
-import { deleteRun } from '@/lib/runs'
-import { supabase } from '../../lib/supabase'
+import { createRun, deleteRun } from '@/lib/runs'
+import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
 import type { User } from '@supabase/supabase-js'
 
 type Run = {
@@ -447,6 +447,9 @@ export default function RunsPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<Run[]>([])
+  const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
+  const [selectedShoeId, setSelectedShoeId] = useState<string>('')
+  const [loadingShoes, setLoadingShoes] = useState(false)
   const [title, setTitle] = useState('')
   const [runDate, setRunDate] = useState(getTodayDateValue())
   const [runDatePickerOpen, setRunDatePickerOpen] = useState(false)
@@ -561,6 +564,52 @@ export default function RunsPage() {
       isMounted = false
     }
   }, [router])
+
+  useEffect(() => {
+    let isMounted = true
+
+    if (!user) {
+      setAvailableShoes([])
+      setSelectedShoeId('')
+      setLoadingShoes(false)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setLoadingShoes(true)
+
+    void loadUserShoeSelectionData()
+      .then((selectionData) => {
+        if (!isMounted) {
+          return
+        }
+
+        setAvailableShoes(selectionData.shoes)
+        setSelectedShoeId((currentValue) => {
+          if (currentValue) {
+            return currentValue
+          }
+
+          return selectionData.mostRecentlyUsedShoeId ?? ''
+        })
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAvailableShoes([])
+          setSelectedShoeId('')
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingShoes(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [user])
 
   const fetchRuns = useCallback(async (
     currentUser: User,
@@ -752,23 +801,23 @@ export default function RunsPage() {
     const xp = normalizeIntegerMetric(50 + d * 10)
 
     try {
-      const { error } = await supabase.from('runs').insert({
-        user_id: user.id,
+      const { error: createError } = await createRun({
         name: normalizedTitle,
         title: normalizedTitle,
-        distance_km: d,
-        distance_meters: distanceMeters,
-        duration_minutes: dur,
-        duration_seconds: selectedDurationSeconds,
-        moving_time_seconds: movingTimeSeconds,
-        elapsed_time_seconds: elapsedTimeSeconds,
-        average_pace_seconds: averagePaceSeconds,
-        created_at: createdAtDate.toISOString(),
-        xp
+        distanceKm: d,
+        distanceMeters,
+        durationMinutes: dur,
+        durationSeconds: selectedDurationSeconds,
+        movingTimeSeconds,
+        elapsedTimeSeconds,
+        averagePaceSeconds,
+        createdAt: createdAtDate.toISOString(),
+        xp,
+        shoeId: selectedShoeId || null,
       })
 
-      if (error) {
-        setError(error.message)
+      if (createError) {
+        setError(createError.message)
         return
       }
 
@@ -941,6 +990,29 @@ export default function RunsPage() {
             </div>
           </div>
           <p className="app-text-secondary mt-2 text-xs">Минуты и секунды должны быть в диапазоне от 0 до 59.</p>
+        </div>
+        <div>
+          <label htmlFor="shoe_id" className="app-text-secondary mb-1 block text-sm">Кроссовки</label>
+          <select
+            id="shoe_id"
+            value={selectedShoeId}
+            onChange={(event) => setSelectedShoeId(event.target.value)}
+            disabled={submitting || loadingShoes}
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+          >
+            <option value="">Без кроссовок</option>
+            {availableShoes.map((shoe) => (
+              <option key={shoe.id} value={shoe.id}>
+                {shoe.displayName}
+                {shoe.nickname ? ` (${shoe.nickname})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="app-text-secondary mt-2 text-xs">
+            {availableShoes.length > 0
+              ? 'По умолчанию выбрана последняя использованная пара, если она есть.'
+              : 'Сначала добавьте пару на экране "Активность → Кроссовки".'}
+          </p>
         </div>
         <div className="app-surface-muted rounded-xl px-4 py-3">
           <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Предпросмотр</p>

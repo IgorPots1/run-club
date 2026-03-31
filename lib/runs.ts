@@ -1,5 +1,111 @@
-import { supabase } from './supabase'
+export type CreateRunInput = {
+  name: string
+  title: string
+  distanceKm: number
+  distanceMeters: number
+  durationMinutes: number
+  durationSeconds: number
+  movingTimeSeconds: number
+  elapsedTimeSeconds: number
+  averagePaceSeconds: number
+  createdAt: string
+  xp: number
+  shoeId?: string | null
+}
 
-export function deleteRun(runId: string) {
-  return supabase.from('runs').delete().eq('id', runId)
+export type UpdateRunInput = {
+  name?: string | null
+  description?: string | null
+  nameManuallyEdited?: boolean
+  descriptionManuallyEdited?: boolean
+  shoeId?: string | null
+}
+
+type RunMutationResponse =
+  | {
+      ok: true
+      run?: Record<string, unknown> | null
+    }
+  | {
+      ok: false
+      error?: string
+    }
+
+export async function createRun(input: CreateRunInput) {
+  const response = await fetch('/api/runs', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(input),
+  })
+
+  const payload = await response.json().catch(() => null) as RunMutationResponse | null
+
+  if (!response.ok || !payload?.ok) {
+    return {
+      error: new Error(
+        payload && 'error' in payload && typeof payload.error === 'string'
+          ? payload.error
+          : 'run_create_failed'
+      ),
+    }
+  }
+
+  return {
+    error: null,
+    data: payload.run ?? null,
+  }
+}
+
+export async function updateRun(runId: string, input: UpdateRunInput) {
+  const response = await fetch(`/api/runs/${runId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(input),
+  })
+
+  const payload = await response.json().catch(() => null) as RunMutationResponse | null
+
+  if (!response.ok || !payload?.ok) {
+    return {
+      error: new Error(
+        payload && 'error' in payload && typeof payload.error === 'string'
+          ? payload.error
+          : 'run_update_failed'
+      ),
+    }
+  }
+
+  return {
+    error: null,
+    data: payload.run ?? null,
+  }
+}
+
+export async function deleteRun(runId: string) {
+  const response = await fetch(`/api/runs/${runId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+
+  const payload = await response.json().catch(() => null) as RunMutationResponse | null
+
+  if (!response.ok || !payload?.ok) {
+    return {
+      error: new Error(
+        payload && 'error' in payload && typeof payload.error === 'string'
+          ? payload.error
+          : 'run_delete_failed'
+      ),
+    }
+  }
+
+  return {
+    error: null,
+  }
 }

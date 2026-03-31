@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { createUserShoe, listUserShoes, type UserShoeInput } from '@/lib/shoes'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -24,11 +25,32 @@ export async function GET() {
   }
 
   try {
-    const shoes = await listUserShoes(user.id)
+    const [shoes, lastUsedRunResult] = await Promise.all([
+      listUserShoes(user.id),
+      createSupabaseAdminClient()
+        .from('runs')
+        .select('shoe_id')
+        .eq('user_id', user.id)
+        .not('shoe_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    if (lastUsedRunResult.error) {
+      throw lastUsedRunResult.error
+    }
+
+    const mostRecentlyUsedShoeId =
+      typeof lastUsedRunResult.data?.shoe_id === 'string' && lastUsedRunResult.data.shoe_id.trim().length > 0
+        ? lastUsedRunResult.data.shoe_id
+        : null
 
     return NextResponse.json({
       ok: true,
       shoes,
+      mostRecentlyUsedShoeId,
     })
   } catch (loadError) {
     return NextResponse.json(

@@ -40,10 +40,16 @@ export type CreateUserShoeInput = {
   isActive?: boolean
 }
 
+export type UserShoeSelectionData = {
+  shoes: UserShoeRecord[]
+  mostRecentlyUsedShoeId: string | null
+}
+
 type ListUserShoesResponse =
   | {
       ok: true
       shoes: UserShoeRecord[]
+      mostRecentlyUsedShoeId?: string | null
     }
   | {
       ok: false
@@ -71,6 +77,11 @@ type CreateUserShoeResponse =
     }
 
 export async function loadUserShoes(): Promise<UserShoeRecord[]> {
+  const selectionData = await loadUserShoeSelectionData()
+  return selectionData.shoes
+}
+
+export async function loadUserShoeSelectionData(): Promise<UserShoeSelectionData> {
   const response = await fetch('/api/shoes', {
     method: 'GET',
     credentials: 'include',
@@ -87,7 +98,13 @@ export async function loadUserShoes(): Promise<UserShoeRecord[]> {
     )
   }
 
-  return Array.isArray(payload.shoes) ? payload.shoes : []
+  return {
+    shoes: Array.isArray(payload.shoes) ? payload.shoes : [],
+    mostRecentlyUsedShoeId:
+      typeof payload.mostRecentlyUsedShoeId === 'string' && payload.mostRecentlyUsedShoeId.trim().length > 0
+        ? payload.mostRecentlyUsedShoeId
+        : null,
+  }
 }
 
 export async function searchShoeModels(query: string): Promise<ShoeModel[]> {

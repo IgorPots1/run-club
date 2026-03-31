@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import {
   fetchStravaActivityById,
@@ -86,6 +87,8 @@ type ExistingStravaRunRow = {
   user_id: string
   name: string | null
   description: string | null
+  shoe_id: string | null
+  distance_meters: number | null
   name_manually_edited: boolean
   description_manually_edited: boolean
 }
@@ -1775,7 +1778,7 @@ export async function importStravaActivityForUser(
   const payload = buildRunInsertPayload(userId, activityForImport)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id, user_id, name, description, name_manually_edited, description_manually_edited')
+    .select('id, user_id, name, description, shoe_id, distance_meters, name_manually_edited, description_manually_edited')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -1995,12 +1998,44 @@ export async function importStravaActivityForUser(
     runUpdatePayload.description = payload.description
   }
 
+  try {
+    await updateRunShoeImpact(supabase, {
+      previousRun: {
+        userId: normalizedExistingRun.user_id,
+        shoeId: normalizedExistingRun.shoe_id,
+        distanceMeters: normalizedExistingRun.distance_meters,
+      },
+      nextRun: {
+        userId: normalizedExistingRun.user_id,
+        shoeId: normalizedExistingRun.shoe_id,
+        distanceMeters: payload.distance_meters,
+      },
+    })
+  } catch (shoeImpactError) {
+    throw new Error(
+      shoeImpactError instanceof Error ? shoeImpactError.message : 'strava_shoe_impact_failed'
+    )
+  }
+
   const { error: updateError } = await supabase
     .from('runs')
     .update(runUpdatePayload)
     .eq('id', normalizedExistingRun.id)
 
   if (updateError) {
+    await updateRunShoeImpact(supabase, {
+      previousRun: {
+        userId: normalizedExistingRun.user_id,
+        shoeId: normalizedExistingRun.shoe_id,
+        distanceMeters: payload.distance_meters,
+      },
+      nextRun: {
+        userId: normalizedExistingRun.user_id,
+        shoeId: normalizedExistingRun.shoe_id,
+        distanceMeters: normalizedExistingRun.distance_meters,
+      },
+    }).catch(() => {})
+
     throw new Error(updateError.message)
   }
 
