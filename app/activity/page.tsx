@@ -14,10 +14,9 @@ import {
   loadActivityRuns,
   type ActivityPeriod,
 } from '@/lib/activity'
+import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { ensureProfileExists } from '@/lib/profiles'
-import { loadUserRaceBadgeAwards } from '@/lib/race-results-client'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
 const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
@@ -136,7 +135,13 @@ function formatRunPace(run: Pick<ActivityRunRow, 'distance_km' | 'duration_minut
   return formatPaceLabel(totalSeconds, distanceValue)
 }
 
-function getAchievementCardClass(badgeCode: string | null | undefined) {
+function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type' | 'badge_code'>) {
+  if (achievement.source_type === 'challenge') {
+    return 'app-card rounded-2xl border border-emerald-300/60 bg-emerald-50/80 p-4 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10'
+  }
+
+  const badgeCode = achievement.badge_code
+
   if (badgeCode === 'race_week_winner') {
     return 'app-card rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-sm dark:border-amber-400/25 dark:bg-amber-400/10'
   }
@@ -160,23 +165,16 @@ function getAchievementRankClass(badgeCode: string | null | undefined) {
   return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
 }
 
-function getAchievementSubtitle(args: {
-  badgeCode: string | null | undefined
-  rank: number | null | undefined
-  starts_at: string | null
-  ends_at: string | null
-  timezone: string | null
-  participantCount: number | null | undefined
-}) {
-  const { badgeCode, rank, starts_at, ends_at, timezone, participantCount } = args
-  const dateRangeLabel = formatRaceWeekDateRange({ starts_at, ends_at, timezone })
-  const placementLabel = formatRacePlacementLabel({
-    badgeCode,
-    rank,
-    totalParticipants: participantCount,
-  })
+function getAchievementIcon(sourceType: UserAchievement['source_type']) {
+  return sourceType === 'weekly_race' ? '🏆' : '🎯'
+}
 
-  return placementLabel ? `${dateRangeLabel} • ${placementLabel}` : dateRangeLabel
+function getCompactAchievementSubtitle(achievement: Pick<UserAchievement, 'source_type' | 'subtitle'>) {
+  if (achievement.source_type === 'challenge') {
+    return 'Челлендж завершён'
+  }
+
+  return achievement.subtitle
 }
 
 export default function ActivityPage() {
@@ -228,12 +226,12 @@ export default function ActivityPage() {
     }
   )
   const {
-    data: badgeAwards,
-    error: badgeAwardsError,
-    isLoading: isBadgeAwardsLoading,
+    data: achievements,
+    error: achievementsError,
+    isLoading: isAchievementsLoading,
   } = useSWR(
-    user ? (['activity-race-badges', user.id] as const) : null,
-    ([, userId]: readonly [string, string]) => loadUserRaceBadgeAwards(userId),
+    user ? (['activity-achievements', user.id] as const) : null,
+    () => loadUserAchievements(),
     {
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
@@ -395,80 +393,68 @@ export default function ActivityPage() {
                 Все достижения
               </Link>
             </div>
-            {isBadgeAwardsLoading && !badgeAwards ? (
+            {isAchievementsLoading && !achievements ? (
               <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                 <div className="skeleton-line h-4 w-32" />
                 <div className="mt-3 skeleton-line h-4 w-24" />
               </div>
-            ) : badgeAwardsError ? (
+            ) : achievementsError ? (
               <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                 <p className="text-sm text-red-600">Не удалось загрузить достижения</p>
               </div>
-            ) : !badgeAwards || badgeAwards.length === 0 ? (
+            ) : !achievements || achievements.length === 0 ? (
               <div className="app-card rounded-2xl p-5 text-center shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-6">
-                <p className="app-text-secondary text-sm">Пока нет достижений в гонке недели</p>
+                <p className="app-text-secondary text-sm">Пока нет достижений</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {badgeAwards.slice(0, 3).map((badge) => (
-                  badge.race_week_id ? (
+                {achievements.slice(0, 3).map((achievement) => (
+                  achievement.source_type === 'weekly_race' && achievement.href ? (
                     <button
-                      key={`${badge.race_week_id}-${badge.badge_code}`}
+                      key={achievement.id}
                       type="button"
-                      onClick={() => router.push(`/race/history/${badge.race_week_id}`)}
-                      className={`${getAchievementCardClass(badge.badge_code)} block w-full cursor-pointer text-left transition-transform transition-shadow hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20`}
+                      onClick={() => router.push(achievement.href!)}
+                      className={`${getAchievementCardClass(achievement)} block w-full cursor-pointer text-left transition-transform transition-shadow hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="app-text-primary text-base font-semibold">
-                            {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
+                            <span className="mr-2" aria-hidden="true">{getAchievementIcon(achievement.source_type)}</span>
+                            {achievement.label}
                           </p>
                           <p className="app-text-secondary mt-1 text-sm">
-                            {getAchievementSubtitle({
-                              badgeCode: badge.badge_code,
-                              rank: badge.source_rank,
-                              starts_at: badge.starts_at,
-                              ends_at: badge.ends_at,
-                              timezone: badge.timezone,
-                              participantCount: badge.participant_count,
-                            })}
+                            {getCompactAchievementSubtitle(achievement)}
                           </p>
                         </div>
-                        {badge.source_rank ? (
+                        {achievement.rank ? (
                           <p
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(badge.badge_code)}`}
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
                           >
-                            #{badge.source_rank}
+                            #{achievement.rank}
                           </p>
                         ) : null}
                       </div>
                     </button>
                   ) : (
                     <div
-                      key={`no-week-${badge.badge_code}`}
-                      className={getAchievementCardClass(badge.badge_code)}
+                      key={achievement.id}
+                      className={getAchievementCardClass(achievement)}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="app-text-primary text-base font-semibold">
-                            {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
+                            <span className="mr-2" aria-hidden="true">{getAchievementIcon(achievement.source_type)}</span>
+                            {achievement.label}
                           </p>
                           <p className="app-text-secondary mt-1 text-sm">
-                            {getAchievementSubtitle({
-                              badgeCode: badge.badge_code,
-                              rank: badge.source_rank,
-                              starts_at: badge.starts_at,
-                              ends_at: badge.ends_at,
-                              timezone: badge.timezone,
-                              participantCount: badge.participant_count,
-                            })}
+                            {getCompactAchievementSubtitle(achievement)}
                           </p>
                         </div>
-                        {badge.source_rank ? (
+                        {achievement.source_type === 'weekly_race' && achievement.rank ? (
                           <p
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(badge.badge_code)}`}
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
                           >
-                            #{badge.source_rank}
+                            #{achievement.rank}
                           </p>
                         ) : null}
                       </div>
