@@ -98,7 +98,11 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
     }
   }, [])
 
-  const isActivityRoute = pathname === '/activity' || pathname === '/runs' || pathname.startsWith('/runs/')
+  const isActivityRoute =
+    pathname === '/activity' ||
+    pathname.startsWith('/activity/') ||
+    pathname === '/runs' ||
+    pathname.startsWith('/runs/')
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const isMessagesRoute = pathname === '/messages' || pathname.startsWith('/messages/')
   const tabs: TabItem[] = [
