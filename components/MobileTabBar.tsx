@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Footprints, Home, MessageCircle, User, Users } from 'lucide-react'
+import { Activity, Home, MessageCircle, User, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type MouseEvent } from 'react'
@@ -98,6 +98,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
     }
   }, [])
 
+  const isActivityRoute = pathname === '/activity' || pathname === '/runs' || pathname.startsWith('/runs/')
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const isMessagesRoute = pathname === '/messages' || pathname.startsWith('/messages/')
   const tabs: TabItem[] = [
@@ -110,14 +111,8 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
     {
       href: '/activity',
       label: 'Актив',
-      isActive: pathname === '/activity',
+      isActive: isActivityRoute,
       icon: <TabIcon><Activity className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
-    },
-    {
-      href: '/runs',
-      label: 'Трен.',
-      isActive: pathname === '/runs',
-      icon: <TabIcon><Footprints className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
     {
       href: '/club',
@@ -157,7 +152,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <nav
-        className="app-bottom-nav pointer-events-auto mx-auto grid max-w-xl grid-cols-6 border-t px-2 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
+        className="app-bottom-nav pointer-events-auto mx-auto grid max-w-xl grid-cols-5 border-t px-2 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 text-center shadow-[0_-6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
       >
         {tabs.map((tab) => (
           <Link
