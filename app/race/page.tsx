@@ -52,13 +52,18 @@ function getProjectedRank(args: {
 
 function getRowHighlightClass(args: {
   isCurrentUser: boolean
+  rank: number
   gapAbove: number | null
   gapBelow: number | null
 }) {
-  const { isCurrentUser, gapAbove, gapBelow } = args
+  const { isCurrentUser, rank, gapAbove, gapBelow } = args
 
   if (isCurrentUser) {
     return 'app-card app-surface-muted ring-1 ring-black/10 dark:ring-white/15'
+  }
+
+  if (rank > 0 && rank <= 3) {
+    return 'app-card bg-black/[0.03] ring-1 ring-black/5 dark:bg-white/[0.05] dark:ring-white/10'
   }
 
   const nearestGap = [gapAbove, gapBelow]
@@ -258,6 +263,7 @@ export default function RacePage() {
               <div className="mt-4 space-y-2">
                 {rows.map((row, index) => {
                   const isCurrentUser = row.user_id === user.id
+                  const isPodiumRow = row.rank > 0 && row.rank <= 3
                   const previousRow = index > 0 ? rows[index - 1] : null
                   const nextRow = index < rows.length - 1 ? rows[index + 1] : null
                   const gapAbove = previousRow ? Math.max(previousRow.totalXp - row.totalXp, 0) : null
@@ -268,17 +274,26 @@ export default function RacePage() {
                       key={row.user_id}
                       className={`rounded-2xl border p-4 shadow-sm ${getRowHighlightClass({
                         isCurrentUser,
+                        rank: row.rank,
                         gapAbove,
                         gapBelow,
                       })}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className={`app-text-primary truncate text-sm ${isCurrentUser ? 'font-semibold' : 'font-medium'}`}>
+                          <p
+                            className={`app-text-primary truncate text-sm ${
+                              isCurrentUser || isPodiumRow ? 'font-semibold' : 'font-medium'
+                            }`}
+                          >
                             {row.rank}. {row.displayName}
                           </p>
                         </div>
-                        <p className={`app-text-primary shrink-0 text-sm ${isCurrentUser ? 'font-semibold' : 'font-medium'}`}>
+                        <p
+                          className={`app-text-primary shrink-0 text-sm ${
+                            isCurrentUser || isPodiumRow ? 'font-semibold' : 'font-medium'
+                          }`}
+                        >
                           {row.totalXp} XP
                         </p>
                       </div>
