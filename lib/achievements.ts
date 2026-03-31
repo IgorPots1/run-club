@@ -198,29 +198,25 @@ export async function loadUserAchievements(userId: string): Promise<UserAchievem
     }
   })
 
-  const challengeAchievements: UserAchievement[] = safeChallengeCompletions
-    .map((completion) => {
-      const challenge = challengesById.get(completion.challenge_id)
+  const challengeAchievements = safeChallengeCompletions.reduce<UserAchievement[]>((achievements, completion) => {
+    const challenge = challengesById.get(completion.challenge_id)
 
-      if (!challenge) {
-        return null
-      }
+    if (!challenge || getChallengeKind(challenge) !== 'milestone') {
+      return achievements
+    }
 
-      if (getChallengeKind(challenge) !== 'milestone') {
-        return null
-      }
-
-      return {
-        id: `challenge-${completion.challenge_id}`,
-        source_type: 'challenge' as const,
-        label: challenge.title,
-        date: completion.completed_at,
-        subtitle: getChallengeSubtitle(challenge),
-        href: null,
-        rank: null,
-      }
+    achievements.push({
+      id: `challenge-${completion.challenge_id}`,
+      source_type: 'challenge',
+      label: challenge.title,
+      date: completion.completed_at,
+      subtitle: getChallengeSubtitle(challenge),
+      href: null,
+      rank: null,
     })
-    .filter((achievement): achievement is UserAchievement => achievement !== null)
+
+    return achievements
+  }, [])
 
   return [...raceAchievements, ...challengeAchievements].sort(compareByDateDesc)
 }

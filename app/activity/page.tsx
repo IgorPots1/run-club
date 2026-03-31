@@ -389,7 +389,12 @@ export default function ActivityPage() {
 
         {!isLoading && !error ? (
           <section className="mt-5 md:mt-8">
-            <h2 className="app-text-primary mb-3 text-lg font-semibold">Достижения</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="app-text-primary text-lg font-semibold">Достижения</h2>
+              <Link href="/activity/achievements" className="app-text-secondary text-sm font-medium">
+                Все достижения
+              </Link>
+            </div>
             {isBadgeAwardsLoading && !badgeAwards ? (
               <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                 <div className="skeleton-line h-4 w-32" />
