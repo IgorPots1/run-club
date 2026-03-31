@@ -580,7 +580,7 @@ export default function RunsPage() {
 
     setLoadingShoes(true)
 
-    void loadUserShoeSelectionData()
+    void loadUserShoeSelectionData({ activeOnly: true })
       .then((selectionData) => {
         if (!isMounted) {
           return

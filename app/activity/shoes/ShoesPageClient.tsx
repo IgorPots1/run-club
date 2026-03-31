@@ -211,6 +211,7 @@ export default function ShoesPageClient({
   initialPopularModels,
 }: ShoesPageClientProps) {
   const [editingShoeId, setEditingShoeId] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
   const [modelQuery, setModelQuery] = useState('')
   const [modelResults, setModelResults] = useState<ShoeModel[]>(initialPopularModels)
   const [loadingModelResults, setLoadingModelResults] = useState(false)
@@ -221,8 +222,10 @@ export default function ShoesPageClient({
   const [maxDistanceKmInput, setMaxDistanceKmInput] = useState('800')
   const [isActive, setIsActive] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [statusUpdatingShoeId, setStatusUpdatingShoeId] = useState<string | null>(null)
   const [formError, setFormError] = useState('')
   const [searchError, setSearchError] = useState('')
+  const [listActionError, setListActionError] = useState('')
   const trimmedQuery = modelQuery.trim()
   const parsedDistanceKm = parseDistanceKmInput(distanceKmInput)
   const parsedMaxDistanceKm = parseDistanceKmInput(maxDistanceKmInput)
@@ -309,9 +312,17 @@ export default function ShoesPageClient({
     () => shoes?.find((shoe) => shoe.id === editingShoeId) ?? null,
     [editingShoeId, shoes]
   )
+  const activeShoes = useMemo(
+    () => (shoes ?? []).filter((shoe) => shoe.isActive),
+    [shoes]
+  )
+  const archivedShoes = useMemo(
+    () => (shoes ?? []).filter((shoe) => !shoe.isActive),
+    [shoes]
+  )
   const problematicSummaryLines = useMemo(() => {
-    const warningCount = shoes?.filter((shoe) => shoe.wearStatus === 'warning').length ?? 0
-    const replaceCount = shoes?.filter((shoe) => shoe.wearStatus === 'replace').length ?? 0
+    const warningCount = activeShoes.filter((shoe) => shoe.wearStatus === 'warning').length
+    const replaceCount = activeShoes.filter((shoe) => shoe.wearStatus === 'replace').length
     const nextLines: string[] = []
 
     if (warningCount > 0) {
@@ -323,7 +334,13 @@ export default function ShoesPageClient({
     }
 
     return nextLines
-  }, [shoes])
+  }, [activeShoes])
+
+  useEffect(() => {
+    if (editingShoe && !editingShoe.isActive) {
+      setShowArchived(true)
+    }
+  }, [editingShoe])
 
   function handleDistanceInputChange(nextValue: string) {
     const normalizedValue = nextValue.replace(',', '.')
@@ -376,6 +393,40 @@ export default function ShoesPageClient({
     setMaxDistanceKmInput(formatDistanceMetersAsKm(shoe.maxDistanceMeters))
     setIsActive(shoe.isActive)
     setFormError('')
+  }
+
+  async function handleSetArchivedState(shoe: UserShoeRecord, nextIsActive: boolean) {
+    if (statusUpdatingShoeId || submitting) {
+      return
+    }
+
+    setStatusUpdatingShoeId(shoe.id)
+    setListActionError('')
+
+    try {
+      const updatedShoe = await updateUserShoe(shoe.id, {
+        shoeModelId: shoe.shoeModelId,
+        customName: shoe.model ? null : shoe.customName,
+        nickname: shoe.nickname,
+        currentDistanceMeters: shoe.currentDistanceMeters,
+        maxDistanceMeters: shoe.maxDistanceMeters,
+        isActive: nextIsActive,
+      })
+
+      await mutate(
+        (currentShoes) =>
+          (currentShoes ?? []).map((currentShoe) => (currentShoe.id === updatedShoe.id ? updatedShoe : currentShoe)),
+        { revalidate: false }
+      )
+
+      if (shoe.id === editingShoeId) {
+        resetForm()
+      }
+    } catch (error) {
+      setListActionError(error instanceof Error ? error.message : 'Не удалось обновить статус пары')
+    } finally {
+      setStatusUpdatingShoeId(null)
+    }
   }
 
   async function handleCreateShoe(event: React.FormEvent<HTMLFormElement>) {
@@ -645,6 +696,8 @@ export default function ShoesPageClient({
           <p className="app-text-secondary text-sm">{shoes?.length ?? 0} пар</p>
         </div>
 
+        {listActionError ? <p className="mb-3 text-sm text-red-600">{listActionError}</p> : null}
+
         {shoesError ? (
           <div className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">Не удалось загрузить список кроссовок</p>
@@ -657,79 +710,192 @@ export default function ShoesPageClient({
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {shoes.map((shoe) => (
-              <div
-                key={shoe.id}
-                className={`${getShoeCardClassName(shoe.wearStatus)} flex items-start gap-3 rounded-2xl border p-4 shadow-sm`}
-              >
-                <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="app-text-primary break-words text-base font-semibold">
-                        {shoe.displayName}
-                      </p>
-                      {shoe.nickname ? (
-                        <p className="app-text-secondary mt-1 text-sm">{shoe.nickname}</p>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(shoe.wearStatus)}`}
-                      >
-                        {shoe.wearStatusLabel}
-                      </span>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          shoe.isActive
-                            ? 'border border-emerald-300/70 bg-emerald-100/80 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
-                            : 'border border-black/[0.07] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/75'
-                        }`}
-                      >
-                        {shoe.isActive ? 'Активные' : 'Неактивные'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="app-text-secondary mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                    <p>
-                      {formatDistanceMetersAsKm(shoe.currentDistanceMeters)} / {formatDistanceMetersAsKm(shoe.maxDistanceMeters)} км
-                    </p>
-                    {shoe.model?.brand ? <p>• {shoe.model.brand}</p> : null}
-                    {shoe.model?.category ? <p>• {shoe.model.category}</p> : null}
-                  </div>
-
-                  <div className="mt-3">
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
-                      <div
-                        className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(shoe.wearStatus)}`}
-                        style={{ width: `${getWearProgressFillPercent(shoe.usagePercent)}%` }}
-                      />
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3 text-xs">
-                      <p className="app-text-secondary">
-                        {shoe.usagePercent < 100
-                          ? `Осталось ~${formatDistanceMetersAsKm(Math.max(0, shoe.remainingDistanceMeters))} км`
-                          : 'Пора менять'}
-                      </p>
-                      <p className="app-text-muted">{Math.round(shoe.usagePercent)}%</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleStartEditingShoe(shoe)}
-                      className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <PencilLine className="h-4 w-4" strokeWidth={1.9} />
-                      Изменить
-                    </button>
-                  </div>
-                </div>
+          <div className="space-y-4">
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="app-text-primary text-base font-semibold">Активные</h3>
+                <p className="app-text-secondary text-sm">{activeShoes.length} пар</p>
               </div>
-            ))}
+
+              {activeShoes.length === 0 ? (
+                <div className="app-card rounded-2xl border border-dashed p-4 shadow-sm">
+                  <p className="app-text-secondary text-sm">Сейчас нет активных пар. Можно вернуть пару из архива ниже.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeShoes.map((shoe) => (
+                    <div
+                      key={shoe.id}
+                      className={`${getShoeCardClassName(shoe.wearStatus)} flex items-start gap-3 rounded-2xl border p-4 shadow-sm`}
+                    >
+                      <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="app-text-primary break-words text-base font-semibold">
+                              {shoe.displayName}
+                            </p>
+                            {shoe.nickname ? (
+                              <p className="app-text-secondary mt-1 text-sm">{shoe.nickname}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(shoe.wearStatus)}`}
+                            >
+                              {shoe.wearStatusLabel}
+                            </span>
+                            <span className="rounded-full border border-emerald-300/70 bg-emerald-100/80 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100">
+                              Активные
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="app-text-secondary mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                          <p>
+                            {formatDistanceMetersAsKm(shoe.currentDistanceMeters)} / {formatDistanceMetersAsKm(shoe.maxDistanceMeters)} км
+                          </p>
+                          {shoe.model?.brand ? <p>• {shoe.model.brand}</p> : null}
+                          {shoe.model?.category ? <p>• {shoe.model.category}</p> : null}
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+                            <div
+                              className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(shoe.wearStatus)}`}
+                              style={{ width: `${getWearProgressFillPercent(shoe.usagePercent)}%` }}
+                            />
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                            <p className="app-text-secondary">
+                              {shoe.usagePercent < 100
+                                ? `Осталось ~${formatDistanceMetersAsKm(Math.max(0, shoe.remainingDistanceMeters))} км`
+                                : 'Пора менять'}
+                            </p>
+                            <p className="app-text-muted">{Math.round(shoe.usagePercent)}%</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSetArchivedState(shoe, false)}
+                            disabled={statusUpdatingShoeId === shoe.id || submitting}
+                            className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {statusUpdatingShoeId === shoe.id ? 'Переносим...' : 'В архив'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditingShoe(shoe)}
+                            disabled={statusUpdatingShoeId === shoe.id}
+                            className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <PencilLine className="h-4 w-4" strokeWidth={1.9} />
+                            Изменить
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {archivedShoes.length > 0 ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowArchived((currentValue) => !currentValue)}
+                  className="app-card flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left shadow-sm"
+                >
+                  <span className="app-text-primary text-base font-semibold">Архив</span>
+                  <span className="app-text-secondary text-sm">
+                    {archivedShoes.length} пар {showArchived ? '• скрыть' : '• показать'}
+                  </span>
+                </button>
+
+                {showArchived ? (
+                  <div className="mt-3 space-y-3">
+                    {archivedShoes.map((shoe) => (
+                      <div
+                        key={shoe.id}
+                        className="app-card flex items-start gap-3 rounded-2xl border p-4 shadow-sm opacity-90"
+                      >
+                        <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="app-text-primary break-words text-base font-semibold">
+                                {shoe.displayName}
+                              </p>
+                              {shoe.nickname ? (
+                                <p className="app-text-secondary mt-1 text-sm">{shoe.nickname}</p>
+                              ) : null}
+                            </div>
+                            <div className="flex shrink-0 flex-col items-end gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(shoe.wearStatus)}`}
+                              >
+                                {shoe.wearStatusLabel}
+                              </span>
+                              <span className="rounded-full border border-black/[0.07] bg-black/[0.04] px-2.5 py-1 text-xs font-semibold text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/75">
+                                В архиве
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="app-text-secondary mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                            <p>
+                              {formatDistanceMetersAsKm(shoe.currentDistanceMeters)} / {formatDistanceMetersAsKm(shoe.maxDistanceMeters)} км
+                            </p>
+                            {shoe.model?.brand ? <p>• {shoe.model.brand}</p> : null}
+                            {shoe.model?.category ? <p>• {shoe.model.category}</p> : null}
+                          </div>
+
+                          <div className="mt-3">
+                            <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+                              <div
+                                className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(shoe.wearStatus)}`}
+                                style={{ width: `${getWearProgressFillPercent(shoe.usagePercent)}%` }}
+                              />
+                            </div>
+                            <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                              <p className="app-text-secondary">
+                                {shoe.usagePercent < 100
+                                  ? `Осталось ~${formatDistanceMetersAsKm(Math.max(0, shoe.remainingDistanceMeters))} км`
+                                  : 'Пора менять'}
+                              </p>
+                              <p className="app-text-muted">{Math.round(shoe.usagePercent)}%</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSetArchivedState(shoe, true)}
+                              disabled={statusUpdatingShoeId === shoe.id || submitting}
+                              className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {statusUpdatingShoeId === shoe.id ? 'Возвращаем...' : 'Вернуть в активные'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditingShoe(shoe)}
+                              disabled={statusUpdatingShoeId === shoe.id}
+                              className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <PencilLine className="h-4 w-4" strokeWidth={1.9} />
+                              Изменить
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         )}
       </section>

@@ -12,7 +12,7 @@ type CreateUserShoeRequestBody = {
   isActive?: boolean | null
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
@@ -26,6 +26,9 @@ export async function GET() {
   }
 
   try {
+    const requestUrl = new URL(request.url)
+    const activeOnly = requestUrl.searchParams.get('activeOnly') === 'true'
+    const includeShoeId = requestUrl.searchParams.get('includeShoeId')?.trim() || null
     const [shoes, lastUsedRunResult] = await Promise.all([
       listUserShoes(user.id),
       createSupabaseAdminClient()
@@ -47,11 +50,18 @@ export async function GET() {
       typeof lastUsedRunResult.data?.shoe_id === 'string' && lastUsedRunResult.data.shoe_id.trim().length > 0
         ? lastUsedRunResult.data.shoe_id
         : null
+    const filteredShoes = activeOnly
+      ? shoes.filter((shoe) => shoe.isActive || shoe.id === includeShoeId)
+      : shoes
+    const filteredMostRecentlyUsedShoeId =
+      mostRecentlyUsedShoeId && filteredShoes.some((shoe) => shoe.id === mostRecentlyUsedShoeId)
+        ? mostRecentlyUsedShoeId
+        : null
 
     return NextResponse.json({
       ok: true,
-      shoes,
-      mostRecentlyUsedShoeId,
+      shoes: filteredShoes,
+      mostRecentlyUsedShoeId: filteredMostRecentlyUsedShoeId,
     })
   } catch (loadError) {
     return NextResponse.json(

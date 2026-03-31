@@ -60,6 +60,11 @@ export type UserShoeSelectionData = {
   mostRecentlyUsedShoeId: string | null
 }
 
+type LoadUserShoeSelectionOptions = {
+  activeOnly?: boolean
+  includeShoeId?: string | null
+}
+
 type ListUserShoesResponse =
   | {
       ok: true
@@ -98,8 +103,21 @@ export async function loadUserShoes(): Promise<UserShoeRecord[]> {
   return selectionData.shoes
 }
 
-export async function loadUserShoeSelectionData(): Promise<UserShoeSelectionData> {
-  const response = await fetch('/api/shoes', {
+export async function loadUserShoeSelectionData(
+  options: LoadUserShoeSelectionOptions = {}
+): Promise<UserShoeSelectionData> {
+  const searchParams = new URLSearchParams()
+
+  if (options.activeOnly) {
+    searchParams.set('activeOnly', 'true')
+  }
+
+  if (typeof options.includeShoeId === 'string' && options.includeShoeId.trim().length > 0) {
+    searchParams.set('includeShoeId', options.includeShoeId.trim())
+  }
+
+  const queryString = searchParams.toString()
+  const response = await fetch(`/api/shoes${queryString ? `?${queryString}` : ''}`, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',

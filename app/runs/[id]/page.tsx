@@ -911,7 +911,10 @@ export default function RunDetailsPage() {
 
     setLoadingShoes(true)
 
-    void loadUserShoeSelectionData()
+    void loadUserShoeSelectionData({
+      activeOnly: true,
+      includeShoeId: run.shoe_id ?? null,
+    })
       .then((selectionData) => {
         if (isMounted) {
           setAvailableShoes(selectionData.shoes)
@@ -1421,6 +1424,7 @@ export default function RunDetailsPage() {
                   <option key={shoe.id} value={shoe.id}>
                     {shoe.displayName}
                     {shoe.nickname ? ` (${shoe.nickname})` : ''}
+                    {!shoe.isActive ? ' • архив' : ''}
                   </option>
                 ))}
               </select>
@@ -1454,6 +1458,7 @@ export default function RunDetailsPage() {
               <p className="app-text-secondary mt-2 text-sm">
                 Кроссовки: {currentAssignedShoe.displayName}
                 {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
+                {!currentAssignedShoe.isActive ? ' • архив' : ''}
               </p>
             ) : null}
             {runDescription ? (
