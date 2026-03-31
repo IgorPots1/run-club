@@ -67,10 +67,11 @@ export async function reverseGeocode(
 
   const params = new URLSearchParams({
     limit: '1',
+    language: 'ru',
     access_token: accessToken,
   })
   const requestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?${params.toString()}`
-  const loggedRequestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?limit=1&access_token=[redacted]`
+  const loggedRequestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?limit=1&language=ru&access_token=[redacted]`
 
   console.info('[mapbox-geocode-debug] request_prepared', {
     lat,
