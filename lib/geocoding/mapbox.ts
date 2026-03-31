@@ -10,8 +10,10 @@ type ReverseGeocodeResult = {
 }
 
 type MapboxFeature = {
+  id?: string | null
   place_type?: string[]
   text?: string | null
+  context?: MapboxFeature[] | null
 }
 
 type MapboxReverseGeocodeResponse = {
@@ -64,12 +66,11 @@ export async function reverseGeocode(
   }
 
   const params = new URLSearchParams({
-    types: 'place,region,country',
-    limit: '5',
+    limit: '1',
     access_token: accessToken,
   })
   const requestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?${params.toString()}`
-  const loggedRequestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?types=place%2Cregion%2Ccountry&limit=5&access_token=[redacted]`
+  const loggedRequestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?limit=1&access_token=[redacted]`
 
   console.info('[mapbox-geocode-debug] request_prepared', {
     lat,
@@ -99,6 +100,7 @@ export async function reverseGeocode(
     }
 
     const data = await response.json() as MapboxReverseGeocodeResponse
+    const primaryFeature = data.features?.[0] ?? null
     console.info('[mapbox-geocode-debug] response_parsed', {
       lat,
       lng,
@@ -106,9 +108,19 @@ export async function reverseGeocode(
       featurePlaceTypes: (data.features ?? []).slice(0, 5).map((feature) => feature.place_type ?? []),
       featureTexts: (data.features ?? []).slice(0, 5).map((feature) => feature.text ?? null),
     })
-    const city = getFeatureTextByPlaceType(data.features, 'place')
-    const region = getFeatureTextByPlaceType(data.features, 'region')
-    const country = getFeatureTextByPlaceType(data.features, 'country')
+    const contextFeatures = primaryFeature?.context ?? []
+    const city = getFeatureTextByPlaceType(
+      primaryFeature?.place_type?.includes('place') ? [primaryFeature] : contextFeatures,
+      'place'
+    )
+    const region = getFeatureTextByPlaceType(
+      primaryFeature?.place_type?.includes('region') ? [primaryFeature] : contextFeatures,
+      'region'
+    )
+    const country = getFeatureTextByPlaceType(
+      primaryFeature?.place_type?.includes('country') ? [primaryFeature] : contextFeatures,
+      'country'
+    )
 
     console.info('[mapbox-geocode-debug] values_extracted', {
       lat,
