@@ -34,11 +34,11 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-function getFeatureTextByPlaceType(
+function getContextTextByPrefix(
   features: MapboxFeature[] | null | undefined,
-  placeType: 'place' | 'region' | 'country'
+  prefix: 'place' | 'region' | 'country'
 ) {
-  const matchedFeature = (features ?? []).find((feature) => feature.place_type?.includes(placeType))
+  const matchedFeature = (features ?? []).find((feature) => feature.id?.startsWith(prefix))
   return toNullableTrimmedText(matchedFeature?.text)
 }
 
@@ -100,7 +100,7 @@ export async function reverseGeocode(
     }
 
     const data = await response.json() as MapboxReverseGeocodeResponse
-    const primaryFeature = data.features?.[0] ?? null
+    const feature = data.features?.[0] ?? null
     console.info('[mapbox-geocode-debug] response_parsed', {
       lat,
       lng,
@@ -108,19 +108,12 @@ export async function reverseGeocode(
       featurePlaceTypes: (data.features ?? []).slice(0, 5).map((feature) => feature.place_type ?? []),
       featureTexts: (data.features ?? []).slice(0, 5).map((feature) => feature.text ?? null),
     })
-    const contextFeatures = primaryFeature?.context ?? []
-    const city = getFeatureTextByPlaceType(
-      primaryFeature?.place_type?.includes('place') ? [primaryFeature] : contextFeatures,
-      'place'
-    )
-    const region = getFeatureTextByPlaceType(
-      primaryFeature?.place_type?.includes('region') ? [primaryFeature] : contextFeatures,
-      'region'
-    )
-    const country = getFeatureTextByPlaceType(
-      primaryFeature?.place_type?.includes('country') ? [primaryFeature] : contextFeatures,
-      'country'
-    )
+    const context = feature?.context ?? []
+    const city =
+      getContextTextByPrefix(context, 'place') ??
+      (feature?.place_type?.includes('place') ? toNullableTrimmedText(feature.text) : null)
+    const region = getContextTextByPrefix(context, 'region')
+    const country = getContextTextByPrefix(context, 'country')
 
     console.info('[mapbox-geocode-debug] values_extracted', {
       lat,
