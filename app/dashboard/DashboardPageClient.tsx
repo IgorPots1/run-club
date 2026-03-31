@@ -3,6 +3,7 @@
 import { Activity, Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
@@ -55,6 +56,7 @@ export default function DashboardPageClient({
   initialActiveChallenge: ChallengeWithProgress | null
   initialAllChallengesCompleted: boolean
 }) {
+  const router = useRouter()
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails, setHasLoadedOverviewDetails] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
@@ -340,12 +342,38 @@ export default function DashboardPageClient({
               </p>
             </div>
           ) : null}
-          <WeeklyLeaderboard
-            leaderboard={weeklyRace ?? null}
-            currentUserId={initialUser.id}
-            loading={weeklyLeaderboardLoading}
-            error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
-          />
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(event) => {
+              const target = event.target as HTMLElement
+              if (target.closest('a,button')) {
+                return
+              }
+
+              router.push('/race')
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+
+              const target = event.target as HTMLElement
+              if (target.closest('a,button')) {
+                return
+              }
+
+              event.preventDefault()
+              router.push('/race')
+            }}
+            className="cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20"
+            aria-label="Открыть гонку недели"
+          >
+            <WeeklyLeaderboard
+              leaderboard={weeklyRace ?? null}
+              currentUserId={initialUser.id}
+              loading={weeklyLeaderboardLoading}
+              error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
+            />
+          </div>
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
           <InfiniteWorkoutFeed
             currentUserId={initialUser.id}
