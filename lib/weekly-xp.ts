@@ -17,9 +17,11 @@ export type WeeklyXpRow = {
 }
 
 export type WeeklyXpLeaderboard = {
+  rows: WeeklyXpRow[]
   topRows: WeeklyXpRow[]
   currentUserRow: WeeklyXpRow | null
   gapToNext: number | null
+  gapToBehind: number | null
 }
 
 function toSafeNumber(value: number | string | null | undefined) {
@@ -51,10 +53,13 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
       rank: rows.length + 1,
     }
   const previousRow = currentUserIndex > 0 ? rows[currentUserIndex - 1] : null
+  const nextRow = currentUserIndex >= 0 && currentUserIndex < rows.length - 1 ? rows[currentUserIndex + 1] : null
 
   return {
+    rows,
     topRows: rows.slice(0, 5),
     currentUserRow,
     gapToNext: previousRow ? Math.max(previousRow.totalXp - currentUserRow.totalXp, 0) : null,
+    gapToBehind: nextRow ? Math.max(currentUserRow.totalXp - nextRow.totalXp, 0) : null,
   }
 }
