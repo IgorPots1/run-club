@@ -458,6 +458,7 @@ export default function RunsPage() {
   const [durationMinutesInput, setDurationMinutesInput] = useState('0')
   const [durationSecondsInput, setDurationSecondsInput] = useState('0')
   const [error, setError] = useState('')
+  const [saveInfoMessage, setSaveInfoMessage] = useState('')
   const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
@@ -709,6 +710,20 @@ export default function RunsPage() {
   }, [fetchRuns, user])
 
   useEffect(() => {
+    if (!saveInfoMessage) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setSaveInfoMessage('')
+    }, 3200)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [saveInfoMessage])
+
+  useEffect(() => {
     if (!activeStravaHintRunId) {
       return
     }
@@ -791,6 +806,7 @@ export default function RunsPage() {
     }
 
     setError('')
+    setSaveInfoMessage('')
     setSubmitting(true)
     const distanceMeters = normalizeIntegerMetric(d * 1000)
     const movingTimeSeconds = normalizeIntegerMetric(selectedDurationSeconds)
@@ -801,7 +817,7 @@ export default function RunsPage() {
     const xp = normalizeIntegerMetric(50 + d * 10)
 
     try {
-      const { error: createError } = await createRun({
+      const { error: createError, shoeWearMessage } = await createRun({
         name: normalizedTitle,
         title: normalizedTitle,
         distanceKm: d,
@@ -828,6 +844,7 @@ export default function RunsPage() {
       setDurationMinutesInput('0')
       setDurationSecondsInput('0')
       setError('')
+      setSaveInfoMessage(shoeWearMessage ?? '')
       dispatchRunsUpdatedEvent()
     } catch {
       setError('Не удалось сохранить тренировку')
@@ -841,6 +858,7 @@ export default function RunsPage() {
     if (typeof window !== 'undefined' && !window.confirm('Удалить тренировку?')) return
 
     setError('')
+    setSaveInfoMessage('')
     setDeletingRunIds((prev) => [...prev, id])
 
     try {
@@ -1028,6 +1046,11 @@ export default function RunsPage() {
             ) : null}
           </div>
         </div>
+        {saveInfoMessage ? (
+          <div className="rounded-xl border border-amber-300/70 bg-amber-100/80 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+            {saveInfoMessage}
+          </div>
+        ) : null}
         <button
           type="submit"
           disabled={submitting || !isWorkoutFormValid}

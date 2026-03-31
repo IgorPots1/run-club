@@ -25,6 +25,7 @@ type RunMutationResponse =
   | {
       ok: true
       run?: Record<string, unknown> | null
+      shoeWearMessage?: string | null
     }
   | {
       ok: false
@@ -56,6 +57,7 @@ export async function createRun(input: CreateRunInput) {
   return {
     error: null,
     data: payload.run ?? null,
+    shoeWearMessage: payload.shoeWearMessage ?? null,
   }
 }
 
@@ -84,6 +86,7 @@ export async function updateRun(runId: string, input: UpdateRunInput) {
   return {
     error: null,
     data: payload.run ?? null,
+    shoeWearMessage: payload.shoeWearMessage ?? null,
   }
 }
 

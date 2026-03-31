@@ -1,6 +1,11 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from './supabase-admin'
+import {
+  getUserShoeUsageMetrics,
+  getWearThresholdCrossing,
+  normalizeMaxDistanceMeters,
+} from './shoes'
 
 type AdminSupabaseClient = ReturnType<typeof createSupabaseAdminClient>
 
@@ -8,6 +13,7 @@ type UserShoeDistanceRow = {
   id: string
   user_id: string
   current_distance_meters: number | null
+  max_distance_meters: number | string | null
 }
 
 export type RunShoeImpactState = {
@@ -15,6 +21,11 @@ export type RunShoeImpactState = {
   shoeId: string | null
   distanceMeters: number | null
 }
+
+export type RunShoeWearTrigger = {
+  threshold: 'warning' | 'replace'
+  message: string
+} | null
 
 function toSafeDistanceMeters(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
@@ -33,16 +44,16 @@ async function adjustUserShoeDistance(
     shoeId: string | null
     deltaMeters: number
   }
-) {
+): Promise<RunShoeWearTrigger> {
   const { userId, shoeId, deltaMeters } = params
 
   if (!shoeId || deltaMeters === 0) {
-    return
+    return null
   }
 
   const { data: existingShoe, error: loadError } = await supabase
     .from('user_shoes')
-    .select('id, user_id, current_distance_meters')
+    .select('id, user_id, current_distance_meters, max_distance_meters')
     .eq('id', shoeId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -61,6 +72,14 @@ async function adjustUserShoeDistance(
     0,
     toSafeDistanceMeters(shoeRow.current_distance_meters) + deltaMeters
   )
+  const previousUsageMetrics = getUserShoeUsageMetrics({
+    currentDistanceMeters: toSafeDistanceMeters(shoeRow.current_distance_meters),
+    maxDistanceMeters: normalizeMaxDistanceMeters(shoeRow.max_distance_meters),
+  })
+  const nextUsageMetrics = getUserShoeUsageMetrics({
+    currentDistanceMeters: nextDistanceMeters,
+    maxDistanceMeters: normalizeMaxDistanceMeters(shoeRow.max_distance_meters),
+  })
 
   const { error: updateError } = await supabase
     .from('user_shoes')
@@ -73,6 +92,11 @@ async function adjustUserShoeDistance(
   if (updateError) {
     throw new Error(updateError.message)
   }
+
+  return getWearThresholdCrossing({
+    previousUsagePercent: previousUsageMetrics.usagePercent,
+    nextUsagePercent: nextUsageMetrics.usagePercent,
+  })
 }
 
 export async function applyRunToShoe(
@@ -83,7 +107,7 @@ export async function applyRunToShoe(
     distanceMeters: number | null
   }
 ) {
-  await adjustUserShoeDistance(supabase, {
+  return adjustUserShoeDistance(supabase, {
     userId: params.userId,
     shoeId: params.shoeId,
     deltaMeters: toSafeDistanceMeters(params.distanceMeters),
@@ -98,7 +122,7 @@ export async function removeRunFromShoe(
     distanceMeters: number | null
   }
 ) {
-  await adjustUserShoeDistance(supabase, {
+  return adjustUserShoeDistance(supabase, {
     userId: params.userId,
     shoeId: params.shoeId,
     deltaMeters: -toSafeDistanceMeters(params.distanceMeters),
@@ -111,7 +135,7 @@ export async function updateRunShoeImpact(
     previousRun: RunShoeImpactState
     nextRun: RunShoeImpactState
   }
-) {
+): Promise<RunShoeWearTrigger> {
   const previousRun = {
     ...params.previousRun,
     distanceMeters: toSafeDistanceMeters(params.previousRun.distanceMeters),
@@ -123,21 +147,20 @@ export async function updateRunShoeImpact(
 
   if (previousRun.shoeId === nextRun.shoeId) {
     if (!nextRun.shoeId) {
-      return
+      return null
     }
 
     const deltaMeters = nextRun.distanceMeters - previousRun.distanceMeters
 
     if (deltaMeters === 0) {
-      return
+      return null
     }
 
-    await adjustUserShoeDistance(supabase, {
+    return adjustUserShoeDistance(supabase, {
       userId: nextRun.userId,
       shoeId: nextRun.shoeId,
       deltaMeters,
     })
-    return
   }
 
   if (previousRun.shoeId) {
@@ -149,11 +172,11 @@ export async function updateRunShoeImpact(
   }
 
   if (!nextRun.shoeId) {
-    return
+    return null
   }
 
   try {
-    await applyRunToShoe(supabase, {
+    return await applyRunToShoe(supabase, {
       userId: nextRun.userId,
       shoeId: nextRun.shoeId,
       distanceMeters: nextRun.distanceMeters,

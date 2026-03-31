@@ -126,8 +126,10 @@ export async function PATCH(
     distanceMeters: existingRun.distance_meters,
   }
 
+  let shoeWearTrigger: Awaited<ReturnType<typeof updateRunShoeImpact>> = null
+
   try {
-    await updateRunShoeImpact(supabaseAdmin, {
+    shoeWearTrigger = await updateRunShoeImpact(supabaseAdmin, {
       previousRun,
       nextRun,
     })
@@ -168,6 +170,7 @@ export async function PATCH(
       id: existingRun.id,
       ...updates,
     },
+    shoeWearMessage: shoeWearTrigger?.message ?? null,
   })
 }
 

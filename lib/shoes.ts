@@ -87,7 +87,7 @@ type NormalizedUserShoeInput = {
 
 const SHOE_MODEL_SELECT =
   'id, brand, model, version, full_name, image_url, category, is_popular'
-const DEFAULT_MAX_DISTANCE_METERS = 800000
+export const DEFAULT_MAX_DISTANCE_METERS = 800000
 
 function toNullableTrimmedText(value: string | null | undefined) {
   if (typeof value !== 'string') {
@@ -108,7 +108,7 @@ function toSafeNonNegativeInteger(value: number | string | null | undefined) {
   return Math.max(0, Math.trunc(Number(numericValue)))
 }
 
-function normalizeMaxDistanceMeters(value: number | string | null | undefined) {
+export function normalizeMaxDistanceMeters(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
 
   if (!Number.isFinite(numericValue) || Number(numericValue) <= 0) {
@@ -154,7 +154,7 @@ function getWearStatus(usagePercent: number) {
   }
 }
 
-function getUserShoeUsageMetrics(input: {
+export function getUserShoeUsageMetrics(input: {
   currentDistanceMeters: number
   maxDistanceMeters: number
 }) {
@@ -171,6 +171,29 @@ function getUserShoeUsageMetrics(input: {
     wearStatus: wearStatus.wearStatus,
     wearStatusLabel: wearStatus.wearStatusLabel,
   }
+}
+
+export function getWearThresholdCrossing(params: {
+  previousUsagePercent: number
+  nextUsagePercent: number
+}) {
+  const { previousUsagePercent, nextUsagePercent } = params
+
+  if (previousUsagePercent < 100 && nextUsagePercent >= 100) {
+    return {
+      threshold: 'replace' as const,
+      message: 'Эта пара уже под замену',
+    }
+  }
+
+  if (previousUsagePercent < 80 && nextUsagePercent >= 80) {
+    return {
+      threshold: 'warning' as const,
+      message: 'Эта пара уже на исходе',
+    }
+  }
+
+  return null
 }
 
 function mapShoeModel(row: ShoeModelDbRow): ShoeModel {

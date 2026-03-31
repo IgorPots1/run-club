@@ -566,6 +566,7 @@ export default function RunDetailsPage() {
   const [editedDescription, setEditedDescription] = useState('')
   const [editedShoeId, setEditedShoeId] = useState('')
   const [saveDetailsError, setSaveDetailsError] = useState('')
+  const [saveDetailsInfoMessage, setSaveDetailsInfoMessage] = useState('')
   const [savingDetails, setSavingDetails] = useState(false)
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
   const [loadingShoes, setLoadingShoes] = useState(false)
@@ -884,6 +885,20 @@ export default function RunDetailsPage() {
   }, [isEditingDetails, run])
 
   useEffect(() => {
+    if (!saveDetailsInfoMessage) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setSaveDetailsInfoMessage('')
+    }, 3200)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [saveDetailsInfoMessage])
+
+  useEffect(() => {
     let isMounted = true
 
     if (!user || !run || user.id !== run.user_id) {
@@ -1074,6 +1089,7 @@ export default function RunDetailsPage() {
     setEditedDescription(nextDraft.description)
     setEditedShoeId(nextDraft.shoeId)
     setSaveDetailsError('')
+    setSaveDetailsInfoMessage('')
     setIsEditingDetails(true)
   }
 
@@ -1083,6 +1099,7 @@ export default function RunDetailsPage() {
     setEditedDescription(nextDraft.description)
     setEditedShoeId(nextDraft.shoeId)
     setSaveDetailsError('')
+    setSaveDetailsInfoMessage('')
     setIsEditingDetails(false)
   }
 
@@ -1111,9 +1128,10 @@ export default function RunDetailsPage() {
 
     setSavingDetails(true)
     setSaveDetailsError('')
+    setSaveDetailsInfoMessage('')
 
     try {
-      const { error: updateError } = await updateRun(run.id, {
+      const { error: updateError, shoeWearMessage } = await updateRun(run.id, {
         name: Object.prototype.hasOwnProperty.call(updates, 'name') ? (updates.name ?? null) : undefined,
         description: Object.prototype.hasOwnProperty.call(updates, 'description')
           ? (updates.description ?? null)
@@ -1140,6 +1158,7 @@ export default function RunDetailsPage() {
       setEditedShoeId(normalizedEditedShoeId ?? '')
       setDescriptionExpanded(false)
       setIsEditingDetails(false)
+      setSaveDetailsInfoMessage(shoeWearMessage ?? '')
     } catch {
       setSaveDetailsError('Не удалось сохранить изменения')
     } finally {
@@ -1356,6 +1375,7 @@ export default function RunDetailsPage() {
                 onChange={(event) => {
                   setEditedName(event.target.value)
                   setSaveDetailsError('')
+                  setSaveDetailsInfoMessage('')
                 }}
                 placeholder="Введите название"
                 disabled={savingDetails}
@@ -1373,6 +1393,7 @@ export default function RunDetailsPage() {
                 onChange={(event) => {
                   setEditedDescription(event.target.value)
                   setSaveDetailsError('')
+                  setSaveDetailsInfoMessage('')
                 }}
                 placeholder="Добавьте описание"
                 disabled={savingDetails}
@@ -1390,6 +1411,7 @@ export default function RunDetailsPage() {
                 onChange={(event) => {
                   setEditedShoeId(event.target.value)
                   setSaveDetailsError('')
+                  setSaveDetailsInfoMessage('')
                 }}
                 disabled={savingDetails || loadingShoes}
                 className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
@@ -1455,6 +1477,12 @@ export default function RunDetailsPage() {
             ) : null}
           </>
         )}
+
+        {saveDetailsInfoMessage ? (
+          <div className="mt-3 rounded-xl border border-amber-300/70 bg-amber-100/80 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+            {saveDetailsInfoMessage}
+          </div>
+        ) : null}
 
         <div className="mt-2.5 text-sm">
           <p className="app-text-primary font-medium">+{details.xpValue} XP</p>

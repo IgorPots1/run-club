@@ -140,8 +140,10 @@ export async function POST(request: Request) {
     )
   }
 
+  let shoeWearTrigger: Awaited<ReturnType<typeof applyRunToShoe>> = null
+
   try {
-    await applyRunToShoe(supabaseAdmin, {
+    shoeWearTrigger = await applyRunToShoe(supabaseAdmin, {
       userId: user.id,
       shoeId,
       distanceMeters,
@@ -165,6 +167,7 @@ export async function POST(request: Request) {
       run: {
         id: insertedRun.id,
       },
+      shoeWearMessage: shoeWearTrigger?.message ?? null,
     },
     { status: 201 }
   )

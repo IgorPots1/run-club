@@ -90,6 +90,34 @@ function getWearBadgeClassName(wearStatus: UserShoeRecord['wearStatus']) {
   return 'border border-rose-300/70 bg-rose-100/85 text-rose-700 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-100'
 }
 
+function getShoeCardClassName(wearStatus: UserShoeRecord['wearStatus']) {
+  if (wearStatus === 'warning') {
+    return 'app-card border-amber-300/70 bg-amber-50/60 dark:border-amber-300/20 dark:bg-amber-300/5'
+  }
+
+  if (wearStatus === 'replace') {
+    return 'app-card border-rose-300/70 bg-rose-50/70 shadow-[0_10px_30px_-20px_rgba(244,63,94,0.55)] dark:border-rose-300/20 dark:bg-rose-300/5'
+  }
+
+  return 'app-card'
+}
+
+function getPairsLabel(count: number) {
+  const absoluteCount = Math.abs(count)
+  const mod10 = absoluteCount % 10
+  const mod100 = absoluteCount % 100
+
+  if (mod10 === 1 && mod100 !== 11) {
+    return 'пара'
+  }
+
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return 'пары'
+  }
+
+  return 'пар'
+}
+
 function getInitials(label: string) {
   const parts = label
     .split(/\s+/)
@@ -281,6 +309,21 @@ export default function ShoesPageClient({
     () => shoes?.find((shoe) => shoe.id === editingShoeId) ?? null,
     [editingShoeId, shoes]
   )
+  const problematicSummaryLines = useMemo(() => {
+    const warningCount = shoes?.filter((shoe) => shoe.wearStatus === 'warning').length ?? 0
+    const replaceCount = shoes?.filter((shoe) => shoe.wearStatus === 'replace').length ?? 0
+    const nextLines: string[] = []
+
+    if (warningCount > 0) {
+      nextLines.push(`${warningCount} ${getPairsLabel(warningCount)} на исходе`)
+    }
+
+    if (replaceCount > 0) {
+      nextLines.push(`${replaceCount} ${getPairsLabel(replaceCount)} под замену`)
+    }
+
+    return nextLines
+  }, [shoes])
 
   function handleDistanceInputChange(nextValue: string) {
     const normalizedValue = nextValue.replace(',', '.')
@@ -399,6 +442,24 @@ export default function ShoesPageClient({
 
   return (
     <>
+      {problematicSummaryLines.length > 0 ? (
+        <section className="app-card mt-4 rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-sm dark:border-amber-300/20 dark:bg-amber-300/10">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-100">
+            Контроль износа
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {problematicSummaryLines.map((line) => (
+              <span
+                key={line}
+                className="rounded-full border border-amber-300/70 bg-white/70 px-3 py-1.5 text-sm font-medium text-amber-800 dark:border-amber-300/20 dark:bg-white/5 dark:text-amber-100"
+              >
+                {line}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <form onSubmit={handleCreateShoe} className="app-card mt-4 space-y-4 rounded-2xl border p-4 shadow-sm">
         <div>
           <div className="flex items-start justify-between gap-3">
@@ -598,7 +659,10 @@ export default function ShoesPageClient({
         ) : (
           <div className="space-y-3">
             {shoes.map((shoe) => (
-              <div key={shoe.id} className="app-card flex items-start gap-3 rounded-2xl border p-4 shadow-sm">
+              <div
+                key={shoe.id}
+                className={`${getShoeCardClassName(shoe.wearStatus)} flex items-start gap-3 rounded-2xl border p-4 shadow-sm`}
+              >
                 <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
