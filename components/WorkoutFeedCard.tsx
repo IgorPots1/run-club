@@ -30,6 +30,7 @@ type WorkoutFeedCardMediaSlide =
 type WorkoutFeedCardProps = {
   runId?: string
   rawTitle: string | null
+  location?: string | null
   description?: string | null
   externalSource?: string | null
   distanceKm?: number | null
@@ -142,6 +143,7 @@ function FeedActionButton({
 function WorkoutFeedCard({
   runId = '',
   rawTitle,
+  location = null,
   description = null,
   externalSource = null,
   distanceKm,
@@ -304,6 +306,11 @@ function WorkoutFeedCard({
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
+        {location ? (
+          <p className="app-text-secondary mt-1 text-sm">
+            {location}
+          </p>
+        ) : null}
         {normalizedDescription ? (
           <div className="mt-1">
             <p
