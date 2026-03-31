@@ -53,35 +53,39 @@ export async function reverseGeocode(
   }
 
   const accessToken = getMapboxToken()
+
+  if (!accessToken) {
+    console.info('[mapbox-geocode-debug] missing_token', {
+      lat,
+      lng,
+      hasToken: false,
+    })
+    return null
+  }
+
   const params = new URLSearchParams({
     types: 'place,region,country',
     limit: '5',
+    access_token: accessToken,
   })
   const requestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?${params.toString()}`
+  const loggedRequestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?types=place%2Cregion%2Ccountry&limit=5&access_token=[redacted]`
 
   console.info('[mapbox-geocode-debug] request_prepared', {
     lat,
     lng,
-    hasToken: Boolean(accessToken),
-    requestUrl,
+    hasToken: true,
+    requestUrl: loggedRequestUrl,
   })
-
-  if (!accessToken) {
-    return null
-  }
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), MAPBOX_REVERSE_GEOCODE_TIMEOUT_MS)
 
   try {
-    params.set('access_token', accessToken)
-    const response = await fetch(
-      `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?${params.toString()}`,
-      {
-        cache: 'no-store',
-        signal: controller.signal,
-      }
-    )
+    const response = await fetch(requestUrl, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
 
     console.info('[mapbox-geocode-debug] response_received', {
       lat,
