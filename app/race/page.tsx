@@ -106,6 +106,9 @@ export default function RacePage() {
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
+  const currentUserIndex = currentUserRow ? rows.findIndex((row) => row.user_id === currentUserRow.user_id) : -1
+  const userAbove = currentUserIndex > 0 ? rows[currentUserIndex - 1] : null
+  const userBelow = currentUserIndex >= 0 && currentUserIndex < rows.length - 1 ? rows[currentUserIndex + 1] : null
   const thirdPlaceRow = rows.find((row) => row.rank === 3) ?? null
   const gapToTop3 = useMemo(() => {
     if (!currentUserRow || currentUserRow.rank <= 3 || !thirdPlaceRow) {
@@ -199,18 +202,20 @@ export default function RacePage() {
                       {gapToTop3 !== null && gapToTop3 > 0 ? (
                         <p className="app-text-secondary mt-2 text-sm">До подиума: {gapToTop3} XP</p>
                       ) : null}
-                      {gapToBehind !== null && gapToBehind <= 20 ? (
-                        <p className="app-text-secondary mt-2 text-sm">Тебя догоняют: отрыв всего {gapToBehind} XP</p>
+                      {userBelow && gapToBehind !== null && gapToBehind <= 20 ? (
+                        <p className="app-text-secondary mt-2 text-sm">{userBelow.displayName} дышит в спину: {gapToBehind} XP</p>
                       ) : null}
                       {movementEstimateText ? (
                         <p className="app-text-secondary mt-2 text-sm">{movementEstimateText}</p>
                       ) : null}
                     </div>
                     <div className="shrink-0 text-right text-sm">
-                      {gapToNext !== null && gapToNext > 0 ? (
-                        <p className="app-text-secondary">До следующего: {gapToNext} XP</p>
+                      {userAbove && gapToNext !== null && gapToNext > 0 ? (
+                        <p className="app-text-secondary">До {userAbove.displayName}: {gapToNext} XP</p>
+                      ) : currentUserRow.rank === 1 ? (
+                        <p className="app-text-secondary">Ты лидер</p>
                       ) : null}
-                      {gapToBehind !== null ? (
+                      {userBelow && gapToBehind !== null ? (
                         <p className="app-text-secondary mt-1">Отрыв: {gapToBehind} XP</p>
                       ) : null}
                     </div>
