@@ -45,10 +45,26 @@ export async function reverseGeocode(
   lng: number
 ): Promise<ReverseGeocodeResult | null> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    console.info('[mapbox-geocode-debug] skipped_invalid_coordinates', {
+      lat,
+      lng,
+    })
     return null
   }
 
   const accessToken = getMapboxToken()
+  const params = new URLSearchParams({
+    types: 'place,region,country',
+    limit: '5',
+  })
+  const requestUrl = `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?${params.toString()}`
+
+  console.info('[mapbox-geocode-debug] request_prepared', {
+    lat,
+    lng,
+    hasToken: Boolean(accessToken),
+    requestUrl,
+  })
 
   if (!accessToken) {
     return null
@@ -58,11 +74,7 @@ export async function reverseGeocode(
   const timeoutId = setTimeout(() => controller.abort(), MAPBOX_REVERSE_GEOCODE_TIMEOUT_MS)
 
   try {
-    const params = new URLSearchParams({
-      access_token: accessToken,
-      types: 'place,region,country',
-      limit: '5',
-    })
+    params.set('access_token', accessToken)
     const response = await fetch(
       `${MAPBOX_GEOCODING_BASE_URL}/${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json?${params.toString()}`,
       {
@@ -71,21 +83,48 @@ export async function reverseGeocode(
       }
     )
 
+    console.info('[mapbox-geocode-debug] response_received', {
+      lat,
+      lng,
+      status: response.status,
+      ok: response.ok,
+    })
+
     if (!response.ok) {
       return null
     }
 
     const data = await response.json() as MapboxReverseGeocodeResponse
+    console.info('[mapbox-geocode-debug] response_parsed', {
+      lat,
+      lng,
+      featuresCount: Array.isArray(data.features) ? data.features.length : 0,
+      featurePlaceTypes: (data.features ?? []).slice(0, 5).map((feature) => feature.place_type ?? []),
+      featureTexts: (data.features ?? []).slice(0, 5).map((feature) => feature.text ?? null),
+    })
     const city = getFeatureTextByPlaceType(data.features, 'place')
     const region = getFeatureTextByPlaceType(data.features, 'region')
     const country = getFeatureTextByPlaceType(data.features, 'country')
+
+    console.info('[mapbox-geocode-debug] values_extracted', {
+      lat,
+      lng,
+      city,
+      region,
+      country,
+    })
 
     if (!city && !region && !country) {
       return null
     }
 
     return { city, region, country }
-  } catch {
+  } catch (caughtError) {
+    console.warn('[mapbox-geocode-debug] request_failed', {
+      lat,
+      lng,
+      error: caughtError instanceof Error ? caughtError.message : 'Unknown reverse geocode error',
+    })
     return null
   } finally {
     clearTimeout(timeoutId)

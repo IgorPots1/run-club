@@ -1817,30 +1817,99 @@ export async function importStravaActivityForUser(
   let finalCity = payload.city
   let finalRegion = payload.region
   let finalCountry = payload.country
+  const startCoordinates = Array.isArray(activityForImport.start_latlng)
+    ? activityForImport.start_latlng
+    : null
+  const endCoordinates = Array.isArray(activityForImport.end_latlng)
+    ? activityForImport.end_latlng
+    : null
+
+  console.info('[strava-location-debug] before_decision', {
+    activityId: activityForImport.id,
+    payloadCity: payload.city,
+    payloadRegion: payload.region,
+    payloadCountry: payload.country,
+    existingRunId: normalizedExistingRun?.id ?? null,
+    existingCity: normalizedExistingRun?.city ?? null,
+    existingRegion: normalizedExistingRun?.region ?? null,
+    existingCountry: normalizedExistingRun?.country ?? null,
+    startLatLng: startCoordinates,
+    endLatLng: endCoordinates,
+  })
 
   if (!finalCity) {
     if (normalizedExistingRun?.city) {
+      console.info('[strava-location-debug] decision_branch', {
+        activityId: activityForImport.id,
+        branch: 'preserving_existing_db_location',
+      })
       finalCity = normalizedExistingRun.city
       finalRegion = normalizedExistingRun.region
       finalCountry = normalizedExistingRun.country
     } else {
+      const startCoordinatesAreUsable =
+        Array.isArray(activityForImport.start_latlng) && activityForImport.start_latlng.length === 2
+      const endCoordinatesAreUsable =
+        Array.isArray(activityForImport.end_latlng) && activityForImport.end_latlng.length === 2
       const coordinates = getReverseGeocodeCoordinates(activityForImport)
 
       if (coordinates) {
+        console.info('[strava-location-debug] decision_branch', {
+          activityId: activityForImport.id,
+          branch: startCoordinatesAreUsable ? 'calling_start_latlng_geocode' : 'calling_end_latlng_geocode',
+          lat: coordinates.lat,
+          lng: coordinates.lng,
+        })
         const geocodedLocation = await reverseGeocode(coordinates.lat, coordinates.lng)
 
         if (geocodedLocation) {
+          console.info('[strava-location-debug] geocode_result', {
+            activityId: activityForImport.id,
+            city: geocodedLocation.city,
+            region: geocodedLocation.region,
+            country: geocodedLocation.country,
+          })
           finalCity = geocodedLocation.city
           finalRegion = geocodedLocation.region
           finalCountry = geocodedLocation.country
+        } else {
+          console.info('[strava-location-debug] geocode_result', {
+            activityId: activityForImport.id,
+            city: null,
+            region: null,
+            country: null,
+          })
         }
+      } else if (endCoordinatesAreUsable || startCoordinatesAreUsable) {
+        console.info('[strava-location-debug] decision_branch', {
+          activityId: activityForImport.id,
+          branch: 'skipping_due_to_invalid_coordinates',
+        })
+      } else {
+        console.info('[strava-location-debug] decision_branch', {
+          activityId: activityForImport.id,
+          branch: 'skipping_because_no_coordinates',
+        })
       }
     }
+  } else {
+    console.info('[strava-location-debug] decision_branch', {
+      activityId: activityForImport.id,
+      branch: 'using_strava_payload',
+    })
   }
 
   finalCity = finalCity ?? normalizedExistingRun?.city ?? null
   finalRegion = finalRegion ?? normalizedExistingRun?.region ?? null
   finalCountry = finalCountry ?? normalizedExistingRun?.country ?? null
+
+  console.info('[strava-location-debug] before_db_write', {
+    activityId: activityForImport.id,
+    path: normalizedExistingRun ? 'update' : 'insert',
+    finalCity,
+    finalRegion,
+    finalCountry,
+  })
 
   payload.city = finalCity
   payload.region = finalRegion
@@ -1906,6 +1975,15 @@ export async function importStravaActivityForUser(
 
       throw new Error(insertError.message)
     }
+
+    console.info('[strava-location-debug] after_db_write', {
+      activityId: activityForImport.id,
+      path: 'insert',
+      runId: insertedRun?.id ?? null,
+      attemptedCity: payload.city,
+      attemptedRegion: payload.region,
+      attemptedCountry: payload.country,
+    })
 
     if (insertedRun?.id && options.accessToken) {
       console.info('[strava-photo-debug] existing_run_resolved', {
@@ -2095,6 +2173,15 @@ export async function importStravaActivityForUser(
 
     throw new Error(updateError.message)
   }
+
+  console.info('[strava-location-debug] after_db_write', {
+    activityId: activityForImport.id,
+    path: 'update',
+    runId: normalizedExistingRun.id,
+    attemptedCity: runUpdatePayload.city,
+    attemptedRegion: runUpdatePayload.region,
+    attemptedCountry: runUpdatePayload.country,
+  })
 
   if (options.accessToken) {
     const { data: existingSeriesRow, error: existingSeriesError } = await supabase
