@@ -430,7 +430,8 @@ export default function InfiniteWorkoutFeed({
               key={item.id}
               runId={item.id}
               rawTitle={item.title}
-              location={item.location}
+              city={item.city}
+              country={item.country}
               description={item.description}
               externalSource={item.external_source}
               distanceKm={item.distance_km}

@@ -30,7 +30,8 @@ type WorkoutFeedCardMediaSlide =
 type WorkoutFeedCardProps = {
   runId?: string
   rawTitle: string | null
-  location?: string | null
+  city?: string | null
+  country?: string | null
   description?: string | null
   externalSource?: string | null
   distanceKm?: number | null
@@ -143,7 +144,8 @@ function FeedActionButton({
 function WorkoutFeedCard({
   runId = '',
   rawTitle,
-  location = null,
+  city = null,
+  country = null,
   description = null,
   externalSource = null,
   distanceKm,
@@ -178,6 +180,9 @@ function WorkoutFeedCard({
   const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
   const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
+  const locationLabel = city && country
+    ? `${city}, ${country}`
+    : city ?? country ?? null
   const mediaSlides = useMemo<WorkoutFeedCardMediaSlide[]>(() => {
     const slides: WorkoutFeedCardMediaSlide[] = []
 
@@ -306,9 +311,9 @@ function WorkoutFeedCard({
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
-        {location ? (
+        {locationLabel ? (
           <p className="app-text-secondary mt-1 text-sm">
-            {location}
+            {locationLabel}
           </p>
         ) : null}
         {normalizedDescription ? (

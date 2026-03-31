@@ -58,6 +58,8 @@ export type DashboardRunItem = {
   user_id: string
   title: string
   description: string | null
+  city?: string | null
+  country?: string | null
   location: string | null
   external_source?: string | null
   distance_km: number
@@ -475,6 +477,8 @@ export async function loadFeedRuns(
         user_id: run.user_id,
         title: mappedTitle,
         description: toNullableTrimmedText(run.description),
+        city: toNullableTrimmedText(run.city),
+        country: toNullableTrimmedText(run.country),
         location: buildRunLocation(run),
         external_source: run.external_source ?? null,
         distance_km: Number(run.distance_km ?? 0),
