@@ -136,6 +136,30 @@ function formatRunPace(run: Pick<ActivityRunRow, 'distance_km' | 'duration_minut
   return formatPaceLabel(totalSeconds, distanceValue)
 }
 
+function getAchievementCardClass(badgeCode: string | null | undefined) {
+  if (badgeCode === 'race_week_winner') {
+    return 'app-card rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-sm dark:border-amber-400/25 dark:bg-amber-400/10'
+  }
+
+  if (badgeCode === 'race_week_top_3') {
+    return 'app-card rounded-2xl border border-slate-300/70 bg-slate-50/85 p-4 shadow-sm dark:border-slate-400/25 dark:bg-slate-400/10'
+  }
+
+  return 'app-card app-surface-muted rounded-2xl border border-black/[0.05] p-4 shadow-sm dark:border-white/[0.08]'
+}
+
+function getAchievementRankClass(badgeCode: string | null | undefined) {
+  if (badgeCode === 'race_week_winner') {
+    return 'border border-amber-300/80 bg-amber-100/80 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  if (badgeCode === 'race_week_top_3') {
+    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
+  }
+
+  return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
+}
+
 export default function ActivityPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -365,11 +389,11 @@ export default function ActivityPage() {
                 {badgeAwards.slice(0, 3).map((badge) => (
                   <div
                     key={`${badge.race_week_id ?? 'no-week'}-${badge.badge_code}`}
-                    className="app-card rounded-2xl border p-4 shadow-sm"
+                    className={getAchievementCardClass(badge.badge_code)}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="app-text-primary text-sm font-semibold">
+                        <p className="app-text-primary text-base font-semibold">
                           {getRaceBadgeLabel(badge.badge_code, badge.source_rank)}
                         </p>
                         <p className="app-text-secondary mt-1 text-sm">
@@ -377,7 +401,11 @@ export default function ActivityPage() {
                         </p>
                       </div>
                       {badge.source_rank ? (
-                        <p className="app-text-secondary shrink-0 text-sm font-medium">#{badge.source_rank}</p>
+                        <p
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(badge.badge_code)}`}
+                        >
+                          #{badge.source_rank}
+                        </p>
                       ) : null}
                     </div>
                   </div>
