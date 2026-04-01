@@ -553,7 +553,8 @@ function getRunCommentLikeEchoKey(
     | { commentId: string; userId: string }
 ) {
   const commentId = 'comment_id' in commentLike ? commentLike.comment_id : commentLike.commentId
-  return `${commentId}:${commentLike.userId}`
+  const userId = 'user_id' in commentLike ? commentLike.user_id : commentLike.userId
+  return `${commentId}:${userId}`
 }
 
 function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id'> | null | undefined) {
