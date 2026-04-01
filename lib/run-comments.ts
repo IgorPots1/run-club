@@ -1,10 +1,6 @@
 import { RUN_COMMENT_PLACEHOLDER_TEXT } from './run-comments-constants'
 import { supabase } from './supabase'
 
-// #region agent log
-fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b47950'},body:JSON.stringify({sessionId:'b47950',runId:'build-import-graph',hypothesisId:'H2',location:'lib/run-comments.ts:3',message:'run-comments module evaluated',data:{hasWindow:typeof window!=='undefined',supabaseImport:'./supabase'},timestamp:Date.now()})}).catch(()=>{});
-// #endregion
-
 type RunCommentRow = {
   id: string
   run_id: string
@@ -33,6 +29,11 @@ export type RunCommentVisibilityRecord = {
   parentId: string | null
   createdAt: string
   deletedAt: string | null
+}
+
+export type RunCommentVisibilitySummary = {
+  visibilityByRunId: Record<string, RunCommentVisibilityRecord[]>
+  countsByRunId: Record<string, number>
 }
 
 export type RunCommentLikeRealtimeRow = {
@@ -371,9 +372,12 @@ export function countVisibleRunCommentRecords(comments: RunCommentVisibilityReco
   return countVisibleCommentItems(comments)
 }
 
-export async function loadRunCommentVisibilityForRunIds(runIds: string[]) {
+export async function loadRunCommentVisibilitySummaryForRunIds(runIds: string[]): Promise<RunCommentVisibilitySummary> {
   if (runIds.length === 0) {
-    return {} as Record<string, RunCommentVisibilityRecord[]>
+    return {
+      visibilityByRunId: {},
+      countsByRunId: {},
+    }
   }
 
   const uniqueRunIds = Array.from(new Set(runIds))
@@ -387,9 +391,11 @@ export async function loadRunCommentVisibilityForRunIds(runIds: string[]) {
   }
 
   const visibilityByRunId: Record<string, RunCommentVisibilityRecord[]> = {}
+  const countsByRunId: Record<string, number> = {}
 
   for (const runId of uniqueRunIds) {
     visibilityByRunId[runId] = []
+    countsByRunId[runId] = 0
   }
 
   for (const row of (data as RunCommentCountRow[] | null) ?? []) {
@@ -406,54 +412,24 @@ export async function loadRunCommentVisibilityForRunIds(runIds: string[]) {
     })
   }
 
-  return visibilityByRunId
+  for (const runId of uniqueRunIds) {
+    countsByRunId[runId] = countVisibleCommentItems(visibilityByRunId[runId] ?? [])
+  }
+
+  return {
+    visibilityByRunId,
+    countsByRunId,
+  }
+}
+
+export async function loadRunCommentVisibilityForRunIds(runIds: string[]) {
+  const summary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
+  return summary.visibilityByRunId
 }
 
 export async function loadRunCommentCountsForRunIds(runIds: string[]) {
-  if (runIds.length === 0) {
-    return {} as Record<string, number>
-  }
-
-  const uniqueRunIds = Array.from(new Set(runIds))
-  const { data, error } = await supabase
-    .from('run_comments')
-    .select('id, run_id, parent_id, created_at, deleted_at')
-    .in('run_id', uniqueRunIds)
-
-  if (error) {
-    throw error
-  }
-
-  const countsByRunId: Record<string, number> = {}
-
-  for (const runId of uniqueRunIds) {
-    countsByRunId[runId] = 0
-  }
-
-  const visibilityItemsByRunId: Record<string, RunCommentVisibilityItem[]> = {}
-
-  for (const runId of uniqueRunIds) {
-    visibilityItemsByRunId[runId] = []
-  }
-
-  for (const row of (data as RunCommentCountRow[] | null) ?? []) {
-    if (!visibilityItemsByRunId[row.run_id]) {
-      visibilityItemsByRunId[row.run_id] = []
-    }
-
-    visibilityItemsByRunId[row.run_id].push({
-      id: row.id,
-      parentId: row.parent_id,
-      createdAt: row.created_at,
-      deletedAt: row.deleted_at,
-    })
-  }
-
-  for (const runId of uniqueRunIds) {
-    countsByRunId[runId] = countVisibleCommentItems(visibilityItemsByRunId[runId] ?? [])
-  }
-
-  return countsByRunId
+  const summary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
+  return summary.countsByRunId
 }
 
 export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCommentAuthorIdentity> {
@@ -580,6 +556,38 @@ export function subscribeToRunComments(
         schema: 'public',
         table: 'run_comments',
         filter: `run_id=eq.${runId}`,
+      },
+      (payload) => {
+        handlers.onUpdate?.(payload.new as RunCommentRealtimeRow)
+      }
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+export function subscribeToFeedRunComments(handlers: SubscribeToRunCommentsHandlers) {
+  const channel = supabase
+    .channel(`run-comments-feed-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'run_comments',
+      },
+      (payload) => {
+        handlers.onInsert?.(payload.new as RunCommentRealtimeRow)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'run_comments',
       },
       (payload) => {
         handlers.onUpdate?.(payload.new as RunCommentRealtimeRow)

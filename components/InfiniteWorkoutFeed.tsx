@@ -9,8 +9,8 @@ import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
 import {
   countVisibleRunCommentRecords,
-  loadRunCommentVisibilityForRunIds,
-  subscribeToRunComments,
+  loadRunCommentVisibilitySummaryForRunIds,
+  subscribeToFeedRunComments,
   type RunCommentRealtimeRow,
   type RunCommentVisibilityRecord,
 } from '@/lib/run-comments'
@@ -48,7 +48,6 @@ export default function InfiniteWorkoutFeed({
   emptyDescription,
   emptyCtaHref,
   emptyCtaLabel,
-  showLevelSubtitle = true,
   onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
@@ -116,16 +115,14 @@ export default function InfiniteWorkoutFeed({
 
   const applyRealtimeComment = useCallback((commentRow: RunCommentRealtimeRow) => {
     const runId = commentRow.run_id
-    const existingRunComments = commentVisibilityByRunIdRef.current[runId]
+    const hasLoadedRun = itemsRef.current.some((item) => item.id === runId)
 
-    if (!existingRunComments) {
-      updateRunItem(runId, (item) => ({
-        ...item,
-        commentsCount: Math.max(0, item.commentsCount + (commentRow.deleted_at ? 0 : 1)),
-      }))
+    if (!hasLoadedRun) {
       return
     }
 
+    const existingRunComments = commentVisibilityByRunIdRef.current[runId] ?? {}
+    commentVisibilityByRunIdRef.current[runId] = existingRunComments
     existingRunComments[commentRow.id] = {
       id: commentRow.id,
       runId: commentRow.run_id,
@@ -154,16 +151,16 @@ export default function InfiniteWorkoutFeed({
     const requestPromise = (async () => {
       try {
         const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
-        const visibilityByRunId = await loadRunCommentVisibilityForRunIds(page.items.map((item) => item.id))
+        const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(page.items.map((item) => item.id))
 
         if (firstPageRequestKeyRef.current !== requestKey) {
           return
         }
 
-        mergeRunCommentVisibility(visibilityByRunId)
+        mergeRunCommentVisibility(commentSummary.visibilityByRunId)
         setItems(page.items.map((item) => ({
           ...item,
-          commentsCount: Math.max(0, countVisibleRunCommentRecords(visibilityByRunId[item.id] ?? [])),
+          commentsCount: commentSummary.countsByRunId[item.id] ?? 0,
         })))
         setHasMore(page.hasMore)
         setNextOffset(page.items.length)
@@ -202,14 +199,14 @@ export default function InfiniteWorkoutFeed({
 
     try {
       const page = await loadFeedRuns(currentUserId, nextOffset, pageSize, targetUserId)
-      const visibilityByRunId = await loadRunCommentVisibilityForRunIds(page.items.map((item) => item.id))
+      const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(page.items.map((item) => item.id))
 
-      mergeRunCommentVisibility(visibilityByRunId)
+      mergeRunCommentVisibility(commentSummary.visibilityByRunId)
       setItems((prev) => mergeUniqueFeedItems(prev, page.items).map((item) => ({
         ...item,
         commentsCount: commentVisibilityByRunIdRef.current[item.id]
           ? getVisibleRunCommentCount(item.id)
-          : item.commentsCount,
+          : (commentSummary.countsByRunId[item.id] ?? item.commentsCount),
       })))
       setHasMore(page.hasMore)
       setNextOffset((prev) => prev + page.items.length)
@@ -293,34 +290,24 @@ export default function InfiniteWorkoutFeed({
     }
   }, [hasMore, initialLoading, loadMoreRuns, loadingMore, items.length])
 
-  const subscribedRunIds = useMemo(
-    () => Array.from(new Set(items.map((item) => item.id).filter(Boolean))),
-    [items]
-  )
-  const subscribedRunIdsKey = subscribedRunIds.join(',')
-
   useEffect(() => {
-    const runIds = subscribedRunIdsKey ? subscribedRunIdsKey.split(',') : []
-
-    if (runIds.length === 0) {
+    if (items.length === 0) {
       return
     }
 
-    const unsubscribers = runIds.map((runId) =>
-      subscribeToRunComments(runId, {
-        onInsert: (commentRow) => {
-          void applyRealtimeComment(commentRow)
-        },
-        onUpdate: (commentRow) => {
-          void applyRealtimeComment(commentRow)
-        },
-      })
-    )
+    const unsubscribe = subscribeToFeedRunComments({
+      onInsert: (commentRow) => {
+        void applyRealtimeComment(commentRow)
+      },
+      onUpdate: (commentRow) => {
+        void applyRealtimeComment(commentRow)
+      },
+    })
 
     return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe())
+      unsubscribe()
     }
-  }, [applyRealtimeComment, subscribedRunIdsKey])
+  }, [applyRealtimeComment, items.length])
 
   useEffect(() => {
     if (!xpToast) {
@@ -527,7 +514,6 @@ export default function InfiniteWorkoutFeed({
               distanceKm={item.distance_km}
               pace={item.pace}
               movingTime={item.movingTime}
-              mapPolyline={item.map_polyline}
               xp={item.xp}
               createdAt={item.created_at}
               displayName={item.displayName}

@@ -1,31 +1,17 @@
 'use client'
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useState, type ReactNode } from 'react'
 import { Heart, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 
 type WorkoutFeedCardPhoto = {
   id: string
   public_url: string
   thumbnail_url: string | null
 }
-
-type WorkoutFeedCardMediaSlide =
-  | {
-      type: 'map'
-      key: string
-      src: string
-    }
-  | {
-      type: 'photo'
-      key: string
-      src: string
-      photoIndex: number
-    }
 
 type WorkoutFeedCardProps = {
   runId?: string
@@ -37,7 +23,6 @@ type WorkoutFeedCardProps = {
   distanceKm?: number | null
   pace?: string | number | null
   movingTime?: string | null
-  mapPolyline?: string | null
   xp: number
   createdAt: string
   displayName: string
@@ -150,7 +135,6 @@ function WorkoutFeedCard({
   distanceKm,
   pace,
   movingTime = null,
-  mapPolyline = null,
   xp,
   createdAt,
   displayName,
@@ -166,46 +150,16 @@ function WorkoutFeedCard({
   photos = [],
 }: WorkoutFeedCardProps) {
   const router = useRouter()
-  const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [showStravaHint, setShowStravaHint] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
-  const [activeMediaIndex, setActiveMediaIndex] = useState(0)
-  const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const normalizedDescription = toNullableTrimmedText(description)
   const previewPhoto = photos[0] ?? null
   const additionalPhotosCount = Math.max(0, photos.length - 1)
-  const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
-  const showMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const locationLabel = city && country
     ? `${city}, ${country}`
     : city ?? country ?? null
-  const mediaSlides = useMemo<WorkoutFeedCardMediaSlide[]>(() => {
-    const slides: WorkoutFeedCardMediaSlide[] = []
-
-    if (showMapPreview && mapPreviewUrl) {
-      slides.push({
-        type: 'map',
-        key: `map-${runId || mapPreviewUrl}`,
-        src: mapPreviewUrl,
-      })
-    }
-
-    photos.forEach((photo, index) => {
-      slides.push({
-        type: 'photo',
-        key: photo.id,
-        src: photo.thumbnail_url ?? photo.public_url,
-        photoIndex: index,
-      })
-    })
-
-    return slides
-  }, [mapPreviewUrl, photos, runId, showMapPreview])
-  const shouldRenderMediaCarousel = mediaSlides.length > 1 && mediaSlides[0]?.type === 'map'
-  const totalMediaSlides = mediaSlides.length
-  const currentMediaIndex = Math.max(0, Math.min(activeMediaIndex, totalMediaSlides - 1))
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
     : '—'
@@ -244,33 +198,6 @@ function WorkoutFeedCard({
       window.clearTimeout(timer)
     }
   }, [showStravaHint])
-
-  function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
-    const container = event.currentTarget
-
-    if (container.clientWidth <= 0) {
-      return
-    }
-
-    const nextIndex = Math.round(container.scrollLeft / container.clientWidth)
-    setActiveMediaIndex(Math.max(0, Math.min(nextIndex, totalMediaSlides - 1)))
-  }
-
-  function scrollToMediaSlide(index: number) {
-    const container = mediaScrollRef.current
-
-    if (!container) {
-      return
-    }
-
-    const boundedIndex = Math.max(0, Math.min(index, totalMediaSlides - 1))
-
-    container.scrollTo({
-      left: container.clientWidth * boundedIndex,
-      behavior: 'smooth',
-    })
-    setActiveMediaIndex(boundedIndex)
-  }
 
   return (
     <div
@@ -335,125 +262,15 @@ function WorkoutFeedCard({
         ) : null}
       </div>
 
-      {shouldRenderMediaCarousel && mapPreviewUrl ? (
-        <div className="mt-3.5" onClick={(event) => event.stopPropagation()}>
-          <div
-            ref={mediaScrollRef}
-            className="overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            onScroll={handleMediaScroll}
-          >
-            <div className="grid grid-flow-col auto-cols-[100%]">
-              {mediaSlides.map((slide) => (
-                <div key={slide.key} className="snap-start">
-                  {slide.type === 'map' ? (
-                    <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-                      <div className="relative aspect-[2.15/1] w-full">
-                        <img
-                          src={slide.src}
-                          alt="Предпросмотр маршрута"
-                          className="h-full w-full rounded-xl object-cover"
-                          loading="lazy"
-                          decoding="async"
-                          draggable={false}
-                          onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
-                        />
-                        <div
-                          aria-hidden="true"
-                          className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
-                        />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
-                            <span>{distanceLabel}</span>
-                            <span className="text-white/75">•</span>
-                            <span>{paceWithUnit}</span>
-                            <span className="text-white/75">•</span>
-                            <span>{movingTimeLabel}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPhotoIndex(slide.photoIndex)}
-                      className="block w-full"
-                      aria-label={`Открыть фото тренировки ${slide.photoIndex + 1}`}
-                    >
-                      <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-                        <div className="relative aspect-[2.15/1] w-full">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={slide.src}
-                            alt={`Фото тренировки ${displayTitle}`}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                            decoding="async"
-                            draggable={false}
-                          />
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+      <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
+        <span className="font-semibold">{distanceLabel}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="font-semibold">{paceWithUnit}</span>
+        <span className="app-text-secondary">•</span>
+        <span className="font-semibold">{movingTimeLabel}</span>
+      </div>
 
-          <div className="mt-2 flex items-center justify-center gap-2">
-            {Array.from({ length: totalMediaSlides }, (_, index) => (
-              <button
-                key={`media-dot-${index}`}
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  scrollToMediaSlide(index)
-                }}
-                className={`h-1.5 rounded-full transition-all ${
-                  index === currentMediaIndex ? 'w-4 bg-[var(--text-primary)]' : 'w-1.5 bg-black/20 dark:bg-white/25'
-                }`}
-                aria-label={`Открыть слайд ${index + 1}`}
-              />
-            ))}
-          </div>
-        </div>
-      ) : showMapPreview && mapPreviewUrl ? (
-        <div className="mt-3.5 overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-          <div className="relative aspect-[2.15/1] w-full">
-            <img
-              src={mapPreviewUrl}
-              alt="Предпросмотр маршрута"
-              className="h-full w-full rounded-xl object-cover"
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
-            />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
-                <span>{distanceLabel}</span>
-                <span className="text-white/75">•</span>
-                <span>{paceWithUnit}</span>
-                <span className="text-white/75">•</span>
-                <span>{movingTimeLabel}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
-          <span className="font-semibold">{distanceLabel}</span>
-          <span className="app-text-secondary">•</span>
-          <span className="font-semibold">{paceWithUnit}</span>
-          <span className="app-text-secondary">•</span>
-          <span className="font-semibold">{movingTimeLabel}</span>
-        </div>
-      )}
-
-      {!showMapPreview && previewPhoto ? (
+      {previewPhoto ? (
         <button
           type="button"
           onClick={(event) => {

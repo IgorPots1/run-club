@@ -1,12 +1,7 @@
 import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
 import { getProfileDisplayName } from './profiles'
-import { loadRunCommentCountsForRunIds } from './run-comments'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
-
-// #region agent log
-fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b47950'},body:JSON.stringify({sessionId:'b47950',runId:'build-import-graph',hypothesisId:'H1',location:'lib/dashboard.ts:8',message:'dashboard module evaluated',data:{hasWindow:typeof window!=='undefined',supabaseImport:'./supabase',runCommentsImport:'./run-comments',runLikesImport:'./run-likes'},timestamp:Date.now()})}).catch(()=>{});
-// #endregion
 
 type ProfileRow = {
   id: string
@@ -31,8 +26,6 @@ type RunRow = {
   duration_minutes: number | null
   duration_seconds?: number | null
   moving_time_seconds?: number | null
-  elapsed_time_seconds?: number | null
-  map_polyline?: string | null
   xp: number | null
   created_at: string
 }
@@ -59,12 +52,10 @@ export type DashboardRunItem = {
   description: string | null
   city?: string | null
   country?: string | null
-  location: string | null
   external_source?: string | null
   distance_km: number
   pace: string | number | null
   movingTime: string | null
-  map_polyline?: string | null
   xp: number
   created_at: string
   displayName: string
@@ -150,16 +141,6 @@ function toNullableTrimmedText(value: string | null | undefined) {
 
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : null
-}
-
-function buildRunLocation(run: Pick<RunRow, 'city' | 'region' | 'country'>) {
-  const parts = [
-    toNullableTrimmedText(run.city),
-    toNullableTrimmedText(run.region),
-    toNullableTrimmedText(run.country),
-  ].filter((value, index, items): value is string => Boolean(value) && items.indexOf(value) === index)
-
-  return parts.length > 0 ? parts.join(', ') : null
 }
 
 function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
@@ -407,7 +388,7 @@ export async function loadFeedRuns(
   const end = start + limit - 1
   let runsQuery = supabase
     .from('runs')
-    .select('id, user_id, name, title, description, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, map_polyline, xp, created_at')
+    .select('id, user_id, name, title, description, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
@@ -428,15 +409,11 @@ export async function loadFeedRuns(
 
   const [
     profileById,
-    totalXpByUser,
     likesSummary,
-    commentsCountByRunId,
     photosResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
-    loadTotalXpByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
-    loadRunCommentCountsForRunIds(runIds).catch(() => ({} as Record<string, number>)),
     runIds.length === 0
       ? Promise.resolve({ data: [] as RunPhotoRow[], error: null })
       : supabase
@@ -489,19 +466,17 @@ export async function loadFeedRuns(
         description: toNullableTrimmedText(run.description),
         city: toNullableTrimmedText(run.city),
         country: toNullableTrimmedText(run.country),
-        location: buildRunLocation(run),
         external_source: run.external_source ?? null,
         distance_km: Number(run.distance_km ?? 0),
         pace: formatPace(Number(run.distance_km ?? 0), resolvedDurationSeconds),
         movingTime: formatMovingTime(resolvedDurationSeconds),
-        map_polyline: run.map_polyline ?? null,
         xp: Number(run.xp ?? 0),
         created_at: run.created_at,
         displayName: getProfileDisplayName(profile, 'Бегун'),
         avatar_url: profile?.avatar_url ?? null,
-        totalXp: totalXpByUser[run.user_id] ?? 0,
+        totalXp: Number(profile?.total_xp ?? 0),
         likesCount: likesSummary.likesByRunId[run.id] ?? 0,
-        commentsCount: commentsCountByRunId[run.id] ?? 0,
+        commentsCount: 0,
         likedByMe: likesSummary.likedRunIds.has(run.id),
         photos: photosByRunId[run.id] ?? [],
       }
