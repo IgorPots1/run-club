@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from './supabase-admin'
+import { getLevelFromXP } from './xp'
 
 type RefreshProfileTotalXpOptions = {
   supabase?: ReturnType<typeof createSupabaseAdminClient>
@@ -12,6 +13,17 @@ export async function refreshProfileTotalXp(userId: string, options: RefreshProf
   const supabase = options.supabase ?? createSupabaseAdminClient()
 
   try {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('total_xp')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (profileError) {
+      throw profileError
+    }
+
+    const oldTotalXp = Number((profile as { total_xp?: number | null } | null)?.total_xp ?? 0)
     const { data, error: recalculateError } = await supabase.rpc('recalculate_user_total_xp', {
       p_user_id: userId,
     })
@@ -21,6 +33,9 @@ export async function refreshProfileTotalXp(userId: string, options: RefreshProf
     }
 
     const totalXp = Number.isFinite(Number(data)) ? Number(data) : 0
+    const oldLevel = getLevelFromXP(oldTotalXp).level
+    const newLevel = getLevelFromXP(totalXp).level
+    const levelUp = newLevel > oldLevel
 
     const { error: updateError } = await supabase
       .from('profiles')
@@ -34,6 +49,8 @@ export async function refreshProfileTotalXp(userId: string, options: RefreshProf
     return {
       ok: true as const,
       totalXp,
+      levelUp,
+      newLevel: levelUp ? newLevel : null,
       error: null,
     }
   } catch (error) {
@@ -50,6 +67,8 @@ export async function refreshProfileTotalXp(userId: string, options: RefreshProf
     return {
       ok: false as const,
       totalXp: null,
+      levelUp: false,
+      newLevel: null,
       error,
     }
   }

@@ -59,7 +59,7 @@ export async function POST(request: Request) {
 
   const payload = (data ?? {}) as ChallengeCompletionRpcResult
 
-  await refreshProfileTotalXp(user.id, {
+  const xpRefreshResult = await refreshProfileTotalXp(user.id, {
     supabase: supabaseAdmin,
     context: 'challenge_completion',
   })
@@ -69,5 +69,7 @@ export async function POST(request: Request) {
     duplicate: payload.completion_created === false,
     badgeCreated: payload.badge_created === true,
     completedAt: payload.completed_at ?? null,
+    levelUp: xpRefreshResult.levelUp,
+    newLevel: xpRefreshResult.newLevel,
   })
 }

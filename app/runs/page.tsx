@@ -459,6 +459,7 @@ export default function RunsPage() {
   const [durationSecondsInput, setDurationSecondsInput] = useState('0')
   const [error, setError] = useState('')
   const [saveInfoMessage, setSaveInfoMessage] = useState('')
+  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null)
   const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
@@ -724,6 +725,20 @@ export default function RunsPage() {
   }, [saveInfoMessage])
 
   useEffect(() => {
+    if (levelUpToastLevel == null) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setLevelUpToastLevel(null)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [levelUpToastLevel])
+
+  useEffect(() => {
     if (!activeStravaHintRunId) {
       return
     }
@@ -817,7 +832,7 @@ export default function RunsPage() {
     const xp = normalizeIntegerMetric(50 + d * 10)
 
     try {
-      const { error: createError, shoeWearMessage } = await createRun({
+      const { error: createError, shoeWearMessage, levelUp, newLevel } = await createRun({
         name: normalizedTitle,
         title: normalizedTitle,
         distanceKm: d,
@@ -845,6 +860,9 @@ export default function RunsPage() {
       setDurationSecondsInput('0')
       setError('')
       setSaveInfoMessage(shoeWearMessage ?? '')
+      if (levelUp && newLevel != null) {
+        setLevelUpToastLevel(newLevel)
+      }
       dispatchRunsUpdatedEvent()
     } catch {
       setError('Не удалось сохранить тренировку')
@@ -1051,6 +1069,13 @@ export default function RunsPage() {
             {saveInfoMessage}
           </div>
         ) : null}
+      {levelUpToastLevel != null ? (
+        <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
+          <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
+            {`🔥 Новый уровень: ${levelUpToastLevel}`}
+          </div>
+        </div>
+      ) : null}
         <button
           type="submit"
           disabled={submitting || !isWorkoutFormValid}

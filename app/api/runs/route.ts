@@ -162,7 +162,7 @@ export async function POST(request: Request) {
     )
   }
 
-  await refreshProfileTotalXp(user.id, {
+  const xpRefreshResult = await refreshProfileTotalXp(user.id, {
     supabase: supabaseAdmin,
     context: 'manual_run_create',
   })
@@ -174,6 +174,8 @@ export async function POST(request: Request) {
         id: insertedRun.id,
       },
       shoeWearMessage: shoeWearTrigger?.message ?? null,
+      levelUp: xpRefreshResult.levelUp,
+      newLevel: xpRefreshResult.newLevel,
     },
     { status: 201 }
   )

@@ -20,6 +20,8 @@ export type CompletedChallengeRecord = {
 type ChallengeCompletionResult = {
   success: boolean
   duplicate: boolean
+  levelUp: boolean
+  newLevel: number | null
   error: unknown | null
 }
 
@@ -195,6 +197,8 @@ export async function awardChallengeCompletion(
       | {
           ok?: boolean
           duplicate?: boolean
+          levelUp?: boolean
+          newLevel?: number | null
           error?: string
         }
       | null
@@ -203,6 +207,8 @@ export async function awardChallengeCompletion(
       return {
         success: true,
         duplicate: payload.duplicate === true,
+        levelUp: payload.levelUp === true,
+        newLevel: typeof payload.newLevel === 'number' ? payload.newLevel : null,
         error: null,
       }
     }
@@ -216,6 +222,8 @@ export async function awardChallengeCompletion(
     return {
       success: false,
       duplicate: false,
+      levelUp: false,
+      newLevel: null,
       error: payload?.error ?? 'challenge_completion_request_failed',
     }
   } catch (error) {
@@ -227,6 +235,8 @@ export async function awardChallengeCompletion(
     return {
       success: false,
       duplicate: false,
+      levelUp: false,
+      newLevel: null,
       error,
     }
   }

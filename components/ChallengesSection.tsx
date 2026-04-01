@@ -78,6 +78,21 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
   const [items, setItems] = useState<ChallengeWithProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (levelUpToastLevel == null) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setLevelUpToastLevel(null)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [levelUpToastLevel])
 
   useEffect(() => {
     let isMounted = true
@@ -140,6 +155,18 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           if (results.some((result) => !result.success)) {
             setError('Не удалось сохранить прогресс челленджей')
           }
+
+          const highestNewLevel = results.reduce<number | null>((highestLevel, result) => {
+            if (!result.levelUp || result.newLevel == null) {
+              return highestLevel
+            }
+
+            return Math.max(highestLevel ?? 0, result.newLevel)
+          }, null)
+
+          if (highestNewLevel != null) {
+            setLevelUpToastLevel(highestNewLevel)
+          }
         }
 
         setItems(itemsWithProgress)
@@ -167,6 +194,13 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
 
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
+      {levelUpToastLevel != null ? (
+        <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
+          <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
+            {`🔥 Новый уровень: ${levelUpToastLevel}`}
+          </div>
+        </div>
+      ) : null}
       {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Челленджи</h1> : null}
       {loading ? (
         <p>Загрузка...</p>

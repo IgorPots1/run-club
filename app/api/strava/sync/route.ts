@@ -137,6 +137,8 @@ export async function GET(request: Request) {
       skipped: result.skipped,
       failed: result.failed,
       totalRunsFetched: result.totalRunsFetched,
+        levelUp: result.levelUp === true,
+        newLevel: result.newLevel ?? null,
       errors: result.errors,
       userId: user.id,
       ...(debugMode ? { debug: buildDebugDiagnostics(result) } : {}),

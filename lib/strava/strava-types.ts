@@ -144,6 +144,8 @@ export type StravaInitialSyncResult =
       skipped: number
       failed: number
       totalRunsFetched: number
+      levelUp?: boolean
+      newLevel?: number | null
       errors: Array<{
         activityId: string
         field?: string

@@ -120,6 +120,8 @@ type StravaImportOutcome = 'imported' | 'updated' | 'skipped_existing' | 'skippe
 type StravaImportResult = {
   status: StravaImportOutcome
   activityId: string
+  levelUp?: boolean
+  newLevel?: number | null
 }
 
 type ImportStravaActivityOptions = {
@@ -1986,7 +1988,7 @@ export async function importStravaActivityForUser(
       attemptedCountry: payload.country,
     })
 
-    await refreshProfileTotalXp(userId, {
+    const refreshResult = await refreshProfileTotalXp(userId, {
       supabase,
       context: 'strava_run_insert',
     })
@@ -2014,6 +2016,8 @@ export async function importStravaActivityForUser(
     return {
       status: 'imported',
       activityId: payload.external_id,
+      levelUp: refreshResult.levelUp,
+      newLevel: refreshResult.newLevel,
     }
   }
 
@@ -2189,7 +2193,7 @@ export async function importStravaActivityForUser(
     attemptedCountry: runUpdatePayload.country,
   })
 
-  await refreshProfileTotalXp(userId, {
+  const refreshResult = await refreshProfileTotalXp(userId, {
     supabase,
     context: 'strava_run_update_next_owner',
   })
@@ -2240,6 +2244,8 @@ export async function importStravaActivityForUser(
   return {
     status: 'updated',
     activityId: payload.external_id,
+    levelUp: refreshResult.levelUp,
+    newLevel: refreshResult.newLevel,
   }
 }
 
@@ -2603,6 +2609,7 @@ export async function syncStravaRuns(
   let imported = 0
   let skipped = 0
   const errors: StravaSyncRowErrorDetail[] = []
+  let highestLevelUp: number | null = null
 
   for (const activity of runActivities) {
     let payload: StravaRunInsertPayload | null = null
@@ -2619,6 +2626,10 @@ export async function syncStravaRuns(
         imported += 1
       } else if (result.status === 'skipped_existing' || result.status === 'updated') {
         skipped += 1
+      }
+
+      if (result.levelUp && Number.isFinite(result.newLevel)) {
+        highestLevelUp = Math.max(highestLevelUp ?? 0, Number(result.newLevel))
       }
 
       // #region agent log
@@ -2685,6 +2696,8 @@ export async function syncStravaRuns(
     skipped,
     failed,
     totalRunsFetched: runActivities.length,
+    levelUp: highestLevelUp !== null,
+    newLevel: highestLevelUp,
     errors,
     debug: {
       step: 'initial_sync_complete',

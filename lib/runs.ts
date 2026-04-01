@@ -26,6 +26,8 @@ type RunMutationResponse =
       ok: true
       run?: Record<string, unknown> | null
       shoeWearMessage?: string | null
+      levelUp?: boolean
+      newLevel?: number | null
     }
   | {
       ok: false
@@ -58,6 +60,8 @@ export async function createRun(input: CreateRunInput) {
     error: null,
     data: payload.run ?? null,
     shoeWearMessage: payload.shoeWearMessage ?? null,
+    levelUp: payload.levelUp === true,
+    newLevel: typeof payload.newLevel === 'number' ? payload.newLevel : null,
   }
 }
 
