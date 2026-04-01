@@ -16,6 +16,7 @@ let sharedCurrentUserId: string | null = null
 let sharedUnreadChannel: ReturnType<typeof supabase.channel> | null = null
 let sharedRefreshPromise: Promise<number> | null = null
 let sharedInitPromise: Promise<void> | null = null
+let sharedRefreshTimeoutId: number | null = null
 let hasAttachedUnreadEventListener = false
 
 function emitUnreadCount(nextCount: number) {
@@ -27,11 +28,18 @@ function emitUnreadCount(nextCount: number) {
 }
 
 function handleUnreadCountEvent(event: Event) {
-  if (!(event instanceof CustomEvent) || typeof event.detail?.count !== 'number') {
+  if (!(event instanceof CustomEvent)) {
     return
   }
 
-  emitUnreadCount(event.detail.count)
+  if (typeof event.detail?.count === 'number') {
+    emitUnreadCount(event.detail.count)
+    return
+  }
+
+  if (typeof event.detail?.delta === 'number') {
+    emitUnreadCount(Math.max(0, sharedTotalUnreadCount + event.detail.delta))
+  }
 }
 
 function attachUnreadCountEventListener() {
@@ -79,6 +87,21 @@ async function refreshSharedTotalUnreadCount() {
   }
 }
 
+function scheduleSharedTotalUnreadCountRefresh(delayMs = 120) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (sharedRefreshTimeoutId !== null) {
+    window.clearTimeout(sharedRefreshTimeoutId)
+  }
+
+  sharedRefreshTimeoutId = window.setTimeout(() => {
+    sharedRefreshTimeoutId = null
+    void refreshSharedTotalUnreadCount()
+  }, delayMs)
+}
+
 async function ensureUnreadStoreInitialized() {
   if (typeof window === 'undefined') {
     return
@@ -124,7 +147,7 @@ async function ensureUnreadStoreInitialized() {
             return
           }
 
-          await refreshSharedTotalUnreadCount()
+          scheduleSharedTotalUnreadCountRefresh()
         }
       )
       .subscribe()
@@ -152,6 +175,11 @@ function cleanupUnreadStoreIfUnused() {
   if (sharedUnreadChannel) {
     void supabase.removeChannel(sharedUnreadChannel)
     sharedUnreadChannel = null
+  }
+
+  if (sharedRefreshTimeoutId !== null) {
+    window.clearTimeout(sharedRefreshTimeoutId)
+    sharedRefreshTimeoutId = null
   }
 }
 

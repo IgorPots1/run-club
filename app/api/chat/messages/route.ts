@@ -1,7 +1,6 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAppEvent } from '@/lib/events/createAppEvent'
-import { isThreadMuted } from '@/lib/notifications/isThreadMuted'
+import { createAppEvents } from '@/lib/events/createAppEvent'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -69,6 +68,10 @@ type ChatNotificationContent = {
 }
 
 type PushDeliveryLogRow = {
+  user_id: string
+}
+
+type UserNotificationSettingRow = {
   user_id: string
 }
 
@@ -202,21 +205,19 @@ async function emitChatMessageCreatedEvent(
   context: ChatDeliveryContext
 ) {
   try {
-    await Promise.all(
-      context.recipientUserIds.map((recipientUserId) =>
-        createAppEvent({
-          type: 'chat_message.created',
-          actorUserId: message.user_id,
-          targetUserId: recipientUserId,
-          entityType: 'chat_message',
-          entityId: message.id,
-          payload: {
-            threadId: context.threadId,
-            messagePreview: context.messagePreview,
-            senderName: context.senderName,
-          },
-        })
-      )
+    await createAppEvents(
+      context.recipientUserIds.map((recipientUserId) => ({
+        type: 'chat_message.created',
+        actorUserId: message.user_id,
+        targetUserId: recipientUserId,
+        entityType: 'chat_message',
+        entityId: message.id,
+        payload: {
+          threadId: context.threadId,
+          messagePreview: context.messagePreview,
+          senderName: context.senderName,
+        },
+      }))
     )
   } catch (error) {
     console.error('Failed to create chat message app event', {
@@ -228,29 +229,59 @@ async function emitChatMessageCreatedEvent(
   }
 }
 
+async function loadMutedRecipientUserIds(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  recipientUserIds: string[],
+  threadId: string
+) {
+  if (recipientUserIds.length === 0) {
+    return new Set<string>()
+  }
+
+  const mutedRecipientsQuery = supabaseAdmin
+    .from('user_notification_settings')
+    .select('user_id')
+    .eq('thread_id', threadId)
+    .eq('muted', true)
+
+  if (recipientUserIds.length === 1) {
+    mutedRecipientsQuery.eq('user_id', recipientUserIds[0]!)
+  } else {
+    mutedRecipientsQuery.in('user_id', recipientUserIds)
+  }
+
+  const { data, error } = await mutedRecipientsQuery
+
+  if (error) {
+    throw error
+  }
+
+  return new Set(
+    ((data as UserNotificationSettingRow[] | null) ?? []).map((row) => row.user_id)
+  )
+}
+
 async function sendChatMessagePushNotifications(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   context: ChatDeliveryContext
 ) {
   try {
-    const muteChecks = await Promise.all(
-      context.recipientUserIds.map(async (recipientUserId) => ({
-        recipientUserId,
-        muted: await isThreadMuted(recipientUserId, context.threadId),
-      }))
+    const mutedRecipientUserIds = await loadMutedRecipientUserIds(
+      supabaseAdmin,
+      context.recipientUserIds,
+      context.threadId
     )
-    const unmutedRecipientUserIds = muteChecks
-      .filter((entry) => {
-        if (entry.muted) {
+    const unmutedRecipientUserIds = context.recipientUserIds
+      .filter((recipientUserId) => {
+        if (mutedRecipientUserIds.has(recipientUserId)) {
           console.log('[push] skipped_muted_thread', {
-            recipientId: entry.recipientUserId,
+            recipientId: recipientUserId,
             threadId: context.threadId,
           })
         }
 
-        return !entry.muted
+        return !mutedRecipientUserIds.has(recipientUserId)
       })
-      .map((entry) => entry.recipientUserId)
 
     if (unmutedRecipientUserIds.length === 0) {
       return
@@ -447,6 +478,41 @@ async function sendChatMessagePushNotifications(
   }
 }
 
+async function runChatMessageFanout(message: InsertedChatMessageRow) {
+  try {
+    const supabaseAdmin = createSupabaseAdminClient()
+    const chatDeliveryContext = await loadChatDeliveryContext(supabaseAdmin, message)
+
+    if (!chatDeliveryContext) {
+      return
+    }
+
+    console.log('[push] message_created', {
+      messageId: message.id,
+      threadId: chatDeliveryContext.threadId,
+      senderId: message.user_id,
+      recipientId:
+        chatDeliveryContext.recipientUserIds.length === 1
+          ? chatDeliveryContext.recipientUserIds[0]
+          : undefined,
+      recipientCount: chatDeliveryContext.recipientUserIds.length,
+      threadType: chatDeliveryContext.threadType,
+    })
+
+    await Promise.allSettled([
+      emitChatMessageCreatedEvent(message, chatDeliveryContext),
+      sendChatMessagePushNotifications(supabaseAdmin, chatDeliveryContext),
+    ])
+  } catch (error) {
+    console.error('Failed to fan out chat message side effects', {
+      messageId: message.id,
+      threadId: message.thread_id,
+      actorUserId: message.user_id,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+  }
+}
+
 export async function POST(request: Request) {
   const { user, error: userError, supabase } = await getAuthenticatedUser()
 
@@ -522,24 +588,10 @@ export async function POST(request: Request) {
     }
 
     const message = data as InsertedChatMessageRow
-    const supabaseAdmin = createSupabaseAdminClient()
-    const chatDeliveryContext = await loadChatDeliveryContext(supabaseAdmin, message)
 
-    if (chatDeliveryContext) {
-      console.log('[push] message_created', {
-        messageId: message.id,
-        threadId: chatDeliveryContext.threadId,
-        senderId: message.user_id,
-        recipientId:
-          chatDeliveryContext.recipientUserIds.length === 1
-            ? chatDeliveryContext.recipientUserIds[0]
-            : undefined,
-        recipientCount: chatDeliveryContext.recipientUserIds.length,
-        threadType: chatDeliveryContext.threadType,
-      })
-      await emitChatMessageCreatedEvent(message, chatDeliveryContext)
-      await sendChatMessagePushNotifications(supabaseAdmin, chatDeliveryContext)
-    }
+    after(async () => {
+      await runChatMessageFanout(message)
+    })
 
     return NextResponse.json({
       ok: true,

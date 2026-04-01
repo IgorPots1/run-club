@@ -394,8 +394,14 @@ export default function MessagesPage() {
         },
         async (payload) => {
           const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+          const nextMessageThreadId = String((payload.new as { thread_id?: string } | null)?.thread_id ?? '')
+          const nextMessageUserId = String((payload.new as { user_id?: string } | null)?.user_id ?? '')
 
           if (!nextMessageId || processedInsertedMessageIdsRef.current.has(nextMessageId)) {
+            return
+          }
+
+          if (!nextMessageThreadId || !knownThreadIds.has(nextMessageThreadId)) {
             return
           }
 
@@ -412,8 +418,6 @@ export default function MessagesPage() {
             if (!nextMessage) {
               return
             }
-
-            const isKnownThread = knownThreadIds.has(nextMessage.threadId)
 
             setClubThread((currentThread) =>
               currentThread?.id === nextMessage.threadId
@@ -444,7 +448,7 @@ export default function MessagesPage() {
               )
             )
 
-            if (isKnownThread && nextMessage.userId !== currentUserId) {
+            if (nextMessageUserId && nextMessageUserId !== currentUserId) {
               setUnreadCountsByThread((currentCounts) => ({
                 ...currentCounts,
                 [nextMessage.threadId]: (currentCounts[nextMessage.threadId] ?? 0) + 1,

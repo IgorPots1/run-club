@@ -39,6 +39,23 @@ function normalizeAppEventType(type: string) {
   return type.trim()
 }
 
+function toInsertableAppEvent(input: CreateAppEventInput) {
+  const type = normalizeAppEventType(input.type)
+
+  if (!type) {
+    throw new Error('app_event_type_required')
+  }
+
+  return {
+    type,
+    actor_user_id: input.actorUserId ?? null,
+    target_user_id: input.targetUserId ?? null,
+    entity_type: input.entityType ?? null,
+    entity_id: input.entityId ?? null,
+    payload: input.payload ?? {},
+  }
+}
+
 function toAppEvent(row: AppEventRow): AppEvent {
   return {
     id: row.id,
@@ -53,23 +70,12 @@ function toAppEvent(row: AppEventRow): AppEvent {
 }
 
 export async function createAppEvent(input: CreateAppEventInput): Promise<AppEvent> {
-  const type = normalizeAppEventType(input.type)
-
-  if (!type) {
-    throw new Error('app_event_type_required')
-  }
+  const row = toInsertableAppEvent(input)
 
   const supabase = createSupabaseAdminClient()
   const { data, error } = await supabase
     .from('app_events')
-    .insert({
-      type,
-      actor_user_id: input.actorUserId ?? null,
-      target_user_id: input.targetUserId ?? null,
-      entity_type: input.entityType ?? null,
-      entity_id: input.entityId ?? null,
-      payload: input.payload ?? {},
-    })
+    .insert(row)
     .select('id, type, actor_user_id, target_user_id, entity_type, entity_id, payload, created_at')
     .single()
 
@@ -78,6 +84,21 @@ export async function createAppEvent(input: CreateAppEventInput): Promise<AppEve
   }
 
   return toAppEvent(data as AppEventRow)
+}
+
+export async function createAppEvents(inputs: CreateAppEventInput[]): Promise<void> {
+  if (inputs.length === 0) {
+    return
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('app_events')
+    .insert(inputs.map(toInsertableAppEvent))
+
+  if (error) {
+    throw error
+  }
 }
 
 // Example future usage for chat notifications fan-out:
