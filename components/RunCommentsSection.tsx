@@ -1,56 +1,29 @@
 'use client'
 
-import Image from 'next/image'
 import { useState } from 'react'
+import RunCommentThreadList from '@/components/RunCommentThreadList'
 import type { RunCommentItem } from '@/lib/run-comments'
 
 type RunCommentsSectionProps = {
   comments: RunCommentItem[]
+  currentUserId?: string | null
   loading?: boolean
   error?: string
   onSubmitComment?: (comment: string) => Promise<void>
-}
-
-function AvatarFallback() {
-  return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 20a6 6 0 0 0-12 0" />
-        <circle cx="12" cy="8" r="4" />
-      </svg>
-    </span>
-  )
-}
-
-function formatCommentTimestamp(dateString: string) {
-  const date = new Date(dateString)
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Дата неизвестна'
-  }
-
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  onReplyComment?: (parentId: string, comment: string) => Promise<void>
+  onEditComment?: (commentId: string, comment: string) => Promise<void>
+  onDeleteComment?: (commentId: string) => Promise<void>
 }
 
 export default function RunCommentsSection({
   comments,
+  currentUserId = null,
   loading = false,
   error = '',
   onSubmitComment,
+  onReplyComment,
+  onEditComment,
+  onDeleteComment,
 }: RunCommentsSectionProps) {
   const [comment, setComment] = useState('')
   const [submitError, setSubmitError] = useState('')
@@ -75,7 +48,7 @@ export default function RunCommentsSection({
     try {
       await onSubmitComment(trimmedComment)
       setComment('')
-    } catch (error) {
+    } catch {
       setSubmitError('Не удалось отправить комментарий')
     } finally {
       setSubmitting(false)
@@ -134,34 +107,14 @@ export default function RunCommentsSection({
       ) : comments.length === 0 ? (
         <p className="app-text-secondary mt-4 text-sm">Пока нет комментариев</p>
       ) : (
-        <div className="mt-4 space-y-4">
-          {comments.map((comment) => (
-            <div key={comment.id} className="flex items-start gap-3">
-              {comment.avatarUrl ? (
-                <Image
-                  src={comment.avatarUrl}
-                  alt=""
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <AvatarFallback />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <p className="app-text-primary truncate font-semibold">{comment.displayName}</p>
-                  {comment.nickname?.trim() ? (
-                    <p className="app-text-secondary truncate text-xs">@{comment.nickname.trim()}</p>
-                  ) : null}
-                  <p className="app-text-secondary text-xs">{formatCommentTimestamp(comment.createdAt)}</p>
-                </div>
-                <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-6">
-                  {comment.comment}
-                </p>
-              </div>
-            </div>
-          ))}
+        <div className="mt-4">
+          <RunCommentThreadList
+            comments={comments}
+            currentUserId={currentUserId}
+            onReplyComment={onReplyComment}
+            onEditComment={onEditComment}
+            onDeleteComment={onDeleteComment}
+          />
         </div>
       )}
     </section>

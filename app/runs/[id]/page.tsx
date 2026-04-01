@@ -25,13 +25,13 @@ import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import {
   applyRunCommentInsert,
   applyRunCommentUpdate,
-  buildRunCommentThreads,
   createRunComment,
-  flattenRunCommentThreads,
+  deleteRunComment,
   loadRunComments,
   resolveRunCommentRealtimeItem,
   subscribeToRunComments,
   type RunCommentItem,
+  updateRunComment,
 } from '@/lib/run-comments'
 import { updateRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
@@ -605,6 +605,48 @@ export default function RunDetailsPage() {
     setCommentsError('')
   }
 
+  async function handleReplySubmit(parentId: string, comment: string) {
+    if (!run) {
+      throw new Error('missing_context')
+    }
+
+    const trimmedComment = comment.trim()
+
+    if (!trimmedComment) {
+      throw new Error('empty_comment')
+    }
+
+    const createdComment = await createRunComment(run.id, {
+      comment: trimmedComment,
+      parentId,
+    })
+
+    setComments((currentComments) => applyRunCommentInsert(currentComments, createdComment))
+    setCommentsError('')
+  }
+
+  async function handleEditComment(commentId: string, comment: string) {
+    const trimmedComment = comment.trim()
+
+    if (!trimmedComment) {
+      throw new Error('empty_comment')
+    }
+
+    const updatedComment = await updateRunComment(commentId, {
+      comment: trimmedComment,
+    })
+
+    setComments((currentComments) => applyRunCommentUpdate(currentComments, updatedComment))
+    setCommentsError('')
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    const deletedComment = await deleteRunComment(commentId)
+
+    setComments((currentComments) => applyRunCommentUpdate(currentComments, deletedComment))
+    setCommentsError('')
+  }
+
   function handleOpenPhotoPicker() {
     if (!photoInputRef.current || uploadingPhotos || !isOwner) {
       return
@@ -1014,8 +1056,6 @@ export default function RunDetailsPage() {
     }
   }, [lapsBackfillAttemptedRunId, loading, run, runId, runLaps.length, user])
 
-  const commentThreads = useMemo(() => buildRunCommentThreads(comments), [comments])
-  const visibleComments = useMemo(() => flattenRunCommentThreads(commentThreads), [commentThreads])
   const commentsCount = comments.length
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
@@ -1756,7 +1796,15 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
-      <RunCommentsSection comments={visibleComments} error={commentsError} onSubmitComment={handleCommentSubmit} />
+      <RunCommentsSection
+        comments={comments}
+        currentUserId={user?.id ?? null}
+        error={commentsError}
+        onSubmitComment={handleCommentSubmit}
+        onReplyComment={handleReplySubmit}
+        onEditComment={handleEditComment}
+        onDeleteComment={handleDeleteComment}
+      />
     </div>
 
     <RunPhotoLightbox

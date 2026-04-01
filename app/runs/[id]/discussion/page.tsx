@@ -4,6 +4,7 @@ import { LoaderCircle } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import RunCommentThreadList from '@/components/RunCommentThreadList'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { getBootstrapUser } from '@/lib/auth'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
@@ -11,15 +12,15 @@ import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import {
   applyRunCommentInsert,
   applyRunCommentUpdate,
-  buildRunCommentThreads,
   createRunComment,
-  flattenRunCommentThreads,
+  deleteRunComment,
   loadRunCommentAuthorProfile,
   loadRunComments,
   resolveRunCommentRealtimeItem,
   subscribeToRunComments,
   type RunCommentAuthorIdentity,
   type RunCommentItem,
+  updateRunComment,
 } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
 import { getLevelFromXP } from '@/lib/xp'
@@ -157,95 +158,6 @@ function StravaIcon() {
       <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
       <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
     </svg>
-  )
-}
-
-function AvatarFallback() {
-  return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 20a6 6 0 0 0-12 0" />
-        <circle cx="12" cy="8" r="4" />
-      </svg>
-    </span>
-  )
-}
-
-function formatCommentTimestamp(dateString: string) {
-  const date = new Date(dateString)
-
-  if (Number.isNaN(date.getTime())) {
-    return 'только что'
-  }
-
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-
-  if (diffMs < 60 * 1000) {
-    return 'только что'
-  }
-
-  const diffMinutes = Math.floor(diffMs / (60 * 1000))
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes} мин назад`
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60)
-
-  if (diffHours < 24) {
-    return `${diffHours} ч назад`
-  }
-
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-  })
-}
-
-function CommentRow({ comment }: { comment: RunCommentItem }) {
-  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
-  const avatarSrc = comment.avatarUrl?.trim() ? comment.avatarUrl : null
-  const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
-  const nicknameLabel = comment.nickname?.trim() ? `@${comment.nickname.trim()}` : null
-
-  return (
-    <div className="flex items-start gap-3">
-      {showAvatarImage && avatarSrc ? (
-        <img
-          src={avatarSrc}
-          alt=""
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          onError={() => setFailedAvatarUrl(avatarSrc)}
-        />
-      ) : (
-        <AvatarFallback />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <p className="app-text-primary truncate text-sm font-semibold">{comment.displayName}</p>
-          {nicknameLabel ? (
-            <p className="app-text-secondary truncate text-xs">{nicknameLabel}</p>
-          ) : null}
-          <p className="app-text-muted text-xs">{formatCommentTimestamp(comment.createdAt)}</p>
-        </div>
-        <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-sm leading-5">
-          {comment.comment}
-        </p>
-      </div>
-    </div>
   )
 }
 
@@ -455,6 +367,44 @@ export default function RunDiscussionPage() {
     }
   }
 
+  async function handleReplyComment(parentId: string, comment: string) {
+    const trimmedComment = comment.trim()
+
+    if (!trimmedComment) {
+      throw new Error('empty_comment')
+    }
+
+    const createdComment = await createRunComment(runId, {
+      comment: trimmedComment,
+      parentId,
+    })
+
+    setComments((prev) => applyRunCommentInsert(prev, createdComment))
+    setCommentsError('')
+  }
+
+  async function handleEditComment(commentId: string, comment: string) {
+    const trimmedComment = comment.trim()
+
+    if (!trimmedComment) {
+      throw new Error('empty_comment')
+    }
+
+    const updatedComment = await updateRunComment(commentId, {
+      comment: trimmedComment,
+    })
+
+    setComments((prev) => applyRunCommentUpdate(prev, updatedComment))
+    setCommentsError('')
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    const deletedComment = await deleteRunComment(commentId)
+
+    setComments((prev) => applyRunCommentUpdate(prev, deletedComment))
+    setCommentsError('')
+  }
+
   const runTitle = run ? getRunTitle(run) : 'Обсуждение'
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
   const resolvedDurationSeconds = useMemo(() => (run ? resolveDurationSeconds(run) : null), [run])
@@ -470,8 +420,6 @@ export default function RunDiscussionPage() {
     [resolvedDurationSeconds, run?.distance_km]
   )
   const durationLabel = useMemo(() => formatDurationLabel(resolvedDurationSeconds), [resolvedDurationSeconds])
-  const commentThreads = useMemo(() => buildRunCommentThreads(comments), [comments])
-  const visibleComments = useMemo(() => flattenRunCommentThreads(commentThreads), [commentThreads])
   const discussionSummary = loadingRun ? (
     <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -610,16 +558,20 @@ export default function RunDiscussionPage() {
             <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
               <p className="text-sm text-red-600">{commentsError}</p>
             </div>
-          ) : visibleComments.length === 0 ? (
+          ) : comments.length === 0 ? (
             <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
               <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
               <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
             </div>
           ) : (
-            <div className="space-y-4 pb-2">
-              {visibleComments.map((comment) => (
-                <CommentRow key={comment.id} comment={comment} />
-              ))}
+            <div className="pb-2">
+              <RunCommentThreadList
+                comments={comments}
+                currentUserId={user?.id ?? null}
+                onReplyComment={handleReplyComment}
+                onEditComment={handleEditComment}
+                onDeleteComment={handleDeleteComment}
+              />
             </div>
           )}
           <div ref={bottomRef} />
