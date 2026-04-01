@@ -323,7 +323,7 @@ export default function RunDiscussionPage() {
     }
 
     textarea.style.height = '0px'
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`
   }, [draft])
 
   useEffect(() => {
@@ -487,7 +487,7 @@ export default function RunDiscussionPage() {
   )
   const discussionComposer = (
     <form onSubmit={handleSubmit}>
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-2.5">
         <label htmlFor="discussion-comment" className="sr-only">Сообщение</label>
         <textarea
           id="discussion-comment"
@@ -501,12 +501,12 @@ export default function RunDiscussionPage() {
           placeholder="Сообщение"
           disabled={submitting}
           enterKeyHint="send"
-          className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-5"
+          className="app-input max-h-36 min-h-12 w-full resize-none rounded-2xl border px-4 py-[0.875rem] text-base leading-6 [overflow-y:auto] sm:text-sm sm:leading-5"
         />
         <button
           type="submit"
           disabled={submitting || !trimmedDraft}
-          className="app-button-secondary min-h-11 shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-button-secondary min-h-12 shrink-0 self-end rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? (
             <span className="inline-flex items-center gap-1.5">

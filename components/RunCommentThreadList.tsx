@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildRunCommentThreads, type RunCommentItem } from '@/lib/run-comments'
 
 type RunCommentThreadListProps = {
@@ -73,7 +73,19 @@ function InlineComposer({
   onSubmit,
 }: ComposerProps) {
   const [submitting, setSubmitting] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const trimmedValue = value.trim()
+
+  useEffect(() => {
+    const textarea = textareaRef.current
+
+    if (!textarea) {
+      return
+    }
+
+    textarea.style.height = '0px'
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`
+  }, [value])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -96,11 +108,13 @@ function InlineComposer({
       <label htmlFor={id} className="sr-only">Комментарий</label>
       <textarea
         id={id}
+        ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        rows={1}
         placeholder={placeholder}
         disabled={submitting || disabled}
-        className="app-input min-h-24 w-full rounded-xl border px-3 py-2 text-sm leading-5"
+        className="app-input min-h-[5.5rem] max-h-36 w-full resize-none rounded-xl border px-3.5 py-3 text-base leading-6 [overflow-y:auto] sm:text-sm"
       />
       {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       <div className="mt-3 flex flex-wrap justify-end gap-2">
@@ -108,14 +122,14 @@ function InlineComposer({
           type="button"
           onClick={onCancel}
           disabled={submitting || disabled}
-          className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-button-secondary min-h-9 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
         >
           Отмена
         </button>
         <button
           type="submit"
           disabled={submitting || disabled || !trimmedValue}
-          className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-button-secondary min-h-9 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? submittingLabel : submitLabel}
         </button>
@@ -188,7 +202,7 @@ function CommentCard({
   }
 
   return (
-    <div className={isReply ? 'ml-13 border-l border-black/10 pl-4 dark:border-white/10' : ''}>
+    <div className={isReply ? 'ml-7 border-l border-black/10 pl-3 sm:ml-13 sm:pl-4 dark:border-white/10' : ''}>
       <div className="flex items-start gap-3">
         {showAvatarImage && avatarSrc ? (
           <Image
@@ -202,14 +216,14 @@ function CommentCard({
         ) : (
           <AvatarFallback />
         )}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <p className="app-text-primary truncate font-semibold">{comment.displayName}</p>
+            <p className="app-text-primary truncate text-[15px] font-semibold">{comment.displayName}</p>
             {nicknameLabel ? (
-              <p className="app-text-secondary truncate text-xs">{nicknameLabel}</p>
+              <p className="app-text-muted truncate text-[11px]">{nicknameLabel}</p>
             ) : null}
-            <p className="app-text-secondary text-xs">{formatCommentTimestamp(comment.createdAt)}</p>
-            {isEdited ? <p className="app-text-muted text-xs">изменено</p> : null}
+            <p className="app-text-muted text-[11px]">{formatCommentTimestamp(comment.createdAt)}</p>
+            {isEdited ? <p className="app-text-muted text-[11px]">изменено</p> : null}
           </div>
 
           {isEditComposerOpen ? (
@@ -226,7 +240,7 @@ function CommentCard({
             />
           ) : (
             <p
-              className={`mt-1 break-words whitespace-pre-wrap text-sm leading-6 ${
+              className={`mt-1.5 break-words whitespace-pre-wrap text-[15px] leading-6 ${
                 isDeleted ? 'app-text-muted italic' : 'app-text-primary'
               }`}
             >
@@ -235,12 +249,12 @@ function CommentCard({
           )}
 
           {!isDeleted && !isEditComposerOpen ? (
-            <div className="mt-2 flex flex-wrap items-center gap-3">
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               {!isReply && onStartReply ? (
                 <button
                   type="button"
                   onClick={onStartReply}
-                  className="app-text-muted text-xs font-medium"
+                  className="app-text-muted text-[11px] font-medium transition-opacity hover:opacity-80"
                 >
                   Ответить
                 </button>
@@ -249,7 +263,7 @@ function CommentCard({
                 <button
                   type="button"
                   onClick={onStartEdit}
-                  className="app-text-muted text-xs font-medium"
+                  className="app-text-muted text-[11px] font-medium transition-opacity hover:opacity-80"
                 >
                   Редактировать
                 </button>
@@ -258,7 +272,7 @@ function CommentCard({
                 <button
                   type="button"
                   onClick={() => void handleDeleteClick()}
-                  className="text-xs font-medium text-red-600"
+                  className="text-[11px] font-medium text-red-500 transition-opacity hover:opacity-85 dark:text-red-400"
                 >
                   Удалить
                 </button>
@@ -393,9 +407,9 @@ export default function RunCommentThreadList({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {threads.map((thread) => (
-        <div key={thread.id} className="space-y-3">
+        <div key={thread.id} className="space-y-4">
           <CommentCard
             comment={thread}
             currentUserId={currentUserId}
@@ -423,7 +437,7 @@ export default function RunCommentThreadList({
           />
 
           {thread.replies.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {thread.replies.map((reply) => (
                 <CommentCard
                   key={reply.id}
