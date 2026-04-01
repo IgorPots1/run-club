@@ -11,7 +11,7 @@ import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import XpGainToast from '@/components/XpGainToast'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
-import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
+import { getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import {
   getPushSubscriptionState,
@@ -194,14 +194,6 @@ function ProfilePageContent() {
         nickname: '',
         avatar_url: null,
         total_xp: 0,
-      }
-
-      try {
-        await ensureProfileExists(currentUser)
-      } catch {
-        if (isMounted) {
-          setPageError('Не удалось загрузить профиль')
-        }
       }
 
       const [
@@ -680,7 +672,7 @@ function ProfilePageContent() {
 
     try {
       const response = await fetch('/api/strava/sync', {
-        method: 'GET',
+        method: 'POST',
         cache: 'no-store',
         credentials: 'include',
       })

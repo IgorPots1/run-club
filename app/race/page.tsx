@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { getBootstrapUser } from '@/lib/auth'
-import { ensureProfileExists } from '@/lib/profiles'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import type { User } from '@supabase/supabase-js'
 
@@ -101,10 +100,6 @@ export default function RacePage() {
 
         const nextUser = await getBootstrapUser()
         setUser(nextUser)
-
-        if (nextUser) {
-          void ensureProfileExists(nextUser)
-        }
 
         if (!nextUser) {
           router.replace('/login')

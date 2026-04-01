@@ -9,7 +9,7 @@ import { getTotalUnreadCount, markThreadAsRead } from '@/lib/chat/reads'
 import { getChatThreadById } from '@/lib/chat/threads'
 import { COACH_USER_ID } from '@/lib/constants'
 import { loadThreadMuteState, toggleThreadMute } from '@/lib/notifications/toggleThreadMute'
-import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
+import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
 type ProfileRow = {
@@ -76,7 +76,6 @@ export default function MessageThreadPage() {
         }
 
         setCurrentUserId(user.id)
-        void ensureProfileExists(user)
 
         console.log('[thread-open-debug] getChatThreadById:before', {
           threadId,

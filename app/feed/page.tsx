@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { getBootstrapUser } from '@/lib/auth'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
-import { ensureProfileExists } from '@/lib/profiles'
 
 export default function FeedPage() {
   const [loading, setLoading] = useState(true)
@@ -18,10 +17,6 @@ export default function FeedPage() {
 
         const user = await getBootstrapUser()
         setCurrentUserId(user?.id ?? null)
-
-        if (user) {
-          void ensureProfileExists(user)
-        }
       } finally {
         if (isMounted) {
           setLoading(false)

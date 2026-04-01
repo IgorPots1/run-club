@@ -26,7 +26,7 @@ import {
   type StudentProfile,
 } from '@/lib/chat/threads'
 import { prefetchRecentChatMessages } from '@/lib/chat'
-import { ensureProfileExists, getProfileDisplayName } from '@/lib/profiles'
+import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
 const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
@@ -302,7 +302,6 @@ export default function MessagesPage() {
         }
 
         setCurrentUserId(user.id)
-        void ensureProfileExists(user)
 
         const [clubThread, unreadCounts] = await Promise.all([
           getClubThread(),

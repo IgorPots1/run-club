@@ -18,7 +18,6 @@ import {
 } from '@/lib/activity'
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { ensureProfileExists } from '@/lib/profiles'
 import { deleteRun } from '@/lib/runs'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
@@ -225,10 +224,6 @@ export default function ActivityPage() {
 
         const nextUser = await getBootstrapUser()
         setUser(nextUser)
-
-        if (nextUser) {
-          void ensureProfileExists(nextUser)
-        }
 
         if (!nextUser) {
           router.replace('/login')

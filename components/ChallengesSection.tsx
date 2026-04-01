@@ -4,7 +4,6 @@ import { CheckCircle2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
-import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 import { loadCompletedChallenges } from '@/lib/user-challenges'
 import {
@@ -94,8 +93,6 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
           router.replace('/login')
           return
         }
-
-        void ensureProfileExists(user)
 
         const [
           { data: challengesData, error: challengesError },

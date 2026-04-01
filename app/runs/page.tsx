@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import XpGainToast from '@/components/XpGainToast'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { ensureProfileExists } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { createRun, deleteRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
@@ -549,10 +548,6 @@ export default function RunsPage() {
 
         const nextUser = await getBootstrapUser()
         setUser(nextUser)
-
-        if (nextUser) {
-          void ensureProfileExists(nextUser)
-        }
 
         if (!nextUser) {
           router.replace('/login')

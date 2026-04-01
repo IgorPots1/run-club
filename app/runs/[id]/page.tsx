@@ -562,7 +562,6 @@ export default function RunDetailsPage() {
   const [authorLevel, setAuthorLevel] = useState(1)
   const [likesCount, setLikesCount] = useState(0)
   const [commentsError, setCommentsError] = useState('')
-  const [lapsBackfillAttemptedRunId, setLapsBackfillAttemptedRunId] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [isEditingDetails, setIsEditingDetails] = useState(false)
@@ -577,6 +576,9 @@ export default function RunDetailsPage() {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
+  const [refreshingStravaSupplemental, setRefreshingStravaSupplemental] = useState(false)
+  const [stravaSupplementalError, setStravaSupplementalError] = useState('')
+  const [stravaSupplementalInfoMessage, setStravaSupplementalInfoMessage] = useState('')
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const handleAuthRequired = useMemo(
     () => () => {
@@ -950,6 +952,20 @@ export default function RunDetailsPage() {
   }, [saveDetailsInfoMessage])
 
   useEffect(() => {
+    if (!stravaSupplementalInfoMessage) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setStravaSupplementalInfoMessage('')
+    }, 3200)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [stravaSupplementalInfoMessage])
+
+  useEffect(() => {
     let isMounted = true
 
     if (!user || !run || user.id !== run.user_id) {
@@ -986,47 +1002,6 @@ export default function RunDetailsPage() {
       isMounted = false
     }
   }, [run, user])
-
-  useEffect(() => {
-    if (loading || !user || !run) {
-      return
-    }
-
-    const shouldAttemptLapsBackfill =
-      run.id !== lapsBackfillAttemptedRunId &&
-      run.user_id === user.id &&
-      run.external_source === 'strava' &&
-      typeof run.external_id === 'string' &&
-      run.external_id.trim().length > 0 &&
-      runLaps.length === 0
-
-    if (!shouldAttemptLapsBackfill) {
-      return
-    }
-
-    let cancelled = false
-    setLapsBackfillAttemptedRunId(runId)
-
-    async function backfillRunLaps() {
-      try {
-        const response = await fetch(`/api/runs/${runId}/strava-backfill`, {
-          method: 'POST',
-        })
-
-        if (!cancelled && response.ok) {
-          setReloadKey((currentValue) => currentValue + 1)
-        }
-      } catch {
-        // Keep the existing fallback breakdown UI when backfill fails.
-      }
-    }
-
-    void backfillRunLaps()
-
-    return () => {
-      cancelled = true
-    }
-  }, [lapsBackfillAttemptedRunId, loading, run, runId, runLaps.length, user])
 
   const commentsCount = useMemo(() => countVisibleRunComments(comments), [comments])
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
@@ -1124,6 +1099,13 @@ export default function RunDetailsPage() {
   )
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
   const isOwner = Boolean(user && run && user.id === run.user_id)
+  const canRefreshStravaSupplemental = Boolean(
+    isOwner &&
+    run?.external_source === 'strava' &&
+    typeof run?.external_id === 'string' &&
+    run.external_id.trim().length > 0
+  )
+  const isMissingOfficialLaps = canRefreshStravaSupplemental && runLaps.length === 0
   const normalizedEditedName = toNullableTrimmedText(editedName)
   const normalizedEditedDescription = toNullableTrimmedText(editedDescription)
   const normalizedEditedShoeId = editedShoeId.trim() || null
@@ -1217,6 +1199,49 @@ export default function RunDetailsPage() {
       setSaveDetailsError('Не удалось сохранить изменения')
     } finally {
       setSavingDetails(false)
+    }
+  }
+
+  async function handleRefreshStravaSupplemental() {
+    if (!runId || !canRefreshStravaSupplemental || refreshingStravaSupplemental) {
+      return
+    }
+
+    setRefreshingStravaSupplemental(true)
+    setStravaSupplementalError('')
+    setStravaSupplementalInfoMessage('')
+
+    try {
+      const response = await fetch(`/api/runs/${runId}/strava-backfill`, {
+        method: 'POST',
+      })
+
+      if (response.status === 401) {
+        router.replace('/login')
+        return
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | { ok: true; synced?: boolean }
+        | { ok: false; error?: string }
+        | null
+
+      if (!response.ok || !payload?.ok) {
+        setStravaSupplementalError('Не удалось обновить данные из Strava')
+        return
+      }
+
+      if (payload.synced) {
+        setStravaSupplementalInfoMessage('Данные из Strava обновлены')
+        setReloadKey((currentValue) => currentValue + 1)
+        return
+      }
+
+      setStravaSupplementalInfoMessage('Дополнительные данные Strava пока недоступны')
+    } catch {
+      setStravaSupplementalError('Не удалось обновить данные из Strava')
+    } finally {
+      setRefreshingStravaSupplemental(false)
     }
   }
 
@@ -1562,6 +1587,26 @@ export default function RunDetailsPage() {
             <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
           </div>
         </div>
+
+        {isMissingOfficialLaps ? (
+          <div className="mt-4 rounded-xl border px-4 py-3">
+            <p className="app-text-secondary text-sm">
+              Разбивка показана по расчетным данным. Официальные сплиты из Strava можно загрузить вручную.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void handleRefreshStravaSupplemental()
+              }}
+              disabled={refreshingStravaSupplemental}
+              className="app-button-secondary mt-3 min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshingStravaSupplemental ? 'Обновляем из Strava...' : 'Обновить из Strava'}
+            </button>
+            {stravaSupplementalError ? <p className="mt-2 text-sm text-red-600">{stravaSupplementalError}</p> : null}
+            {stravaSupplementalInfoMessage ? <p className="mt-2 text-sm text-green-700">{stravaSupplementalInfoMessage}</p> : null}
+          </div>
+        ) : null}
       </section>
 
       {shouldRenderHeartRateChart ? (

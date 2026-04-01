@@ -39,7 +39,7 @@ function buildDebugDiagnostics(source: {
   }
 }
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   const url = new URL(request.url)
   const debugMode = url.searchParams.get('debug') === '1'
   const debugRunId = url.searchParams.get('debugRunId')?.trim() || null
