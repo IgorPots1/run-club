@@ -1,4 +1,4 @@
-import AvatarEditor from '@/components/avatar/AvatarEditor'
+import AvatarPresetGrid from '@/components/avatar/AvatarPresetGrid'
 
 export default function AvatarLabPage() {
   return (
@@ -12,12 +12,12 @@ export default function AvatarLabPage() {
             Avatar Lab
           </h1>
           <p className="text-sm text-slate-600 sm:text-base">
-            A local-only layered avatar editor for quick experiments. Swap parts, preview the stack,
-            and iterate without touching the backend.
+            A local-only preset avatar sandbox for quick experiments. Pick a ready-made runner and
+            preview it instantly without touching the backend.
           </p>
         </div>
 
-        <AvatarEditor />
+        <AvatarPresetGrid />
       </div>
     </main>
   )
