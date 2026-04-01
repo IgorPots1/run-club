@@ -1,4 +1,6 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
+import { createAppEvent } from '@/lib/events/createAppEvent'
+import { buildRunLikeCreatedEvent } from '@/lib/events/returnTriggerEvents'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -12,12 +14,60 @@ type RunLikeMutationRow = {
   xp_awarded?: number | null
 }
 
+type RunEventTargetRow = {
+  id: string
+  user_id: string
+  title: string | null
+  name: string | null
+}
+
 function isDuplicateRunLikeError(error: { code?: string | null; message?: string | null }) {
   return (
     error.code === '23505' ||
     Boolean(error.message?.includes('duplicate key value')) ||
     Boolean(error.message?.includes('run_likes_pkey'))
   )
+}
+
+async function emitRunLikeCreatedEvent(input: {
+  actorUserId: string
+  runId: string
+  xpAwarded: number
+}) {
+  try {
+    const supabaseAdmin = createSupabaseAdminClient()
+    const { data, error } = await supabaseAdmin
+      .from('runs')
+      .select('id, user_id, title, name')
+      .eq('id', input.runId)
+      .maybeSingle()
+
+    if (error) {
+      throw error
+    }
+
+    const run = (data as RunEventTargetRow | null) ?? null
+
+    if (!run || !run.user_id || run.user_id === input.actorUserId) {
+      return
+    }
+
+    await createAppEvent(
+      buildRunLikeCreatedEvent({
+        actorUserId: input.actorUserId,
+        targetUserId: run.user_id,
+        runId: run.id,
+        runTitle: run.title ?? run.name,
+        xpAwarded: input.xpAwarded,
+      })
+    )
+  } catch (error) {
+    console.error('Failed to create run like app event', {
+      runId: input.runId,
+      actorUserId: input.actorUserId,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+  }
 }
 
 export async function POST(request: Request) {
@@ -116,6 +166,14 @@ export async function POST(request: Request) {
         breakdown: [],
       })
     }
+
+    after(async () => {
+      await emitRunLikeCreatedEvent({
+        actorUserId: user.id,
+        runId,
+        xpAwarded: xpGained,
+      })
+    })
   }
 
   return NextResponse.json({
