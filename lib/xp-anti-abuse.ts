@@ -14,17 +14,11 @@ type LoadDailyXpUsageOptions = {
   supabase?: ReturnType<typeof createSupabaseAdminClient>
 }
 
-type RunXpRow = {
-  xp: number | null
-}
-
-type ChallengeXpRow = {
-  challenges: {
-    xp_reward: number | null
-  } | {
-    xp_reward: number | null
-  }[] | null
-}
+type DailyXpUsageRpcResult = {
+  runXp?: number | null
+  challengeXp?: number | null
+  receivedLikesCount?: number | null
+} | null
 
 export function getUtcDayBounds(timestamp: string) {
   const date = new Date(timestamp)
@@ -71,58 +65,20 @@ export async function loadDailyXpUsage({
 }: LoadDailyXpUsageOptions) {
   const { startIso, endIso } = getUtcDayBounds(timestamp)
 
-  const [
-    { data: runRows, error: runsError },
-    { data: challengeRows, error: challengesError },
-    { count: receivedLikesCount, error: likesError },
-  ] = await Promise.all([
-    supabase
-      .from('runs')
-      .select('xp')
-      .eq('user_id', userId)
-      .gte('created_at', startIso)
-      .lt('created_at', endIso),
-    supabase
-      .from('user_challenges')
-      .select('challenges!inner(xp_reward)')
-      .eq('user_id', userId)
-      .gte('completed_at', startIso)
-      .lt('completed_at', endIso),
-    supabase
-      .from('run_likes')
-      .select('run_id, runs!inner(user_id)', { count: 'exact', head: true })
-      .eq('runs.user_id', userId)
-      .gte('created_at', startIso)
-      .lt('created_at', endIso),
-  ])
+  const { data, error } = await supabase.rpc('get_daily_xp_usage', {
+    p_user_id: userId,
+    p_start: startIso,
+    p_end: endIso,
+  })
 
-  if (runsError) {
-    throw runsError
+  if (error) {
+    throw error
   }
 
-  if (challengesError) {
-    throw challengesError
-  }
-
-  if (likesError) {
-    throw likesError
-  }
-
-  const runXp = ((runRows as RunXpRow[] | null) ?? []).reduce(
-    (sum, row) => sum + Math.max(0, Math.round(Number(row.xp ?? 0))),
-    0
-  )
-  const challengeXp = ((challengeRows as ChallengeXpRow[] | null) ?? []).reduce(
-    (sum, row) => {
-      const challengeValue = Array.isArray(row.challenges)
-        ? row.challenges[0]?.xp_reward
-        : row.challenges?.xp_reward
-
-      return sum + Math.max(0, Math.round(Number(challengeValue ?? 0)))
-    },
-    0
-  )
-  const normalizedReceivedLikesCount = Math.max(0, Number(receivedLikesCount ?? 0))
+  const dailyUsage = (data as DailyXpUsageRpcResult) ?? null
+  const runXp = Math.max(0, Math.round(Number(dailyUsage?.runXp ?? 0)))
+  const challengeXp = Math.max(0, Math.round(Number(dailyUsage?.challengeXp ?? 0)))
+  const normalizedReceivedLikesCount = Math.max(0, Math.round(Number(dailyUsage?.receivedLikesCount ?? 0)))
   const likeXp = Math.min(normalizedReceivedLikesCount, MAX_LIKES_WITH_XP_PER_DAY) * XP_PER_LIKE
   const uncappedTotalXp = runXp + challengeXp + likeXp
   const totalXp = Math.min(uncappedTotalXp, DAILY_XP_CAP)
