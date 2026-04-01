@@ -10,6 +10,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import {
+  applyRunCommentLikeState,
   applyRunCommentInsert,
   applyRunCommentUpdate,
   countVisibleRunComments,
@@ -18,9 +19,12 @@ import {
   loadRunCommentAuthorProfile,
   loadRunComments,
   resolveRunCommentRealtimeItem,
+  subscribeToRunCommentLikes,
   subscribeToRunComments,
+  toggleRunCommentLike,
   type RunCommentAuthorIdentity,
   type RunCommentItem,
+  type RunCommentLikeRealtimeRow,
   type RunCommentRealtimeRow,
   updateRunComment,
 } from '@/lib/run-comments'
@@ -109,6 +113,15 @@ function getRunCommentUpdateSignature(
   return `${comment.id}:${editedAt ?? ''}:${deletedAt ?? ''}`
 }
 
+function getRunCommentLikeEchoKey(
+  commentLike:
+    | Pick<RunCommentLikeRealtimeRow, 'comment_id' | 'user_id'>
+    | { commentId: string; userId: string }
+) {
+  const commentId = 'comment_id' in commentLike ? commentLike.comment_id : commentLike.commentId
+  return `${commentId}:${commentLike.userId}`
+}
+
 function resolveDurationSeconds(run: Pick<RunDiscussionRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
   if (Number.isFinite(run.moving_time_seconds) && (run.moving_time_seconds ?? 0) > 0) {
     return Math.round(run.moving_time_seconds ?? 0)
@@ -191,9 +204,12 @@ export default function RunDiscussionPage() {
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null)
+  const [pendingLikeCommentIds, setPendingLikeCommentIds] = useState<Record<string, boolean>>({})
 
   const commentsRef = useRef<RunCommentItem[]>([])
   const pendingLocalUpdateEchoesRef = useRef<Map<string, string>>(new Map())
+  const pendingLocalLikeInsertEchoesRef = useRef<Set<string>>(new Set())
+  const pendingLocalLikeDeleteEchoesRef = useRef<Set<string>>(new Set())
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -210,6 +226,9 @@ export default function RunDiscussionPage() {
 
   useEffect(() => {
     pendingLocalUpdateEchoesRef.current.clear()
+    pendingLocalLikeInsertEchoesRef.current.clear()
+    pendingLocalLikeDeleteEchoesRef.current.clear()
+    setPendingLikeCommentIds({})
   }, [runId])
 
   useEffect(() => {
@@ -273,7 +292,7 @@ export default function RunDiscussionPage() {
             avatarUrl: null,
           })),
           loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
-          loadRunComments(runId),
+          loadRunComments(runId, user?.id ?? null),
         ])
 
         if (!isMounted) {
@@ -302,7 +321,7 @@ export default function RunDiscussionPage() {
     return () => {
       isMounted = false
     }
-  }, [runId])
+  }, [runId, user?.id])
 
   useEffect(() => {
     if (!runId) {
@@ -336,6 +355,49 @@ export default function RunDiscussionPage() {
       },
     })
   }, [runId])
+
+  useEffect(() => {
+    if (!runId) {
+      return
+    }
+
+    return subscribeToRunCommentLikes(runId, {
+      onInsert: (likeRow) => {
+        const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
+        const echoKey = getRunCommentLikeEchoKey(likeRow)
+
+        if (isOwnLike && pendingLocalLikeInsertEchoesRef.current.has(echoKey)) {
+          pendingLocalLikeInsertEchoesRef.current.delete(echoKey)
+          return
+        }
+
+        setComments((prev) =>
+          applyRunCommentLikeState(prev, {
+            commentId: likeRow.comment_id,
+            delta: 1,
+            likedByMe: isOwnLike ? true : undefined,
+          })
+        )
+      },
+      onDelete: (likeRow) => {
+        const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
+        const echoKey = getRunCommentLikeEchoKey(likeRow)
+
+        if (isOwnLike && pendingLocalLikeDeleteEchoesRef.current.has(echoKey)) {
+          pendingLocalLikeDeleteEchoesRef.current.delete(echoKey)
+          return
+        }
+
+        setComments((prev) =>
+          applyRunCommentLikeState(prev, {
+            commentId: likeRow.comment_id,
+            delta: -1,
+            likedByMe: isOwnLike ? false : undefined,
+          })
+        )
+      },
+    })
+  }, [runId, user?.id])
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
     if (scrollContainerRef.current) {
@@ -460,6 +522,68 @@ export default function RunDiscussionPage() {
     )
     setComments((prev) => applyRunCommentUpdate(prev, deletedComment))
     setCommentsError('')
+  }
+
+  async function handleToggleLikeComment(commentId: string) {
+    if (!user) {
+      router.replace('/login')
+      return
+    }
+
+    if (pendingLikeCommentIds[commentId]) {
+      return
+    }
+
+    const existingComment = commentsRef.current.find((comment) => comment.id === commentId) ?? null
+
+    if (!existingComment || existingComment.deletedAt) {
+      return
+    }
+
+    const wasLiked = existingComment.likedByMe
+    const previousComments = commentsRef.current
+
+    setPendingLikeCommentIds((prev) => ({
+      ...prev,
+      [commentId]: true,
+    }))
+
+    const nextComments = applyRunCommentLikeState(previousComments, {
+      commentId,
+      delta: wasLiked ? -1 : 1,
+      likedByMe: !wasLiked,
+    })
+
+    commentsRef.current = nextComments
+    setComments(nextComments)
+
+    const echoKey = getRunCommentLikeEchoKey({
+      commentId,
+      userId: user.id,
+    })
+
+    try {
+      const { error } = await toggleRunCommentLike(commentId, wasLiked)
+
+      if (error) {
+        throw error
+      }
+
+      if (wasLiked) {
+        pendingLocalLikeDeleteEchoesRef.current.add(echoKey)
+      } else {
+        pendingLocalLikeInsertEchoesRef.current.add(echoKey)
+      }
+    } catch {
+      commentsRef.current = previousComments
+      setComments(previousComments)
+    } finally {
+      setPendingLikeCommentIds((prev) => {
+        const next = { ...prev }
+        delete next[commentId]
+        return next
+      })
+    }
   }
 
   const runTitle = run ? getRunTitle(run) : 'Обсуждение'
@@ -636,6 +760,8 @@ export default function RunDiscussionPage() {
           <RunCommentThreadList
             comments={comments}
             currentUserId={user?.id ?? null}
+            pendingLikeCommentIds={pendingLikeCommentIds}
+            onToggleLikeComment={handleToggleLikeComment}
             replyComposerMode="external"
             activeReplyTargetId={replyTarget?.id ?? null}
             onReplyTargetChange={handleSelectReplyTarget}

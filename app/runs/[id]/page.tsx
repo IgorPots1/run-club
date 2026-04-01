@@ -23,14 +23,18 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import {
+  applyRunCommentLikeState,
   applyRunCommentInsert,
   applyRunCommentUpdate,
   createRunComment,
   deleteRunComment,
   loadRunComments,
   resolveRunCommentRealtimeItem,
+  subscribeToRunCommentLikes,
   subscribeToRunComments,
+  toggleRunCommentLike,
   type RunCommentItem,
+  type RunCommentLikeRealtimeRow,
   updateRunComment,
 } from '@/lib/run-comments'
 import { updateRun } from '@/lib/runs'
@@ -543,6 +547,15 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
+function getRunCommentLikeEchoKey(
+  commentLike:
+    | Pick<RunCommentLikeRealtimeRow, 'comment_id' | 'user_id'>
+    | { commentId: string; userId: string }
+) {
+  const commentId = 'comment_id' in commentLike ? commentLike.comment_id : commentLike.commentId
+  return `${commentId}:${commentLike.userId}`
+}
+
 function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id'> | null | undefined) {
   return {
     name: run?.name ?? '',
@@ -568,6 +581,7 @@ export default function RunDetailsPage() {
   const [likesCount, setLikesCount] = useState(0)
   const [comments, setComments] = useState<RunCommentItem[]>([])
   const [commentsError, setCommentsError] = useState('')
+  const [pendingLikeCommentIds, setPendingLikeCommentIds] = useState<Record<string, boolean>>({})
   const [lapsBackfillAttemptedRunId, setLapsBackfillAttemptedRunId] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
@@ -585,6 +599,8 @@ export default function RunDetailsPage() {
   const [uploadPhotosError, setUploadPhotosError] = useState('')
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const commentsRef = useRef<RunCommentItem[]>([])
+  const pendingLocalLikeInsertEchoesRef = useRef<Set<string>>(new Set())
+  const pendingLocalLikeDeleteEchoesRef = useRef<Set<string>>(new Set())
 
   async function handleCommentSubmit(comment: string) {
     if (!run) {
@@ -645,6 +661,68 @@ export default function RunDetailsPage() {
 
     setComments((currentComments) => applyRunCommentUpdate(currentComments, deletedComment))
     setCommentsError('')
+  }
+
+  async function handleToggleLikeComment(commentId: string) {
+    if (!user) {
+      router.replace('/login')
+      return
+    }
+
+    if (pendingLikeCommentIds[commentId]) {
+      return
+    }
+
+    const existingComment = commentsRef.current.find((comment) => comment.id === commentId) ?? null
+
+    if (!existingComment || existingComment.deletedAt) {
+      return
+    }
+
+    const wasLiked = existingComment.likedByMe
+    const previousComments = commentsRef.current
+
+    setPendingLikeCommentIds((prev) => ({
+      ...prev,
+      [commentId]: true,
+    }))
+
+    const nextComments = applyRunCommentLikeState(previousComments, {
+      commentId,
+      delta: wasLiked ? -1 : 1,
+      likedByMe: !wasLiked,
+    })
+
+    commentsRef.current = nextComments
+    setComments(nextComments)
+
+    const echoKey = getRunCommentLikeEchoKey({
+      commentId,
+      userId: user.id,
+    })
+
+    try {
+      const { error } = await toggleRunCommentLike(commentId, wasLiked)
+
+      if (error) {
+        throw error
+      }
+
+      if (wasLiked) {
+        pendingLocalLikeDeleteEchoesRef.current.add(echoKey)
+      } else {
+        pendingLocalLikeInsertEchoesRef.current.add(echoKey)
+      }
+    } catch {
+      commentsRef.current = previousComments
+      setComments(previousComments)
+    } finally {
+      setPendingLikeCommentIds((prev) => {
+        const next = { ...prev }
+        delete next[commentId]
+        return next
+      })
+    }
   }
 
   function handleOpenPhotoPicker() {
@@ -749,6 +827,12 @@ export default function RunDetailsPage() {
   useEffect(() => {
     commentsRef.current = comments
   }, [comments])
+
+  useEffect(() => {
+    pendingLocalLikeInsertEchoesRef.current.clear()
+    pendingLocalLikeDeleteEchoesRef.current.clear()
+    setPendingLikeCommentIds({})
+  }, [runId])
 
   useEffect(() => {
     let isMounted = true
@@ -870,7 +954,7 @@ export default function RunDetailsPage() {
         let nextCommentsError = ''
 
         try {
-          runComments = await loadRunComments(runData.id)
+          runComments = await loadRunComments(runData.id, user?.id ?? null)
         } catch {
           nextCommentsError = 'Не удалось загрузить комментарии'
         }
@@ -951,6 +1035,49 @@ export default function RunDetailsPage() {
       },
     })
   }, [runId])
+
+  useEffect(() => {
+    if (!runId) {
+      return
+    }
+
+    return subscribeToRunCommentLikes(runId, {
+      onInsert: (likeRow) => {
+        const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
+        const echoKey = getRunCommentLikeEchoKey(likeRow)
+
+        if (isOwnLike && pendingLocalLikeInsertEchoesRef.current.has(echoKey)) {
+          pendingLocalLikeInsertEchoesRef.current.delete(echoKey)
+          return
+        }
+
+        setComments((currentComments) =>
+          applyRunCommentLikeState(currentComments, {
+            commentId: likeRow.comment_id,
+            delta: 1,
+            likedByMe: isOwnLike ? true : undefined,
+          })
+        )
+      },
+      onDelete: (likeRow) => {
+        const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
+        const echoKey = getRunCommentLikeEchoKey(likeRow)
+
+        if (isOwnLike && pendingLocalLikeDeleteEchoesRef.current.has(echoKey)) {
+          pendingLocalLikeDeleteEchoesRef.current.delete(echoKey)
+          return
+        }
+
+        setComments((currentComments) =>
+          applyRunCommentLikeState(currentComments, {
+            commentId: likeRow.comment_id,
+            delta: -1,
+            likedByMe: isOwnLike ? false : undefined,
+          })
+        )
+      },
+    })
+  }, [runId, user?.id])
 
   useEffect(() => {
     if (isEditingDetails) {
@@ -1800,7 +1927,9 @@ export default function RunDetailsPage() {
         comments={comments}
         currentUserId={user?.id ?? null}
         error={commentsError}
+        pendingLikeCommentIds={pendingLikeCommentIds}
         onSubmitComment={handleCommentSubmit}
+        onToggleLikeComment={handleToggleLikeComment}
         onReplyComment={handleReplySubmit}
         onEditComment={handleEditComment}
         onDeleteComment={handleDeleteComment}

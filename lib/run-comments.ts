@@ -21,9 +21,18 @@ type RunCommentSnapshotRow = RunCommentRow & {
   display_name: string | null
   nickname: string | null
   avatar_url: string | null
+  likes_count: number | null
+  liked_by_me: boolean | null
 }
 
 type RunCommentCountRow = Pick<RunCommentRow, 'run_id'>
+
+export type RunCommentLikeRealtimeRow = {
+  comment_id: string
+  run_id: string
+  user_id: string
+  created_at: string
+}
 
 export type RunCommentAuthorIdentity = {
   userId: string
@@ -44,6 +53,8 @@ export type RunCommentItem = {
   displayName: string
   nickname: string | null
   avatarUrl: string | null
+  likesCount: number
+  likedByMe: boolean
 }
 
 export type RunCommentThread = RunCommentItem & {
@@ -70,6 +81,11 @@ type SubscribeToRunCommentsHandlers = {
   onUpdate?: (comment: RunCommentRealtimeRow) => void
 }
 
+type SubscribeToRunCommentLikesHandlers = {
+  onInsert?: (like: RunCommentLikeRealtimeRow) => void
+  onDelete?: (like: RunCommentLikeRealtimeRow) => void
+}
+
 function compareRunComments(left: Pick<RunCommentItem, 'createdAt' | 'id'>, right: Pick<RunCommentItem, 'createdAt' | 'id'>) {
   const createdAtComparison = left.createdAt.localeCompare(right.createdAt)
 
@@ -93,6 +109,8 @@ function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunComm
     displayName: comment.display_name?.trim() || 'Бегун',
     nickname: comment.nickname?.trim() || null,
     avatarUrl: comment.avatar_url ?? null,
+    likesCount: Math.max(0, Math.round(Number(comment.likes_count ?? 0))),
+    likedByMe: comment.liked_by_me === true,
   }
 }
 
@@ -149,6 +167,8 @@ export function mergeRunCommentRealtimeRow(params: {
     displayName: params.existingComment?.displayName ?? 'Бегун',
     nickname: params.existingComment?.nickname ?? null,
     avatarUrl: params.existingComment?.avatarUrl ?? null,
+    likesCount: params.existingComment?.likesCount ?? 0,
+    likedByMe: params.existingComment?.likedByMe ?? false,
   }
 }
 
@@ -200,7 +220,60 @@ export async function deleteRunComment(commentId: string) {
     method: 'DELETE',
   })
 
-  return loadRunCommentSnapshot(deletedCommentRow.id, deletedCommentRow.run_id)
+  try {
+    return await loadRunCommentSnapshot(deletedCommentRow.id, deletedCommentRow.run_id)
+  } catch {
+    return {
+      id: deletedCommentRow.id,
+      runId: deletedCommentRow.run_id,
+      userId: deletedCommentRow.user_id,
+      parentId: deletedCommentRow.parent_id,
+      comment: deletedCommentRow.comment,
+      createdAt: deletedCommentRow.created_at,
+      editedAt: deletedCommentRow.edited_at,
+      deletedAt: deletedCommentRow.deleted_at,
+      displayName: 'Бегун',
+      nickname: null,
+      avatarUrl: null,
+      likesCount: 0,
+      likedByMe: false,
+    }
+  }
+}
+
+export async function toggleRunCommentLike(commentId: string, likedByMe: boolean) {
+  const response = await fetch('/api/run-comment-likes/toggle', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      commentId,
+      likedByMe,
+    }),
+  })
+
+  const payload = await response.json().catch(() => null) as
+    | {
+        ok?: boolean
+        error?: string
+      }
+    | null
+
+  if (!response.ok || !payload?.ok) {
+    return {
+      error: new Error(
+        payload && typeof payload.error === 'string'
+          ? payload.error
+          : 'run_comment_like_toggle_failed'
+      ),
+    }
+  }
+
+  return {
+    error: null,
+  }
 }
 
 export function applyRunCommentInsert(existingComments: RunCommentItem[], incomingComment: RunCommentItem) {
@@ -225,6 +298,27 @@ export function applyRunCommentUpdate(existingComments: RunCommentItem[], incomi
   return existingComments
     .map((comment, index) => (index === existingIndex ? incomingComment : comment))
     .sort(compareRunComments)
+}
+
+export function applyRunCommentLikeState(
+  existingComments: RunCommentItem[],
+  params: {
+    commentId: string
+    delta: number
+    likedByMe?: boolean
+  }
+) {
+  return existingComments.map((comment) => {
+    if (comment.id !== params.commentId) {
+      return comment
+    }
+
+    return {
+      ...comment,
+      likesCount: Math.max(0, comment.likesCount + params.delta),
+      likedByMe: typeof params.likedByMe === 'boolean' ? params.likedByMe : comment.likedByMe,
+    }
+  })
 }
 
 export function buildRunCommentThreads(comments: RunCommentItem[]) {
@@ -342,6 +436,47 @@ export async function loadRunComments(runId: string, viewerUserId: string | null
   return ((comments as RunCommentSnapshotRow[] | null) ?? [])
     .map(mapRunCommentSnapshotRowToItem)
     .sort(compareRunComments)
+}
+
+export function subscribeToRunCommentLikes(
+  runId: string,
+  handlers: SubscribeToRunCommentLikesHandlers
+) {
+  if (!runId.trim()) {
+    return () => {}
+  }
+
+  const channel = supabase
+    .channel(`run-comment-likes-${runId}-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'run_comment_likes',
+        filter: `run_id=eq.${runId}`,
+      },
+      (payload) => {
+        handlers.onInsert?.(payload.new as RunCommentLikeRealtimeRow)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'run_comment_likes',
+        filter: `run_id=eq.${runId}`,
+      },
+      (payload) => {
+        handlers.onDelete?.(payload.old as RunCommentLikeRealtimeRow)
+      }
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
+  }
 }
 
 export function subscribeToRunComments(

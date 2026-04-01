@@ -9,7 +9,9 @@ type RunCommentsSectionProps = {
   currentUserId?: string | null
   loading?: boolean
   error?: string
+  pendingLikeCommentIds?: Record<string, boolean>
   onSubmitComment?: (comment: string) => Promise<void>
+  onToggleLikeComment?: (commentId: string) => void
   onReplyComment?: (parentId: string, comment: string) => Promise<void>
   onEditComment?: (commentId: string, comment: string) => Promise<void>
   onDeleteComment?: (commentId: string) => Promise<void>
@@ -20,7 +22,9 @@ export default function RunCommentsSection({
   currentUserId = null,
   loading = false,
   error = '',
+  pendingLikeCommentIds = {},
   onSubmitComment,
+  onToggleLikeComment,
   onReplyComment,
   onEditComment,
   onDeleteComment,
@@ -112,6 +116,8 @@ export default function RunCommentsSection({
           <RunCommentThreadList
             comments={comments}
             currentUserId={currentUserId}
+            pendingLikeCommentIds={pendingLikeCommentIds}
+            onToggleLikeComment={onToggleLikeComment}
             onReplyComment={onReplyComment}
             onEditComment={onEditComment}
             onDeleteComment={onDeleteComment}

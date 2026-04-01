@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { Heart, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   buildRunCommentThreads,
@@ -13,7 +14,9 @@ type RunCommentThreadListProps = {
   currentUserId?: string | null
   replyComposerMode?: 'inline' | 'external'
   activeReplyTargetId?: string | null
+  pendingLikeCommentIds?: Record<string, boolean>
   onReplyTargetChange?: (comment: RunCommentItem | null) => void
+  onToggleLikeComment?: (commentId: string) => void
   onReplyComment?: (parentId: string, comment: string) => Promise<void>
   onEditComment?: (commentId: string, comment: string) => Promise<void>
   onDeleteComment?: (commentId: string) => Promise<void>
@@ -150,6 +153,7 @@ type CommentCardProps = {
   currentUserId?: string | null
   isReply?: boolean
   isReplyTargetActive?: boolean
+  isLikePending?: boolean
   isReplyComposerOpen?: boolean
   isEditComposerOpen?: boolean
   replyDraft: string
@@ -164,6 +168,7 @@ type CommentCardProps = {
   onStartEdit?: () => void
   onCancelEdit: () => void
   onSubmitEdit: () => Promise<void>
+  onToggleLike?: () => void
   onDelete?: () => Promise<void>
 }
 
@@ -172,6 +177,7 @@ function CommentCard({
   currentUserId = null,
   isReply = false,
   isReplyTargetActive = false,
+  isLikePending = false,
   isReplyComposerOpen = false,
   isEditComposerOpen = false,
   replyDraft,
@@ -186,6 +192,7 @@ function CommentCard({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
+  onToggleLike,
   onDelete,
 }: CommentCardProps) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
@@ -259,6 +266,28 @@ function CommentCard({
 
           {!isDeleted && !isEditComposerOpen ? (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+              {onToggleLike ? (
+                <button
+                  type="button"
+                  onClick={onToggleLike}
+                  disabled={isLikePending}
+                  className={`inline-flex items-center gap-1 font-medium transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    comment.likedByMe ? 'app-text-primary opacity-95' : 'app-text-muted opacity-85'
+                  }`}
+                  aria-label={comment.likedByMe ? 'Убрать лайк с комментария' : 'Поставить лайк комментарию'}
+                >
+                  {isLikePending ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={1.9} />
+                  ) : (
+                    <Heart
+                      className="h-3.5 w-3.5"
+                      strokeWidth={1.9}
+                      fill={comment.likedByMe ? 'currentColor' : 'none'}
+                    />
+                  )}
+                  <span>{comment.likesCount}</span>
+                </button>
+              ) : null}
               {!isReply && onStartReply ? (
                 <button
                   type="button"
@@ -315,7 +344,9 @@ export default function RunCommentThreadList({
   currentUserId = null,
   replyComposerMode = 'inline',
   activeReplyTargetId = null,
+  pendingLikeCommentIds = {},
   onReplyTargetChange,
+  onToggleLikeComment,
   onReplyComment,
   onEditComment,
   onDeleteComment,
@@ -441,6 +472,7 @@ export default function RunCommentThreadList({
             comment={thread}
             currentUserId={currentUserId}
             isReplyTargetActive={replyComposerMode === 'external' && activeReplyTargetId === thread.id}
+            isLikePending={pendingLikeCommentIds[thread.id] === true}
             isReplyComposerOpen={replyComposerMode === 'inline' && activeReplyParentId === thread.id}
             isEditComposerOpen={activeEditingCommentId === thread.id}
             replyDraft={replyDraft}
@@ -461,6 +493,7 @@ export default function RunCommentThreadList({
             onStartEdit={!thread.deletedAt ? () => startEdit(thread) : undefined}
             onCancelEdit={cancelEdit}
             onSubmitEdit={() => submitEdit(thread.id)}
+            onToggleLike={onToggleLikeComment && !thread.deletedAt ? () => onToggleLikeComment(thread.id) : undefined}
             onDelete={onDeleteComment && !thread.deletedAt ? () => handleDelete(thread.id) : undefined}
           />
 
@@ -472,6 +505,7 @@ export default function RunCommentThreadList({
                   comment={reply}
                   currentUserId={currentUserId}
                   isReply
+                  isLikePending={pendingLikeCommentIds[reply.id] === true}
                   isEditComposerOpen={activeEditingCommentId === reply.id}
                   replyDraft=""
                   replyError=""
@@ -487,6 +521,7 @@ export default function RunCommentThreadList({
                   onStartEdit={!reply.deletedAt ? () => startEdit(reply) : undefined}
                   onCancelEdit={cancelEdit}
                   onSubmitEdit={() => submitEdit(reply.id)}
+                  onToggleLike={onToggleLikeComment && !reply.deletedAt ? () => onToggleLikeComment(reply.id) : undefined}
                   onDelete={onDeleteComment && !reply.deletedAt ? () => handleDelete(reply.id) : undefined}
                 />
               ))}
