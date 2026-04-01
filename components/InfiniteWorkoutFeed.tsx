@@ -8,6 +8,7 @@ import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
 import {
+  loadRunCommentCountsForRunIds,
   subscribeToRunComments,
   type RunCommentRealtimeRow,
 } from '@/lib/run-comments'
@@ -62,6 +63,8 @@ export default function InfiniteWorkoutFeed({
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
   const likeRequestVersionByRunIdRef = useRef<Record<string, number>>({})
+  const commentUpdateSignatureByCommentIdRef = useRef<Record<string, string>>({})
+  const commentCountRefreshPromiseByRunIdRef = useRef<Record<string, Promise<void> | null>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
 
@@ -84,13 +87,42 @@ export default function InfiniteWorkoutFeed({
     setItems(nextItems)
   }, [])
 
-  const mergeRealtimeComment = useCallback((commentRow: RunCommentRealtimeRow) => {
+  const mergeRealtimeCommentInsert = useCallback((commentRow: RunCommentRealtimeRow) => {
     const runId = commentRow.run_id
 
     updateRunItem(runId, (item) => ({
       ...item,
       commentsCount: Math.max(0, item.commentsCount + 1),
     }))
+  }, [updateRunItem])
+
+  const refreshRunCommentsCount = useCallback(async (runId: string) => {
+    if (!runId) {
+      return
+    }
+
+    const existingPromise = commentCountRefreshPromiseByRunIdRef.current[runId]
+
+    if (existingPromise) {
+      return existingPromise
+    }
+
+    const refreshPromise = loadRunCommentCountsForRunIds([runId])
+      .then((countsByRunId) => {
+        updateRunItem(runId, (item) => ({
+          ...item,
+          commentsCount: Math.max(0, countsByRunId[runId] ?? 0),
+        }))
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (commentCountRefreshPromiseByRunIdRef.current[runId] === refreshPromise) {
+          commentCountRefreshPromiseByRunIdRef.current[runId] = null
+        }
+      })
+
+    commentCountRefreshPromiseByRunIdRef.current[runId] = refreshPromise
+    return refreshPromise
   }, [updateRunItem])
 
   const loadFirstPage = useCallback(async () => {
@@ -170,6 +202,8 @@ export default function InfiniteWorkoutFeed({
 
     firstPageRequestKeyRef.current = feedQueryKey
     firstPageRequestPromiseRef.current = null
+    commentUpdateSignatureByCommentIdRef.current = {}
+    commentCountRefreshPromiseByRunIdRef.current = {}
     setItems([])
     setHasMore(true)
     setNextOffset(0)
@@ -241,7 +275,21 @@ export default function InfiniteWorkoutFeed({
     const unsubscribers = runIds.map((runId) =>
       subscribeToRunComments(runId, {
         onInsert: (commentRow) => {
-          void mergeRealtimeComment(commentRow)
+          void mergeRealtimeCommentInsert(commentRow)
+        },
+        onUpdate: (commentRow) => {
+          if (!commentRow.deleted_at) {
+            return
+          }
+
+          const updateSignature = `${commentRow.id}:${commentRow.deleted_at}`
+
+          if (commentUpdateSignatureByCommentIdRef.current[commentRow.id] === updateSignature) {
+            return
+          }
+
+          commentUpdateSignatureByCommentIdRef.current[commentRow.id] = updateSignature
+          void refreshRunCommentsCount(runId)
         },
       })
     )
@@ -249,7 +297,7 @@ export default function InfiniteWorkoutFeed({
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe())
     }
-  }, [mergeRealtimeComment, subscribedRunIdsKey])
+  }, [mergeRealtimeCommentInsert, refreshRunCommentsCount, subscribedRunIdsKey])
 
   useEffect(() => {
     if (!xpToast) {
