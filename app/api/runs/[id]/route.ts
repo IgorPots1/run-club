@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { removeRunFromShoe, updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -257,6 +258,11 @@ export async function DELETE(
       { status: 500 }
     )
   }
+
+  await refreshProfileTotalXp(user.id, {
+    supabase: supabaseAdmin,
+    context: 'run_delete',
+  })
 
   return NextResponse.json({
     ok: true,

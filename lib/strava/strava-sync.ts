@@ -1812,8 +1812,9 @@ export async function importStravaActivityForUser(
     distanceKm: payload.distance_km,
     supabase,
   })
+  const recalculatedXp = runXp.xp
 
-  payload.xp = runXp.xp
+  payload.xp = recalculatedXp
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
     .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, name_manually_edited, description_manually_edited')
@@ -2143,7 +2144,7 @@ export async function importStravaActivityForUser(
     achievement_count: payload.achievement_count,
     strava_synced_at: payload.strava_synced_at,
     created_at: payload.created_at,
-    xp: Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0))),
+    xp: recalculatedXp,
   }
 
   if (!normalizedExistingRun.name_manually_edited) {
