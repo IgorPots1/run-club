@@ -19,7 +19,7 @@ import {
 } from '@/lib/push/subscribeToPush'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
-import { getLevelFromXP } from '../../lib/xp'
+import { getLevelFromXP, getRankTitleFromLevel } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Profile = {
@@ -829,6 +829,7 @@ function ProfilePageContent() {
     'Бегун'
   )
   const currentLevel = getLevelFromXP(totalXp).level
+  const currentRankTitle = getRankTitleFromLevel(currentLevel)
   const hasProfileChanges = initialProfileForm !== null && (
     name.trim() !== initialProfileForm.name.trim() ||
     nickname.trim() !== initialProfileForm.nickname.trim()
@@ -959,6 +960,7 @@ function ProfilePageContent() {
           levelLabel={`Уровень ${currentLevel}`}
           className="w-full text-center"
         />
+        <p className="app-text-secondary text-sm">{currentRankTitle}</p>
       </div>
       <>
           <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
@@ -1207,7 +1209,8 @@ function ProfilePageContent() {
       {levelUpToastLevel != null ? (
         <div className="pointer-events-none fixed inset-x-4 top-20 z-50 flex justify-center">
           <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            {`Новый уровень ${levelUpToastLevel}`}
+            <p className="app-text-primary text-sm font-medium">{`Новый уровень ${levelUpToastLevel}`}</p>
+            <p className="app-text-secondary mt-1 text-xs">{getRankTitleFromLevel(levelUpToastLevel)}</p>
           </div>
         </div>
       ) : null}

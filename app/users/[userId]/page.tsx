@@ -10,7 +10,7 @@ import { buildActivityWindowStats, buildRollingWeeklyDistanceChart } from '@/lib
 import { formatDistanceKm, formatDurationCompact } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
-import { getLevelProgressFromXP } from '@/lib/xp'
+import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
 
 type PageProps = {
   params: Promise<{
@@ -128,6 +128,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
   const totalXp = Number(publicProfile?.total_xp ?? 0)
   const levelProgress = getLevelProgressFromXP(totalXp)
+  const rankTitle = getRankTitleFromLevel(levelProgress.level)
   const displayName = getProfileDisplayName(
     {
       name: publicProfile?.name ?? null,
@@ -172,6 +173,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               <p className="app-text-secondary mt-3 text-sm font-medium sm:text-[15px]">
                 Уровень {levelProgress.level}
               </p>
+              <p className="app-text-secondary mt-1 text-sm">{rankTitle}</p>
               <p className="app-text-primary mt-1 text-[2rem] font-bold leading-none tracking-tight sm:text-[2.35rem]">
                 {totalXp} XP
               </p>

@@ -7,6 +7,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 import { awardChallengeCompletion, loadCompletedChallenges } from '@/lib/user-challenges'
+import { getRankTitleFromLevel } from '@/lib/xp'
 import {
   getChallengeProgress,
   isAchievementChallenge,
@@ -197,7 +198,8 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
       {levelUpToastLevel != null ? (
         <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
           <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            {`Новый уровень ${levelUpToastLevel}`}
+            <p className="app-text-primary text-sm font-medium">{`Новый уровень ${levelUpToastLevel}`}</p>
+            <p className="app-text-secondary mt-1 text-xs">{getRankTitleFromLevel(levelUpToastLevel)}</p>
           </div>
         </div>
       ) : null}

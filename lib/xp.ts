@@ -12,6 +12,18 @@ export function getLevelFromXP(totalXP: number): { level: number; nextLevelXP: n
   return { level, nextLevelXP }
 }
 
+export function getRankTitleFromLevel(level: number): string {
+  if (level <= 2) return 'Новичок'
+  if (level <= 4) return 'Вкатился'
+  if (level <= 6) return 'Стабильный'
+  if (level <= 8) return 'В форме'
+  return 'Мотор клуба'
+}
+
+export function getRankTitleFromXP(totalXP: number): string {
+  return getRankTitleFromLevel(getLevelFromXP(totalXP).level)
+}
+
 export function getLevelProgressFromXP(totalXP: number): {
   level: number
   nextLevelXP: number | null

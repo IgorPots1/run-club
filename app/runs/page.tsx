@@ -10,6 +10,7 @@ import { ensureProfileExists } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { createRun, deleteRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
+import { getRankTitleFromLevel } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Run = {
@@ -1072,7 +1073,8 @@ export default function RunsPage() {
       {levelUpToastLevel != null ? (
         <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
           <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            {`Новый уровень ${levelUpToastLevel}`}
+            <p className="app-text-primary text-sm font-medium">{`Новый уровень ${levelUpToastLevel}`}</p>
+            <p className="app-text-secondary mt-1 text-xs">{getRankTitleFromLevel(levelUpToastLevel)}</p>
           </div>
         </div>
       ) : null}
