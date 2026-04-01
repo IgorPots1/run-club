@@ -1,105 +1,3 @@
-update public.user_challenges uc
-set xp_awarded = greatest(coalesce(ch.xp_reward, 0)::integer, 0)
-from public.challenges ch
-where ch.id = uc.challenge_id
-  and uc.xp_awarded is distinct from greatest(coalesce(ch.xp_reward, 0)::integer, 0);
-
-drop function if exists public.award_challenge_completion_badge(uuid, uuid);
-
-create or replace function public.award_challenge_completion_badge(
-  p_user_id uuid,
-  p_challenge_id uuid,
-  p_xp_awarded integer default 0
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_now timestamptz := timezone('utc', now());
-  v_completed_at timestamptz;
-  v_title text;
-  v_xp_reward integer := 0;
-  v_xp_awarded integer := greatest(coalesce(p_xp_awarded, 0), 0);
-  v_completion_inserted_count integer := 0;
-  v_badge_inserted_count integer := 0;
-begin
-  select
-    c.title,
-    coalesce(c.xp_reward, 0)::integer
-  into
-    v_title,
-    v_xp_reward
-  from public.challenges c
-  where c.id = p_challenge_id;
-
-  if not found then
-    raise exception 'Challenge % not found', p_challenge_id
-      using errcode = 'P0002';
-  end if;
-
-  insert into public.user_challenges (
-    user_id,
-    challenge_id,
-    completed_at,
-    xp_awarded
-  )
-  values (
-    p_user_id,
-    p_challenge_id,
-    v_now,
-    v_xp_awarded
-  )
-  on conflict (user_id, challenge_id) do nothing;
-
-  get diagnostics v_completion_inserted_count = row_count;
-
-  select uc.completed_at
-  into v_completed_at
-  from public.user_challenges uc
-  where uc.user_id = p_user_id
-    and uc.challenge_id = p_challenge_id;
-
-  insert into public.user_badge_awards (
-    user_id,
-    badge_code,
-    race_week_id,
-    source_type,
-    source_rank,
-    awarded_at,
-    meta
-  )
-  values (
-    p_user_id,
-    'challenge_completion',
-    null,
-    'challenge',
-    null,
-    coalesce(v_completed_at, v_now),
-    jsonb_build_object(
-      'challenge_id', p_challenge_id,
-      'title_snapshot', v_title,
-      'xp_reward', v_xp_reward,
-      'xp_awarded', v_xp_awarded
-    )
-  )
-  on conflict do nothing;
-
-  get diagnostics v_badge_inserted_count = row_count;
-
-  return jsonb_build_object(
-    'completion_created', v_completion_inserted_count > 0,
-    'badge_created', v_badge_inserted_count > 0,
-    'completed_at', coalesce(v_completed_at, v_now)
-  );
-end;
-$$;
-
-revoke all on function public.award_challenge_completion_badge(uuid, uuid, integer) from public;
-revoke all on function public.award_challenge_completion_badge(uuid, uuid, integer) from anon;
-revoke all on function public.award_challenge_completion_badge(uuid, uuid, integer) from authenticated;
-
 create or replace function public.recalculate_user_total_xp(p_user_id uuid)
 returns integer
 language sql
@@ -118,8 +16,10 @@ as $$
   daily_challenge_xp as (
     select
       (uc.completed_at at time zone 'utc')::date as xp_date,
-      coalesce(sum(coalesce(uc.xp_awarded, 0)), 0)::integer as total
+      coalesce(sum(greatest(coalesce(ch.xp_reward, 0)::integer, 0)), 0)::integer as total
     from public.user_challenges uc
+    join public.challenges ch
+      on ch.id = uc.challenge_id
     where uc.user_id = p_user_id
     group by (uc.completed_at at time zone 'utc')::date
   ),

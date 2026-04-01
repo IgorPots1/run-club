@@ -70,7 +70,6 @@ export async function POST(request: Request) {
   const { data, error: rpcError } = await supabaseAdmin.rpc('award_challenge_completion_badge', {
     p_user_id: user.id,
     p_challenge_id: challengeId,
-    p_xp_awarded: awardableXp,
   })
 
   if (rpcError) {

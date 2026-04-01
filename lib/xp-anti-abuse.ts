@@ -19,7 +19,11 @@ type RunXpRow = {
 }
 
 type ChallengeXpRow = {
-  xp_awarded: number | null
+  challenges: {
+    xp_reward: number | null
+  } | {
+    xp_reward: number | null
+  }[] | null
 }
 
 export function getUtcDayBounds(timestamp: string) {
@@ -80,7 +84,7 @@ export async function loadDailyXpUsage({
       .lt('created_at', endIso),
     supabase
       .from('user_challenges')
-      .select('xp_awarded')
+      .select('challenges!inner(xp_reward)')
       .eq('user_id', userId)
       .gte('completed_at', startIso)
       .lt('completed_at', endIso),
@@ -109,7 +113,13 @@ export async function loadDailyXpUsage({
     0
   )
   const challengeXp = ((challengeRows as ChallengeXpRow[] | null) ?? []).reduce(
-    (sum, row) => sum + Math.max(0, Math.round(Number(row.xp_awarded ?? 0))),
+    (sum, row) => {
+      const challengeValue = Array.isArray(row.challenges)
+        ? row.challenges[0]?.xp_reward
+        : row.challenges?.xp_reward
+
+      return sum + Math.max(0, Math.round(Number(challengeValue ?? 0)))
+    },
     0
   )
   const normalizedReceivedLikesCount = Math.max(0, Number(receivedLikesCount ?? 0))
