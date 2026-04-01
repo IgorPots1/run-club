@@ -1207,7 +1207,7 @@ function ProfilePageContent() {
       {levelUpToastLevel != null ? (
         <div className="pointer-events-none fixed inset-x-4 top-20 z-50 flex justify-center">
           <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            {`🔥 Новый уровень: ${levelUpToastLevel}`}
+            {`Новый уровень ${levelUpToastLevel}`}
           </div>
         </div>
       ) : null}
