@@ -1,36 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
-import {
-  DAILY_XP_CAP,
-  loadDailyXpUsage,
-  MAX_LIKES_WITH_XP_PER_DAY,
-  XP_PER_LIKE,
-} from '@/lib/xp-anti-abuse'
 
 type ToggleRunLikeRequestBody = {
   runId?: string | null
   likedByMe?: boolean | null
 }
 
-type RunOwnerRow = {
-  user_id: string
-}
-
 type RunLikeMutationRow = {
   created_at: string
-}
-
-function getAwardedLikeXp(receivedLikesCount: number) {
-  const normalizedCount = Math.max(0, Math.round(Number(receivedLikesCount)))
-  return Math.min(normalizedCount, MAX_LIKES_WITH_XP_PER_DAY) * XP_PER_LIKE
-}
-
-function getCappedDailyTotalXp(runXp: number, challengeXp: number, receivedLikesCount: number) {
-  const normalizedRunXp = Math.max(0, Math.round(Number(runXp)))
-  const normalizedChallengeXp = Math.max(0, Math.round(Number(challengeXp)))
-  const likeXp = getAwardedLikeXp(receivedLikesCount)
-  return Math.min(normalizedRunXp + normalizedChallengeXp + likeXp, DAILY_XP_CAP)
+  xp_awarded?: number | null
 }
 
 function isDuplicateRunLikeError(error: { code?: string | null; message?: string | null }) {
@@ -39,25 +18,6 @@ function isDuplicateRunLikeError(error: { code?: string | null; message?: string
     Boolean(error.message?.includes('duplicate key value')) ||
     Boolean(error.message?.includes('run_likes_pkey'))
   )
-}
-
-async function applyProfileTotalXpDelta(
-  userId: string,
-  xpDelta: number,
-  supabase = createSupabaseAdminClient()
-) {
-  if (xpDelta === 0) {
-    return
-  }
-
-  const { error } = await supabase.rpc('apply_profile_total_xp_delta', {
-    p_user_id: userId,
-    p_xp_delta: xpDelta,
-  })
-
-  if (error) {
-    throw error
-  }
 }
 
 export async function POST(request: Request) {
@@ -88,34 +48,6 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
-  const { data: runOwner, error: runOwnerError } = await supabaseAdmin
-    .from('runs')
-    .select('user_id')
-    .eq('id', runId)
-    .maybeSingle()
-
-  if (runOwnerError) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: runOwnerError.message,
-      },
-      { status: 500 }
-    )
-  }
-
-  const ownerUserId = (runOwner as RunOwnerRow | null)?.user_id ?? null
-
-  if (!ownerUserId) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'run_not_found',
-      },
-      { status: 404 }
-    )
-  }
-
   let xpGained = 0
   let xpRemoved = 0
 
@@ -125,7 +57,7 @@ export async function POST(request: Request) {
       .delete()
       .eq('run_id', runId)
       .eq('user_id', user.id)
-      .select('created_at')
+      .select('created_at, xp_awarded')
 
     if (deleteError) {
       return NextResponse.json(
@@ -138,6 +70,7 @@ export async function POST(request: Request) {
     }
 
     const deletedLike = ((deletedLikes as RunLikeMutationRow[] | null) ?? [])[0] ?? null
+    xpRemoved = Math.max(0, Math.round(Number(deletedLike?.xp_awarded ?? 0)))
 
     if (!deletedLike?.created_at) {
       return NextResponse.json({
@@ -147,30 +80,11 @@ export async function POST(request: Request) {
         breakdown: [],
       })
     }
-
-    const dailyXpUsage = await loadDailyXpUsage({
-      userId: ownerUserId,
-      timestamp: deletedLike.created_at,
-      supabase: supabaseAdmin,
-    })
-    const dailyXpBeforeRemoval = getCappedDailyTotalXp(
-      dailyXpUsage.runXp,
-      dailyXpUsage.challengeXp,
-      dailyXpUsage.receivedLikesCount + 1
-    )
-    const dailyXpAfterRemoval = getCappedDailyTotalXp(
-      dailyXpUsage.runXp,
-      dailyXpUsage.challengeXp,
-      dailyXpUsage.receivedLikesCount
-    )
-
-    xpRemoved = Math.max(0, dailyXpBeforeRemoval - dailyXpAfterRemoval)
-    await applyProfileTotalXpDelta(ownerUserId, -xpRemoved, supabaseAdmin)
   } else {
     const { data: insertedLikes, error: insertError } = await supabaseAdmin
       .from('run_likes')
       .insert({ run_id: runId, user_id: user.id })
-      .select('created_at')
+      .select('created_at, xp_awarded')
 
     if (insertError) {
       if (isDuplicateRunLikeError(insertError)) {
@@ -192,6 +106,7 @@ export async function POST(request: Request) {
     }
 
     const insertedLike = ((insertedLikes as RunLikeMutationRow[] | null) ?? [])[0] ?? null
+    xpGained = Math.max(0, Math.round(Number(insertedLike?.xp_awarded ?? 0)))
 
     if (!insertedLike?.created_at) {
       return NextResponse.json({
@@ -201,25 +116,6 @@ export async function POST(request: Request) {
         breakdown: [],
       })
     }
-
-    const dailyXpUsage = await loadDailyXpUsage({
-      userId: ownerUserId,
-      timestamp: insertedLike.created_at,
-      supabase: supabaseAdmin,
-    })
-    const dailyXpBeforeInsert = getCappedDailyTotalXp(
-      dailyXpUsage.runXp,
-      dailyXpUsage.challengeXp,
-      dailyXpUsage.receivedLikesCount - 1
-    )
-    const dailyXpAfterInsert = getCappedDailyTotalXp(
-      dailyXpUsage.runXp,
-      dailyXpUsage.challengeXp,
-      dailyXpUsage.receivedLikesCount
-    )
-
-    xpGained = Math.max(0, dailyXpAfterInsert - dailyXpBeforeInsert)
-    await applyProfileTotalXpDelta(ownerUserId, xpGained, supabaseAdmin)
   }
 
   return NextResponse.json({
