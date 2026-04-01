@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { applyDailyXpCap, loadDailyXpUsage } from '@/lib/xp-anti-abuse'
 
 type ChallengeCompletionRequestBody = {
   challengeId?: string
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+  const completedAt = new Date().toISOString()
   const { data: challengeRow, error: challengeError } = await supabaseAdmin
     .from('challenges')
     .select('xp_reward')
@@ -57,9 +59,18 @@ export async function POST(request: Request) {
     })
   }
 
+  const challengeXpReward = Math.max(0, Math.round(Number((challengeRow as ChallengeXpRow | null)?.xp_reward ?? 0)))
+  const dailyXpUsage = await loadDailyXpUsage({
+    userId: user.id,
+    timestamp: completedAt,
+    supabase: supabaseAdmin,
+  })
+  const { xpGained: awardableXp } = applyDailyXpCap(challengeXpReward, dailyXpUsage.totalXp)
+
   const { data, error: rpcError } = await supabaseAdmin.rpc('award_challenge_completion_badge', {
     p_user_id: user.id,
     p_challenge_id: challengeId,
+    p_xp_awarded: awardableXp,
   })
 
   if (rpcError) {
@@ -76,7 +87,7 @@ export async function POST(request: Request) {
 
   const payload = (data ?? {}) as ChallengeCompletionRpcResult
   const completionCreated = payload.completion_created !== false
-  const xpGained = completionCreated ? Number((challengeRow as ChallengeXpRow | null)?.xp_reward ?? 0) : 0
+  const xpGained = completionCreated ? awardableXp : 0
 
   const xpRefreshResult = await refreshProfileTotalXp(user.id, {
     supabase: supabaseAdmin,

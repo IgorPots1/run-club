@@ -5,6 +5,7 @@ type UserChallengeRow = {
   user_id: string
   challenge_id: string
   completed_at?: string | null
+  xp_awarded?: number | null
 }
 
 type ChallengeRewardRow = {
@@ -132,7 +133,7 @@ export async function loadChallengeXpByUserIds(userIds: string[]) {
 export async function loadCompletedChallenges(userId: string) {
   const { data, error } = await supabase
     .from('user_challenges')
-    .select('challenge_id, completed_at')
+    .select('challenge_id, completed_at, xp_awarded')
     .eq('user_id', userId)
 
   if (error) {
@@ -147,19 +148,6 @@ export async function loadCompletedChallenges(userId: string) {
   }
 
   const completedRows = (data as UserChallengeRow[] | null) ?? []
-  let challengeXpById: Record<string, number> = {}
-
-  try {
-    challengeXpById = await loadChallengeRewardsById(
-      Array.from(new Set(completedRows.map((item) => item.challenge_id)))
-    )
-  } catch (rewardError) {
-    console.error('[user_challenges] failed to load challenge reward mapping for completed challenges', {
-      userId,
-      error: rewardError,
-    })
-    return new Map<string, CompletedChallengeRecord>()
-  }
 
   return new Map(
     completedRows.map((item) => [
@@ -167,7 +155,7 @@ export async function loadCompletedChallenges(userId: string) {
       {
         challengeId: item.challenge_id,
         completedAt: item.completed_at ?? null,
-        xpAwarded: Number(challengeXpById[item.challenge_id] ?? 0),
+        xpAwarded: Number(item.xp_awarded ?? 0),
       },
     ])
   )

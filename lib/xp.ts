@@ -57,6 +57,40 @@ export function buildRunXpBreakdown({
   return breakdown
 }
 
+export function capXpBreakdownItems(breakdown: XpBreakdownItem[], maxTotalXp: number): XpBreakdownItem[] {
+  let remainingXp = Number.isFinite(maxTotalXp) ? Math.max(0, Math.round(maxTotalXp)) : 0
+
+  if (remainingXp <= 0) {
+    return []
+  }
+
+  const nextBreakdown: XpBreakdownItem[] = []
+
+  for (const item of breakdown) {
+    if (remainingXp <= 0) {
+      break
+    }
+
+    const normalizedValue = Number.isFinite(item.value) ? Math.max(0, Math.round(item.value)) : 0
+
+    if (normalizedValue <= 0) {
+      continue
+    }
+
+    const appliedValue = Math.min(normalizedValue, remainingXp)
+
+    if (appliedValue > 0) {
+      nextBreakdown.push({
+        label: item.label,
+        value: appliedValue,
+      })
+      remainingXp -= appliedValue
+    }
+  }
+
+  return nextBreakdown
+}
+
 export function formatXpBreakdownLabels(breakdown: XpBreakdownItem[]): string {
   return breakdown
     .map((item, index) => {

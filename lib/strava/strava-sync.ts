@@ -2611,9 +2611,9 @@ export async function syncStravaRuns(
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:activities_fetched', message: 'Fetched Strava activities list', data: { userId, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, firstFiveFetchedActivities: activities.slice(0, 5).map((activity) => ({ id: String(activity.id), type: activity.type ?? null })), targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
-  const runActivities = activities.filter(
-    (activity) => isValidStravaRun(activity) && isOnOrAfterInitialSyncCutoff(activity.start_date)
-  )
+  const runActivities = activities
+    .filter((activity) => isValidStravaRun(activity) && isOnOrAfterInitialSyncCutoff(activity.start_date))
+    .sort((left, right) => new Date(left.start_date).getTime() - new Date(right.start_date).getTime())
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H2', location: 'lib/strava/strava-sync.ts:syncStravaRuns:activities_filtered', message: 'Filtered Strava activities to valid runs', data: { userId, connectionId: connection.id, totalActivitiesFetched: activities.length, runActivitiesCount: runActivities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})

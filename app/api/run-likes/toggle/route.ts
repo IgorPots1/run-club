@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import {
+  applyDailyXpCap,
+  loadDailyXpUsage,
+  MAX_LIKES_WITH_XP_PER_DAY,
+  XP_PER_LIKE,
+} from '@/lib/xp-anti-abuse'
 
 type ToggleRunLikeRequestBody = {
   runId?: string | null
@@ -40,6 +46,7 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+  const likedAt = new Date().toISOString()
   const { data: runOwner, error: runOwnerError } = await supabaseAdmin
     .from('runs')
     .select('user_id')
@@ -66,6 +73,18 @@ export async function POST(request: Request) {
       },
       { status: 404 }
     )
+  }
+
+  let xpGained = 0
+
+  if (!likedByMe) {
+    const dailyXpUsage = await loadDailyXpUsage({
+      userId: ownerUserId,
+      timestamp: likedAt,
+      supabase: supabaseAdmin,
+    })
+    const rawLikeXp = dailyXpUsage.receivedLikesCount < MAX_LIKES_WITH_XP_PER_DAY ? XP_PER_LIKE : 0
+    xpGained = applyDailyXpCap(rawLikeXp, dailyXpUsage.totalXp).xpGained
   }
 
   const mutationResult = likedByMe
@@ -98,8 +117,6 @@ export async function POST(request: Request) {
     supabase: supabaseAdmin,
     context: likedByMe ? 'run_like_removed' : 'run_like_created',
   })
-
-  const xpGained = likedByMe ? 0 : 5
 
   return NextResponse.json({
     ok: true,
