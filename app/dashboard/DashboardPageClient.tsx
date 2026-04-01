@@ -519,19 +519,27 @@ export default function DashboardPageClient({
             <div className="app-text-secondary mt-4 space-y-3 text-sm">
               <p className="flex items-center gap-2">
                 <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Завершённая тренировка — 50 XP</span>
+                <span>За тренировки: базовый XP + бонус за дистанцию</span>
               </p>
               <p className="flex items-center gap-2">
                 <Route className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>1 км бега — 10 XP</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Heart className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Лайк за тренировку — 5 XP</span>
+                <span>За регулярность: бонус за стабильные тренировки в течение недели</span>
               </p>
               <p className="flex items-center gap-2">
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Челлендж — XP зависит от награды челленджа</span>
+                <span>За челленджи: XP за выполнение</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <Heart className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>За лайки: XP за реакции на твои тренировки, с дневным лимитом</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>За гонку недели: дополнительный бонус за участие и результат</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <Activity className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Есть ограничения против фарма: система учитывает только честную активность</span>
               </p>
             </div>
           </div>
