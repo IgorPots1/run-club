@@ -12,6 +12,7 @@ import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import {
   applyRunCommentInsert,
   applyRunCommentUpdate,
+  countVisibleRunComments,
   createRunComment,
   deleteRunComment,
   loadRunCommentAuthorProfile,
@@ -189,6 +190,7 @@ export default function RunDiscussionPage() {
   const [commentsError, setCommentsError] = useState('')
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null)
 
   const commentsRef = useRef<RunCommentItem[]>([])
   const pendingLocalUpdateEchoesRef = useRef<Map<string, string>>(new Map())
@@ -196,6 +198,11 @@ export default function RunDiscussionPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
+  const replyTarget = useMemo(
+    () => comments.find((comment) => comment.id === replyTargetId && !comment.parentId && !comment.deletedAt) ?? null,
+    [comments, replyTargetId]
+  )
+  const visibleCommentsCount = useMemo(() => countVisibleRunComments(comments), [comments])
 
   useEffect(() => {
     commentsRef.current = comments
@@ -204,6 +211,12 @@ export default function RunDiscussionPage() {
   useEffect(() => {
     pendingLocalUpdateEchoesRef.current.clear()
   }, [runId])
+
+  useEffect(() => {
+    if (replyTargetId && !replyTarget) {
+      setReplyTargetId(null)
+    }
+  }, [replyTarget, replyTargetId])
 
   useEffect(() => {
     let isMounted = true
@@ -379,16 +392,28 @@ export default function RunDiscussionPage() {
     try {
       const createdComment = await createRunComment(runId, {
         comment: trimmedDraft,
+        parentId: replyTarget?.id ?? null,
       })
 
       setComments((prev) => applyRunCommentInsert(prev, createdComment))
 
       setDraft('')
+      setReplyTargetId(null)
     } catch {
-      setSubmitError('Не удалось отправить комментарий')
+      setSubmitError(replyTarget ? 'Не удалось отправить ответ' : 'Не удалось отправить комментарий')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function handleSelectReplyTarget(comment: RunCommentItem | null) {
+    setReplyTargetId(comment?.id ?? null)
+    setSubmitError('')
+
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      scrollToBottom('smooth')
+    })
   }
 
   async function handleReplyComment(parentId: string, comment: string) {
@@ -519,6 +544,20 @@ export default function RunDiscussionPage() {
   )
   const discussionComposer = (
     <form onSubmit={handleSubmit}>
+      {replyTarget ? (
+        <div className="mb-2.5 flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-black/[0.02] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="app-text-secondary min-w-0 text-xs font-medium">
+            Ответ на <span className="app-text-primary">{replyTarget.displayName}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => handleSelectReplyTarget(null)}
+            className="app-text-muted shrink-0 text-xs font-medium transition-opacity hover:opacity-80"
+          >
+            Отмена
+          </button>
+        </div>
+      ) : null}
       <div className="flex items-end gap-2.5">
         <label htmlFor="discussion-comment" className="sr-only">Сообщение</label>
         <textarea
@@ -530,7 +569,7 @@ export default function RunDiscussionPage() {
             setDraft(event.target.value)
             setSubmitError('')
           }}
-          placeholder="Сообщение"
+          placeholder={replyTarget ? 'Напиши ответ' : 'Сообщение'}
           disabled={submitting}
           enterKeyHint="send"
           className="app-input max-h-36 min-h-12 w-full resize-none rounded-2xl border px-4 py-[0.875rem] text-base leading-6 [overflow-y:auto] sm:text-sm sm:leading-5"
@@ -588,7 +627,7 @@ export default function RunDiscussionPage() {
           <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
             <p className="text-sm text-red-600">{commentsError}</p>
           </div>
-        ) : comments.length === 0 ? (
+        ) : visibleCommentsCount === 0 ? (
           <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
             <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
             <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
@@ -597,6 +636,9 @@ export default function RunDiscussionPage() {
           <RunCommentThreadList
             comments={comments}
             currentUserId={user?.id ?? null}
+            replyComposerMode="external"
+            activeReplyTargetId={replyTarget?.id ?? null}
+            onReplyTargetChange={handleSelectReplyTarget}
             onReplyComment={handleReplyComment}
             onEditComment={handleEditComment}
             onDeleteComment={handleDeleteComment}

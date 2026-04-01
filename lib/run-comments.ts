@@ -322,8 +322,29 @@ export function buildRunCommentThreads(comments: RunCommentItem[]) {
   return threads
 }
 
+export function filterVisibleRunCommentThreads(threads: RunCommentThread[]) {
+  return threads.flatMap((thread) => {
+    const visibleReplies = thread.replies.filter((reply) => !reply.deletedAt)
+
+    if (thread.deletedAt && visibleReplies.length === 0) {
+      return []
+    }
+
+    return [
+      {
+        ...thread,
+        replies: visibleReplies,
+      },
+    ]
+  })
+}
+
 export function flattenRunCommentThreads(threads: RunCommentThread[]) {
   return threads.flatMap((thread) => [thread, ...thread.replies])
+}
+
+export function countVisibleRunComments(comments: RunCommentItem[]) {
+  return flattenRunCommentThreads(filterVisibleRunCommentThreads(buildRunCommentThreads(comments))).length
 }
 
 export async function loadRunCommentCountsForRunIds(runIds: string[]) {

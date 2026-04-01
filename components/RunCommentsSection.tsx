@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import RunCommentThreadList from '@/components/RunCommentThreadList'
-import type { RunCommentItem } from '@/lib/run-comments'
+import { countVisibleRunComments, type RunCommentItem } from '@/lib/run-comments'
 
 type RunCommentsSectionProps = {
   comments: RunCommentItem[]
@@ -29,6 +29,7 @@ export default function RunCommentsSection({
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const trimmedComment = comment.trim()
+  const visibleCommentsCount = countVisibleRunComments(comments)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -104,7 +105,7 @@ export default function RunCommentsSection({
         </div>
       ) : error ? (
         <p className="mt-4 text-sm text-red-600">{error}</p>
-      ) : comments.length === 0 ? (
+      ) : visibleCommentsCount === 0 ? (
         <p className="app-text-secondary mt-4 text-sm">Пока нет комментариев</p>
       ) : (
         <div className="mt-4">

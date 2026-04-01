@@ -2,11 +2,18 @@
 
 import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { buildRunCommentThreads, type RunCommentItem } from '@/lib/run-comments'
+import {
+  buildRunCommentThreads,
+  filterVisibleRunCommentThreads,
+  type RunCommentItem,
+} from '@/lib/run-comments'
 
 type RunCommentThreadListProps = {
   comments: RunCommentItem[]
   currentUserId?: string | null
+  replyComposerMode?: 'inline' | 'external'
+  activeReplyTargetId?: string | null
+  onReplyTargetChange?: (comment: RunCommentItem | null) => void
   onReplyComment?: (parentId: string, comment: string) => Promise<void>
   onEditComment?: (commentId: string, comment: string) => Promise<void>
   onDeleteComment?: (commentId: string) => Promise<void>
@@ -142,6 +149,7 @@ type CommentCardProps = {
   comment: RunCommentItem
   currentUserId?: string | null
   isReply?: boolean
+  isReplyTargetActive?: boolean
   isReplyComposerOpen?: boolean
   isEditComposerOpen?: boolean
   replyDraft: string
@@ -163,6 +171,7 @@ function CommentCard({
   comment,
   currentUserId = null,
   isReply = false,
+  isReplyTargetActive = false,
   isReplyComposerOpen = false,
   isEditComposerOpen = false,
   replyDraft,
@@ -218,12 +227,12 @@ function CommentCard({
         )}
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <p className="app-text-primary truncate text-[15px] font-semibold">{comment.displayName}</p>
+            <p className="app-text-primary truncate text-[15px] font-semibold leading-5">{comment.displayName}</p>
             {nicknameLabel ? (
-              <p className="app-text-muted truncate text-[11px]">{nicknameLabel}</p>
+              <p className="app-text-muted truncate text-[11px] opacity-80">{nicknameLabel}</p>
             ) : null}
-            <p className="app-text-muted text-[11px]">{formatCommentTimestamp(comment.createdAt)}</p>
-            {isEdited ? <p className="app-text-muted text-[11px]">изменено</p> : null}
+            <p className="app-text-muted text-[11px] opacity-80">{formatCommentTimestamp(comment.createdAt)}</p>
+            {isEdited ? <p className="app-text-muted text-[11px] opacity-70">изменено</p> : null}
           </div>
 
           {isEditComposerOpen ? (
@@ -241,7 +250,7 @@ function CommentCard({
           ) : (
             <p
               className={`mt-1.5 break-words whitespace-pre-wrap text-[15px] leading-6 ${
-                isDeleted ? 'app-text-muted italic' : 'app-text-primary'
+                isDeleted ? 'app-text-muted italic opacity-85' : 'app-text-primary'
               }`}
             >
               {comment.comment}
@@ -249,12 +258,14 @@ function CommentCard({
           )}
 
           {!isDeleted && !isEditComposerOpen ? (
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
               {!isReply && onStartReply ? (
                 <button
                   type="button"
                   onClick={onStartReply}
-                  className="app-text-muted text-[11px] font-medium transition-opacity hover:opacity-80"
+                  className={`font-medium transition-opacity hover:opacity-80 ${
+                    isReplyTargetActive ? 'app-text-primary opacity-90' : 'app-text-muted opacity-85'
+                  }`}
                 >
                   Ответить
                 </button>
@@ -263,7 +274,7 @@ function CommentCard({
                 <button
                   type="button"
                   onClick={onStartEdit}
-                  className="app-text-muted text-[11px] font-medium transition-opacity hover:opacity-80"
+                  className="app-text-muted font-medium opacity-85 transition-opacity hover:opacity-80"
                 >
                   Редактировать
                 </button>
@@ -272,7 +283,7 @@ function CommentCard({
                 <button
                   type="button"
                   onClick={() => void handleDeleteClick()}
-                  className="text-[11px] font-medium text-red-500 transition-opacity hover:opacity-85 dark:text-red-400"
+                  className="font-medium text-red-500/85 transition-colors hover:text-red-500 dark:text-red-400/85 dark:hover:text-red-400"
                 >
                   Удалить
                 </button>
@@ -302,11 +313,17 @@ function CommentCard({
 export default function RunCommentThreadList({
   comments,
   currentUserId = null,
+  replyComposerMode = 'inline',
+  activeReplyTargetId = null,
+  onReplyTargetChange,
   onReplyComment,
   onEditComment,
   onDeleteComment,
 }: RunCommentThreadListProps) {
-  const threads = useMemo(() => buildRunCommentThreads(comments), [comments])
+  const threads = useMemo(
+    () => filterVisibleRunCommentThreads(buildRunCommentThreads(comments)),
+    [comments]
+  )
   const [replyParentId, setReplyParentId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
   const [replyError, setReplyError] = useState('')
@@ -314,7 +331,7 @@ export default function RunCommentThreadList({
   const [editDraft, setEditDraft] = useState('')
   const [editError, setEditError] = useState('')
   const activeReplyParentId =
-    replyParentId && threads.some((thread) => thread.id === replyParentId && !thread.deletedAt)
+    replyComposerMode === 'inline' && replyParentId && threads.some((thread) => thread.id === replyParentId && !thread.deletedAt)
       ? replyParentId
       : null
   const activeEditingCommentId =
@@ -322,11 +339,17 @@ export default function RunCommentThreadList({
       ? editingCommentId
       : null
 
-  function startReply(parentId: string) {
+  function startReply(comment: RunCommentItem) {
     setEditingCommentId(null)
     setEditDraft('')
     setEditError('')
-    setReplyParentId(parentId)
+
+    if (replyComposerMode === 'external') {
+      onReplyTargetChange?.(comment)
+      return
+    }
+
+    setReplyParentId(comment.id)
     setReplyDraft('')
     setReplyError('')
   }
@@ -401,6 +424,10 @@ export default function RunCommentThreadList({
       if (activeReplyParentId === commentId) {
         cancelReply()
       }
+
+      if (replyComposerMode === 'external' && activeReplyTargetId === commentId) {
+        onReplyTargetChange?.(null)
+      }
     } catch {
       // Keep current UI state unchanged if deletion fails.
     }
@@ -413,7 +440,8 @@ export default function RunCommentThreadList({
           <CommentCard
             comment={thread}
             currentUserId={currentUserId}
-            isReplyComposerOpen={activeReplyParentId === thread.id}
+            isReplyTargetActive={replyComposerMode === 'external' && activeReplyTargetId === thread.id}
+            isReplyComposerOpen={replyComposerMode === 'inline' && activeReplyParentId === thread.id}
             isEditComposerOpen={activeEditingCommentId === thread.id}
             replyDraft={replyDraft}
             replyError={replyError}
@@ -427,7 +455,7 @@ export default function RunCommentThreadList({
               setEditDraft(value)
               setEditError('')
             }}
-            onStartReply={onReplyComment && !thread.deletedAt ? () => startReply(thread.id) : undefined}
+            onStartReply={onReplyComment && !thread.deletedAt ? () => startReply(thread) : undefined}
             onCancelReply={cancelReply}
             onSubmitReply={() => submitReply(thread.id)}
             onStartEdit={!thread.deletedAt ? () => startEdit(thread) : undefined}
