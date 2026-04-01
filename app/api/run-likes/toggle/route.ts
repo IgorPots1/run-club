@@ -99,7 +99,11 @@ export async function POST(request: Request) {
     context: likedByMe ? 'run_like_removed' : 'run_like_created',
   })
 
+  const xpGained = likedByMe ? 0 : 5
+
   return NextResponse.json({
     ok: true,
+    xpGained,
+    breakdown: xpGained > 0 ? [{ label: 'Лайк', value: xpGained }] : [],
   })
 }

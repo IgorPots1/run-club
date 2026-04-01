@@ -1,3 +1,5 @@
+import type { XpBreakdownItem } from '@/lib/xp'
+
 export type StravaConnectionStatus = 'connected' | 'reconnect_required' | 'disconnected' | 'error'
 
 export type StravaActivityType = 'Run' | 'TrailRun' | 'VirtualRun'
@@ -144,6 +146,8 @@ export type StravaInitialSyncResult =
       skipped: number
       failed: number
       totalRunsFetched: number
+      xpGained?: number
+      breakdown?: XpBreakdownItem[]
       levelUp?: boolean
       newLevel?: number | null
       errors: Array<{

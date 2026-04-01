@@ -3,6 +3,7 @@ import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { getRunXpBreakdown } from '@/lib/xp'
 
 type CreateRunRequestBody = {
   name?: string | null
@@ -174,6 +175,8 @@ export async function POST(request: Request) {
         id: insertedRun.id,
       },
       shoeWearMessage: shoeWearTrigger?.message ?? null,
+      xpGained: xp,
+      breakdown: getRunXpBreakdown(xp),
       levelUp: xpRefreshResult.levelUp,
       newLevel: xpRefreshResult.newLevel,
     },

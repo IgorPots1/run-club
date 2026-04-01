@@ -1,5 +1,10 @@
 const XP_BY_LEVEL = [0, 200, 500, 900, 1400, 2000, 2700, 3500, 4400, 5400]
 
+export type XpBreakdownItem = {
+  label: string
+  value: number
+}
+
 export function getLevelFromXP(totalXP: number): { level: number; nextLevelXP: number | null } {
   let level = 1
   for (let i = XP_BY_LEVEL.length - 1; i >= 0; i--) {
@@ -22,6 +27,35 @@ export function getRankTitleFromLevel(level: number): string {
 
 export function getRankTitleFromXP(totalXP: number): string {
   return getRankTitleFromLevel(getLevelFromXP(totalXP).level)
+}
+
+export function getRunXpBreakdown(totalXP: number): XpBreakdownItem[] {
+  const normalizedTotalXP = Number.isFinite(totalXP) ? Math.max(0, Math.round(totalXP)) : 0
+  const workoutXp = Math.min(normalizedTotalXP, 50)
+  const distanceXp = Math.max(normalizedTotalXP - workoutXp, 0)
+  const breakdown: XpBreakdownItem[] = []
+
+  if (workoutXp > 0) {
+    breakdown.push({ label: 'Тренировка', value: workoutXp })
+  }
+
+  if (distanceXp > 0) {
+    breakdown.push({ label: 'Дистанция', value: distanceXp })
+  }
+
+  return breakdown
+}
+
+export function formatXpBreakdownLabels(breakdown: XpBreakdownItem[]): string {
+  return breakdown
+    .map((item, index) => {
+      if (index === 0) {
+        return item.label
+      }
+
+      return item.label.charAt(0).toLowerCase() + item.label.slice(1)
+    })
+    .join(' + ')
 }
 
 export function getLevelProgressFromXP(totalXP: number): {

@@ -4,6 +4,7 @@ import { reverseGeocode } from '@/lib/geocoding/mapbox'
 import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { getRunXpBreakdown, type XpBreakdownItem } from '@/lib/xp'
 import {
   fetchStravaActivityById,
   fetchStravaActivityPhotos,
@@ -120,6 +121,8 @@ type StravaImportOutcome = 'imported' | 'updated' | 'skipped_existing' | 'skippe
 type StravaImportResult = {
   status: StravaImportOutcome
   activityId: string
+  xpGained?: number
+  breakdown?: XpBreakdownItem[]
   levelUp?: boolean
   newLevel?: number | null
 }
@@ -2016,6 +2019,8 @@ export async function importStravaActivityForUser(
     return {
       status: 'imported',
       activityId: payload.external_id,
+      xpGained: payload.xp,
+      breakdown: getRunXpBreakdown(payload.xp),
       levelUp: refreshResult.levelUp,
       newLevel: refreshResult.newLevel,
     }
@@ -2244,6 +2249,8 @@ export async function importStravaActivityForUser(
   return {
     status: 'updated',
     activityId: payload.external_id,
+    xpGained: 0,
+    breakdown: [],
     levelUp: refreshResult.levelUp,
     newLevel: refreshResult.newLevel,
   }
@@ -2609,6 +2616,9 @@ export async function syncStravaRuns(
   let imported = 0
   let skipped = 0
   const errors: StravaSyncRowErrorDetail[] = []
+  let xpGained = 0
+  let workoutXpGained = 0
+  let distanceXpGained = 0
   let highestLevelUp: number | null = null
 
   for (const activity of runActivities) {
@@ -2626,6 +2636,15 @@ export async function syncStravaRuns(
         imported += 1
       } else if (result.status === 'skipped_existing' || result.status === 'updated') {
         skipped += 1
+      }
+
+      xpGained += Number(result.xpGained ?? 0)
+      for (const item of result.breakdown ?? []) {
+        if (item.label === 'Тренировка') {
+          workoutXpGained += Number(item.value ?? 0)
+        } else if (item.label === 'Дистанция') {
+          distanceXpGained += Number(item.value ?? 0)
+        }
       }
 
       if (result.levelUp && Number.isFinite(result.newLevel)) {
@@ -2685,6 +2704,15 @@ export async function syncStravaRuns(
 
   const failed = runActivities.length - imported - skipped
   const firstFailure = errors[0] ?? null
+  const breakdown: XpBreakdownItem[] = []
+
+  if (workoutXpGained > 0) {
+    breakdown.push({ label: 'Тренировка', value: workoutXpGained })
+  }
+
+  if (distanceXpGained > 0) {
+    breakdown.push({ label: 'Дистанция', value: distanceXpGained })
+  }
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:syncStravaRuns:summary', message: 'Completed Strava sync summary', data: { userId, athleteId: connection.strava_athlete_id, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, runActivitiesCount: runActivities.length, imported, skipped, failed, firstFailure, afterParamUsed: afterUnixSeconds, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
@@ -2696,6 +2724,8 @@ export async function syncStravaRuns(
     skipped,
     failed,
     totalRunsFetched: runActivities.length,
+    xpGained,
+    breakdown,
     levelUp: highestLevelUp !== null,
     newLevel: highestLevelUp,
     errors,

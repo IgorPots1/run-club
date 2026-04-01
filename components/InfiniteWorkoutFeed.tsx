@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import XpGainToast from '@/components/XpGainToast'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
@@ -13,7 +14,7 @@ import {
 import { loadRunLikedUsers, type RunLikedUserItem } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
-import { getLevelFromXP } from '@/lib/xp'
+import { getLevelFromXP, type XpBreakdownItem } from '@/lib/xp'
 
 type InfiniteWorkoutFeedProps = {
   currentUserId: string | null
@@ -55,6 +56,7 @@ export default function InfiniteWorkoutFeed({
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
   const [activeLikesRun, setActiveLikesRun] = useState<{ runId: string } | null>(null)
   const [actionError, setActionError] = useState('')
+  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
   const [feedError, setFeedError] = useState('')
   const [initialLoading, setInitialLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -256,6 +258,20 @@ export default function InfiniteWorkoutFeed({
     }
   }, [mergeRealtimeComment, subscribedRunIdsKey])
 
+  useEffect(() => {
+    if (!xpToast) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setXpToast(null)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [xpToast])
+
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current
 
@@ -289,7 +305,7 @@ export default function InfiniteWorkoutFeed({
       itemsRef.current = nextItems
       setItems(nextItems)
 
-      const { error: likeError } = await toggleRunLike(runId, activeUserId, wasLiked)
+      const { error: likeError, xpGained, breakdown } = await toggleRunLike(runId, activeUserId, wasLiked)
 
       if (likeError) {
         setActionError('Не удалось обновить лайк')
@@ -316,6 +332,13 @@ export default function InfiniteWorkoutFeed({
         delete next[runId]
         return next
       })
+
+      if (xpGained > 0) {
+        setXpToast({
+          xpGained,
+          breakdown,
+        })
+      }
 
       onSuccessfulLikeToggle?.()
     } catch {
@@ -391,6 +414,7 @@ export default function InfiniteWorkoutFeed({
 
   return (
     <>
+      {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} /> : null}
       <div className="min-h-[236px] space-y-4 pb-2">
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         {initialLoading && items.length === 0 ? (

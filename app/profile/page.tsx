@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
+import XpGainToast from '@/components/XpGainToast'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
 import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
@@ -19,7 +20,7 @@ import {
 } from '@/lib/push/subscribeToPush'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
-import { getLevelFromXP, getRankTitleFromLevel } from '../../lib/xp'
+import { getLevelFromXP, getRankTitleFromLevel, type XpBreakdownItem } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Profile = {
@@ -66,6 +67,8 @@ type StravaSyncResponse =
       skipped: number
       failed: number
       totalRunsFetched: number
+      xpGained?: number
+      breakdown?: XpBreakdownItem[]
       levelUp?: boolean
       newLevel?: number | null
     }
@@ -161,7 +164,7 @@ function ProfilePageContent() {
   const [saveMessage, setSaveMessage] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
   const [showStravaConnectedToast, setShowStravaConnectedToast] = useState(false)
-  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null)
+  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
   const [loadingNotificationsStatus, setLoadingNotificationsStatus] = useState(true)
   const [updatingNotifications, setUpdatingNotifications] = useState(false)
   const [notificationsSupported, setNotificationsSupported] = useState(false)
@@ -402,18 +405,18 @@ function ProfilePageContent() {
   }, [showStravaConnectedToast])
 
   useEffect(() => {
-    if (levelUpToastLevel == null) {
+    if (!xpToast) {
       return
     }
 
     const timer = window.setTimeout(() => {
-      setLevelUpToastLevel(null)
+      setXpToast(null)
     }, 3000)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [levelUpToastLevel])
+  }, [xpToast])
 
   useEffect(() => {
     return () => {
@@ -704,8 +707,11 @@ function ProfilePageContent() {
         setStravaSyncMessage('Новых пробежек не найдено.')
       }
 
-      if (payload.levelUp === true && typeof payload.newLevel === 'number') {
-        setLevelUpToastLevel(payload.newLevel)
+      if ((payload.xpGained ?? 0) > 0) {
+        setXpToast({
+          xpGained: Number(payload.xpGained ?? 0),
+          breakdown: Array.isArray(payload.breakdown) ? payload.breakdown : [],
+        })
       }
 
       setStravaConnectionState('connected')
@@ -1206,14 +1212,7 @@ function ProfilePageContent() {
           </div>
         </div>
       ) : null}
-      {levelUpToastLevel != null ? (
-        <div className="pointer-events-none fixed inset-x-4 top-20 z-50 flex justify-center">
-          <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            <p className="app-text-primary text-sm font-medium">{`Новый уровень ${levelUpToastLevel}`}</p>
-            <p className="app-text-secondary mt-1 text-xs">{getRankTitleFromLevel(levelUpToastLevel)}</p>
-          </div>
-        </div>
-      ) : null}
+      {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} offsetClassName="top-20" /> : null}
       </div>
     </main>
   )

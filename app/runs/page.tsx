@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
+import XpGainToast from '@/components/XpGainToast'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { ensureProfileExists } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { createRun, deleteRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
-import { getRankTitleFromLevel } from '@/lib/xp'
+import type { XpBreakdownItem } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Run = {
@@ -460,7 +461,7 @@ export default function RunsPage() {
   const [durationSecondsInput, setDurationSecondsInput] = useState('0')
   const [error, setError] = useState('')
   const [saveInfoMessage, setSaveInfoMessage] = useState('')
-  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null)
+  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
   const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
@@ -726,18 +727,18 @@ export default function RunsPage() {
   }, [saveInfoMessage])
 
   useEffect(() => {
-    if (levelUpToastLevel == null) {
+    if (!xpToast) {
       return
     }
 
     const timer = window.setTimeout(() => {
-      setLevelUpToastLevel(null)
+      setXpToast(null)
     }, 3000)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [levelUpToastLevel])
+  }, [xpToast])
 
   useEffect(() => {
     if (!activeStravaHintRunId) {
@@ -833,7 +834,7 @@ export default function RunsPage() {
     const xp = normalizeIntegerMetric(50 + d * 10)
 
     try {
-      const { error: createError, shoeWearMessage, levelUp, newLevel } = await createRun({
+      const { error: createError, shoeWearMessage, xpGained, breakdown } = await createRun({
         name: normalizedTitle,
         title: normalizedTitle,
         distanceKm: d,
@@ -861,8 +862,11 @@ export default function RunsPage() {
       setDurationSecondsInput('0')
       setError('')
       setSaveInfoMessage(shoeWearMessage ?? '')
-      if (levelUp && newLevel != null) {
-        setLevelUpToastLevel(newLevel)
+      if (xpGained > 0) {
+        setXpToast({
+          xpGained,
+          breakdown,
+        })
       }
       dispatchRunsUpdatedEvent()
     } catch {
@@ -1070,14 +1074,7 @@ export default function RunsPage() {
             {saveInfoMessage}
           </div>
         ) : null}
-      {levelUpToastLevel != null ? (
-        <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
-          <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            <p className="app-text-primary text-sm font-medium">{`Новый уровень ${levelUpToastLevel}`}</p>
-            <p className="app-text-secondary mt-1 text-xs">{getRankTitleFromLevel(levelUpToastLevel)}</p>
-          </div>
-        </div>
-      ) : null}
+      {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} /> : null}
         <button
           type="submit"
           disabled={submitting || !isWorkoutFormValid}

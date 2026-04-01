@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { XpBreakdownItem } from './xp'
 
 type UserChallengeRow = {
   user_id: string
@@ -20,6 +21,8 @@ export type CompletedChallengeRecord = {
 type ChallengeCompletionResult = {
   success: boolean
   duplicate: boolean
+  xpGained: number
+  breakdown: XpBreakdownItem[]
   levelUp: boolean
   newLevel: number | null
   error: unknown | null
@@ -197,6 +200,8 @@ export async function awardChallengeCompletion(
       | {
           ok?: boolean
           duplicate?: boolean
+          xpGained?: number
+          breakdown?: XpBreakdownItem[]
           levelUp?: boolean
           newLevel?: number | null
           error?: string
@@ -207,6 +212,8 @@ export async function awardChallengeCompletion(
       return {
         success: true,
         duplicate: payload.duplicate === true,
+        xpGained: typeof payload.xpGained === 'number' ? payload.xpGained : 0,
+        breakdown: Array.isArray(payload.breakdown) ? payload.breakdown : [],
         levelUp: payload.levelUp === true,
         newLevel: typeof payload.newLevel === 'number' ? payload.newLevel : null,
         error: null,
@@ -222,6 +229,8 @@ export async function awardChallengeCompletion(
     return {
       success: false,
       duplicate: false,
+      xpGained: 0,
+      breakdown: [],
       levelUp: false,
       newLevel: null,
       error: payload?.error ?? 'challenge_completion_request_failed',
@@ -235,6 +244,8 @@ export async function awardChallengeCompletion(
     return {
       success: false,
       duplicate: false,
+      xpGained: 0,
+      breakdown: [],
       levelUp: false,
       newLevel: null,
       error,

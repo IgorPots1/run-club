@@ -13,6 +13,10 @@ type ChallengeCompletionRpcResult = {
   completed_at?: string | null
 }
 
+type ChallengeXpRow = {
+  xp_reward: number | null
+}
+
 export async function POST(request: Request) {
   const { user, error } = await getAuthenticatedUser()
 
@@ -40,6 +44,19 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+  const { data: challengeRow, error: challengeError } = await supabaseAdmin
+    .from('challenges')
+    .select('xp_reward')
+    .eq('id', challengeId)
+    .maybeSingle()
+
+  if (challengeError) {
+    console.error('[challenge_completion] failed to load challenge xp reward', {
+      challengeId,
+      error: challengeError,
+    })
+  }
+
   const { data, error: rpcError } = await supabaseAdmin.rpc('award_challenge_completion_badge', {
     p_user_id: user.id,
     p_challenge_id: challengeId,
@@ -58,6 +75,8 @@ export async function POST(request: Request) {
   }
 
   const payload = (data ?? {}) as ChallengeCompletionRpcResult
+  const completionCreated = payload.completion_created !== false
+  const xpGained = completionCreated ? Number((challengeRow as ChallengeXpRow | null)?.xp_reward ?? 0) : 0
 
   const xpRefreshResult = await refreshProfileTotalXp(user.id, {
     supabase: supabaseAdmin,
@@ -66,9 +85,11 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    duplicate: payload.completion_created === false,
+    duplicate: completionCreated === false,
     badgeCreated: payload.badge_created === true,
     completedAt: payload.completed_at ?? null,
+    xpGained,
+    breakdown: xpGained > 0 ? [{ label: 'Челлендж', value: xpGained }] : [],
     levelUp: xpRefreshResult.levelUp,
     newLevel: xpRefreshResult.newLevel,
   })

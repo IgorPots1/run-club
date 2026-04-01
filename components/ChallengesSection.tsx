@@ -1,13 +1,14 @@
 'use client'
 
 import { CheckCircle2 } from 'lucide-react'
+import XpGainToast from '@/components/XpGainToast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 import { awardChallengeCompletion, loadCompletedChallenges } from '@/lib/user-challenges'
-import { getRankTitleFromLevel } from '@/lib/xp'
+import type { XpBreakdownItem } from '@/lib/xp'
 import {
   getChallengeProgress,
   isAchievementChallenge,
@@ -79,21 +80,21 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
   const [items, setItems] = useState<ChallengeWithProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null)
+  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
 
   useEffect(() => {
-    if (levelUpToastLevel == null) {
+    if (!xpToast) {
       return
     }
 
     const timer = window.setTimeout(() => {
-      setLevelUpToastLevel(null)
+      setXpToast(null)
     }, 3000)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [levelUpToastLevel])
+  }, [xpToast])
 
   useEffect(() => {
     let isMounted = true
@@ -157,16 +158,21 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
             setError('Не удалось сохранить прогресс челленджей')
           }
 
-          const highestNewLevel = results.reduce<number | null>((highestLevel, result) => {
-            if (!result.levelUp || result.newLevel == null) {
-              return highestLevel
-            }
+          const totalXpGained = results.reduce((sum, result) => sum + Math.max(0, result.xpGained), 0)
 
-            return Math.max(highestLevel ?? 0, result.newLevel)
-          }, null)
+          if (totalXpGained > 0) {
+            const breakdownByLabel = results.reduce<Record<string, number>>((accumulator, result) => {
+              for (const item of result.breakdown) {
+                accumulator[item.label] = (accumulator[item.label] ?? 0) + Number(item.value ?? 0)
+              }
 
-          if (highestNewLevel != null) {
-            setLevelUpToastLevel(highestNewLevel)
+              return accumulator
+            }, {})
+
+            setXpToast({
+              xpGained: totalXpGained,
+              breakdown: Object.entries(breakdownByLabel).map(([label, value]) => ({ label, value })),
+            })
           }
         }
 
@@ -195,14 +201,7 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
 
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
-      {levelUpToastLevel != null ? (
-        <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
-          <div className="app-card w-full max-w-sm rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-            <p className="app-text-primary text-sm font-medium">{`Новый уровень ${levelUpToastLevel}`}</p>
-            <p className="app-text-secondary mt-1 text-xs">{getRankTitleFromLevel(levelUpToastLevel)}</p>
-          </div>
-        </div>
-      ) : null}
+      {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} /> : null}
       {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Челленджи</h1> : null}
       {loading ? (
         <p>Загрузка...</p>
