@@ -1,5 +1,11 @@
 const XP_BY_LEVEL = [0, 200, 500, 900, 1400, 2000, 2700, 3500, 4400, 5400]
 
+export type ClubLevelDefinition = {
+  level: number
+  minXp: number
+  title: string
+}
+
 export type XpBreakdownItem = {
   label: string
   value: number
@@ -33,6 +39,14 @@ export function getRankTitleFromLevel(level: number): string {
 
 export function getRankTitleFromXP(totalXP: number): string {
   return getRankTitleFromLevel(getLevelFromXP(totalXP).level)
+}
+
+export function getClubLevelDefinitions(): ClubLevelDefinition[] {
+  return XP_BY_LEVEL.map((minXp, index) => ({
+    level: index + 1,
+    minXp,
+    title: getRankTitleFromLevel(index + 1),
+  }))
 }
 
 export function buildRunXpBreakdown({

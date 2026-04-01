@@ -1,11 +1,12 @@
 'use client'
 
-import { Activity, Footprints, Heart, Route, Target, Trophy } from 'lucide-react'
+import { Activity, Target, Trophy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
+import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import {
@@ -21,7 +22,7 @@ import type { ChallengeWithProgress } from '@/lib/challenges'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
-import { getLevelProgressFromXP } from '@/lib/xp'
+import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
 
 type DashboardInitialUser = {
   id: string
@@ -271,6 +272,7 @@ export default function DashboardPageClient({
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
     : 0
+  const currentRankTitle = levelProgress ? getRankTitleFromLevel(levelProgress.level) : ''
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
@@ -389,19 +391,20 @@ export default function DashboardPageClient({
             </div>
           ) : null}
           {stats && levelProgress ? (
-            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setShowXpModal(true)}
+              className="app-card mb-4 block w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition-transform active:scale-[0.995]"
+            >
               <div className="flex items-start justify-between gap-3">
-                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                  <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                  <span>Уровень {levelProgress.level}</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowXpModal(true)}
-                  className="app-button-secondary min-h-10 shrink-0 rounded-lg border px-3 py-2 text-xs"
-                >
-                  Как начисляется XP
-                </button>
+                <div className="min-w-0">
+                  <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                    <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                    <span>Уровень {levelProgress.level}</span>
+                  </p>
+                  <p className="app-text-secondary mt-1 text-sm">{currentRankTitle}</p>
+                </div>
+                <span className="app-text-secondary shrink-0 text-xs font-medium">Открыть</span>
               </div>
               <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
                 <div
@@ -417,7 +420,7 @@ export default function DashboardPageClient({
                   ? 'Максимальный уровень достигнут'
                   : `До следующего уровня: ${levelProgress.xpToNextLevel} XP`}
               </p>
-            </div>
+            </button>
           ) : null}
           <div
             role="button"
@@ -500,48 +503,11 @@ export default function DashboardPageClient({
           />
         </div>
       </div>
-      {showXpModal ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center">
-          <div className="app-card w-full max-w-sm rounded-2xl p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="app-text-primary text-lg font-semibold">Как начисляется XP</h2>
-              <button
-                type="button"
-                onClick={() => setShowXpModal(false)}
-                className="app-text-secondary text-sm"
-              >
-                Закрыть
-              </button>
-            </div>
-            <div className="app-text-secondary mt-4 space-y-3 text-sm">
-              <p className="flex items-center gap-2">
-                <Footprints className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>За тренировки: базовый XP + бонус за дистанцию</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Route className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>За регулярность: бонус за стабильные тренировки в течение недели</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>За челленджи: XP за выполнение</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Heart className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>За лайки: XP за реакции на твои тренировки, с дневным лимитом</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>За гонку недели: дополнительный бонус за участие и результат</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Activity className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Есть ограничения против фарма: система учитывает только честную активность</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <LevelOverviewSheet
+        open={showXpModal}
+        totalXp={stats?.totalXp ?? initialStats.totalXp}
+        onClose={() => setShowXpModal(false)}
+      />
     </main>
   )
 }

@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
+import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import XpGainToast from '@/components/XpGainToast'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
@@ -20,7 +21,7 @@ import {
 } from '@/lib/push/subscribeToPush'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
-import { getLevelFromXP, getRankTitleFromLevel, type XpBreakdownItem } from '../../lib/xp'
+import { getLevelFromXP, getLevelProgressFromXP, getRankTitleFromLevel, type XpBreakdownItem } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Profile = {
@@ -153,6 +154,7 @@ function ProfilePageContent() {
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
+  const [showLevelOverview, setShowLevelOverview] = useState(false)
   const [stravaConnectionState, setStravaConnectionState] = useState<'connected' | 'reconnect_required' | 'disconnected'>('disconnected')
   const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
   const [syncingStrava, setSyncingStrava] = useState(false)
@@ -834,6 +836,7 @@ function ProfilePageContent() {
     },
     'Бегун'
   )
+  const levelProgress = getLevelProgressFromXP(totalXp)
   const currentLevel = getLevelFromXP(totalXp).level
   const currentRankTitle = getRankTitleFromLevel(currentLevel)
   const hasProfileChanges = initialProfileForm !== null && (
@@ -959,14 +962,25 @@ function ProfilePageContent() {
         <p className="app-text-secondary text-sm">
           {uploading ? 'Загружаем аватар...' : 'Нажмите на аватар, чтобы изменить фото'}
         </p>
-        <UserIdentitySummary
-          loadingIdentity={false}
-          loadingLevel={false}
-          displayName={profileDisplayName}
-          levelLabel={`Уровень ${currentLevel}`}
-          className="w-full text-center"
-        />
-        <p className="app-text-secondary text-sm">{currentRankTitle}</p>
+        <button
+          type="button"
+          onClick={() => setShowLevelOverview(true)}
+          className="w-full max-w-sm rounded-3xl border border-black/5 bg-black/[0.02] px-4 py-4 text-center transition-transform active:scale-[0.995] dark:border-white/10 dark:bg-white/[0.03]"
+        >
+          <UserIdentitySummary
+            loadingIdentity={false}
+            loadingLevel={false}
+            displayName={profileDisplayName}
+            levelLabel={`Уровень ${currentLevel}`}
+            className="w-full text-center"
+          />
+          <p className="app-text-secondary mt-1 text-sm">{currentRankTitle}</p>
+          <p className="app-text-secondary mt-2 text-xs">
+            {levelProgress.nextLevelXP === null
+              ? 'Максимальный уровень клуба'
+              : `${levelProgress.xpToNextLevel} XP до следующего уровня`}
+          </p>
+        </button>
       </div>
       <>
           <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
@@ -1159,18 +1173,30 @@ function ProfilePageContent() {
           </div>
           <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">
             <h2 className="app-text-primary mb-4 text-xl font-semibold">Статистика</h2>
-            <div className="flex items-center justify-between gap-4 border-b py-2">
+            <button
+              type="button"
+              onClick={() => setShowLevelOverview(true)}
+              className="flex w-full items-center justify-between gap-4 border-b py-2 text-left"
+            >
               <span className="app-text-secondary min-w-0">Уровень</span>
-              <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).level}</span>
-            </div>
-            <div className="flex items-center justify-between gap-4 border-b py-2">
+              <span className="app-text-primary shrink-0 text-right font-semibold">{currentLevel}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLevelOverview(true)}
+              className="flex w-full items-center justify-between gap-4 border-b py-2 text-left"
+            >
               <span className="app-text-secondary min-w-0">Всего XP</span>
               <span className="app-text-primary shrink-0 text-right font-semibold">{totalXp}</span>
-            </div>
-            <div className="flex items-center justify-between gap-4 border-b py-2">
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLevelOverview(true)}
+              className="flex w-full items-center justify-between gap-4 border-b py-2 text-left"
+            >
               <span className="app-text-secondary min-w-0">Следующий уровень</span>
-              <span className="app-text-primary shrink-0 text-right font-semibold">{getLevelFromXP(totalXp).nextLevelXP ?? 'Максимум'}</span>
-            </div>
+              <span className="app-text-primary shrink-0 text-right font-semibold">{levelProgress.nextLevelXP ?? 'Максимум'}</span>
+            </button>
             <div className="flex items-center justify-between gap-4 border-b py-2">
               <span className="app-text-secondary min-w-0">Всего км</span>
               <span className="app-text-primary shrink-0 text-right font-semibold">{formatDistanceKm(totalKm)}</span>
@@ -1213,6 +1239,11 @@ function ProfilePageContent() {
         </div>
       ) : null}
       {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} offsetClassName="top-20" /> : null}
+      <LevelOverviewSheet
+        open={showLevelOverview}
+        totalXp={totalXp}
+        onClose={() => setShowLevelOverview(false)}
+      />
       </div>
     </main>
   )
