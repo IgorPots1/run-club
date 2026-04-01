@@ -117,8 +117,8 @@ function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunComm
 async function loadRunCommentSnapshot(commentId: string, runId: string, viewerUserId: string | null = null) {
   const { data, error } = await supabase
     .rpc('get_run_comments_with_meta', {
-      p_run_id: runId,
-      p_viewer_user_id: viewerUserId,
+      run_id: runId,
+      viewer_user_id: viewerUserId,
     })
     .eq('id', commentId)
     .maybeSingle()
@@ -430,8 +430,8 @@ export async function loadRunComments(runId: string, viewerUserId: string | null
   })
 
   const { data: comments, error: commentsError } = await supabase.rpc('get_run_comments_with_meta', {
-    p_run_id: runId,
-    p_viewer_user_id: viewerUserId,
+    run_id: runId,
+    viewer_user_id: viewerUserId,
   })
 
   if (commentsError) {
