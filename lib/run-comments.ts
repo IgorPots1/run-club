@@ -18,6 +18,12 @@ type RunCommentRow = {
 
 export type RunCommentRealtimeRow = RunCommentRow
 
+type RunCommentSnapshotRow = RunCommentRow & {
+  display_name: string | null
+  nickname: string | null
+  avatar_url: string | null
+}
+
 type RunCommentCountRow = Pick<RunCommentRow, 'run_id'>
 
 type ProfileRow = {
@@ -72,8 +78,6 @@ type SubscribeToRunCommentsHandlers = {
   onInsert?: (comment: RunCommentRealtimeRow) => void
   onUpdate?: (comment: RunCommentRealtimeRow) => void
 }
-
-const RUN_COMMENT_SELECT = 'id, run_id, user_id, parent_id, comment, created_at, edited_at, deleted_at'
 
 function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
   return (
@@ -156,6 +160,22 @@ function mapRunCommentRowToItem(comment: RunCommentRow, author: RunCommentAuthor
     displayName: author.displayName,
     nickname: author.nickname,
     avatarUrl: author.avatarUrl,
+  }
+}
+
+function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunCommentItem {
+  return {
+    id: comment.id,
+    runId: comment.run_id,
+    userId: comment.user_id,
+    parentId: comment.parent_id,
+    comment: comment.comment,
+    createdAt: comment.created_at,
+    editedAt: comment.edited_at,
+    deletedAt: comment.deleted_at,
+    displayName: comment.display_name?.trim() || 'Бегун',
+    nickname: comment.nickname?.trim() || null,
+    avatarUrl: comment.avatar_url ?? null,
   }
 }
 
@@ -380,19 +400,19 @@ export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCo
   return mapCommentAuthorIdentity(userId, profilesByUserId[userId])
 }
 
-export async function loadRunComments(runId: string): Promise<RunCommentItem[]> {
-  const { data: comments, error: commentsError } = await supabase
-    .from('run_comments')
-    .select(RUN_COMMENT_SELECT)
-    .eq('run_id', runId)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
+export async function loadRunComments(runId: string, viewerUserId: string | null = null): Promise<RunCommentItem[]> {
+  const { data: comments, error: commentsError } = await supabase.rpc('get_run_comments_with_meta', {
+    run_id: runId,
+    viewer_user_id: viewerUserId,
+  })
 
   if (commentsError) {
     throw commentsError
   }
 
-  return hydrateRunCommentRows((comments as RunCommentRow[] | null) ?? [])
+  return ((comments as RunCommentSnapshotRow[] | null) ?? [])
+    .map(mapRunCommentSnapshotRowToItem)
+    .sort(compareRunComments)
 }
 
 export function subscribeToRunComments(
