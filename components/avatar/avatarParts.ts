@@ -32,14 +32,13 @@ function toDataUri(svg: string) {
 function makeBodySvg(skin: string, accent: string) {
   return toDataUri(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
-      <circle cx="100" cy="42" r="24" fill="${skin}" />
-      <rect x="90" y="64" width="20" height="20" rx="10" fill="${skin}" />
-      <rect x="72" y="78" width="56" height="64" rx="28" fill="${skin}" />
-      <rect x="40" y="86" width="36" height="16" rx="8" fill="${skin}" />
-      <rect x="124" y="86" width="36" height="16" rx="8" fill="${skin}" />
-      <rect x="78" y="138" width="18" height="42" rx="9" fill="${skin}" />
-      <rect x="104" y="138" width="18" height="42" rx="9" fill="${skin}" />
-      <circle cx="100" cy="42" r="24" stroke="${accent}" stroke-width="3" opacity="0.18" />
+      <circle cx="100" cy="38" r="21" fill="${skin}" />
+      <path d="M92 57h16v15c0 4-4 8-8 8s-8-4-8-8V57Z" fill="${skin}" />
+      <path d="M82 73c4-5 11-8 18-8s14 3 18 8l7 39H75l7-39Z" fill="${skin}" />
+      <path d="M75 82 57 100v10h15l11-13-8-15Zm50 0 18 18v10h-15l-11-13 8-15Z" fill="${skin}" />
+      <path d="M86 112h12v54c0 9-7 16-16 16h-2v-13c0-5 2-10 5-14l1-43Zm16 0h12l1 43c3 4 5 9 5 14v13h-2c-9 0-16-7-16-16v-54Z" fill="${skin}" />
+      <path d="M86 114h28" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity="0.18" />
+      <circle cx="100" cy="38" r="21" stroke="${accent}" stroke-width="2.5" opacity="0.18" />
     </svg>
   `)
 }
@@ -65,25 +64,26 @@ function makeHairSvg(fill: string, variant: number) {
 
 function makeTopSvg(fill: string, trim: string, variant: number) {
   const shapes = [
-    `<path d="M66 83c0-10 8-18 18-18h32c10 0 18 8 18 18v12l-9 32H75l-9-32V83Z" fill="${fill}" />
-     <path d="M75 95 61 108v17h18V98l8-8Zm50 0 14 13v17h-18V98l-8-8Z" fill="${fill}" />
-     <path d="M88 65h24l-6 14H94l-6-14Z" fill="${trim}" />
-     <path d="M83 92h34M87 103h26" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.8" />`,
-    `<path d="M63 82c0-9 8-17 17-17h40c9 0 17 8 17 17v42H63V82Z" fill="${fill}" />
-     <path d="M63 88 48 100v19h18V99l8-10Zm74 0 15 12v19h-18V99l-8-10Z" fill="${fill}" />
-     <path d="M94 66h12v58H94V66Z" fill="${trim}" />
-     <path d="M83 66h34l-4 12H87l-4-12Z" fill="${trim}" />
-     <path d="M78 108h44" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.55" />`,
-    `<path d="M64 83c0-10 8-18 18-18h36c10 0 18 8 18 18v41H64V83Z" fill="${fill}" />
-     <path d="M64 88 50 101v18h18V98l7-10Zm72 0 14 13v18h-18V98l-7-10Z" fill="${fill}" />
-     <path d="M85 65h30l-4 12H89l-4-12Z" fill="${trim}" />
-     <rect x="84" y="91" width="32" height="20" rx="4" fill="${trim}" opacity="0.9" />
-     <path d="M88 96h24M93 102h14" stroke="${fill}" stroke-width="2.5" stroke-linecap="round" />`,
-    `<path d="M63 82c0-9 7-17 17-17h40c9 0 17 8 17 17v43H63V82Z" fill="${fill}" />
-     <path d="M63 88 48 100v19h18V99l8-11Zm74 0 15 12v19h-18V99l-8-11Z" fill="${fill}" />
-     <path d="M84 66h32l-5 12H89l-5-12Z" fill="${trim}" />
-     <path d="M72 94h56" stroke="${trim}" stroke-width="4" stroke-linecap="round" opacity="0.9" />
-     <path d="M81 106h38" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.65" />`,
+    `<path d="M80 72c4-4 10-7 20-7s16 3 20 7l5 37H75l5-37Z" fill="${fill}" />
+     <path d="M75 81 62 98v13h14l8-14-9-16Zm50 0 13 17v13h-14l-8-14 9-16Z" fill="${fill}" />
+     <path d="M89 66h22l-6 11H95l-6-11Z" fill="${trim}" />
+     <path d="M84 80 79 109m37-29 5 29" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.65" />
+     <path d="M92 86h16" stroke="${trim}" stroke-width="2.5" stroke-linecap="round" opacity="0.8" />`,
+    `<path d="M79 72c4-4 11-7 21-7s17 3 21 7l4 40H75l4-40Z" fill="${fill}" />
+     <path d="M75 81 61 98v13h14l8-14-8-16Zm50 0 14 17v13h-14l-8-14 8-16Z" fill="${fill}" />
+     <path d="M94 66h12v46H94V66Z" fill="${trim}" opacity="0.95" />
+     <path d="M88 66h24l-5 10H93l-5-10Z" fill="${trim}" />
+     <path d="M82 82 78 112m40-30 4 30" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.5" />`,
+    `<path d="M80 72c4-4 10-7 20-7s16 3 20 7l5 38H75l5-38Z" fill="${fill}" />
+     <path d="M75 81 62 97v13h14l8-13-9-16Zm50 0 13 16v13h-14l-8-13 9-16Z" fill="${fill}" />
+     <path d="M89 66h22l-6 11H95l-6-11Z" fill="${trim}" />
+     <rect x="86" y="84" width="28" height="18" rx="4" fill="${trim}" opacity="0.9" />
+     <path d="M91 89h18M95 95h10" stroke="${fill}" stroke-width="2.5" stroke-linecap="round" />`,
+    `<path d="M79 72c4-4 11-7 21-7s17 3 21 7l4 41H75l4-41Z" fill="${fill}" />
+     <path d="M75 81 61 98v13h14l8-14-8-16Zm50 0 14 17v13h-14l-8-14 8-16Z" fill="${fill}" />
+     <path d="M88 66h24l-5 11H93l-5-11Z" fill="${trim}" />
+     <path d="M85 82 80 113m35-31 5 31" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.7" />
+     <path d="M89 92h22" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.65" />`,
   ]
 
   return toDataUri(`
@@ -95,15 +95,15 @@ function makeTopSvg(fill: string, trim: string, variant: number) {
 
 function makeBottomSvg(fill: string, accent: string, variant: number) {
   const shapes = [
-    `<path d="M68 122h64v16c0 8-6 14-14 14H82c-8 0-14-6-14-14v-16Z" fill="${fill}" />
-     <path d="M80 138h16v38H82c-5 0-8-4-8-8v-16c0-8 3-11 6-14Zm24 0h16c3 3 6 6 6 14v16c0 4-3 8-8 8h-14v-38Z" fill="${accent}" />`,
-    `<path d="M70 120h60v18H70v-18Z" fill="${fill}" />
-     <path d="M78 138h18v40H82c-6 0-10-4-10-10v-10c0-11 2-16 6-20Zm26 0h18c4 4 6 9 6 20v10c0 6-4 10-10 10h-14v-40Z" fill="${fill}" />`,
-    `<path d="M69 120h62v16c0 6-5 11-11 11H80c-6 0-11-5-11-11v-16Z" fill="${fill}" />
-     <path d="M80 137h16v40H84c-6 0-10-4-10-10v-14c0-7 2-12 6-16Zm24 0h16c4 4 6 9 6 16v14c0 6-4 10-10 10h-12v-40Z" fill="${accent}" />`,
-    `<path d="M68 120h64v20c0 7-6 12-12 12H80c-6 0-12-5-12-12v-20Z" fill="${fill}" />
-     <path d="M74 124h52" stroke="${accent}" stroke-width="4" stroke-linecap="round" />
-     <path d="M80 140h16v38H84c-6 0-10-4-10-10v-10c0-9 2-14 6-18Zm24 0h16c4 4 6 9 6 18v10c0 6-4 10-10 10h-12v-38Z" fill="${fill}" />`,
+    `<path d="M74 108h52v13c0 9-7 16-16 16H90c-9 0-16-7-16-16v-13Z" fill="${fill}" />
+     <path d="M84 122h13v49h-8c-6 0-10-4-10-10v-18c0-10 2-15 5-21Zm19 0h13c3 6 5 11 5 21v18c0 6-4 10-10 10h-8v-49Z" fill="${accent}" />`,
+    `<path d="M76 108h48v14c0 8-6 15-15 15H91c-9 0-15-7-15-15v-14Z" fill="${fill}" />
+     <path d="M83 122h14v50h-8c-7 0-11-4-11-11v-16c0-10 2-16 5-23Zm20 0h14c3 7 5 13 5 23v16c0 7-4 11-11 11h-8v-50Z" fill="${fill}" />`,
+    `<path d="M75 108h50v13c0 9-6 16-15 16H90c-9 0-15-7-15-16v-13Z" fill="${fill}" />
+     <path d="M84 122h13v50h-8c-7 0-11-4-11-11v-17c0-9 2-15 6-22Zm19 0h13c4 7 6 13 6 22v17c0 7-4 11-11 11h-8v-50Z" fill="${accent}" />`,
+    `<path d="M74 108h52v15c0 8-7 14-15 14H89c-8 0-15-6-15-14v-15Z" fill="${fill}" />
+     <path d="M81 113h38" stroke="${accent}" stroke-width="3" stroke-linecap="round" />
+     <path d="M84 122h13v50h-8c-7 0-11-4-11-11v-16c0-10 2-16 6-23Zm19 0h13c4 7 6 13 6 23v16c0 7-4 11-11 11h-8v-50Z" fill="${fill}" />`,
   ]
 
   return toDataUri(`
@@ -115,25 +115,26 @@ function makeBottomSvg(fill: string, accent: string, variant: number) {
 
 function makeShoesSvg(fill: string, sole: string, variant: number) {
   const shapes = [
-    `<path d="M73 170h14l10 5h10c6 0 11 4 14 10H73v-15Z" fill="${fill}" />
-     <path d="M99 170h14l10 5h10c6 0 11 4 14 10H99v-15Z" fill="${fill}" />
-     <path d="M73 182h48m-22 0h48" stroke="${sole}" stroke-width="5" stroke-linecap="round" />
-     <path d="M81 174h17m28 0h17" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />`,
-    `<path d="M72 169h15l9 6h13c6 0 10 4 14 10H72v-16Z" fill="${fill}" />
-     <path d="M99 169h15l9 6h13c6 0 10 4 14 10H99v-16Z" fill="${fill}" />
-     <path d="M72 181h51m-24 0h51" stroke="${sole}" stroke-width="4" stroke-linecap="round" />
-     <path d="M80 173h19m27 0h19" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.9" />
-     <path d="M92 169v6m27-6v6" stroke="${sole}" stroke-width="3" stroke-linecap="round" />`,
-    `<path d="M74 171h13l11 4h10c7 0 12 4 15 10H74v-14Z" fill="${fill}" />
-     <path d="M100 171h13l11 4h10c7 0 12 4 15 10H100v-14Z" fill="${fill}" />
-     <path d="M74 183h49m-23 0h49" stroke="${sole}" stroke-width="4.5" stroke-linecap="round" />
-     <path d="M83 175h8l4 3m31-3h8l4 3" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
-     <path d="M77 179h13m26 0h13" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.75" />`,
-    `<path d="M72 170h14l10 5h11c6 0 11 4 15 10H72v-15Z" fill="${fill}" />
-     <path d="M98 170h14l10 5h11c6 0 11 4 15 10H98v-15Z" fill="${fill}" />
-     <path d="M72 183h50m-24 0h50" stroke="${sole}" stroke-width="5" stroke-linecap="round" />
-     <path d="M77 176h41m7 0h16" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />
-     <path d="M92 171h9m25 0h9" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.8" />`,
+    `<path d="M79 169h11l12 6h11c8 0 15 3 20 10H73c1-8 3-13 6-16Z" fill="${fill}" />
+     <path d="M105 169h11l12 6h11c8 0 15 3 20 10H99c1-8 3-13 6-16Z" fill="${fill}" />
+     <path d="M73 185c8 2 22 3 36 3 15 0 29-1 36-3" stroke="${sole}" stroke-width="6" stroke-linecap="round" />
+     <path d="M79 178h16l7-3m29 3h16l7-3" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+     <path d="M85 171h10m26 0h10" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.8" />`,
+    `<path d="M78 168h12l11 7h12c8 0 15 3 19 10H72c1-8 3-13 6-17Z" fill="${fill}" />
+     <path d="M104 168h12l11 7h12c8 0 15 3 19 10H98c1-8 3-13 6-17Z" fill="${fill}" />
+     <path d="M72 185c8 2 22 3 37 3 14 0 28-1 37-3" stroke="${sole}" stroke-width="5" stroke-linecap="round" />
+     <path d="M80 177h18l6-3m28 3h18l6-3" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
+     <path d="M93 168v7m26-7v7" stroke="${sole}" stroke-width="3" stroke-linecap="round" />`,
+    `<path d="M80 170h10l12 5h11c9 0 16 3 21 10H74c1-7 3-12 6-15Z" fill="${fill}" />
+     <path d="M106 170h10l12 5h11c9 0 16 3 21 10H100c1-7 3-12 6-15Z" fill="${fill}" />
+     <path d="M74 185c8 2 22 3 37 3 14 0 29-1 37-3" stroke="${sole}" stroke-width="5.5" stroke-linecap="round" />
+     <path d="M83 178h8l7-3m33 3h8l7-3" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+     <path d="M80 181h18m28 0h18" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.75" />`,
+    `<path d="M78 169h11l12 6h12c8 0 15 3 20 10H72c1-8 3-13 6-16Z" fill="${fill}" />
+     <path d="M104 169h11l12 6h12c8 0 15 3 20 10H98c1-8 3-13 6-16Z" fill="${fill}" />
+     <path d="M72 185c8 2 22 3 37 3 14 0 29-1 37-3" stroke="${sole}" stroke-width="6" stroke-linecap="round" />
+     <path d="M79 178h18l8-3m28 3h18l8-3" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+     <path d="M86 171h9m26 0h9" stroke="${sole}" stroke-width="2.4" stroke-linecap="round" opacity="0.75" />`,
   ]
 
   return toDataUri(`
