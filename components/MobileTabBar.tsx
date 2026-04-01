@@ -40,8 +40,9 @@ export default function MobileTabBar() {
   const pathname = usePathname()
   const [isChatKeyboardOpen, setIsChatKeyboardOpen] = useState(false)
   const hiddenRoutes = ['/', '/login', '/register']
+  const isRunDiscussionRoute = /^\/runs\/[^/]+\/discussion$/.test(pathname)
   const shouldHide =
-    hiddenRoutes.includes(pathname) || pathname.startsWith('/auth')
+    hiddenRoutes.includes(pathname) || pathname.startsWith('/auth') || isRunDiscussionRoute
 
   useEffect(() => {
     function handleChatKeyboardVisibility(event: Event) {

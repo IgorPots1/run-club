@@ -20,6 +20,7 @@ import {
   subscribeToRunComments,
   type RunCommentAuthorIdentity,
   type RunCommentItem,
+  type RunCommentRealtimeRow,
   updateRunComment,
 } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
@@ -95,6 +96,16 @@ function toNullableTrimmedText(value: string | null | undefined) {
 
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function getRunCommentUpdateSignature(
+  comment:
+    | Pick<RunCommentItem, 'id' | 'editedAt' | 'deletedAt'>
+    | Pick<RunCommentRealtimeRow, 'id' | 'edited_at' | 'deleted_at'>
+) {
+  const editedAt = 'editedAt' in comment ? comment.editedAt : comment.edited_at
+  const deletedAt = 'deletedAt' in comment ? comment.deletedAt : comment.deleted_at
+  return `${comment.id}:${editedAt ?? ''}:${deletedAt ?? ''}`
 }
 
 function resolveDurationSeconds(run: Pick<RunDiscussionRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
@@ -180,6 +191,7 @@ export default function RunDiscussionPage() {
   const [submitError, setSubmitError] = useState('')
 
   const commentsRef = useRef<RunCommentItem[]>([])
+  const pendingLocalUpdateEchoesRef = useRef<Map<string, string>>(new Map())
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -188,6 +200,10 @@ export default function RunDiscussionPage() {
   useEffect(() => {
     commentsRef.current = comments
   }, [comments])
+
+  useEffect(() => {
+    pendingLocalUpdateEchoesRef.current.clear()
+  }, [runId])
 
   useEffect(() => {
     let isMounted = true
@@ -291,6 +307,14 @@ export default function RunDiscussionPage() {
       },
       onUpdate: (commentRow) => {
         void (async () => {
+          const updateSignature = getRunCommentUpdateSignature(commentRow)
+          const pendingLocalSignature = pendingLocalUpdateEchoesRef.current.get(commentRow.id)
+
+          if (pendingLocalSignature === updateSignature) {
+            pendingLocalUpdateEchoesRef.current.delete(commentRow.id)
+            return
+          }
+
           const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
           const realtimeComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
 
@@ -394,6 +418,10 @@ export default function RunDiscussionPage() {
       comment: trimmedComment,
     })
 
+    pendingLocalUpdateEchoesRef.current.set(
+      updatedComment.id,
+      getRunCommentUpdateSignature(updatedComment)
+    )
     setComments((prev) => applyRunCommentUpdate(prev, updatedComment))
     setCommentsError('')
   }
@@ -401,6 +429,10 @@ export default function RunDiscussionPage() {
   async function handleDeleteComment(commentId: string) {
     const deletedComment = await deleteRunComment(commentId)
 
+    pendingLocalUpdateEchoesRef.current.set(
+      deletedComment.id,
+      getRunCommentUpdateSignature(deletedComment)
+    )
     setComments((prev) => applyRunCommentUpdate(prev, deletedComment))
     setCommentsError('')
   }

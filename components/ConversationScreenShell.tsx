@@ -38,11 +38,13 @@ export default function ConversationScreenShell({
     .filter(Boolean)
     .join(' ')
   const footerClassName = [
-    'shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pt-3 dark:border-white/10',
-    isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+    'relative z-10 shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pt-3 dark:border-white/10',
   ]
     .filter(Boolean)
     .join(' ')
+  const footerStyle = {
+    paddingBottom: isKeyboardOpen ? '0px' : 'max(0.75rem, env(safe-area-inset-bottom))',
+  }
 
   return (
     <main
@@ -56,7 +58,7 @@ export default function ConversationScreenShell({
         <div ref={scrollContainerRef} className={resolvedScrollContainerClassName}>
           <div className={resolvedContentClassName}>{children}</div>
         </div>
-        {footer ? <div className={footerClassName}>{footer}</div> : null}
+        {footer ? <div className={footerClassName} style={footerStyle}>{footer}</div> : null}
       </div>
     </main>
   )
