@@ -424,18 +424,36 @@ export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCo
 }
 
 export async function loadRunComments(runId: string, viewerUserId: string | null = null): Promise<RunCommentItem[]> {
+  console.debug('[RunComments] rpc load start', {
+    runId,
+    viewerUserId,
+  })
+
   const { data: comments, error: commentsError } = await supabase.rpc('get_run_comments_with_meta', {
     p_run_id: runId,
     p_viewer_user_id: viewerUserId,
   })
 
   if (commentsError) {
+    console.error('[RunComments] rpc load failed', {
+      runId,
+      viewerUserId,
+      commentsError,
+    })
     throw commentsError
   }
 
-  return ((comments as RunCommentSnapshotRow[] | null) ?? [])
+  const mappedComments = ((comments as RunCommentSnapshotRow[] | null) ?? [])
     .map(mapRunCommentSnapshotRowToItem)
     .sort(compareRunComments)
+
+  console.debug('[RunComments] rpc load success', {
+    runId,
+    viewerUserId,
+    commentsCount: mappedComments.length,
+  })
+
+  return mappedComments
 }
 
 export function subscribeToRunCommentLikes(

@@ -243,12 +243,20 @@ export default function RunDiscussionPage() {
     let isMounted = true
 
     async function loadUser() {
+      console.debug('[RunDiscussion] auth bootstrap start')
       try {
         const nextUser = await getBootstrapUser()
 
         if (isMounted) {
+          console.debug('[RunDiscussion] auth bootstrap success', {
+            hasUser: Boolean(nextUser?.id),
+            userId: nextUser?.id ?? null,
+          })
           setUser(nextUser)
         }
+      } catch (error) {
+        console.error('[RunDiscussion] auth bootstrap failed', error)
+        throw error
       } finally {
         if (isMounted) {
           setAuthLoading(false)
@@ -267,7 +275,26 @@ export default function RunDiscussionPage() {
     let isMounted = true
 
     async function loadDiscussion() {
+      console.debug('[RunDiscussion] bootstrap start', {
+        runId,
+        authLoading,
+        hasUser: Boolean(user?.id),
+      })
+
       if (authLoading) {
+        console.debug('[RunDiscussion] bootstrap deferred until auth resolves')
+        return
+      }
+
+      if (!user) {
+        console.error('[RunDiscussion] bootstrap blocked: missing authenticated user')
+        if (isMounted) {
+          setRun(null)
+          setComments([])
+          setLoadingRun(false)
+          setLoadingComments(false)
+        }
+        router.replace('/login')
         return
       }
 
@@ -286,9 +313,15 @@ export default function RunDiscussionPage() {
       setCommentsError('')
 
       try {
+        console.debug('[RunDiscussion] run fetch start', { runId })
         const { data: runData, error: runError } = await loadRunDiscussionRow(runId)
 
         if (runError || !runData) {
+          console.error('[RunDiscussion] run fetch failed', {
+            runId,
+            runError,
+            hasRunData: Boolean(runData),
+          })
           if (isMounted) {
             setPageError('Не удалось загрузить обсуждение')
             setRun(null)
@@ -296,16 +329,56 @@ export default function RunDiscussionPage() {
           return
         }
 
-        const [authorIdentity, totalXpByUser, loadedComments] = await Promise.all([
-          loadRunCommentAuthorProfile(runData.user_id).catch(() => ({
-            userId: runData.user_id,
-            displayName: 'Бегун',
-            nickname: null,
-            avatarUrl: null,
-          })),
-          loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
-          loadRunComments(runId, user?.id ?? null),
-        ])
+        console.debug('[RunDiscussion] run fetch success', {
+          runId,
+          runOwnerUserId: runData.user_id,
+        })
+
+        console.debug('[RunDiscussion] author profile load start', {
+          runOwnerUserId: runData.user_id,
+        })
+        const authorIdentity = await loadRunCommentAuthorProfile(runData.user_id)
+          .then((result) => {
+            console.debug('[RunDiscussion] author profile load success', {
+              runOwnerUserId: runData.user_id,
+            })
+            return result
+          })
+          .catch((error) => {
+            console.error('[RunDiscussion] author profile load failed', error)
+            return {
+              userId: runData.user_id,
+              displayName: 'Бегун',
+              nickname: null,
+              avatarUrl: null,
+            }
+          })
+
+        console.debug('[RunDiscussion] total xp load start', {
+          runOwnerUserId: runData.user_id,
+        })
+        const totalXpByUser = await loadTotalXpByUserIds([runData.user_id])
+          .then((result) => {
+            console.debug('[RunDiscussion] total xp load success', {
+              runOwnerUserId: runData.user_id,
+              totalXp: result[runData.user_id] ?? 0,
+            })
+            return result
+          })
+          .catch((error) => {
+            console.error('[RunDiscussion] total xp load failed', error)
+            return {} as Record<string, number>
+          })
+
+        console.debug('[RunDiscussion] comment load start', {
+          runId,
+          viewerUserId: user?.id ?? null,
+        })
+        const loadedComments = await loadRunComments(runId, user?.id ?? null)
+        console.debug('[RunDiscussion] comment load success', {
+          runId,
+          commentsCount: loadedComments.length,
+        })
 
         if (!isMounted) {
           return
@@ -315,7 +388,8 @@ export default function RunDiscussionPage() {
         setAuthor(authorIdentity)
         setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
         setComments(loadedComments)
-      } catch {
+      } catch (error) {
+        console.error('[RunDiscussion] bootstrap failed', error)
         if (isMounted) {
           setPageError('Не удалось загрузить обсуждение')
           setRun(null)
@@ -340,6 +414,7 @@ export default function RunDiscussionPage() {
       return
     }
 
+    console.debug('[RunDiscussion] comment realtime subscription setup', { runId })
     return subscribeToRunComments(runId, {
       onInsert: (commentRow) => {
         void (async () => {
@@ -373,6 +448,10 @@ export default function RunDiscussionPage() {
       return
     }
 
+    console.debug('[RunDiscussion] comment-like realtime subscription setup', {
+      runId,
+      viewerUserId: user?.id ?? null,
+    })
     return subscribeToRunCommentLikes(runId, {
       onInsert: (likeRow) => {
         const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
