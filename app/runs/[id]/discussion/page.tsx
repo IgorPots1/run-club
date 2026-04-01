@@ -192,6 +192,7 @@ export default function RunDiscussionPage() {
   const runId = typeof params?.id === 'string' ? params.id : ''
 
   const [user, setUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [run, setRun] = useState<RunDiscussionRow | null>(null)
   const [author, setAuthor] = useState<RunCommentAuthorIdentity | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
@@ -241,10 +242,16 @@ export default function RunDiscussionPage() {
     let isMounted = true
 
     async function loadUser() {
-      const nextUser = await getBootstrapUser()
+      try {
+        const nextUser = await getBootstrapUser()
 
-      if (isMounted) {
-        setUser(nextUser)
+        if (isMounted) {
+          setUser(nextUser)
+        }
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false)
+        }
       }
     }
 
@@ -259,6 +266,10 @@ export default function RunDiscussionPage() {
     let isMounted = true
 
     async function loadDiscussion() {
+      if (authLoading) {
+        return
+      }
+
       if (!runId) {
         if (isMounted) {
           setPageError('Обсуждение не найдено')
@@ -321,7 +332,7 @@ export default function RunDiscussionPage() {
     return () => {
       isMounted = false
     }
-  }, [runId, user?.id])
+  }, [authLoading, runId, user?.id])
 
   useEffect(() => {
     if (!runId) {
