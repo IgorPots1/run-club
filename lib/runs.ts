@@ -11,7 +11,6 @@ export type CreateRunInput = {
   elapsedTimeSeconds: number
   averagePaceSeconds: number
   createdAt: string
-  xp: number
   shoeId?: string | null
 }
 

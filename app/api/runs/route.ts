@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
+import { calculateRunXp } from '@/lib/run-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
-import { getRunXpBreakdown } from '@/lib/xp'
 
 type CreateRunRequestBody = {
   name?: string | null
@@ -16,7 +16,6 @@ type CreateRunRequestBody = {
   elapsedTimeSeconds?: number | null
   averagePaceSeconds?: number | null
   createdAt?: string | null
-  xp?: number | null
   shoeId?: string | null
 }
 
@@ -83,7 +82,6 @@ export async function POST(request: Request) {
   const movingTimeSeconds = Math.max(0, Math.round(Number(body?.movingTimeSeconds ?? 0)))
   const elapsedTimeSeconds = Math.max(0, Math.round(Number(body?.elapsedTimeSeconds ?? 0)))
   const averagePaceSeconds = Math.max(0, Math.round(Number(body?.averagePaceSeconds ?? 0)))
-  const xp = Math.max(0, Math.round(Number(body?.xp ?? 0)))
   const createdAt = typeof body?.createdAt === 'string' ? body.createdAt : ''
   const shoeId = body?.shoeId?.trim() || null
 
@@ -109,6 +107,13 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+  const runXp = await calculateRunXp({
+    userId: user.id,
+    createdAt,
+    distanceKm,
+    supabase: supabaseAdmin,
+  })
+
   const insertPayload = {
     user_id: user.id,
     name,
@@ -121,7 +126,7 @@ export async function POST(request: Request) {
     elapsed_time_seconds: elapsedTimeSeconds,
     average_pace_seconds: averagePaceSeconds,
     created_at: createdAt,
-    xp,
+    xp: runXp.xp,
     shoe_id: shoeId,
   }
 
@@ -175,8 +180,8 @@ export async function POST(request: Request) {
         id: insertedRun.id,
       },
       shoeWearMessage: shoeWearTrigger?.message ?? null,
-      xpGained: xp,
-      breakdown: getRunXpBreakdown(xp),
+      xpGained: runXp.xp,
+      breakdown: runXp.breakdown,
       levelUp: xpRefreshResult.levelUp,
       newLevel: xpRefreshResult.newLevel,
     },

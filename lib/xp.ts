@@ -5,6 +5,12 @@ export type XpBreakdownItem = {
   value: number
 }
 
+type RunXpBreakdownParts = {
+  workoutXp: number
+  distanceXp: number
+  weeklyConsistencyBonus?: number
+}
+
 export function getLevelFromXP(totalXP: number): { level: number; nextLevelXP: number | null } {
   let level = 1
   for (let i = XP_BY_LEVEL.length - 1; i >= 0; i--) {
@@ -29,18 +35,23 @@ export function getRankTitleFromXP(totalXP: number): string {
   return getRankTitleFromLevel(getLevelFromXP(totalXP).level)
 }
 
-export function getRunXpBreakdown(totalXP: number): XpBreakdownItem[] {
-  const normalizedTotalXP = Number.isFinite(totalXP) ? Math.max(0, Math.round(totalXP)) : 0
-  const workoutXp = Math.min(normalizedTotalXP, 50)
-  const distanceXp = Math.max(normalizedTotalXP - workoutXp, 0)
+export function buildRunXpBreakdown({
+  workoutXp,
+  distanceXp,
+  weeklyConsistencyBonus = 0,
+}: RunXpBreakdownParts): XpBreakdownItem[] {
   const breakdown: XpBreakdownItem[] = []
 
-  if (workoutXp > 0) {
-    breakdown.push({ label: 'Тренировка', value: workoutXp })
+  if (Number.isFinite(workoutXp) && workoutXp > 0) {
+    breakdown.push({ label: 'Тренировка', value: Math.round(workoutXp) })
   }
 
-  if (distanceXp > 0) {
-    breakdown.push({ label: 'Дистанция', value: distanceXp })
+  if (Number.isFinite(distanceXp) && distanceXp > 0) {
+    breakdown.push({ label: 'Дистанция', value: Math.round(distanceXp) })
+  }
+
+  if (Number.isFinite(weeklyConsistencyBonus) && weeklyConsistencyBonus > 0) {
+    breakdown.push({ label: 'Регулярность', value: Math.round(weeklyConsistencyBonus) })
   }
 
   return breakdown

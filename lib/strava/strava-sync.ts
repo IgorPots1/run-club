@@ -2,9 +2,10 @@ import 'server-only'
 
 import { reverseGeocode } from '@/lib/geocoding/mapbox'
 import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
+import { calculateRunXp } from '@/lib/run-xp'
 import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { getRunXpBreakdown, type XpBreakdownItem } from '@/lib/xp'
+import type { XpBreakdownItem } from '@/lib/xp'
 import {
   fetchStravaActivityById,
   fetchStravaActivityPhotos,
@@ -95,6 +96,7 @@ type ExistingStravaRunRow = {
   country: string | null
   shoe_id: string | null
   distance_meters: number | null
+  xp: number | null
   name_manually_edited: boolean
   description_manually_edited: boolean
 }
@@ -479,10 +481,6 @@ function normalizeIntegerField(field: string, value: number) {
   }
 
   return Math.round(value)
-}
-
-function toXp(distanceKm: number) {
-  return Math.max(0, normalizeIntegerField('xp', 50 + distanceKm * 10))
 }
 
 function toNullableFiniteNumber(value: number | null | undefined) {
@@ -1572,7 +1570,7 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
     created_at: new Date(activity.start_date).toISOString(),
     external_source: STRAVA_EXTERNAL_SOURCE,
     external_id: String(activity.id),
-    xp: toXp(distanceKm),
+    xp: 0,
   }
 }
 
@@ -1808,9 +1806,17 @@ export async function importStravaActivityForUser(
 
   const supabase = createSupabaseAdminClient()
   const payload = buildRunInsertPayload(userId, activityForImport)
+  const runXp = await calculateRunXp({
+    userId,
+    createdAt: payload.created_at,
+    distanceKm: payload.distance_km,
+    supabase,
+  })
+
+  payload.xp = runXp.xp
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, name_manually_edited, description_manually_edited')
+    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, name_manually_edited, description_manually_edited')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -2019,8 +2025,8 @@ export async function importStravaActivityForUser(
     return {
       status: 'imported',
       activityId: payload.external_id,
-      xpGained: payload.xp,
-      breakdown: getRunXpBreakdown(payload.xp),
+      xpGained: runXp.xp,
+      breakdown: runXp.breakdown,
       levelUp: refreshResult.levelUp,
       newLevel: refreshResult.newLevel,
     }
@@ -2137,7 +2143,7 @@ export async function importStravaActivityForUser(
     achievement_count: payload.achievement_count,
     strava_synced_at: payload.strava_synced_at,
     created_at: payload.created_at,
-    xp: payload.xp,
+    xp: Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0))),
   }
 
   if (!normalizedExistingRun.name_manually_edited) {

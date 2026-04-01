@@ -831,7 +831,6 @@ export default function RunsPage() {
     const averagePaceSeconds = distanceMeters > 0
       ? normalizeIntegerMetric(selectedDurationSeconds / (distanceMeters / 1000))
       : 0
-    const xp = normalizeIntegerMetric(50 + d * 10)
 
     try {
       const { error: createError, shoeWearMessage, xpGained, breakdown } = await createRun({
@@ -845,7 +844,6 @@ export default function RunsPage() {
         elapsedTimeSeconds,
         averagePaceSeconds,
         createdAt: createdAtDate.toISOString(),
-        xp,
         shoeId: selectedShoeId || null,
       })
 
