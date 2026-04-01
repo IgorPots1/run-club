@@ -3,9 +3,9 @@
 import { LoaderCircle } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import ConversationScreenShell from '@/components/ConversationScreenShell'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunCommentThreadList from '@/components/RunCommentThreadList'
-import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { getBootstrapUser } from '@/lib/auth'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -421,7 +421,7 @@ export default function RunDiscussionPage() {
   )
   const durationLabel = useMemo(() => formatDurationLabel(resolvedDurationSeconds), [resolvedDurationSeconds])
   const discussionSummary = loadingRun ? (
-    <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
+    <section className="app-card rounded-2xl border p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
@@ -440,11 +440,11 @@ export default function RunDiscussionPage() {
       </div>
     </section>
   ) : pageError || !run || !author ? (
-    <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
+    <section className="app-card rounded-2xl border p-4 shadow-sm">
       <p className="text-sm text-red-600">{pageError || 'Обсуждение не найдено'}</p>
     </section>
   ) : (
-    <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
+    <section className="app-card rounded-2xl border p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <ParticipantIdentity
           avatarUrl={author.avatarUrl}
@@ -486,10 +486,7 @@ export default function RunDiscussionPage() {
     </section>
   )
   const discussionComposer = (
-    <form
-      onSubmit={handleSubmit}
-      className="shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
-    >
+    <form onSubmit={handleSubmit}>
       <div className="flex items-end gap-2">
         <label htmlFor="discussion-comment" className="sr-only">Сообщение</label>
         <textarea
@@ -524,57 +521,57 @@ export default function RunDiscussionPage() {
   )
 
   return (
-    <WorkoutDetailShell
+    <ConversationScreenShell
       title="Обсуждение"
       fallbackHref={runId ? `/runs/${runId}` : '/dashboard'}
-      topContent={discussionSummary}
       footer={discussionComposer}
       scrollContainerRef={scrollContainerRef}
-      scrollContentClassName="scroll-smooth"
+      scrollContainerClassName="scroll-smooth"
     >
-          {loadingComments ? (
-            <div className="space-y-4 pb-2">
-              <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
-                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-                <span>Подтягиваем комментарии...</span>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="skeleton-line h-4 w-28" />
-                  <div className="skeleton-line h-4 w-full" />
-                  <div className="skeleton-line h-4 w-3/4" />
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="skeleton-line h-4 w-32" />
-                  <div className="skeleton-line h-4 w-5/6" />
-                </div>
+      {discussionSummary}
+      <div className="flex min-h-[12rem] flex-1 flex-col">
+        {loadingComments ? (
+          <div className="space-y-4">
+            <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
+              <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+              <span>Подтягиваем комментарии...</span>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="skeleton-line h-4 w-28" />
+                <div className="skeleton-line h-4 w-full" />
+                <div className="skeleton-line h-4 w-3/4" />
               </div>
             </div>
-          ) : commentsError ? (
-            <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
-              <p className="text-sm text-red-600">{commentsError}</p>
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="skeleton-line h-4 w-32" />
+                <div className="skeleton-line h-4 w-5/6" />
+              </div>
             </div>
-          ) : comments.length === 0 ? (
-            <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
-              <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
-              <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
-            </div>
-          ) : (
-            <div className="pb-2">
-              <RunCommentThreadList
-                comments={comments}
-                currentUserId={user?.id ?? null}
-                onReplyComment={handleReplyComment}
-                onEditComment={handleEditComment}
-                onDeleteComment={handleDeleteComment}
-              />
-            </div>
-          )}
-          <div ref={bottomRef} />
-    </WorkoutDetailShell>
+          </div>
+        ) : commentsError ? (
+          <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
+            <p className="text-sm text-red-600">{commentsError}</p>
+          </div>
+        ) : comments.length === 0 ? (
+          <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
+            <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
+            <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
+          </div>
+        ) : (
+          <RunCommentThreadList
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            onReplyComment={handleReplyComment}
+            onEditComment={handleEditComment}
+            onDeleteComment={handleDeleteComment}
+          />
+        )}
+        <div ref={bottomRef} />
+      </div>
+    </ConversationScreenShell>
   )
 }

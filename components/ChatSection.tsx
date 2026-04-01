@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
+import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
@@ -41,7 +42,6 @@ const INITIAL_CHAT_MESSAGE_LIMIT = 10
 const OLDER_CHAT_BATCH_LIMIT = 10
 const AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES = 12
 const MAX_RENDERED_CHAT_MESSAGES = 60
-const CHAT_APP_HEIGHT_CSS_VAR = '--chat-app-height'
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
 const SWIPE_REPLY_TRIGGER_PX = 80
 const SWIPE_REPLY_MAX_OFFSET_PX = 96
@@ -1474,6 +1474,7 @@ export default function ChatSection({
   description,
   enableReadState = true,
 }: ChatSectionProps) {
+  const { isKeyboardOpen } = useIsolatedViewportHeight()
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
@@ -1539,7 +1540,6 @@ export default function ChatSection({
   const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
@@ -1871,88 +1871,6 @@ export default function ChatSection({
       setSelectedReactionDetails(null)
     }
   }, [messages, selectedReactionDetails])
-
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return
-    }
-
-    document.documentElement.dataset.chatIsolatedRoute = 'true'
-    document.body.dataset.chatIsolatedRoute = 'true'
-
-    return () => {
-      delete document.documentElement.dataset.chatIsolatedRoute
-      delete document.body.dataset.chatIsolatedRoute
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
-      return
-    }
-
-    const rootStyle = document.documentElement.style
-    let frameId: number | null = null
-    let nestedFrameId: number | null = null
-    let timeoutId: number | null = null
-
-    function applyChatAppHeight() {
-      const visualViewport = window.visualViewport
-      const viewportHeight = visualViewport?.height ?? window.innerHeight
-      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
-      const isMobileViewport = window.innerWidth < 768
-      const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
-
-      rootStyle.setProperty(CHAT_APP_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
-      setIsKeyboardOpen(isMobileViewport && window.innerHeight - effectiveViewportHeight > 120)
-    }
-
-    function clearScheduledViewportSync() {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId)
-        frameId = null
-      }
-
-      if (nestedFrameId !== null) {
-        window.cancelAnimationFrame(nestedFrameId)
-        nestedFrameId = null
-      }
-
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId)
-        timeoutId = null
-      }
-    }
-
-    function updateChatAppHeight() {
-      applyChatAppHeight()
-      clearScheduledViewportSync()
-
-      frameId = window.requestAnimationFrame(() => {
-        nestedFrameId = window.requestAnimationFrame(() => {
-          applyChatAppHeight()
-        })
-      })
-
-      timeoutId = window.setTimeout(() => {
-        applyChatAppHeight()
-      }, 80)
-    }
-
-    updateChatAppHeight()
-
-    window.visualViewport?.addEventListener('resize', updateChatAppHeight)
-    window.visualViewport?.addEventListener('scroll', updateChatAppHeight)
-    window.addEventListener('resize', updateChatAppHeight)
-
-    return () => {
-      clearScheduledViewportSync()
-      window.visualViewport?.removeEventListener('resize', updateChatAppHeight)
-      window.visualViewport?.removeEventListener('scroll', updateChatAppHeight)
-      window.removeEventListener('resize', updateChatAppHeight)
-      rootStyle.removeProperty(CHAT_APP_HEIGHT_CSS_VAR)
-    }
-  }, [])
 
   useLayoutEffect(() => {
     const cachedRecentMessages =
