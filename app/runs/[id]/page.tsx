@@ -22,7 +22,17 @@ import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
-import { createRunComment, loadRunComments, type RunCommentItem } from '@/lib/run-comments'
+import {
+  applyRunCommentInsert,
+  applyRunCommentUpdate,
+  buildRunCommentThreads,
+  createRunComment,
+  flattenRunCommentThreads,
+  loadRunComments,
+  resolveRunCommentRealtimeItem,
+  subscribeToRunComments,
+  type RunCommentItem,
+} from '@/lib/run-comments'
 import { updateRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
 import { uploadRunPhoto } from '@/lib/storage/uploadRunPhoto'
@@ -574,9 +584,10 @@ export default function RunDetailsPage() {
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
   const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const commentsRef = useRef<RunCommentItem[]>([])
 
   async function handleCommentSubmit(comment: string) {
-    if (!user || !run) {
+    if (!run) {
       throw new Error('missing_context')
     }
 
@@ -586,14 +597,11 @@ export default function RunDetailsPage() {
       throw new Error('empty_comment')
     }
 
-    const { error: insertError } = await createRunComment(run.id, user.id, trimmedComment)
+    const createdComment = await createRunComment(run.id, {
+      comment: trimmedComment,
+    })
 
-    if (insertError) {
-      throw insertError
-    }
-
-    const refreshedComments = await loadRunComments(run.id)
-    setComments(refreshedComments)
+    setComments((currentComments) => applyRunCommentInsert(currentComments, createdComment))
     setCommentsError('')
   }
 
@@ -695,6 +703,10 @@ export default function RunDetailsPage() {
       setUploadingPhotos(false)
     }
   }
+
+  useEffect(() => {
+    commentsRef.current = comments
+  }, [comments])
 
   useEffect(() => {
     let isMounted = true
@@ -874,6 +886,31 @@ export default function RunDetailsPage() {
   }, [authLoading, reloadKey, runId, user])
 
   useEffect(() => {
+    if (!runId) {
+      return
+    }
+
+    return subscribeToRunComments(runId, {
+      onInsert: (commentRow) => {
+        void (async () => {
+          const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
+          const nextComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
+
+          setComments((currentComments) => applyRunCommentInsert(currentComments, nextComment))
+        })()
+      },
+      onUpdate: (commentRow) => {
+        void (async () => {
+          const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
+          const nextComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
+
+          setComments((currentComments) => applyRunCommentUpdate(currentComments, nextComment))
+        })()
+      },
+    })
+  }, [runId])
+
+  useEffect(() => {
     if (isEditingDetails) {
       return
     }
@@ -977,6 +1014,8 @@ export default function RunDetailsPage() {
     }
   }, [lapsBackfillAttemptedRunId, loading, run, runId, runLaps.length, user])
 
+  const commentThreads = useMemo(() => buildRunCommentThreads(comments), [comments])
+  const visibleComments = useMemo(() => flattenRunCommentThreads(commentThreads), [commentThreads])
   const commentsCount = comments.length
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
@@ -1717,7 +1756,7 @@ export default function RunDetailsPage() {
           </div>
         </section>
 
-      <RunCommentsSection comments={comments} error={commentsError} onSubmitComment={handleCommentSubmit} />
+      <RunCommentsSection comments={visibleComments} error={commentsError} onSubmitComment={handleCommentSubmit} />
     </div>
 
     <RunPhotoLightbox

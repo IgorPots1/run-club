@@ -9,8 +9,11 @@ type RunCommentRow = {
   id: string
   run_id: string
   user_id: string
+  parent_id: string | null
   comment: string
   created_at: string
+  edited_at: string | null
+  deleted_at: string | null
 }
 
 export type RunCommentRealtimeRow = RunCommentRow
@@ -36,12 +39,41 @@ export type RunCommentItem = {
   id: string
   runId: string
   userId: string
+  parentId: string | null
   comment: string
   createdAt: string
+  editedAt: string | null
+  deletedAt: string | null
   displayName: string
   nickname: string | null
   avatarUrl: string | null
 }
+
+export type RunCommentThread = RunCommentItem & {
+  replies: RunCommentItem[]
+}
+
+type RunCommentMutationResponse = {
+  ok?: boolean
+  error?: string
+  comment?: RunCommentRow
+}
+
+type CreateRunCommentInput = {
+  comment: string
+  parentId?: string | null
+}
+
+type UpdateRunCommentInput = {
+  comment: string
+}
+
+type SubscribeToRunCommentsHandlers = {
+  onInsert?: (comment: RunCommentRealtimeRow) => void
+  onUpdate?: (comment: RunCommentRealtimeRow) => void
+}
+
+const RUN_COMMENT_SELECT = 'id, run_id, user_id, parent_id, comment, created_at, edited_at, deleted_at'
 
 function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
   return (
@@ -101,14 +133,197 @@ function mapCommentAuthorIdentity(userId: string, profile: ProfileRow | null | u
   }
 }
 
-export async function createRunComment(runId: string, userId: string, comment: string) {
-  const result = await supabase.from('run_comments').insert({
-    run_id: runId,
-    user_id: userId,
-    comment,
+function compareRunComments(left: Pick<RunCommentItem, 'createdAt' | 'id'>, right: Pick<RunCommentItem, 'createdAt' | 'id'>) {
+  const createdAtComparison = left.createdAt.localeCompare(right.createdAt)
+
+  if (createdAtComparison !== 0) {
+    return createdAtComparison
+  }
+
+  return left.id.localeCompare(right.id)
+}
+
+function mapRunCommentRowToItem(comment: RunCommentRow, author: RunCommentAuthorIdentity): RunCommentItem {
+  return {
+    id: comment.id,
+    runId: comment.run_id,
+    userId: comment.user_id,
+    parentId: comment.parent_id,
+    comment: comment.comment,
+    createdAt: comment.created_at,
+    editedAt: comment.edited_at,
+    deletedAt: comment.deleted_at,
+    displayName: author.displayName,
+    nickname: author.nickname,
+    avatarUrl: author.avatarUrl,
+  }
+}
+
+async function hydrateRunCommentRows(commentRows: RunCommentRow[]) {
+  if (commentRows.length === 0) {
+    return [] as RunCommentItem[]
+  }
+
+  const userIds = Array.from(new Set(commentRows.map((comment) => comment.user_id)))
+  const profileById = await loadProfilesForUserIds(userIds)
+
+  return commentRows
+    .map((comment) => {
+      const author = mapCommentAuthorIdentity(comment.user_id, profileById[comment.user_id])
+      return mapRunCommentRowToItem(comment, author)
+    })
+    .sort(compareRunComments)
+}
+
+async function requestRunCommentMutation(path: string, init: RequestInit): Promise<RunCommentRow> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  })
+  const result = await response.json().catch(() => null) as RunCommentMutationResponse | null
+
+  if (!response.ok || !result?.ok || !result.comment) {
+    throw new Error(result?.error ?? 'run_comment_request_failed')
+  }
+
+  return result.comment
+}
+
+export function mergeRunCommentRealtimeRow(params: {
+  commentRow: RunCommentRealtimeRow
+  existingComment?: RunCommentItem | null
+  authorIdentity?: RunCommentAuthorIdentity | null
+}): RunCommentItem {
+  const fallbackAuthor = params.authorIdentity ?? null
+
+  return {
+    id: params.commentRow.id,
+    runId: params.commentRow.run_id,
+    userId: params.commentRow.user_id,
+    parentId: params.commentRow.parent_id,
+    comment: params.commentRow.comment,
+    createdAt: params.commentRow.created_at,
+    editedAt: params.commentRow.edited_at,
+    deletedAt: params.commentRow.deleted_at,
+    displayName: params.existingComment?.displayName ?? fallbackAuthor?.displayName ?? 'Бегун',
+    nickname: params.existingComment?.nickname ?? fallbackAuthor?.nickname ?? null,
+    avatarUrl: params.existingComment?.avatarUrl ?? fallbackAuthor?.avatarUrl ?? null,
+  }
+}
+
+export async function hydrateRunCommentRow(commentRow: RunCommentRow): Promise<RunCommentItem> {
+  const hydratedComments = await hydrateRunCommentRows([commentRow])
+  return hydratedComments[0]!
+}
+
+export async function resolveRunCommentRealtimeItem(
+  commentRow: RunCommentRealtimeRow,
+  existingComment?: RunCommentItem | null
+): Promise<RunCommentItem> {
+  if (existingComment) {
+    return mergeRunCommentRealtimeRow({
+      commentRow,
+      existingComment,
+    })
+  }
+
+  try {
+    return await hydrateRunCommentRow(commentRow)
+  } catch {
+    return mergeRunCommentRealtimeRow({
+      commentRow,
+    })
+  }
+}
+
+export async function createRunComment(runId: string, input: CreateRunCommentInput) {
+  const createdCommentRow = await requestRunCommentMutation(`/api/runs/${runId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({
+      comment: input.comment,
+      parentId: input.parentId ?? null,
+    }),
   })
 
-  return result
+  return hydrateRunCommentRow(createdCommentRow)
+}
+
+export async function updateRunComment(commentId: string, input: UpdateRunCommentInput) {
+  const updatedCommentRow = await requestRunCommentMutation(`/api/run-comments/${commentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      comment: input.comment,
+    }),
+  })
+
+  return hydrateRunCommentRow(updatedCommentRow)
+}
+
+export async function deleteRunComment(commentId: string) {
+  const deletedCommentRow = await requestRunCommentMutation(`/api/run-comments/${commentId}`, {
+    method: 'DELETE',
+  })
+
+  return hydrateRunCommentRow(deletedCommentRow)
+}
+
+export function applyRunCommentInsert(existingComments: RunCommentItem[], incomingComment: RunCommentItem) {
+  const existingIndex = existingComments.findIndex((comment) => comment.id === incomingComment.id)
+
+  if (existingIndex >= 0) {
+    return existingComments
+      .map((comment, index) => (index === existingIndex ? incomingComment : comment))
+      .sort(compareRunComments)
+  }
+
+  return [...existingComments, incomingComment].sort(compareRunComments)
+}
+
+export function applyRunCommentUpdate(existingComments: RunCommentItem[], incomingComment: RunCommentItem) {
+  const existingIndex = existingComments.findIndex((comment) => comment.id === incomingComment.id)
+
+  if (existingIndex < 0) {
+    return applyRunCommentInsert(existingComments, incomingComment)
+  }
+
+  return existingComments
+    .map((comment, index) => (index === existingIndex ? incomingComment : comment))
+    .sort(compareRunComments)
+}
+
+export function buildRunCommentThreads(comments: RunCommentItem[]) {
+  const sortedComments = [...comments].sort(compareRunComments)
+  const threadsById = new Map<string, RunCommentThread>()
+  const threads: RunCommentThread[] = []
+
+  for (const comment of sortedComments) {
+    if (comment.parentId) {
+      const parentThread = threadsById.get(comment.parentId)
+
+      if (parentThread) {
+        parentThread.replies.push(comment)
+        parentThread.replies.sort(compareRunComments)
+        continue
+      }
+    }
+
+    const nextThread: RunCommentThread = {
+      ...comment,
+      replies: [],
+    }
+
+    threads.push(nextThread)
+    threadsById.set(comment.id, nextThread)
+  }
+
+  return threads
+}
+
+export function flattenRunCommentThreads(threads: RunCommentThread[]) {
+  return threads.flatMap((thread) => [thread, ...thread.replies])
 }
 
 export async function loadRunCommentCountsForRunIds(runIds: string[]) {
@@ -147,7 +362,7 @@ export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCo
 export async function loadRunComments(runId: string): Promise<RunCommentItem[]> {
   const { data: comments, error: commentsError } = await supabase
     .from('run_comments')
-    .select('id, run_id, user_id, comment, created_at')
+    .select(RUN_COMMENT_SELECT)
     .eq('run_id', runId)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
@@ -156,34 +371,12 @@ export async function loadRunComments(runId: string): Promise<RunCommentItem[]> 
     throw commentsError
   }
 
-  const commentRows = (comments as RunCommentRow[] | null) ?? []
-  const userIds = Array.from(new Set(commentRows.map((comment) => comment.user_id)))
-
-  if (userIds.length === 0) {
-    return []
-  }
-
-  const profileById = await loadProfilesForUserIds(userIds)
-
-  return commentRows.map((comment) => {
-    const author = mapCommentAuthorIdentity(comment.user_id, profileById[comment.user_id])
-
-    return {
-      id: comment.id,
-      runId: comment.run_id,
-      userId: comment.user_id,
-      comment: comment.comment,
-      createdAt: comment.created_at,
-      displayName: author.displayName,
-      nickname: author.nickname,
-      avatarUrl: author.avatarUrl,
-    }
-  })
+  return hydrateRunCommentRows((comments as RunCommentRow[] | null) ?? [])
 }
 
 export function subscribeToRunComments(
   runId: string,
-  onInsert: (comment: RunCommentRealtimeRow) => void
+  handlers: SubscribeToRunCommentsHandlers
 ) {
   if (!runId.trim()) {
     return () => {}
@@ -200,7 +393,19 @@ export function subscribeToRunComments(
         filter: `run_id=eq.${runId}`,
       },
       (payload) => {
-        onInsert(payload.new as RunCommentRealtimeRow)
+        handlers.onInsert?.(payload.new as RunCommentRealtimeRow)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'run_comments',
+        filter: `run_id=eq.${runId}`,
+      },
+      (payload) => {
+        handlers.onUpdate?.(payload.new as RunCommentRealtimeRow)
       }
     )
     .subscribe()

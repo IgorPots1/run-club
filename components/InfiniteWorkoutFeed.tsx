@@ -239,8 +239,10 @@ export default function InfiniteWorkoutFeed({
     }
 
     const unsubscribers = runIds.map((runId) =>
-      subscribeToRunComments(runId, (commentRow) => {
-        void mergeRealtimeComment(commentRow)
+      subscribeToRunComments(runId, {
+        onInsert: (commentRow) => {
+          void mergeRealtimeComment(commentRow)
+        },
       })
     )
 

@@ -9,13 +9,17 @@ import { getBootstrapUser } from '@/lib/auth'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import {
+  applyRunCommentInsert,
+  applyRunCommentUpdate,
+  buildRunCommentThreads,
   createRunComment,
+  flattenRunCommentThreads,
   loadRunCommentAuthorProfile,
   loadRunComments,
+  resolveRunCommentRealtimeItem,
   subscribeToRunComments,
   type RunCommentAuthorIdentity,
   type RunCommentItem,
-  type RunCommentRealtimeRow,
 } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
 import { getLevelFromXP } from '@/lib/xp'
@@ -34,14 +38,6 @@ type RunDiscussionRow = {
   moving_time_seconds?: number | null
   xp?: number | null
   created_at: string
-}
-
-type ProfileRow = {
-  id: string
-  name: string | null
-  nickname?: string | null
-  email: string | null
-  avatar_url?: string | null
 }
 
 type QueryErrorLike = {
@@ -270,13 +266,11 @@ export default function RunDiscussionPage() {
   const [commentsError, setCommentsError] = useState('')
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
-  const [currentCommentAuthor, setCurrentCommentAuthor] = useState<RunCommentAuthorIdentity | null>(null)
 
   const commentsRef = useRef<RunCommentItem[]>([])
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const previousSubmittingRef = useRef(false)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
 
   useEffect(() => {
@@ -374,50 +368,23 @@ export default function RunDiscussionPage() {
       return
     }
 
-    return subscribeToRunComments(runId, (commentRow) => {
-      void (async () => {
-        if (commentsRef.current.some((comment) => comment.id === commentRow.id)) {
-          return
-        }
+    return subscribeToRunComments(runId, {
+      onInsert: (commentRow) => {
+        void (async () => {
+          const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
+          const realtimeComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
 
-        const optimisticCommentIndex = commentsRef.current.findIndex((comment) =>
-          comment.id.startsWith('optimistic-') &&
-          comment.userId === commentRow.user_id &&
-          comment.comment.trim() === commentRow.comment.trim()
-        )
+          setComments((prev) => applyRunCommentInsert(prev, realtimeComment))
+        })()
+      },
+      onUpdate: (commentRow) => {
+        void (async () => {
+          const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
+          const realtimeComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
 
-        const authorIdentity = await loadRunCommentAuthorProfile(commentRow.user_id).catch(() => ({
-          userId: commentRow.user_id,
-          displayName: 'Бегун',
-          nickname: null,
-          avatarUrl: null,
-        }))
-
-        const realtimeComment: RunCommentItem = {
-          id: commentRow.id,
-          runId: commentRow.run_id,
-          userId: commentRow.user_id,
-          comment: commentRow.comment,
-          createdAt: commentRow.created_at,
-          displayName: authorIdentity.displayName,
-          nickname: authorIdentity.nickname,
-          avatarUrl: authorIdentity.avatarUrl,
-        }
-
-        setComments((prev) => {
-          if (prev.some((comment) => comment.id === realtimeComment.id)) {
-            return prev
-          }
-
-          if (optimisticCommentIndex >= 0) {
-            return prev.map((comment, index) =>
-              index === optimisticCommentIndex ? realtimeComment : comment
-            )
-          }
-
-          return [...prev, realtimeComment]
-        })
-      })()
+          setComments((prev) => applyRunCommentUpdate(prev, realtimeComment))
+        })()
+      },
     })
   }, [runId])
 
@@ -434,18 +401,6 @@ export default function RunDiscussionPage() {
       block: 'end',
       behavior,
     })
-  }
-
-  function focusComposer() {
-    const textarea = textareaRef.current
-
-    if (!textarea) {
-      return
-    }
-
-    textarea.focus()
-    const nextCursorPosition = textarea.value.length
-    textarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
   }
 
   useEffect(() => {
@@ -469,49 +424,6 @@ export default function RunDiscussionPage() {
     }
   }, [comments.length, loadingComments])
 
-  useEffect(() => {
-    const justFinishedSubmitting = previousSubmittingRef.current && !submitting
-    previousSubmittingRef.current = submitting
-
-    if (!justFinishedSubmitting) {
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      focusComposer()
-      scrollToBottom('smooth')
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [submitting])
-
-  async function ensureCurrentAuthor() {
-    if (!user?.id) {
-      return null
-    }
-
-    if (currentCommentAuthor?.userId === user.id) {
-      return currentCommentAuthor
-    }
-
-    try {
-      const authorIdentity = await loadRunCommentAuthorProfile(user.id)
-      setCurrentCommentAuthor(authorIdentity)
-      return authorIdentity
-    } catch {
-      const fallbackAuthor = {
-        userId: user.id,
-        displayName: 'Вы',
-        nickname: null,
-        avatarUrl: null,
-      }
-      setCurrentCommentAuthor(fallbackAuthor)
-      return fallbackAuthor
-    }
-  }
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -524,47 +436,19 @@ export default function RunDiscussionPage() {
       return
     }
 
-    const authorIdentity = await ensureCurrentAuthor()
-
-    if (!authorIdentity) {
-      setSubmitError('Не удалось отправить комментарий')
-      return
-    }
-
-    const optimisticCommentId = `optimistic-${Date.now()}`
-    const optimisticComment: RunCommentItem = {
-      id: optimisticCommentId,
-      runId,
-      userId: user.id,
-      comment: trimmedDraft,
-      createdAt: new Date().toISOString(),
-      displayName: authorIdentity.displayName,
-      nickname: authorIdentity.nickname,
-      avatarUrl: authorIdentity.avatarUrl,
-    }
-
     setSubmitting(true)
     setSubmitError('')
     setCommentsError('')
-    setComments((prev) => [...prev, optimisticComment])
 
     try {
-      const { error } = await createRunComment(runId, user.id, trimmedDraft)
+      const createdComment = await createRunComment(runId, {
+        comment: trimmedDraft,
+      })
 
-      if (error) {
-        throw error
-      }
+      setComments((prev) => applyRunCommentInsert(prev, createdComment))
 
       setDraft('')
-
-      try {
-        const refreshedComments = await loadRunComments(runId)
-        setComments(refreshedComments)
-      } catch {
-        // Keep the optimistic comment visible if follow-up refresh fails.
-      }
     } catch {
-      setComments((prev) => prev.filter((comment) => comment.id !== optimisticCommentId))
       setSubmitError('Не удалось отправить комментарий')
     } finally {
       setSubmitting(false)
@@ -586,6 +470,8 @@ export default function RunDiscussionPage() {
     [resolvedDurationSeconds, run?.distance_km]
   )
   const durationLabel = useMemo(() => formatDurationLabel(resolvedDurationSeconds), [resolvedDurationSeconds])
+  const commentThreads = useMemo(() => buildRunCommentThreads(comments), [comments])
+  const visibleComments = useMemo(() => flattenRunCommentThreads(commentThreads), [commentThreads])
   const discussionSummary = loadingRun ? (
     <section className="app-card mt-3 rounded-2xl border p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -724,14 +610,14 @@ export default function RunDiscussionPage() {
             <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
               <p className="text-sm text-red-600">{commentsError}</p>
             </div>
-          ) : comments.length === 0 ? (
+          ) : visibleComments.length === 0 ? (
             <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
               <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
               <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
             </div>
           ) : (
             <div className="space-y-4 pb-2">
-              {comments.map((comment) => (
+              {visibleComments.map((comment) => (
                 <CommentRow key={comment.id} comment={comment} />
               ))}
             </div>
