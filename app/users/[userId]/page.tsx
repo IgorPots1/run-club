@@ -24,10 +24,10 @@ type PublicProfileRow = {
   nickname: string | null
   avatar_url: string | null
   club_joined_at: string | null
+  total_xp: number | null
 }
 
 type PublicRunStatRow = {
-  xp: number | null
   distance_km: number | null
   created_at: string
   moving_time_seconds: number | null
@@ -90,12 +90,12 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ data: profile, error: profileError }, { data: runs, error: runsError }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, name, nickname, avatar_url, club_joined_at')
+      .select('id, name, nickname, avatar_url, club_joined_at, total_xp')
       .eq('id', userId)
       .maybeSingle(),
     supabase
       .from('runs')
-      .select('xp, distance_km, created_at, moving_time_seconds')
+      .select('distance_km, created_at, moving_time_seconds')
       .eq('user_id', userId),
   ])
 
@@ -126,7 +126,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     )
   }
 
-  const totalXp = publicRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0)
+  const totalXp = Number(publicProfile?.total_xp ?? 0)
   const levelProgress = getLevelProgressFromXP(totalXp)
   const displayName = getProfileDisplayName(
     {

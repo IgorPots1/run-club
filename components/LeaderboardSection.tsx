@@ -3,10 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { formatDistanceKm } from '@/lib/format'
-import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
-import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '@/lib/xp'
 
 type LeaderboardRow = {
@@ -37,13 +35,9 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
         const [
           { data: runs, error: runsError },
           { data: profiles, error: profilesError },
-          challengeXpByUser,
-          likeXpByUser,
         ] = await Promise.all([
-          supabase.from('runs').select('user_id, xp, distance_km'),
-          supabase.from('profiles').select('id, name, nickname, avatar_url'),
-          loadChallengeXpByUser(),
-          loadLikeXpByUser(),
+          supabase.from('runs').select('user_id, distance_km'),
+          supabase.from('profiles').select('id, name, nickname, avatar_url, total_xp'),
         ])
 
         if (!isMounted) return
@@ -54,34 +48,32 @@ export default function LeaderboardSection({ showTitle = true }: LeaderboardSect
           return
         }
 
-        const profileById = profilesError ? {} : Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
-        const byUserId: Record<string, { total_xp: number; total_km: number; runs_count: number }> = {}
+        const profileRows = profilesError ? [] : (profiles ?? [])
+        const runStatsByUserId: Record<string, { total_km: number; runs_count: number }> = {}
 
         for (const run of runs ?? []) {
           const id = run.user_id
-          if (!byUserId[id]) byUserId[id] = { total_xp: 0, total_km: 0, runs_count: 0 }
-          byUserId[id].total_xp += Number(run.xp ?? 0)
-          byUserId[id].total_km += Number(run.distance_km ?? 0)
-          byUserId[id].runs_count += 1
+          if (!runStatsByUserId[id]) runStatsByUserId[id] = { total_km: 0, runs_count: 0 }
+          runStatsByUserId[id].total_km += Number(run.distance_km ?? 0)
+          runStatsByUserId[id].runs_count += 1
         }
 
-        for (const [userId, xp] of Object.entries(challengeXpByUser)) {
-          if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
-          byUserId[userId].total_xp += xp
-        }
-
-        for (const [userId, xp] of Object.entries(likeXpByUser)) {
-          if (!byUserId[userId]) byUserId[userId] = { total_xp: 0, total_km: 0, runs_count: 0 }
-          byUserId[userId].total_xp += xp
-        }
-
-        const list = Object.entries(byUserId)
-          .map(([user_id, data]) => {
-            const profile = profileById[user_id]
+        const list = profileRows
+          .map((profile) => {
+            const user_id = profile.id
+            const runStats = runStatsByUserId[user_id] ?? { total_km: 0, runs_count: 0 }
             const displayName = getProfileDisplayName(profile, 'Бегун')
             const avatar_url = profile?.avatar_url ?? null
-            return { user_id, displayName, avatar_url, ...data }
+            return {
+              user_id,
+              displayName,
+              avatar_url,
+              total_xp: Number(profile.total_xp ?? 0),
+              total_km: runStats.total_km,
+              runs_count: runStats.runs_count,
+            }
           })
+          .filter((row) => row.total_xp > 0 || row.runs_count > 0)
           .sort((a, b) => b.total_xp - a.total_xp)
 
         setRows(list)

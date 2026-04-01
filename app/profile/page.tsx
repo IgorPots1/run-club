@@ -9,7 +9,6 @@ import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
-import { loadLikeXpByUser } from '@/lib/likes-xp'
 import { ensureProfileExists, getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import {
@@ -20,7 +19,6 @@ import {
 } from '@/lib/push/subscribeToPush'
 import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
-import { loadChallengeXpByUser } from '@/lib/user-challenges'
 import { getLevelFromXP } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
@@ -30,6 +28,7 @@ type Profile = {
   name: string | null
   nickname: string | null
   avatar_url: string | null
+  total_xp?: number | null
 }
 
 type ProfileFormState = {
@@ -186,6 +185,7 @@ function ProfilePageContent() {
         name: '',
         nickname: '',
         avatar_url: null,
+        total_xp: 0,
       }
 
       try {
@@ -199,8 +199,6 @@ function ProfilePageContent() {
       const [
         { data: profileData, error: profileError },
         { data: runs, error: runsError },
-        challengeXpByUser,
-        likeXpByUser,
       ] = await Promise.all([
         supabase
           .from('profiles')
@@ -209,10 +207,8 @@ function ProfilePageContent() {
           .maybeSingle(),
         supabase
           .from('runs')
-          .select('xp, distance_km')
+          .select('distance_km')
           .eq('user_id', currentUser.id),
-        loadChallengeXpByUser(),
-        loadLikeXpByUser(),
       ])
 
       if (!isMounted) return
@@ -228,6 +224,7 @@ function ProfilePageContent() {
             name: profileData.name ?? '',
             nickname: profileData.nickname ?? '',
             avatar_url: profileData.avatar_url ?? null,
+            total_xp: profileData.total_xp ?? 0,
           }
         : profileFallback
 
@@ -241,11 +238,7 @@ function ProfilePageContent() {
         nickname: nextProfile.nickname ?? '',
       })
       setEmail(nextProfile.email ?? currentUser.email ?? '')
-      setTotalXp(
-        safeRuns.reduce((sum, run) => sum + Number(run.xp ?? 0), 0) +
-        (challengeXpByUser[currentUser.id] ?? 0) +
-        (likeXpByUser[currentUser.id] ?? 0)
-      )
+      setTotalXp(Number(nextProfile.total_xp ?? 0))
       setTotalKm(safeRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0))
       setRunsCount(safeRuns.length)
     } catch {
