@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
+import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import { calculateRunXp } from '@/lib/run-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { getLevelFromXP } from '@/lib/xp'
 
 type CreateRunRequestBody = {
   name?: string | null
@@ -107,6 +108,9 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+  const previousTotalXp = await loadProfileTotalXp(user.id, {
+    supabase: supabaseAdmin,
+  })
   const runXp = await calculateRunXp({
     userId: user.id,
     createdAt,
@@ -168,10 +172,12 @@ export async function POST(request: Request) {
     )
   }
 
-  const xpRefreshResult = await refreshProfileTotalXp(user.id, {
+  const nextTotalXp = await loadProfileTotalXp(user.id, {
     supabase: supabaseAdmin,
-    context: 'manual_run_create',
   })
+  const previousLevel = getLevelFromXP(previousTotalXp).level
+  const nextLevel = getLevelFromXP(nextTotalXp).level
+  const levelUp = nextLevel > previousLevel
 
   return NextResponse.json(
     {
@@ -182,8 +188,8 @@ export async function POST(request: Request) {
       shoeWearMessage: shoeWearTrigger?.message ?? null,
       xpGained: runXp.xp,
       breakdown: runXp.breakdown,
-      levelUp: xpRefreshResult.levelUp,
-      newLevel: xpRefreshResult.newLevel,
+      levelUp,
+      newLevel: levelUp ? nextLevel : null,
     },
     { status: 201 }
   )

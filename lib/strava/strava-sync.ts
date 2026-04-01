@@ -1,11 +1,11 @@
 import 'server-only'
 
 import { reverseGeocode } from '@/lib/geocoding/mapbox'
-import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
+import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import { calculateRunXp } from '@/lib/run-xp'
 import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import type { XpBreakdownItem } from '@/lib/xp'
+import { getLevelFromXP, type XpBreakdownItem } from '@/lib/xp'
 import {
   fetchStravaActivityById,
   fetchStravaActivityPhotos,
@@ -190,6 +190,17 @@ type RunLapsSyncResult = {
   status: RunLapsSyncStatus
   errorMessage: string | null
   httpStatus: number | null
+}
+
+function getLevelUpState(previousTotalXp: number, nextTotalXp: number) {
+  const previousLevel = getLevelFromXP(previousTotalXp).level
+  const nextLevel = getLevelFromXP(nextTotalXp).level
+  const levelUp = nextLevel > previousLevel
+
+  return {
+    levelUp,
+    newLevel: levelUp ? nextLevel : null,
+  }
 }
 
 function shouldDebugRunDetailSeries(input: {
@@ -1929,6 +1940,8 @@ export async function importStravaActivityForUser(
   payload.country = finalCountry
 
   if (!normalizedExistingRun) {
+    const previousTotalXp = await loadProfileTotalXp(userId, { supabase })
+
     console.info('[strava-webhook-debug] insert_branch', {
       userId,
       activityId: activityForImport.id,
@@ -1997,11 +2010,8 @@ export async function importStravaActivityForUser(
       attemptedRegion: payload.region,
       attemptedCountry: payload.country,
     })
-
-    const refreshResult = await refreshProfileTotalXp(userId, {
-      supabase,
-      context: 'strava_run_insert',
-    })
+    const nextTotalXp = await loadProfileTotalXp(userId, { supabase })
+    const levelState = getLevelUpState(previousTotalXp, nextTotalXp)
 
     if (insertedRun?.id && options.accessToken) {
       console.info('[strava-photo-debug] existing_run_resolved', {
@@ -2028,8 +2038,8 @@ export async function importStravaActivityForUser(
       activityId: payload.external_id,
       xpGained: runXp.xp,
       breakdown: runXp.breakdown,
-      levelUp: refreshResult.levelUp,
-      newLevel: refreshResult.newLevel,
+      levelUp: levelState.levelUp,
+      newLevel: levelState.newLevel,
     }
   }
 
@@ -2147,6 +2157,8 @@ export async function importStravaActivityForUser(
     xp: recalculatedXp,
   }
 
+  const previousTotalXp = await loadProfileTotalXp(userId, { supabase })
+
   if (!normalizedExistingRun.name_manually_edited) {
     runUpdatePayload.name = payload.name
   }
@@ -2204,18 +2216,8 @@ export async function importStravaActivityForUser(
     attemptedRegion: runUpdatePayload.region,
     attemptedCountry: runUpdatePayload.country,
   })
-
-  const refreshResult = await refreshProfileTotalXp(userId, {
-    supabase,
-    context: 'strava_run_update_next_owner',
-  })
-
-  if (normalizedExistingRun.user_id !== userId) {
-    await refreshProfileTotalXp(normalizedExistingRun.user_id, {
-      supabase,
-      context: 'strava_run_update_previous_owner',
-    })
-  }
+  const nextTotalXp = await loadProfileTotalXp(userId, { supabase })
+  const levelState = getLevelUpState(previousTotalXp, nextTotalXp)
 
   if (options.accessToken) {
     const { data: existingSeriesRow, error: existingSeriesError } = await supabase
@@ -2258,8 +2260,8 @@ export async function importStravaActivityForUser(
     activityId: payload.external_id,
     xpGained: 0,
     breakdown: [],
-    levelUp: refreshResult.levelUp,
-    newLevel: refreshResult.newLevel,
+    levelUp: levelState.levelUp,
+    newLevel: levelState.newLevel,
   }
 }
 

@@ -9,21 +9,30 @@ type RefreshProfileTotalXpOptions = {
   strict?: boolean
 }
 
+type LoadProfileTotalXpOptions = {
+  supabase?: ReturnType<typeof createSupabaseAdminClient>
+}
+
+export async function loadProfileTotalXp(userId: string, options: LoadProfileTotalXpOptions = {}) {
+  const supabase = options.supabase ?? createSupabaseAdminClient()
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('total_xp')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return Math.max(0, Math.round(Number((profile as { total_xp?: number | null } | null)?.total_xp ?? 0)))
+}
+
 export async function refreshProfileTotalXp(userId: string, options: RefreshProfileTotalXpOptions = {}) {
   const supabase = options.supabase ?? createSupabaseAdminClient()
 
   try {
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('total_xp')
-      .eq('id', userId)
-      .maybeSingle()
-
-    if (profileError) {
-      throw profileError
-    }
-
-    const oldTotalXp = Number((profile as { total_xp?: number | null } | null)?.total_xp ?? 0)
+    const oldTotalXp = await loadProfileTotalXp(userId, { supabase })
     const { data, error: recalculateError } = await supabase.rpc('recalculate_user_total_xp', {
       p_user_id: userId,
     })
