@@ -291,7 +291,6 @@ export default function InfiniteWorkoutFeed({
       )
       itemsRef.current = nextItems
       setItems(nextItems)
-    }
 
       void toggleRunLike(runId, activeUserId, wasLiked)
         .then(({ error: likeError, xpGained, breakdown }) => {
