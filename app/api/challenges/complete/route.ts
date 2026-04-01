@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -57,6 +58,11 @@ export async function POST(request: Request) {
   }
 
   const payload = (data ?? {}) as ChallengeCompletionRpcResult
+
+  await refreshProfileTotalXp(user.id, {
+    supabase: supabaseAdmin,
+    context: 'challenge_completion',
+  })
 
   return NextResponse.json({
     ok: true,

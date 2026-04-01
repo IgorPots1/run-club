@@ -170,15 +170,39 @@ export async function loadRunLikedUsers(runId: string): Promise<RunLikedUserItem
 }
 
 export async function toggleRunLike(runId: string, currentUserId: string, likedByMe: boolean) {
-  return likedByMe
-    ? supabase.from('run_likes').delete().eq('run_id', runId).eq('user_id', currentUserId)
-    : supabase.from('run_likes').upsert(
-        { run_id: runId, user_id: currentUserId },
-        {
-          onConflict: 'run_id,user_id',
-          ignoreDuplicates: true,
-        }
-      )
+  const response = await fetch('/api/run-likes/toggle', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      runId,
+      likedByMe,
+      currentUserId,
+    }),
+  })
+
+  const payload = await response.json().catch(() => null) as
+    | {
+        ok?: boolean
+        error?: string
+      }
+    | null
+
+  if (!response.ok || !payload?.ok) {
+    return {
+      error: new Error(
+        payload && typeof payload.error === 'string'
+          ? payload.error
+          : 'run_like_toggle_failed'
+      ),
+    }
+  }
+
+  return {
+    error: null,
+  }
 }
 
 export function subscribeToRunLikes(onChange: () => void) {

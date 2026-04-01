@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -160,6 +161,11 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+
+  await refreshProfileTotalXp(user.id, {
+    supabase: supabaseAdmin,
+    context: 'manual_run_create',
+  })
 
   return NextResponse.json(
     {

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { reverseGeocode } from '@/lib/geocoding/mapbox'
+import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import {
@@ -1985,6 +1986,11 @@ export async function importStravaActivityForUser(
       attemptedCountry: payload.country,
     })
 
+    await refreshProfileTotalXp(userId, {
+      supabase,
+      context: 'strava_run_insert',
+    })
+
     if (insertedRun?.id && options.accessToken) {
       console.info('[strava-photo-debug] existing_run_resolved', {
         activityId: activityForImport.id,
@@ -2182,6 +2188,18 @@ export async function importStravaActivityForUser(
     attemptedRegion: runUpdatePayload.region,
     attemptedCountry: runUpdatePayload.country,
   })
+
+  await refreshProfileTotalXp(userId, {
+    supabase,
+    context: 'strava_run_update_next_owner',
+  })
+
+  if (normalizedExistingRun.user_id !== userId) {
+    await refreshProfileTotalXp(normalizedExistingRun.user_id, {
+      supabase,
+      context: 'strava_run_update_previous_owner',
+    })
+  }
 
   if (options.accessToken) {
     const { data: existingSeriesRow, error: existingSeriesError } = await supabase
