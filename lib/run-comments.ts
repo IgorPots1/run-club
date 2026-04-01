@@ -1,4 +1,3 @@
-import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
 // #region agent log
@@ -25,14 +24,6 @@ type RunCommentSnapshotRow = RunCommentRow & {
 }
 
 type RunCommentCountRow = Pick<RunCommentRow, 'run_id'>
-
-type ProfileRow = {
-  id: string
-  name: string | null
-  nickname?: string | null
-  email: string | null
-  avatar_url?: string | null
-}
 
 export type RunCommentAuthorIdentity = {
   userId: string
@@ -79,64 +70,6 @@ type SubscribeToRunCommentsHandlers = {
   onUpdate?: (comment: RunCommentRealtimeRow) => void
 }
 
-function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
-  return (
-    error.code === '42703' ||
-    error.code === 'PGRST204' ||
-    Boolean(error.message?.includes('profiles.nickname')) ||
-    Boolean(error.message?.includes("'nickname' column of 'profiles'"))
-  )
-}
-
-async function loadProfilesForUserIds(userIds: string[]) {
-  if (userIds.length === 0) {
-    return {} as Record<string, ProfileRow | null>
-  }
-
-  const primaryResult = await supabase
-    .from('profiles')
-    .select('id, name, nickname, email, avatar_url')
-    .in('id', userIds)
-
-  if (!primaryResult.error) {
-    return Object.fromEntries(((primaryResult.data as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
-  }
-
-  if (!isMissingNicknameColumnError(primaryResult.error)) {
-    throw primaryResult.error
-  }
-
-  const fallbackResult = await supabase
-    .from('profiles')
-    .select('id, name, email, avatar_url')
-    .in('id', userIds)
-
-  if (fallbackResult.error) {
-    throw fallbackResult.error
-  }
-
-  const fallbackProfiles = (fallbackResult.data as Array<Omit<ProfileRow, 'nickname'>> | null) ?? []
-
-  return Object.fromEntries(
-    fallbackProfiles.map((profile) => [
-      profile.id,
-      {
-        ...profile,
-        nickname: null,
-      } satisfies ProfileRow,
-    ])
-  )
-}
-
-function mapCommentAuthorIdentity(userId: string, profile: ProfileRow | null | undefined): RunCommentAuthorIdentity {
-  return {
-    userId,
-    displayName: getProfileDisplayName(profile, 'Бегун'),
-    nickname: profile?.nickname?.trim() || null,
-    avatarUrl: profile?.avatar_url ?? null,
-  }
-}
-
 function compareRunComments(left: Pick<RunCommentItem, 'createdAt' | 'id'>, right: Pick<RunCommentItem, 'createdAt' | 'id'>) {
   const createdAtComparison = left.createdAt.localeCompare(right.createdAt)
 
@@ -145,22 +78,6 @@ function compareRunComments(left: Pick<RunCommentItem, 'createdAt' | 'id'>, righ
   }
 
   return left.id.localeCompare(right.id)
-}
-
-function mapRunCommentRowToItem(comment: RunCommentRow, author: RunCommentAuthorIdentity): RunCommentItem {
-  return {
-    id: comment.id,
-    runId: comment.run_id,
-    userId: comment.user_id,
-    parentId: comment.parent_id,
-    comment: comment.comment,
-    createdAt: comment.created_at,
-    editedAt: comment.edited_at,
-    deletedAt: comment.deleted_at,
-    displayName: author.displayName,
-    nickname: author.nickname,
-    avatarUrl: author.avatarUrl,
-  }
 }
 
 function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunCommentItem {
@@ -179,20 +96,24 @@ function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunComm
   }
 }
 
-async function hydrateRunCommentRows(commentRows: RunCommentRow[]) {
-  if (commentRows.length === 0) {
-    return [] as RunCommentItem[]
+async function loadRunCommentSnapshot(commentId: string, runId: string, viewerUserId: string | null = null) {
+  const { data, error } = await supabase
+    .rpc('get_run_comments_with_meta', {
+      p_run_id: runId,
+      p_viewer_user_id: viewerUserId,
+    })
+    .eq('id', commentId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
   }
 
-  const userIds = Array.from(new Set(commentRows.map((comment) => comment.user_id)))
-  const profileById = await loadProfilesForUserIds(userIds)
+  if (!data) {
+    throw new Error('run_comment_snapshot_not_found')
+  }
 
-  return commentRows
-    .map((comment) => {
-      const author = mapCommentAuthorIdentity(comment.user_id, profileById[comment.user_id])
-      return mapRunCommentRowToItem(comment, author)
-    })
-    .sort(compareRunComments)
+  return mapRunCommentSnapshotRowToItem(data as RunCommentSnapshotRow)
 }
 
 async function requestRunCommentMutation(path: string, init: RequestInit): Promise<RunCommentRow> {
@@ -215,10 +136,7 @@ async function requestRunCommentMutation(path: string, init: RequestInit): Promi
 export function mergeRunCommentRealtimeRow(params: {
   commentRow: RunCommentRealtimeRow
   existingComment?: RunCommentItem | null
-  authorIdentity?: RunCommentAuthorIdentity | null
 }): RunCommentItem {
-  const fallbackAuthor = params.authorIdentity ?? null
-
   return {
     id: params.commentRow.id,
     runId: params.commentRow.run_id,
@@ -228,15 +146,10 @@ export function mergeRunCommentRealtimeRow(params: {
     createdAt: params.commentRow.created_at,
     editedAt: params.commentRow.edited_at,
     deletedAt: params.commentRow.deleted_at,
-    displayName: params.existingComment?.displayName ?? fallbackAuthor?.displayName ?? 'Бегун',
-    nickname: params.existingComment?.nickname ?? fallbackAuthor?.nickname ?? null,
-    avatarUrl: params.existingComment?.avatarUrl ?? fallbackAuthor?.avatarUrl ?? null,
+    displayName: params.existingComment?.displayName ?? 'Бегун',
+    nickname: params.existingComment?.nickname ?? null,
+    avatarUrl: params.existingComment?.avatarUrl ?? null,
   }
-}
-
-export async function hydrateRunCommentRow(commentRow: RunCommentRow): Promise<RunCommentItem> {
-  const hydratedComments = await hydrateRunCommentRows([commentRow])
-  return hydratedComments[0]!
 }
 
 export async function resolveRunCommentRealtimeItem(
@@ -251,7 +164,7 @@ export async function resolveRunCommentRealtimeItem(
   }
 
   try {
-    return await hydrateRunCommentRow(commentRow)
+    return await loadRunCommentSnapshot(commentRow.id, commentRow.run_id)
   } catch {
     return mergeRunCommentRealtimeRow({
       commentRow,
@@ -268,7 +181,7 @@ export async function createRunComment(runId: string, input: CreateRunCommentInp
     }),
   })
 
-  return hydrateRunCommentRow(createdCommentRow)
+  return loadRunCommentSnapshot(createdCommentRow.id, createdCommentRow.run_id)
 }
 
 export async function updateRunComment(commentId: string, input: UpdateRunCommentInput) {
@@ -279,7 +192,7 @@ export async function updateRunComment(commentId: string, input: UpdateRunCommen
     }),
   })
 
-  return hydrateRunCommentRow(updatedCommentRow)
+  return loadRunCommentSnapshot(updatedCommentRow.id, updatedCommentRow.run_id)
 }
 
 export async function deleteRunComment(commentId: string) {
@@ -287,7 +200,7 @@ export async function deleteRunComment(commentId: string) {
     method: 'DELETE',
   })
 
-  return hydrateRunCommentRow(deletedCommentRow)
+  return loadRunCommentSnapshot(deletedCommentRow.id, deletedCommentRow.run_id)
 }
 
 export function applyRunCommentInsert(existingComments: RunCommentItem[], incomingComment: RunCommentItem) {
@@ -396,14 +309,30 @@ export async function loadRunCommentCountsForRunIds(runIds: string[]) {
 }
 
 export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCommentAuthorIdentity> {
-  const profilesByUserId = await loadProfilesForUserIds([userId])
-  return mapCommentAuthorIdentity(userId, profilesByUserId[userId])
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('name, nickname, avatar_url')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  const profile = (data as { name?: string | null; nickname?: string | null; avatar_url?: string | null } | null) ?? null
+
+  return {
+    userId,
+    displayName: profile?.name?.trim() || 'Бегун',
+    nickname: profile?.nickname?.trim() || null,
+    avatarUrl: profile?.avatar_url ?? null,
+  }
 }
 
 export async function loadRunComments(runId: string, viewerUserId: string | null = null): Promise<RunCommentItem[]> {
   const { data: comments, error: commentsError } = await supabase.rpc('get_run_comments_with_meta', {
-    run_id: runId,
-    viewer_user_id: viewerUserId,
+    p_run_id: runId,
+    p_viewer_user_id: viewerUserId,
   })
 
   if (commentsError) {
