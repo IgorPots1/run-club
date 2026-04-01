@@ -9,7 +9,7 @@ type ChallengeCompletionRequestBody = {
 }
 
 type ChallengeCompletionRpcResult = {
-  challenge_id?: string | null
+  out_challenge_id?: string | null
   xp_awarded?: number | null
   completed_at?: string | null
 }
@@ -61,10 +61,10 @@ export async function POST(request: Request) {
   }
 
   const finalizedRows = ((data as ChallengeCompletionRpcResult[] | null) ?? []).filter(
-    (row): row is ChallengeCompletionRpcResult & { challenge_id: string } =>
-      typeof row?.challenge_id === 'string' && row.challenge_id.length > 0
+    (row): row is ChallengeCompletionRpcResult & { out_challenge_id: string } =>
+      typeof row?.out_challenge_id === 'string' && row.out_challenge_id.length > 0
   )
-  const finalizedChallenge = finalizedRows.find((row) => row.challenge_id === challengeId) ?? null
+  const finalizedChallenge = finalizedRows.find((row) => row.out_challenge_id === challengeId) ?? null
   const { data: existingCompletion, error: existingCompletionError } = await supabaseAdmin
     .from('user_challenges')
     .select('completed_at')

@@ -82,7 +82,7 @@ revoke all on function public.apply_challenge_xp_to_profile_total_on_write() fro
 
 create or replace function public.finalize_earned_challenges_for_user(p_user_id uuid)
 returns table (
-  challenge_id uuid,
+  out_challenge_id uuid,
   xp_awarded integer,
   completed_at timestamptz,
   badge_created boolean
@@ -129,7 +129,7 @@ begin
       )
   ),
   inserted_completions as (
-    insert into public.user_challenges (
+    insert into public.user_challenges as uc (
       user_id,
       challenge_id,
       completed_at
@@ -140,7 +140,7 @@ begin
       v_now
     from eligible_challenges ec
     on conflict (user_id, challenge_id) do nothing
-    returning challenge_id, completed_at
+    returning uc.challenge_id, uc.completed_at
   ),
   inserted_badges as (
     insert into public.user_badge_awards (
@@ -168,18 +168,18 @@ begin
     join eligible_challenges ec
       on ec.challenge_id = ic.challenge_id
     on conflict do nothing
-    returning (meta ->> 'challenge_id')::uuid as challenge_id
+    returning (meta ->> 'challenge_id')::uuid as badge_challenge_id
   )
   select
-    ec.challenge_id,
+    ec.challenge_id as out_challenge_id,
     ec.xp_awarded,
     ic.completed_at,
-    ib.challenge_id is not null as badge_created
+    ib.badge_challenge_id is not null as badge_created
   from inserted_completions ic
   join eligible_challenges ec
     on ec.challenge_id = ic.challenge_id
   left join inserted_badges ib
-    on ib.challenge_id = ic.challenge_id
+    on ib.badge_challenge_id = ic.challenge_id
   order by ic.completed_at asc, ec.challenge_id asc;
 end;
 $$;
