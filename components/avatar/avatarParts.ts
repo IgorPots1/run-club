@@ -1,4 +1,4 @@
-export type AvatarCategory = 'body' | 'hair' | 'top' | 'bottom' | 'shoes'
+export type AvatarCategory = 'body' | 'hair' | 'top' | 'bottom' | 'shoes' | 'accessory'
 
 export type AvatarPart = {
   id: string
@@ -7,7 +7,14 @@ export type AvatarPart = {
   image: string
 }
 
-export const avatarCategories: AvatarCategory[] = ['body', 'hair', 'top', 'bottom', 'shoes']
+export const avatarCategories: AvatarCategory[] = [
+  'body',
+  'hair',
+  'top',
+  'bottom',
+  'shoes',
+  'accessory',
+]
 
 export const avatarCategoryLabels: Record<AvatarCategory, string> = {
   body: 'Body',
@@ -15,6 +22,7 @@ export const avatarCategoryLabels: Record<AvatarCategory, string> = {
   top: 'Top',
   bottom: 'Bottom',
   shoes: 'Shoes',
+  accessory: 'Accessory',
 }
 
 function toDataUri(svg: string) {
@@ -57,18 +65,25 @@ function makeHairSvg(fill: string, variant: number) {
 
 function makeTopSvg(fill: string, trim: string, variant: number) {
   const shapes = [
-    `<path d="M62 82c0-9 7-16 16-16h44c9 0 16 7 16 16v42H62V82Z" fill="${fill}" />
-     <path d="M62 84 49 97v22h20V92l-7-8Zm76 0 13 13v22h-20V92l7-8Z" fill="${fill}" />
-     <path d="M87 66h26v13c0 5-4 9-9 9h-8c-5 0-9-4-9-9V66Z" fill="${trim}" />`,
-    `<path d="M60 81c0-8 7-15 15-15h50c8 0 15 7 15 15v45H60V81Z" fill="${fill}" />
-     <path d="M60 85 44 100v18h20V96l8-11Zm80 0 16 15v18h-20V96l-8-11Z" fill="${trim}" />
-     <rect x="90" y="66" width="20" height="12" rx="6" fill="${trim}" />`,
-    `<path d="M59 84c0-10 8-18 18-18h46c10 0 18 8 18 18v40H59V84Z" fill="${fill}" />
-     <path d="M59 88 47 100v18h18V99l8-11Zm82 0 12 12v18h-18V99l-8-11Z" fill="${fill}" />
-     <path d="M82 66h36l-6 14H88l-6-14Z" fill="${trim}" />`,
-    `<path d="M61 82c0-9 7-16 16-16h46c9 0 16 7 16 16v46H61V82Z" fill="${fill}" />
-     <path d="M61 84 46 97v20h19V96l8-12Zm78 0 15 13v20h-19V96l-8-12Z" fill="${fill}" />
-     <path d="M80 67h40l-10 12H90L80 67Z" fill="${trim}" />`,
+    `<path d="M66 83c0-10 8-18 18-18h32c10 0 18 8 18 18v12l-9 32H75l-9-32V83Z" fill="${fill}" />
+     <path d="M75 95 61 108v17h18V98l8-8Zm50 0 14 13v17h-18V98l-8-8Z" fill="${fill}" />
+     <path d="M88 65h24l-6 14H94l-6-14Z" fill="${trim}" />
+     <path d="M83 92h34M87 103h26" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.8" />`,
+    `<path d="M63 82c0-9 8-17 17-17h40c9 0 17 8 17 17v42H63V82Z" fill="${fill}" />
+     <path d="M63 88 48 100v19h18V99l8-10Zm74 0 15 12v19h-18V99l-8-10Z" fill="${fill}" />
+     <path d="M94 66h12v58H94V66Z" fill="${trim}" />
+     <path d="M83 66h34l-4 12H87l-4-12Z" fill="${trim}" />
+     <path d="M78 108h44" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.55" />`,
+    `<path d="M64 83c0-10 8-18 18-18h36c10 0 18 8 18 18v41H64V83Z" fill="${fill}" />
+     <path d="M64 88 50 101v18h18V98l7-10Zm72 0 14 13v18h-18V98l-7-10Z" fill="${fill}" />
+     <path d="M85 65h30l-4 12H89l-4-12Z" fill="${trim}" />
+     <rect x="84" y="91" width="32" height="20" rx="4" fill="${trim}" opacity="0.9" />
+     <path d="M88 96h24M93 102h14" stroke="${fill}" stroke-width="2.5" stroke-linecap="round" />`,
+    `<path d="M63 82c0-9 7-17 17-17h40c9 0 17 8 17 17v43H63V82Z" fill="${fill}" />
+     <path d="M63 88 48 100v19h18V99l8-11Zm74 0 15 12v19h-18V99l-8-11Z" fill="${fill}" />
+     <path d="M84 66h32l-5 12H89l-5-12Z" fill="${trim}" />
+     <path d="M72 94h56" stroke="${trim}" stroke-width="4" stroke-linecap="round" opacity="0.9" />
+     <path d="M81 106h38" stroke="${trim}" stroke-width="3" stroke-linecap="round" opacity="0.65" />`,
   ]
 
   return toDataUri(`
@@ -100,19 +115,50 @@ function makeBottomSvg(fill: string, accent: string, variant: number) {
 
 function makeShoesSvg(fill: string, sole: string, variant: number) {
   const shapes = [
-    `<path d="M71 174h31c5 0 9 4 9 9v3H71v-12Z" fill="${fill}" />
-     <path d="M98 174h31c5 0 9 4 9 9v3H98v-12Z" fill="${fill}" />
-     <path d="M71 184h40m-13 0h40" stroke="${sole}" stroke-width="4" stroke-linecap="round" />`,
-    `<path d="M69 173h30c8 0 14 6 14 13H69v-13Z" fill="${fill}" />
-     <path d="M101 173h30c8 0 14 6 14 13h-44v-13Z" fill="${fill}" />
-     <path d="M69 182h44m-12 0h44" stroke="${sole}" stroke-width="3" stroke-linecap="round" />`,
-    `<path d="M72 175h28c6 0 11 4 13 10H72v-10Z" fill="${fill}" />
-     <path d="M100 175h28c6 0 11 4 13 10h-41v-10Z" fill="${fill}" />
-     <circle cx="84" cy="180" r="2" fill="${sole}" />
-     <circle cx="112" cy="180" r="2" fill="${sole}" />`,
-    `<path d="M70 172h32c7 0 12 6 12 14H70v-14Z" fill="${fill}" />
-     <path d="M98 172h32c7 0 12 6 12 14H98v-14Z" fill="${fill}" />
-     <path d="M70 185h44m-14 0h44" stroke="${sole}" stroke-width="4" stroke-linecap="round" />`,
+    `<path d="M73 170h14l10 5h10c6 0 11 4 14 10H73v-15Z" fill="${fill}" />
+     <path d="M99 170h14l10 5h10c6 0 11 4 14 10H99v-15Z" fill="${fill}" />
+     <path d="M73 182h48m-22 0h48" stroke="${sole}" stroke-width="5" stroke-linecap="round" />
+     <path d="M81 174h17m28 0h17" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />`,
+    `<path d="M72 169h15l9 6h13c6 0 10 4 14 10H72v-16Z" fill="${fill}" />
+     <path d="M99 169h15l9 6h13c6 0 10 4 14 10H99v-16Z" fill="${fill}" />
+     <path d="M72 181h51m-24 0h51" stroke="${sole}" stroke-width="4" stroke-linecap="round" />
+     <path d="M80 173h19m27 0h19" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.9" />
+     <path d="M92 169v6m27-6v6" stroke="${sole}" stroke-width="3" stroke-linecap="round" />`,
+    `<path d="M74 171h13l11 4h10c7 0 12 4 15 10H74v-14Z" fill="${fill}" />
+     <path d="M100 171h13l11 4h10c7 0 12 4 15 10H100v-14Z" fill="${fill}" />
+     <path d="M74 183h49m-23 0h49" stroke="${sole}" stroke-width="4.5" stroke-linecap="round" />
+     <path d="M83 175h8l4 3m31-3h8l4 3" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
+     <path d="M77 179h13m26 0h13" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.75" />`,
+    `<path d="M72 170h14l10 5h11c6 0 11 4 15 10H72v-15Z" fill="${fill}" />
+     <path d="M98 170h14l10 5h11c6 0 11 4 15 10H98v-15Z" fill="${fill}" />
+     <path d="M72 183h50m-24 0h50" stroke="${sole}" stroke-width="5" stroke-linecap="round" />
+     <path d="M77 176h41m7 0h16" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />
+     <path d="M92 171h9m25 0h9" stroke="${sole}" stroke-width="2.5" stroke-linecap="round" opacity="0.8" />`,
+  ]
+
+  return toDataUri(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+      ${shapes[variant]}
+    </svg>
+  `)
+}
+
+function makeAccessorySvg(fill: string, detail: string, variant: number) {
+  const shapes = [
+    `<path d="M73 28c5-9 16-14 27-14s22 5 27 14l3 8H70l3-8Z" fill="${fill}" />
+     <path d="M74 36h52c0 11-11 18-26 18S74 47 74 36Z" fill="${fill}" />
+     <path d="M79 36h42" stroke="${detail}" stroke-width="3" stroke-linecap="round" opacity="0.85" />`,
+    `<rect x="41" y="92" width="18" height="8" rx="4" fill="${fill}" />
+     <rect x="45" y="89" width="10" height="14" rx="4" fill="${detail}" />
+     <rect x="47" y="92" width="6" height="8" rx="2" fill="#dbeafe" />
+     <path d="M41 96H34m25 0h7" stroke="${fill}" stroke-width="3" stroke-linecap="round" />`,
+    `<path d="M73 30c4-8 15-13 27-13 13 0 24 5 28 13" stroke="${fill}" stroke-width="8" stroke-linecap="round" />
+     <path d="M77 33h46c0 9-10 15-23 15S77 42 77 33Z" fill="${fill}" />
+     <path d="M85 33h30" stroke="${detail}" stroke-width="3" stroke-linecap="round" opacity="0.9" />`,
+    `<rect x="137" y="90" width="12" height="28" rx="5" fill="${fill}" />
+     <rect x="139" y="92" width="8" height="24" rx="4" fill="${detail}" opacity="0.85" />
+     <path d="M143 90V83" stroke="${fill}" stroke-width="4" stroke-linecap="round" />
+     <path d="M143 118v7" stroke="${fill}" stroke-width="4" stroke-linecap="round" />`,
   ]
 
   return toDataUri(`
@@ -137,10 +183,10 @@ export const hairParts: AvatarPart[] = [
 ]
 
 export const topParts: AvatarPart[] = [
-  { id: 'top-ocean', category: 'top', name: 'Ocean Tee', image: makeTopSvg('#2f80ed', '#dbeafe', 0) },
-  { id: 'top-sunrise', category: 'top', name: 'Sunrise Crew', image: makeTopSvg('#f97316', '#fed7aa', 1) },
-  { id: 'top-forest', category: 'top', name: 'Forest Zip', image: makeTopSvg('#15803d', '#bbf7d0', 2) },
-  { id: 'top-berry', category: 'top', name: 'Berry Hoodie', image: makeTopSvg('#a21caf', '#f5d0fe', 3) },
+  { id: 'top-ocean', category: 'top', name: 'Race Singlet', image: makeTopSvg('#2f80ed', '#dbeafe', 0) },
+  { id: 'top-sunrise', category: 'top', name: 'Quarter Zip', image: makeTopSvg('#f97316', '#ffedd5', 1) },
+  { id: 'top-forest', category: 'top', name: 'Bib Tank', image: makeTopSvg('#15803d', '#dcfce7', 2) },
+  { id: 'top-berry', category: 'top', name: 'Wind Shell', image: makeTopSvg('#a21caf', '#f5d0fe', 3) },
 ]
 
 export const bottomParts: AvatarPart[] = [
@@ -151,10 +197,17 @@ export const bottomParts: AvatarPart[] = [
 ]
 
 export const shoesParts: AvatarPart[] = [
-  { id: 'shoes-sprint', category: 'shoes', name: 'Sprint White', image: makeShoesSvg('#f8fafc', '#94a3b8', 0) },
-  { id: 'shoes-volt', category: 'shoes', name: 'Volt', image: makeShoesSvg('#84cc16', '#1f2937', 1) },
-  { id: 'shoes-coral', category: 'shoes', name: 'Coral', image: makeShoesSvg('#fb7185', '#475569', 2) },
-  { id: 'shoes-ink', category: 'shoes', name: 'Ink', image: makeShoesSvg('#0f172a', '#38bdf8', 3) },
+  { id: 'shoes-sprint', category: 'shoes', name: 'Carbon Racer', image: makeShoesSvg('#f8fafc', '#94a3b8', 0) },
+  { id: 'shoes-volt', category: 'shoes', name: 'Tempo Volt', image: makeShoesSvg('#84cc16', '#0f172a', 1) },
+  { id: 'shoes-coral', category: 'shoes', name: 'Flyknit Coral', image: makeShoesSvg('#fb7185', '#475569', 2) },
+  { id: 'shoes-ink', category: 'shoes', name: 'Night Trainer', image: makeShoesSvg('#0f172a', '#38bdf8', 3) },
+]
+
+export const accessoryParts: AvatarPart[] = [
+  { id: 'accessory-cap', category: 'accessory', name: 'Running Cap', image: makeAccessorySvg('#111827', '#93c5fd', 0) },
+  { id: 'accessory-watch', category: 'accessory', name: 'GPS Watch', image: makeAccessorySvg('#0f172a', '#22c55e', 1) },
+  { id: 'accessory-visor', category: 'accessory', name: 'Race Visor', image: makeAccessorySvg('#ffffff', '#f97316', 2) },
+  { id: 'accessory-armband', category: 'accessory', name: 'Phone Armband', image: makeAccessorySvg('#1f2937', '#60a5fa', 3) },
 ]
 
 export const avatarPartsByCategory: Record<AvatarCategory, AvatarPart[]> = {
@@ -163,4 +216,5 @@ export const avatarPartsByCategory: Record<AvatarCategory, AvatarPart[]> = {
   top: topParts,
   bottom: bottomParts,
   shoes: shoesParts,
+  accessory: accessoryParts,
 }

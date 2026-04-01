@@ -5,7 +5,7 @@ type AvatarRendererProps = {
   selectedItems: Partial<Record<AvatarCategory, AvatarPart | null>>
 }
 
-const renderOrder: AvatarCategory[] = ['body', 'bottom', 'top', 'shoes', 'hair']
+const renderOrder: AvatarCategory[] = ['body', 'bottom', 'top', 'shoes', 'hair', 'accessory']
 
 export default function AvatarRenderer({ selectedItems }: AvatarRendererProps) {
   return (
