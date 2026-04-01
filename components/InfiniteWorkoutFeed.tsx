@@ -8,9 +8,11 @@ import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
 import {
-  loadRunCommentCountsForRunIds,
+  countVisibleRunCommentRecords,
+  loadRunCommentVisibilityForRunIds,
   subscribeToRunComments,
   type RunCommentRealtimeRow,
+  type RunCommentVisibilityRecord,
 } from '@/lib/run-comments'
 import { loadRunLikedUsers, type RunLikedUserItem } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
@@ -29,6 +31,8 @@ type InfiniteWorkoutFeedProps = {
   showLevelSubtitle?: boolean
   onCommentClick?: (runId: string) => void
 }
+
+type FeedCommentVisibilityById = Record<string, RunCommentVisibilityRecord>
 
 function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
   const existingIds = new Set(existing.map((item) => item.id))
@@ -63,8 +67,7 @@ export default function InfiniteWorkoutFeed({
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
   const likeRequestVersionByRunIdRef = useRef<Record<string, number>>({})
-  const commentUpdateSignatureByCommentIdRef = useRef<Record<string, string>>({})
-  const commentCountRefreshPromiseByRunIdRef = useRef<Record<string, Promise<void> | null>>({})
+  const commentVisibilityByRunIdRef = useRef<Record<string, FeedCommentVisibilityById>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
 
@@ -87,43 +90,52 @@ export default function InfiniteWorkoutFeed({
     setItems(nextItems)
   }, [])
 
-  const mergeRealtimeCommentInsert = useCallback((commentRow: RunCommentRealtimeRow) => {
-    const runId = commentRow.run_id
+  const setRunCommentVisibility = useCallback((runId: string, comments: RunCommentVisibilityRecord[]) => {
+    commentVisibilityByRunIdRef.current[runId] = Object.fromEntries(
+      comments.map((comment) => [comment.id, comment])
+    )
+  }, [])
 
+  const mergeRunCommentVisibility = useCallback((visibilityByRunId: Record<string, RunCommentVisibilityRecord[]>) => {
+    for (const [runId, comments] of Object.entries(visibilityByRunId)) {
+      setRunCommentVisibility(runId, comments)
+    }
+  }, [setRunCommentVisibility])
+
+  const getVisibleRunCommentCount = useCallback((runId: string) => {
+    const comments = Object.values(commentVisibilityByRunIdRef.current[runId] ?? {})
+    return Math.max(0, countVisibleRunCommentRecords(comments))
+  }, [])
+
+  const syncRunCommentCount = useCallback((runId: string) => {
     updateRunItem(runId, (item) => ({
       ...item,
-      commentsCount: Math.max(0, item.commentsCount + 1),
+      commentsCount: getVisibleRunCommentCount(runId),
     }))
-  }, [updateRunItem])
+  }, [getVisibleRunCommentCount, updateRunItem])
 
-  const refreshRunCommentsCount = useCallback(async (runId: string) => {
-    if (!runId) {
+  const applyRealtimeComment = useCallback((commentRow: RunCommentRealtimeRow) => {
+    const runId = commentRow.run_id
+    const existingRunComments = commentVisibilityByRunIdRef.current[runId]
+
+    if (!existingRunComments) {
+      updateRunItem(runId, (item) => ({
+        ...item,
+        commentsCount: Math.max(0, item.commentsCount + (commentRow.deleted_at ? 0 : 1)),
+      }))
       return
     }
 
-    const existingPromise = commentCountRefreshPromiseByRunIdRef.current[runId]
-
-    if (existingPromise) {
-      return existingPromise
+    existingRunComments[commentRow.id] = {
+      id: commentRow.id,
+      runId: commentRow.run_id,
+      parentId: commentRow.parent_id,
+      createdAt: commentRow.created_at,
+      deletedAt: commentRow.deleted_at,
     }
 
-    const refreshPromise = loadRunCommentCountsForRunIds([runId])
-      .then((countsByRunId) => {
-        updateRunItem(runId, (item) => ({
-          ...item,
-          commentsCount: Math.max(0, countsByRunId[runId] ?? 0),
-        }))
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (commentCountRefreshPromiseByRunIdRef.current[runId] === refreshPromise) {
-          commentCountRefreshPromiseByRunIdRef.current[runId] = null
-        }
-      })
-
-    commentCountRefreshPromiseByRunIdRef.current[runId] = refreshPromise
-    return refreshPromise
-  }, [updateRunItem])
+    syncRunCommentCount(runId)
+  }, [syncRunCommentCount, updateRunItem])
 
   const loadFirstPage = useCallback(async () => {
     if (
@@ -142,12 +154,17 @@ export default function InfiniteWorkoutFeed({
     const requestPromise = (async () => {
       try {
         const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
+        const visibilityByRunId = await loadRunCommentVisibilityForRunIds(page.items.map((item) => item.id))
 
         if (firstPageRequestKeyRef.current !== requestKey) {
           return
         }
 
-        setItems(page.items)
+        mergeRunCommentVisibility(visibilityByRunId)
+        setItems(page.items.map((item) => ({
+          ...item,
+          commentsCount: Math.max(0, countVisibleRunCommentRecords(visibilityByRunId[item.id] ?? [])),
+        })))
         setHasMore(page.hasMore)
         setNextOffset(page.items.length)
       } catch {
@@ -175,7 +192,7 @@ export default function InfiniteWorkoutFeed({
         firstPageRequestPromiseRef.current = null
       }
     }
-  }, [currentUserId, feedQueryKey, pageSize, targetUserId])
+  }, [currentUserId, feedQueryKey, mergeRunCommentVisibility, pageSize, targetUserId])
 
   const loadMoreRuns = useCallback(async () => {
     if (initialLoading || loadingMore || !hasMore) return
@@ -185,7 +202,15 @@ export default function InfiniteWorkoutFeed({
 
     try {
       const page = await loadFeedRuns(currentUserId, nextOffset, pageSize, targetUserId)
-      setItems((prev) => mergeUniqueFeedItems(prev, page.items))
+      const visibilityByRunId = await loadRunCommentVisibilityForRunIds(page.items.map((item) => item.id))
+
+      mergeRunCommentVisibility(visibilityByRunId)
+      setItems((prev) => mergeUniqueFeedItems(prev, page.items).map((item) => ({
+        ...item,
+        commentsCount: commentVisibilityByRunIdRef.current[item.id]
+          ? getVisibleRunCommentCount(item.id)
+          : item.commentsCount,
+      })))
       setHasMore(page.hasMore)
       setNextOffset((prev) => prev + page.items.length)
     } catch {
@@ -193,7 +218,17 @@ export default function InfiniteWorkoutFeed({
     } finally {
       setLoadingMore(false)
     }
-  }, [currentUserId, hasMore, initialLoading, loadingMore, nextOffset, pageSize, targetUserId])
+  }, [
+    currentUserId,
+    getVisibleRunCommentCount,
+    hasMore,
+    initialLoading,
+    loadingMore,
+    mergeRunCommentVisibility,
+    nextOffset,
+    pageSize,
+    targetUserId,
+  ])
 
   useEffect(() => {
     if (!enabled) {
@@ -202,8 +237,7 @@ export default function InfiniteWorkoutFeed({
 
     firstPageRequestKeyRef.current = feedQueryKey
     firstPageRequestPromiseRef.current = null
-    commentUpdateSignatureByCommentIdRef.current = {}
-    commentCountRefreshPromiseByRunIdRef.current = {}
+    commentVisibilityByRunIdRef.current = {}
     setItems([])
     setHasMore(true)
     setNextOffset(0)
@@ -275,21 +309,10 @@ export default function InfiniteWorkoutFeed({
     const unsubscribers = runIds.map((runId) =>
       subscribeToRunComments(runId, {
         onInsert: (commentRow) => {
-          void mergeRealtimeCommentInsert(commentRow)
+          void applyRealtimeComment(commentRow)
         },
         onUpdate: (commentRow) => {
-          if (!commentRow.deleted_at) {
-            return
-          }
-
-          const updateSignature = `${commentRow.id}:${commentRow.deleted_at}`
-
-          if (commentUpdateSignatureByCommentIdRef.current[commentRow.id] === updateSignature) {
-            return
-          }
-
-          commentUpdateSignatureByCommentIdRef.current[commentRow.id] = updateSignature
-          void refreshRunCommentsCount(runId)
+          void applyRealtimeComment(commentRow)
         },
       })
     )
@@ -297,7 +320,7 @@ export default function InfiniteWorkoutFeed({
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe())
     }
-  }, [mergeRealtimeCommentInsert, refreshRunCommentsCount, subscribedRunIdsKey])
+  }, [applyRealtimeComment, subscribedRunIdsKey])
 
   useEffect(() => {
     if (!xpToast) {

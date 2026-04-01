@@ -27,6 +27,13 @@ type RunCommentApiPayload = RunCommentRow & {
 }
 
 type RunCommentCountRow = Pick<RunCommentRow, 'id' | 'run_id' | 'parent_id' | 'created_at' | 'deleted_at'>
+export type RunCommentVisibilityRecord = {
+  id: string
+  runId: string
+  parentId: string | null
+  createdAt: string
+  deletedAt: string | null
+}
 
 export type RunCommentLikeRealtimeRow = {
   comment_id: string
@@ -358,6 +365,48 @@ export function flattenRunCommentThreads(threads: RunCommentThread[]) {
 
 export function countVisibleRunComments(comments: RunCommentItem[]) {
   return countVisibleCommentItems(comments)
+}
+
+export function countVisibleRunCommentRecords(comments: RunCommentVisibilityRecord[]) {
+  return countVisibleCommentItems(comments)
+}
+
+export async function loadRunCommentVisibilityForRunIds(runIds: string[]) {
+  if (runIds.length === 0) {
+    return {} as Record<string, RunCommentVisibilityRecord[]>
+  }
+
+  const uniqueRunIds = Array.from(new Set(runIds))
+  const { data, error } = await supabase
+    .from('run_comments')
+    .select('id, run_id, parent_id, created_at, deleted_at')
+    .in('run_id', uniqueRunIds)
+
+  if (error) {
+    throw error
+  }
+
+  const visibilityByRunId: Record<string, RunCommentVisibilityRecord[]> = {}
+
+  for (const runId of uniqueRunIds) {
+    visibilityByRunId[runId] = []
+  }
+
+  for (const row of (data as RunCommentCountRow[] | null) ?? []) {
+    if (!visibilityByRunId[row.run_id]) {
+      visibilityByRunId[row.run_id] = []
+    }
+
+    visibilityByRunId[row.run_id].push({
+      id: row.id,
+      runId: row.run_id,
+      parentId: row.parent_id,
+      createdAt: row.created_at,
+      deletedAt: row.deleted_at,
+    })
+  }
+
+  return visibilityByRunId
 }
 
 export async function loadRunCommentCountsForRunIds(runIds: string[]) {
