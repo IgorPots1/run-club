@@ -1,20 +1,17 @@
 import { NextResponse } from 'next/server'
-import { refreshProfileTotalXp } from '@/lib/profile-total-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { getLevelFromXP } from '@/lib/xp'
 
 type ChallengeCompletionRequestBody = {
   challengeId?: string
 }
 
 type ChallengeCompletionRpcResult = {
-  completion_created?: boolean
-  badge_created?: boolean
+  challenge_id?: string | null
+  xp_awarded?: number | null
   completed_at?: string | null
-}
-
-type ChallengeXpRow = {
-  xp_reward: number | null
 }
 
 export async function POST(request: Request) {
@@ -44,24 +41,11 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
-  const { data: challengeRow, error: challengeError } = await supabaseAdmin
-    .from('challenges')
-    .select('xp_reward')
-    .eq('id', challengeId)
-    .maybeSingle()
-
-  if (challengeError) {
-    console.error('[challenge_completion] failed to load challenge xp reward', {
-      challengeId,
-      error: challengeError,
-    })
-  }
-
-  const challengeXpReward = Math.max(0, Math.round(Number((challengeRow as ChallengeXpRow | null)?.xp_reward ?? 0)))
-
-  const { data, error: rpcError } = await supabaseAdmin.rpc('award_challenge_completion_badge', {
+  const previousTotalXp = await loadProfileTotalXp(user.id, {
+    supabase: supabaseAdmin,
+  })
+  const { data, error: rpcError } = await supabaseAdmin.rpc('finalize_earned_challenges_for_user', {
     p_user_id: user.id,
-    p_challenge_id: challengeId,
   })
 
   if (rpcError) {
@@ -76,23 +60,54 @@ export async function POST(request: Request) {
     )
   }
 
-  const payload = (data ?? {}) as ChallengeCompletionRpcResult
-  const completionCreated = payload.completion_created !== false
-  const xpGained = completionCreated ? challengeXpReward : 0
+  const finalizedRows = ((data as ChallengeCompletionRpcResult[] | null) ?? []).filter(
+    (row): row is ChallengeCompletionRpcResult & { challenge_id: string } =>
+      typeof row?.challenge_id === 'string' && row.challenge_id.length > 0
+  )
+  const finalizedChallenge = finalizedRows.find((row) => row.challenge_id === challengeId) ?? null
+  const { data: existingCompletion, error: existingCompletionError } = await supabaseAdmin
+    .from('user_challenges')
+    .select('completed_at')
+    .eq('user_id', user.id)
+    .eq('challenge_id', challengeId)
+    .maybeSingle()
 
-  const xpRefreshResult = await refreshProfileTotalXp(user.id, {
+  if (existingCompletionError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: existingCompletionError.message,
+      },
+      { status: 500 }
+    )
+  }
+
+  if (!existingCompletion) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'challenge_not_earned',
+      },
+      { status: 409 }
+    )
+  }
+
+  const nextTotalXp = await loadProfileTotalXp(user.id, {
     supabase: supabaseAdmin,
-    context: 'challenge_completion',
   })
+  const previousLevel = getLevelFromXP(previousTotalXp).level
+  const nextLevel = getLevelFromXP(nextTotalXp).level
+  const levelUp = nextLevel > previousLevel
+  const xpGained = Math.max(0, Math.round(Number(finalizedChallenge?.xp_awarded ?? 0)))
 
   return NextResponse.json({
     ok: true,
-    duplicate: completionCreated === false,
-    badgeCreated: payload.badge_created === true,
-    completedAt: payload.completed_at ?? null,
+    duplicate: finalizedChallenge == null,
+    badgeCreated: finalizedChallenge != null,
+    completedAt: finalizedChallenge?.completed_at ?? existingCompletion.completed_at ?? null,
     xpGained,
     breakdown: xpGained > 0 ? [{ label: 'Челлендж', value: xpGained }] : [],
-    levelUp: xpRefreshResult.levelUp,
-    newLevel: xpRefreshResult.newLevel,
+    levelUp,
+    newLevel: levelUp ? nextLevel : null,
   })
 }

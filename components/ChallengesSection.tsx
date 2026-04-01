@@ -1,14 +1,12 @@
 'use client'
 
 import { CheckCircle2 } from 'lucide-react'
-import XpGainToast from '@/components/XpGainToast'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { ensureProfileExists } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
-import { awardChallengeCompletion, loadCompletedChallenges } from '@/lib/user-challenges'
-import type { XpBreakdownItem } from '@/lib/xp'
+import { loadCompletedChallenges } from '@/lib/user-challenges'
 import {
   getChallengeProgress,
   isAchievementChallenge,
@@ -80,21 +78,6 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
   const [items, setItems] = useState<ChallengeWithProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
-
-  useEffect(() => {
-    if (!xpToast) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setXpToast(null)
-    }, 3000)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [xpToast])
 
   useEffect(() => {
     let isMounted = true
@@ -140,41 +123,23 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
         const challenges = (challengesData as Challenge[]) ?? []
         const runs = (runsData as RunRecord[]) ?? []
         const itemsWithProgress = sortChallengesByPriority(
-          challenges.map((challenge) => getChallengeProgress(challenge, runs))
+          challenges.map((challenge) => {
+            const progress = getChallengeProgress(challenge, runs)
+            const isCompleted = progress.isCompleted || completedChallenges.has(challenge.id)
+
+            return {
+              ...progress,
+              isCompleted,
+              progressItems: isCompleted
+                ? progress.progressItems.map((item) => ({
+                    ...item,
+                    completed: true,
+                    percent: 100,
+                  }))
+                : progress.progressItems,
+            }
+          })
         )
-
-        const completedNow = itemsWithProgress.filter(
-          (challenge) => challenge.isCompleted && !completedChallenges.has(challenge.id)
-        )
-
-        if (completedNow.length > 0) {
-          const results = await Promise.all(
-            completedNow.map((challenge) =>
-              awardChallengeCompletion(user.id, challenge.id, Number(challenge.xp_reward ?? 0))
-            )
-          )
-
-          if (results.some((result) => !result.success)) {
-            setError('Не удалось сохранить прогресс челленджей')
-          }
-
-          const totalXpGained = results.reduce((sum, result) => sum + Math.max(0, result.xpGained), 0)
-
-          if (totalXpGained > 0) {
-            const breakdownByLabel = results.reduce<Record<string, number>>((accumulator, result) => {
-              for (const item of result.breakdown) {
-                accumulator[item.label] = (accumulator[item.label] ?? 0) + Number(item.value ?? 0)
-              }
-
-              return accumulator
-            }, {})
-
-            setXpToast({
-              xpGained: totalXpGained,
-              breakdown: Object.entries(breakdownByLabel).map(([label, value]) => ({ label, value })),
-            })
-          }
-        }
 
         setItems(itemsWithProgress)
       } catch (loadError) {
@@ -201,7 +166,6 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
 
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
-      {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} /> : null}
       {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Челленджи</h1> : null}
       {loading ? (
         <p>Загрузка...</p>

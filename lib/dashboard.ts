@@ -312,6 +312,7 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
     profileById,
     { data: myRuns, error: myRunsError },
     { data: challenges, error: challengesError },
+    { data: completedChallenges, error: completedChallengesError },
   ] = await Promise.all([
     loadProfilesByUserIds([userId], { includeAvatarUrl: false }),
     supabase
@@ -323,19 +324,41 @@ export async function loadDashboardOverview(userId: string): Promise<DashboardOv
       .from('challenges')
       .select('id, title, description, goal_km, goal_runs, xp_reward, created_at')
       .order('created_at', { ascending: true }),
+    supabase
+      .from('user_challenges')
+      .select('challenge_id')
+      .eq('user_id', userId),
   ])
 
-  if (myRunsError || challengesError) {
+  if (myRunsError || challengesError || completedChallengesError) {
     throw new Error('Не удалось загрузить дашборд')
   }
 
   const currentUserRuns = (myRuns as RunRecord[] | null) ?? []
+  const completedChallengeIds = new Set(
+    ((((completedChallenges as Array<{ challenge_id: string }> | null) ?? [])).map((row) => row.challenge_id))
+  )
   const monthStart = getMonthStart(new Date()).getTime()
   const totalKmThisMonth = currentUserRuns.reduce((sum, run) => {
     const runTime = new Date(run.created_at).getTime()
     return runTime >= monthStart ? sum + Number(run.distance_km ?? 0) : sum
   }, 0)
-  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => getChallengeProgress(challenge, currentUserRuns))
+  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => {
+    const progress = getChallengeProgress(challenge, currentUserRuns)
+    const isCompleted = progress.isCompleted || completedChallengeIds.has(challenge.id)
+
+    return {
+      ...progress,
+      isCompleted,
+      progressItems: isCompleted
+        ? progress.progressItems.map((item) => ({
+            ...item,
+            completed: true,
+            percent: 100,
+          }))
+        : progress.progressItems,
+    }
+  })
   const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
   const firstActiveChallenge = activeChallenges[0] ?? null
   const profile = profileById[userId]

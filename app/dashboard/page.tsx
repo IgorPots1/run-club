@@ -16,6 +16,10 @@ type RunSummaryRow = {
   created_at: string
 }
 
+type CompletedChallengeRow = {
+  challenge_id: string
+}
+
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -32,6 +36,7 @@ export default async function DashboardPage() {
     { data: profile },
     { data: runs },
     { data: challenges },
+    { data: completedChallenges },
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -47,6 +52,10 @@ export default async function DashboardPage() {
       .from('challenges')
       .select('id, title, description, goal_km, goal_runs, xp_reward, created_at, kind')
       .order('created_at', { ascending: true }),
+    supabase
+      .from('user_challenges')
+      .select('challenge_id')
+      .eq('user_id', user.id),
   ])
 
   const initialProfileSummary = (profile as ProfileSummaryRow | null) ?? {
@@ -56,13 +65,31 @@ export default async function DashboardPage() {
     total_xp: 0,
   }
   const runRows = (runs as RunSummaryRow[] | null) ?? []
+  const completedChallengeIds = new Set(
+    (((completedChallenges as CompletedChallengeRow[] | null) ?? []).map((row) => row.challenge_id))
+  )
   const monthStart = getMonthStart(new Date()).getTime()
   const totalKmThisMonth = runRows.reduce((sum, run) => {
     const runTime = new Date(run.created_at).getTime()
     return runTime >= monthStart ? sum + Number(run.distance_km ?? 0) : sum
   }, 0)
   const totalXp = Number(initialProfileSummary.total_xp ?? 0)
-  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => getChallengeProgress(challenge, runRows))
+  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => {
+    const progress = getChallengeProgress(challenge, runRows)
+    const isCompleted = progress.isCompleted || completedChallengeIds.has(challenge.id)
+
+    return {
+      ...progress,
+      isCompleted,
+      progressItems: isCompleted
+        ? progress.progressItems.map((item) => ({
+            ...item,
+            completed: true,
+            percent: 100,
+          }))
+        : progress.progressItems,
+    }
+  })
   const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
   const initialActiveChallenge: ChallengeWithProgress | null = activeChallenges[0] ?? null
   const initialAllChallengesCompleted = challengeItems.length > 0 && activeChallenges.length === 0
