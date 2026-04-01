@@ -21,6 +21,7 @@ export type RaceWeekResultRow = {
   runXp: number
   likeXp: number
   challengeXp: number
+  raceBonusXp: number
   runsCount: number | null
   displayName: string
   finalizedAt: string
@@ -55,6 +56,7 @@ type RaceWeekResultDbRow = {
   run_xp: number | string | null
   like_xp: number | string | null
   challenge_xp: number | string | null
+  race_bonus_xp: number | string | null
   runs_count: number | string | null
   display_name_snapshot: string | null
   finalized_at: string
@@ -105,6 +107,7 @@ function mapRaceWeekResult(row: RaceWeekResultDbRow): RaceWeekResultRow {
     runXp: toSafeNumber(row.run_xp),
     likeXp: toSafeNumber(row.like_xp),
     challengeXp: toSafeNumber(row.challenge_xp),
+    raceBonusXp: toSafeNumber(row.race_bonus_xp),
     runsCount: row.runs_count === null ? null : toSafeNumber(row.runs_count),
     displayName: row.display_name_snapshot?.trim() || 'Бегун',
     finalizedAt: row.finalized_at,
@@ -165,7 +168,7 @@ export async function loadRaceWeekTopResults(weekId: string) {
   const { data, error } = await supabase
     .from('race_week_results')
     .select(
-      'id, race_week_id, user_id, rank, total_xp, run_xp, like_xp, challenge_xp, runs_count, display_name_snapshot, finalized_at'
+      'id, race_week_id, user_id, rank, total_xp, run_xp, like_xp, challenge_xp, race_bonus_xp, runs_count, display_name_snapshot, finalized_at'
     )
     .eq('race_week_id', weekId)
     .order('rank', { ascending: true })
@@ -183,7 +186,7 @@ export async function loadRaceWeekUserResult(weekId: string, userId: string) {
   const { data, error } = await supabase
     .from('race_week_results')
     .select(
-      'id, race_week_id, user_id, rank, total_xp, run_xp, like_xp, challenge_xp, runs_count, display_name_snapshot, finalized_at'
+      'id, race_week_id, user_id, rank, total_xp, run_xp, like_xp, challenge_xp, race_bonus_xp, runs_count, display_name_snapshot, finalized_at'
     )
     .eq('race_week_id', weekId)
     .eq('user_id', userId)

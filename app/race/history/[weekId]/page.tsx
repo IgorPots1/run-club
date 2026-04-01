@@ -108,6 +108,9 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
                   <p className="app-text-primary mt-1 text-sm font-semibold">{badgeLabel}</p>
                 </div>
               </div>
+              {userResult.raceBonusXp > 0 ? (
+                <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${userResult.raceBonusXp} XP`}</p>
+              ) : null}
             </div>
           ) : (
             <div className="app-surface-muted mt-4 rounded-2xl p-4">

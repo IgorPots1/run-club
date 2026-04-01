@@ -457,20 +457,25 @@ export default function DashboardPageClient({
                 <div className="min-w-0">
                   <h2 className="app-text-primary text-lg font-semibold">🏆 Итоги прошлой недели</h2>
                   {lastWeekResultsCard.userResult ? (
-                    <div className="mt-3 grid grid-cols-3 gap-3">
-                      <div>
-                        <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
-                        <p className="app-text-primary mt-1 text-lg font-semibold">#{lastWeekResultsCard.userResult.rank}</p>
+                    <>
+                      <div className="mt-3 grid grid-cols-3 gap-3">
+                        <div>
+                          <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
+                          <p className="app-text-primary mt-1 text-lg font-semibold">#{lastWeekResultsCard.userResult.rank}</p>
+                        </div>
+                        <div>
+                          <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
+                          <p className="app-text-primary mt-1 text-lg font-semibold">{lastWeekResultsCard.userResult.totalXp}</p>
+                        </div>
+                        <div>
+                          <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
+                          <p className="app-text-primary mt-1 text-sm font-semibold">{lastWeekResultsCard.badgeText}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
-                        <p className="app-text-primary mt-1 text-lg font-semibold">{lastWeekResultsCard.userResult.totalXp}</p>
-                      </div>
-                      <div>
-                        <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
-                        <p className="app-text-primary mt-1 text-sm font-semibold">{lastWeekResultsCard.badgeText}</p>
-                      </div>
-                    </div>
+                      {lastWeekResultsCard.userResult.raceBonusXp > 0 ? (
+                        <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${lastWeekResultsCard.userResult.raceBonusXp} XP`}</p>
+                      ) : null}
+                    </>
                   ) : (
                     <p className="app-text-secondary mt-3 text-sm">Ты не участвовал</p>
                   )}
