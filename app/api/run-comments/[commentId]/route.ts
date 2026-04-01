@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  buildRunCommentPayload,
   parseUpdateRunCommentInput,
   softDeleteRunCommentRecord,
   updateRunCommentRecord,
@@ -73,7 +74,11 @@ export async function PATCH(
 
   return NextResponse.json({
     ok: true,
-    comment: result.data,
+    comment: await buildRunCommentPayload({
+      supabaseAdmin,
+      comment: result.data,
+      viewerUserId: user.id,
+    }),
   })
 }
 
@@ -125,6 +130,10 @@ export async function DELETE(
 
   return NextResponse.json({
     ok: true,
-    comment: result.data,
+    comment: await buildRunCommentPayload({
+      supabaseAdmin,
+      comment: result.data,
+      viewerUserId: user.id,
+    }),
   })
 }

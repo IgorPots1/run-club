@@ -23,21 +23,11 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import {
-  applyRunCommentLikeState,
-  applyRunCommentInsert,
-  applyRunCommentUpdate,
   countVisibleRunComments,
-  createRunComment,
-  deleteRunComment,
   loadRunComments,
-  resolveRunCommentRealtimeItem,
-  subscribeToRunCommentLikes,
-  subscribeToRunComments,
-  toggleRunCommentLike,
   type RunCommentItem,
-  type RunCommentLikeRealtimeRow,
-  updateRunComment,
 } from '@/lib/run-comments'
+import { useRunCommentsController } from '@/lib/use-run-comments-controller'
 import { updateRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
 import { uploadRunPhoto } from '@/lib/storage/uploadRunPhoto'
@@ -548,16 +538,6 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-function getRunCommentLikeEchoKey(
-  commentLike:
-    | Pick<RunCommentLikeRealtimeRow, 'comment_id' | 'user_id'>
-    | { commentId: string; userId: string }
-) {
-  const commentId = 'comment_id' in commentLike ? commentLike.comment_id : commentLike.commentId
-  const userId = 'user_id' in commentLike ? commentLike.user_id : commentLike.userId
-  return `${commentId}:${userId}`
-}
-
 function getRunEditDraft(run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id'> | null | undefined) {
   return {
     name: run?.name ?? '',
@@ -581,9 +561,7 @@ export default function RunDetailsPage() {
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
   const [likesCount, setLikesCount] = useState(0)
-  const [comments, setComments] = useState<RunCommentItem[]>([])
   const [commentsError, setCommentsError] = useState('')
-  const [pendingLikeCommentIds, setPendingLikeCommentIds] = useState<Record<string, boolean>>({})
   const [lapsBackfillAttemptedRunId, setLapsBackfillAttemptedRunId] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
@@ -600,9 +578,25 @@ export default function RunDetailsPage() {
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
   const photoInputRef = useRef<HTMLInputElement | null>(null)
-  const commentsRef = useRef<RunCommentItem[]>([])
-  const pendingLocalLikeInsertEchoesRef = useRef<Set<string>>(new Set())
-  const pendingLocalLikeDeleteEchoesRef = useRef<Set<string>>(new Set())
+  const handleAuthRequired = useMemo(
+    () => () => {
+      router.replace('/login')
+    },
+    [router]
+  )
+  const {
+    comments,
+    pendingLikeCommentIds,
+    replaceComments,
+    createComment,
+    editComment,
+    deleteComment,
+    toggleLikeComment,
+  } = useRunCommentsController({
+    runId,
+    currentUserId: user?.id ?? null,
+    onAuthRequired: handleAuthRequired,
+  })
 
   async function handleCommentSubmit(comment: string) {
     if (!run) {
@@ -615,11 +609,7 @@ export default function RunDetailsPage() {
       throw new Error('empty_comment')
     }
 
-    const createdComment = await createRunComment(run.id, {
-      comment: trimmedComment,
-    })
-
-    setComments((currentComments) => applyRunCommentInsert(currentComments, createdComment))
+    await createComment(trimmedComment)
     setCommentsError('')
   }
 
@@ -634,12 +624,7 @@ export default function RunDetailsPage() {
       throw new Error('empty_comment')
     }
 
-    const createdComment = await createRunComment(run.id, {
-      comment: trimmedComment,
-      parentId,
-    })
-
-    setComments((currentComments) => applyRunCommentInsert(currentComments, createdComment))
+    await createComment(trimmedComment, parentId)
     setCommentsError('')
   }
 
@@ -650,81 +635,17 @@ export default function RunDetailsPage() {
       throw new Error('empty_comment')
     }
 
-    const updatedComment = await updateRunComment(commentId, {
-      comment: trimmedComment,
-    })
-
-    setComments((currentComments) => applyRunCommentUpdate(currentComments, updatedComment))
+    await editComment(commentId, trimmedComment)
     setCommentsError('')
   }
 
   async function handleDeleteComment(commentId: string) {
-    const deletedComment = await deleteRunComment(commentId)
-
-    setComments((currentComments) => applyRunCommentUpdate(currentComments, deletedComment))
+    await deleteComment(commentId)
     setCommentsError('')
   }
 
   async function handleToggleLikeComment(commentId: string) {
-    if (!user) {
-      router.replace('/login')
-      return
-    }
-
-    if (pendingLikeCommentIds[commentId]) {
-      return
-    }
-
-    const existingComment = commentsRef.current.find((comment) => comment.id === commentId) ?? null
-
-    if (!existingComment || existingComment.deletedAt) {
-      return
-    }
-
-    const wasLiked = existingComment.likedByMe
-    const previousComments = commentsRef.current
-
-    setPendingLikeCommentIds((prev) => ({
-      ...prev,
-      [commentId]: true,
-    }))
-
-    const nextComments = applyRunCommentLikeState(previousComments, {
-      commentId,
-      delta: wasLiked ? -1 : 1,
-      likedByMe: !wasLiked,
-    })
-
-    commentsRef.current = nextComments
-    setComments(nextComments)
-
-    const echoKey = getRunCommentLikeEchoKey({
-      commentId,
-      userId: user.id,
-    })
-
-    try {
-      const { error } = await toggleRunCommentLike(commentId, wasLiked)
-
-      if (error) {
-        throw error
-      }
-
-      if (wasLiked) {
-        pendingLocalLikeDeleteEchoesRef.current.add(echoKey)
-      } else {
-        pendingLocalLikeInsertEchoesRef.current.add(echoKey)
-      }
-    } catch {
-      commentsRef.current = previousComments
-      setComments(previousComments)
-    } finally {
-      setPendingLikeCommentIds((prev) => {
-        const next = { ...prev }
-        delete next[commentId]
-        return next
-      })
-    }
+    await toggleLikeComment(commentId)
   }
 
   function handleOpenPhotoPicker() {
@@ -825,16 +746,6 @@ export default function RunDetailsPage() {
       setUploadingPhotos(false)
     }
   }
-
-  useEffect(() => {
-    commentsRef.current = comments
-  }, [comments])
-
-  useEffect(() => {
-    pendingLocalLikeInsertEchoesRef.current.clear()
-    pendingLocalLikeDeleteEchoesRef.current.clear()
-    setPendingLikeCommentIds({})
-  }, [runId])
 
   useEffect(() => {
     let isMounted = true
@@ -988,7 +899,7 @@ export default function RunDetailsPage() {
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
         setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
         setLikesCount(Number(likesResult.count ?? 0))
-        setComments(runComments)
+        replaceComments(runComments)
         setCommentsError(nextCommentsError)
       } catch {
         if (isMounted) {
@@ -997,7 +908,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
-          setComments([])
+          replaceComments([])
         }
       } finally {
         if (isMounted) {
@@ -1011,75 +922,7 @@ export default function RunDetailsPage() {
     return () => {
       isMounted = false
     }
-  }, [authLoading, reloadKey, runId, user])
-
-  useEffect(() => {
-    if (!runId) {
-      return
-    }
-
-    return subscribeToRunComments(runId, {
-      onInsert: (commentRow) => {
-        void (async () => {
-          const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
-          const nextComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
-
-          setComments((currentComments) => applyRunCommentInsert(currentComments, nextComment))
-        })()
-      },
-      onUpdate: (commentRow) => {
-        void (async () => {
-          const existingComment = commentsRef.current.find((comment) => comment.id === commentRow.id) ?? null
-          const nextComment = await resolveRunCommentRealtimeItem(commentRow, existingComment)
-
-          setComments((currentComments) => applyRunCommentUpdate(currentComments, nextComment))
-        })()
-      },
-    })
-  }, [runId])
-
-  useEffect(() => {
-    if (!runId) {
-      return
-    }
-
-    return subscribeToRunCommentLikes(runId, {
-      onInsert: (likeRow) => {
-        const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
-        const echoKey = getRunCommentLikeEchoKey(likeRow)
-
-        if (isOwnLike && pendingLocalLikeInsertEchoesRef.current.has(echoKey)) {
-          pendingLocalLikeInsertEchoesRef.current.delete(echoKey)
-          return
-        }
-
-        setComments((currentComments) =>
-          applyRunCommentLikeState(currentComments, {
-            commentId: likeRow.comment_id,
-            delta: 1,
-            likedByMe: isOwnLike ? true : undefined,
-          })
-        )
-      },
-      onDelete: (likeRow) => {
-        const isOwnLike = Boolean(user?.id) && likeRow.user_id === user?.id
-        const echoKey = getRunCommentLikeEchoKey(likeRow)
-
-        if (isOwnLike && pendingLocalLikeDeleteEchoesRef.current.has(echoKey)) {
-          pendingLocalLikeDeleteEchoesRef.current.delete(echoKey)
-          return
-        }
-
-        setComments((currentComments) =>
-          applyRunCommentLikeState(currentComments, {
-            commentId: likeRow.comment_id,
-            delta: -1,
-            likedByMe: isOwnLike ? false : undefined,
-          })
-        )
-      },
-    })
-  }, [runId, user?.id])
+  }, [authLoading, reloadKey, replaceComments, runId, user])
 
   useEffect(() => {
     if (isEditingDetails) {

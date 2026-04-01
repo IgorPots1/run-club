@@ -1,8 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-
-export const RUN_COMMENT_PLACEHOLDER_TEXT = 'Комментарий удалён'
+import { RUN_COMMENT_PLACEHOLDER_TEXT } from '@/lib/run-comments-constants'
 
 const RUN_COMMENT_MUTATION_SELECT =
   'id, run_id, user_id, parent_id, comment, created_at, edited_at, deleted_at'
@@ -37,7 +36,20 @@ export type RunCommentMutationRow = {
   deleted_at: string | null
 }
 
+export type RunCommentPayload = RunCommentMutationRow & {
+  display_name: string
+  nickname: string | null
+  avatar_url: string | null
+  likes_count: number
+  liked_by_me: boolean
+}
+
 type RunCommentParentRow = Pick<RunCommentMutationRow, 'id' | 'run_id' | 'parent_id' | 'deleted_at'>
+type RunCommentProfileRow = {
+  name: string | null
+  nickname: string | null
+  avatar_url: string | null
+}
 
 export type CreateRunCommentInput = {
   comment: string
@@ -205,6 +217,83 @@ async function validateReplyParent(
   }
 
   return success(parentComment)
+}
+
+async function loadRunCommentPayloadProfile(
+  supabaseAdmin: SupabaseClient,
+  userId: string
+): Promise<RunCommentProfileRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('name, nickname, avatar_url')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return (data as RunCommentProfileRow | null) ?? null
+}
+
+async function loadRunCommentPayloadLikes(
+  supabaseAdmin: SupabaseClient,
+  commentId: string,
+  viewerUserId: string | null
+) {
+  const [likesCountResult, likedByMeResult] = await Promise.all([
+    supabaseAdmin
+      .from('run_comment_likes')
+      .select('comment_id', { count: 'exact', head: true })
+      .eq('comment_id', commentId),
+    viewerUserId
+      ? supabaseAdmin
+          .from('run_comment_likes')
+          .select('comment_id', { count: 'exact', head: true })
+          .eq('comment_id', commentId)
+          .eq('user_id', viewerUserId)
+      : Promise.resolve({ count: 0, error: null }),
+  ])
+
+  if (likesCountResult.error) {
+    throw likesCountResult.error
+  }
+
+  if (likedByMeResult.error) {
+    throw likedByMeResult.error
+  }
+
+  return {
+    likesCount: Number(likesCountResult.count ?? 0),
+    likedByMe: Number(likedByMeResult.count ?? 0) > 0,
+  }
+}
+
+export async function buildRunCommentPayload(params: {
+  supabaseAdmin: SupabaseClient
+  comment: RunCommentMutationRow
+  viewerUserId?: string | null
+}): Promise<RunCommentPayload> {
+  const [profile, likes] = await Promise.all([
+    loadRunCommentPayloadProfile(params.supabaseAdmin, params.comment.user_id).catch(() => null),
+    loadRunCommentPayloadLikes(
+      params.supabaseAdmin,
+      params.comment.id,
+      params.viewerUserId ?? null
+    ).catch(() => ({
+      likesCount: 0,
+      likedByMe: false,
+    })),
+  ])
+
+  return {
+    ...params.comment,
+    display_name: profile?.name?.trim() || 'Бегун',
+    nickname: profile?.nickname?.trim() || null,
+    avatar_url: profile?.avatar_url ?? null,
+    likes_count: likes.likesCount,
+    liked_by_me: likes.likedByMe,
+  }
 }
 
 export async function createRunCommentRecord(params: {

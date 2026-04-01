@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  buildRunCommentPayload,
   createRunCommentRecord,
   parseCreateRunCommentInput,
 } from '@/lib/server/run-comments'
@@ -70,7 +71,11 @@ export async function POST(
   return NextResponse.json(
     {
       ok: true,
-      comment: result.data,
+      comment: await buildRunCommentPayload({
+        supabaseAdmin,
+        comment: result.data,
+        viewerUserId: user.id,
+      }),
     },
     { status: 201 }
   )

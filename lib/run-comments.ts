@@ -1,3 +1,4 @@
+import { RUN_COMMENT_PLACEHOLDER_TEXT } from './run-comments-constants'
 import { supabase } from './supabase'
 
 // #region agent log
@@ -17,7 +18,7 @@ type RunCommentRow = {
 
 export type RunCommentRealtimeRow = RunCommentRow
 
-type RunCommentSnapshotRow = RunCommentRow & {
+type RunCommentApiPayload = RunCommentRow & {
   display_name: string | null
   nickname: string | null
   avatar_url: string | null
@@ -70,7 +71,7 @@ type RunCommentVisibilityThread<TComment extends RunCommentVisibilityItem> = TCo
 type RunCommentMutationResponse = {
   ok?: boolean
   error?: string
-  comment?: RunCommentRow
+  comment?: RunCommentApiPayload
 }
 
 type CreateRunCommentInput = {
@@ -102,7 +103,7 @@ function compareRunComments(left: Pick<RunCommentItem, 'createdAt' | 'id'>, righ
   return left.id.localeCompare(right.id)
 }
 
-function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunCommentItem {
+function mapRunCommentApiPayloadToItem(comment: RunCommentApiPayload): RunCommentItem {
   return {
     id: comment.id,
     runId: comment.run_id,
@@ -120,27 +121,7 @@ function mapRunCommentSnapshotRowToItem(comment: RunCommentSnapshotRow): RunComm
   }
 }
 
-async function loadRunCommentSnapshot(commentId: string, runId: string, viewerUserId: string | null = null) {
-  const { data, error } = await supabase
-    .rpc('get_run_comments_with_meta', {
-      run_id: runId,
-      viewer_user_id: viewerUserId,
-    })
-    .eq('id', commentId)
-    .maybeSingle()
-
-  if (error) {
-    throw error
-  }
-
-  if (!data) {
-    throw new Error('run_comment_snapshot_not_found')
-  }
-
-  return mapRunCommentSnapshotRowToItem(data as RunCommentSnapshotRow)
-}
-
-async function requestRunCommentMutation(path: string, init: RequestInit): Promise<RunCommentRow> {
+async function requestRunCommentMutation(path: string, init: RequestInit): Promise<RunCommentItem> {
   const response = await fetch(path, {
     ...init,
     headers: {
@@ -154,12 +135,13 @@ async function requestRunCommentMutation(path: string, init: RequestInit): Promi
     throw new Error(result?.error ?? 'run_comment_request_failed')
   }
 
-  return result.comment
+  return mapRunCommentApiPayloadToItem(result.comment)
 }
 
 export function mergeRunCommentRealtimeRow(params: {
   commentRow: RunCommentRealtimeRow
   existingComment?: RunCommentItem | null
+  authorIdentity?: RunCommentAuthorIdentity | null
 }): RunCommentItem {
   return {
     id: params.commentRow.id,
@@ -170,80 +152,61 @@ export function mergeRunCommentRealtimeRow(params: {
     createdAt: params.commentRow.created_at,
     editedAt: params.commentRow.edited_at,
     deletedAt: params.commentRow.deleted_at,
-    displayName: params.existingComment?.displayName ?? 'Бегун',
-    nickname: params.existingComment?.nickname ?? null,
-    avatarUrl: params.existingComment?.avatarUrl ?? null,
+    displayName: params.existingComment?.displayName ?? params.authorIdentity?.displayName ?? 'Бегун',
+    nickname: params.existingComment?.nickname ?? params.authorIdentity?.nickname ?? null,
+    avatarUrl: params.existingComment?.avatarUrl ?? params.authorIdentity?.avatarUrl ?? null,
     likesCount: params.existingComment?.likesCount ?? 0,
     likedByMe: params.existingComment?.likedByMe ?? false,
   }
 }
 
-export async function resolveRunCommentRealtimeItem(
+export function resolveRunCommentRealtimeItem(
   commentRow: RunCommentRealtimeRow,
-  existingComment?: RunCommentItem | null
-): Promise<RunCommentItem> {
-  if (existingComment) {
-    return mergeRunCommentRealtimeRow({
-      commentRow,
-      existingComment,
-    })
-  }
-
-  try {
-    return await loadRunCommentSnapshot(commentRow.id, commentRow.run_id)
-  } catch {
-    return mergeRunCommentRealtimeRow({
-      commentRow,
-    })
-  }
+  params: {
+    existingComment?: RunCommentItem | null
+    authorIdentity?: RunCommentAuthorIdentity | null
+  } = {}
+): RunCommentItem {
+  return mergeRunCommentRealtimeRow({
+    commentRow,
+    existingComment: params.existingComment,
+    authorIdentity: params.authorIdentity,
+  })
 }
 
 export async function createRunComment(runId: string, input: CreateRunCommentInput) {
-  const createdCommentRow = await requestRunCommentMutation(`/api/runs/${runId}/comments`, {
+  return requestRunCommentMutation(`/api/runs/${runId}/comments`, {
     method: 'POST',
     body: JSON.stringify({
       comment: input.comment,
       parentId: input.parentId ?? null,
     }),
   })
-
-  return loadRunCommentSnapshot(createdCommentRow.id, createdCommentRow.run_id)
 }
 
 export async function updateRunComment(commentId: string, input: UpdateRunCommentInput) {
-  const updatedCommentRow = await requestRunCommentMutation(`/api/run-comments/${commentId}`, {
+  return requestRunCommentMutation(`/api/run-comments/${commentId}`, {
     method: 'PATCH',
     body: JSON.stringify({
       comment: input.comment,
     }),
   })
-
-  return loadRunCommentSnapshot(updatedCommentRow.id, updatedCommentRow.run_id)
 }
 
 export async function deleteRunComment(commentId: string) {
-  const deletedCommentRow = await requestRunCommentMutation(`/api/run-comments/${commentId}`, {
+  return requestRunCommentMutation(`/api/run-comments/${commentId}`, {
     method: 'DELETE',
   })
+}
 
-  try {
-    return await loadRunCommentSnapshot(deletedCommentRow.id, deletedCommentRow.run_id)
-  } catch {
-    return {
-      id: deletedCommentRow.id,
-      runId: deletedCommentRow.run_id,
-      userId: deletedCommentRow.user_id,
-      parentId: deletedCommentRow.parent_id,
-      comment: deletedCommentRow.comment,
-      createdAt: deletedCommentRow.created_at,
-      editedAt: deletedCommentRow.edited_at,
-      deletedAt: deletedCommentRow.deleted_at,
-      displayName: 'Бегун',
-      nickname: null,
-      avatarUrl: null,
-      likesCount: 0,
-      likedByMe: false,
-    }
+export function createOptimisticDeletedRunComment(
+  comment: RunCommentItem,
+  deletedAt: string = new Date().toISOString()
+): RunCommentItem {
+  return {
+    ...comment,
+    comment: RUN_COMMENT_PLACEHOLDER_TEXT,
+    deletedAt,
   }
 }
 
@@ -485,8 +448,8 @@ export async function loadRunComments(runId: string, viewerUserId: string | null
     throw commentsError
   }
 
-  const mappedComments = ((comments as RunCommentSnapshotRow[] | null) ?? [])
-    .map(mapRunCommentSnapshotRowToItem)
+  const mappedComments = ((comments as RunCommentApiPayload[] | null) ?? [])
+    .map(mapRunCommentApiPayloadToItem)
     .sort(compareRunComments)
 
   console.debug('[RunComments] rpc load success', {
