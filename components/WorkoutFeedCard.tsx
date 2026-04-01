@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Heart, LoaderCircle, MessageCircle } from 'lucide-react'
+import { Heart, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
@@ -46,7 +46,6 @@ type WorkoutFeedCardProps = {
   likesCount: number
   commentsCount?: number
   likedByMe: boolean
-  pending: boolean
   onToggleLike: (runId: string) => void
   onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
@@ -160,7 +159,6 @@ function WorkoutFeedCard({
   likesCount,
   commentsCount = 0,
   likedByMe,
-  pending,
   onToggleLike,
   onOpenLikes,
   onCommentClick,
@@ -489,15 +487,11 @@ function WorkoutFeedCard({
           <FeedActionButton
             count={likesCount}
             active={likedByMe}
-            disabled={pending || !runId}
+            disabled={!runId}
             onClick={() => onToggleLike(runId)}
             onCountClick={() => onOpenLikes?.()}
             icon={
-              pending ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-              ) : (
-                <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
-              )
+              <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
             }
           />
           <FeedActionButton

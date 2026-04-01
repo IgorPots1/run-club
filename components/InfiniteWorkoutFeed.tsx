@@ -26,7 +26,6 @@ type InfiniteWorkoutFeedProps = {
   emptyCtaHref?: string
   emptyCtaLabel?: string
   showLevelSubtitle?: boolean
-  onSuccessfulLikeToggle?: () => void
   onCommentClick?: (runId: string) => void
 }
 
@@ -45,17 +44,14 @@ export default function InfiniteWorkoutFeed({
   emptyCtaHref,
   emptyCtaLabel,
   showLevelSubtitle = true,
-  onSuccessfulLikeToggle,
   onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
   const [items, setItems] = useState<FeedRunItem[]>([])
-  const [pendingRunIds, setPendingRunIds] = useState<string[]>([])
   const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, RunLikedUserItem[]>>({})
   const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
   const [activeLikesRun, setActiveLikesRun] = useState<{ runId: string } | null>(null)
-  const [actionError, setActionError] = useState('')
   const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
   const [feedError, setFeedError] = useState('')
   const [initialLoading, setInitialLoading] = useState(true)
@@ -65,7 +61,7 @@ export default function InfiniteWorkoutFeed({
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
-  const pendingRunIdsRef = useRef<string[]>([])
+  const likeRequestVersionByRunIdRef = useRef<Record<string, number>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
 
@@ -81,10 +77,6 @@ export default function InfiniteWorkoutFeed({
   useEffect(() => {
     itemsRef.current = items
   }, [items])
-
-  useEffect(() => {
-    pendingRunIdsRef.current = pendingRunIds
-  }, [pendingRunIds])
 
   const updateRunItem = useCallback((runId: string, updater: (item: FeedRunItem) => FeedRunItem) => {
     const nextItems = itemsRef.current.map((item) => (item.id === runId ? updater(item) : item))
@@ -181,7 +173,6 @@ export default function InfiniteWorkoutFeed({
     setItems([])
     setHasMore(true)
     setNextOffset(0)
-    setActionError('')
     setActiveLikesRun(null)
     void loadFirstPage()
   }, [enabled, feedQueryKey, loadFirstPage])
@@ -280,17 +271,13 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    if (pendingRunIdsRef.current.includes(runId)) return
-
     const currentItem = itemsRef.current.find((item) => item.id === runId)
     if (!currentItem) return
 
     const wasLiked = currentItem.likedByMe
     const previousItems = itemsRef.current
-
-    setActionError('')
-    pendingRunIdsRef.current = [...pendingRunIdsRef.current, runId]
-    setPendingRunIds((prev) => [...prev, runId])
+    const nextRequestVersion = (likeRequestVersionByRunIdRef.current[runId] ?? 0) + 1
+    likeRequestVersionByRunIdRef.current[runId] = nextRequestVersion
 
     try {
       const nextItems = previousItems.map((item) =>
@@ -304,52 +291,59 @@ export default function InfiniteWorkoutFeed({
       )
       itemsRef.current = nextItems
       setItems(nextItems)
+    }
 
-      const { error: likeError, xpGained, breakdown } = await toggleRunLike(runId, activeUserId, wasLiked)
+      void toggleRunLike(runId, activeUserId, wasLiked)
+        .then(({ error: likeError, xpGained, breakdown }) => {
+          if (likeRequestVersionByRunIdRef.current[runId] !== nextRequestVersion) {
+            return
+          }
 
-      if (likeError) {
-        setActionError('Не удалось обновить лайк')
-        itemsRef.current = previousItems
-        setItems(previousItems)
-        return
-      }
+          if (likeError) {
+            itemsRef.current = previousItems
+            setItems(previousItems)
+            return
+          }
 
-      setLikedUsersByRunId((prev) => {
-        if (!(runId in prev)) {
-          return prev
-        }
+          setLikedUsersByRunId((prev) => {
+            if (!(runId in prev)) {
+              return prev
+            }
 
-        const next = { ...prev }
-        delete next[runId]
-        return next
-      })
-      setLikedUsersErrorByRunId((prev) => {
-        if (!(runId in prev)) {
-          return prev
-        }
+            const next = { ...prev }
+            delete next[runId]
+            return next
+          })
+          setLikedUsersErrorByRunId((prev) => {
+            if (!(runId in prev)) {
+              return prev
+            }
 
-        const next = { ...prev }
-        delete next[runId]
-        return next
-      })
+            const next = { ...prev }
+            delete next[runId]
+            return next
+          })
 
-      if (xpGained > 0) {
-        setXpToast({
-          xpGained,
-          breakdown,
+          if (xpGained > 0) {
+            setXpToast({
+              xpGained,
+              breakdown,
+            })
+          }
         })
-      }
+        .catch(() => {
+          if (likeRequestVersionByRunIdRef.current[runId] !== nextRequestVersion) {
+            return
+          }
 
-      onSuccessfulLikeToggle?.()
+          itemsRef.current = previousItems
+          setItems(previousItems)
+        })
     } catch {
-      setActionError('Не удалось обновить лайк')
       itemsRef.current = previousItems
       setItems(previousItems)
-    } finally {
-      pendingRunIdsRef.current = pendingRunIdsRef.current.filter((id) => id !== runId)
-      setPendingRunIds((prev) => prev.filter((id) => id !== runId))
     }
-  }, [onSuccessfulLikeToggle, router])
+  }, [router])
 
   const loadLikedUsersForRun = useCallback(async (runId: string, force = false) => {
     if (!runId) {
@@ -404,7 +398,7 @@ export default function InfiniteWorkoutFeed({
     void loadLikedUsersForRun(item.id)
   }, [loadLikedUsersForRun])
 
-  const error = actionError || feedError
+  const error = feedError
   const activeLikesRunId = activeLikesRun?.runId ?? ''
   const activeLikesItem = activeLikesRunId
     ? items.find((item) => item.id === activeLikesRunId) ?? null
@@ -471,7 +465,6 @@ export default function InfiniteWorkoutFeed({
               commentsCount={item.commentsCount}
               likedByMe={item.likedByMe}
               photos={item.photos}
-              pending={pendingRunIds.includes(item.id)}
               onToggleLike={handleLikeToggle}
               onOpenLikes={() => handleOpenLikes(item)}
               onCommentClick={handleCommentClick}

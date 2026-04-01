@@ -497,9 +497,6 @@ export default function DashboardPageClient({
             pageSize={10}
             emptyTitle="Пока нет тренировок"
             showLevelSubtitle
-            onSuccessfulLikeToggle={() => {
-              void refreshDashboardData()
-            }}
           />
         </div>
       </div>
