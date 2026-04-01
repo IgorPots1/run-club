@@ -1,4 +1,5 @@
-const XP_BY_LEVEL = [0, 200, 500, 900, 1400, 2000, 2700, 3500, 4400, 5400]
+const LEGACY_XP_BY_LEVEL = [0, 200, 500, 900, 1400, 2000, 2700, 3500, 4400, 5400]
+const MAX_LEVEL = 100
 
 export type ClubLevelDefinition = {
   level: number
@@ -17,16 +18,48 @@ type RunXpBreakdownParts = {
   weeklyConsistencyBonus?: number
 }
 
+function getGeneratedMinXpForLevel(level: number) {
+  if (!Number.isFinite(level) || level <= 1) {
+    return 0
+  }
+
+  // Preserve the existing 1-10 thresholds exactly, then continue the same
+  // quadratic-like cumulative curve where each next level needs 100 XP more.
+  return 100 * (((level * (level + 1)) / 2) - 1)
+}
+
+function buildLevelDefinitions() {
+  return Array.from({ length: MAX_LEVEL }, (_, index) => {
+    const level = index + 1
+    const legacyMinXp = LEGACY_XP_BY_LEVEL[index]
+
+    return {
+      level,
+      minXp: typeof legacyMinXp === 'number' ? legacyMinXp : getGeneratedMinXpForLevel(level),
+      title: getRankTitleFromLevel(level),
+    } satisfies ClubLevelDefinition
+  })
+}
+
+const LEVEL_DEFINITIONS = buildLevelDefinitions()
+
 export function getLevelFromXP(totalXP: number): { level: number; nextLevelXP: number | null } {
-  let level = 1
-  for (let i = XP_BY_LEVEL.length - 1; i >= 0; i--) {
-    if (totalXP >= XP_BY_LEVEL[i]) {
-      level = i + 1
+  const normalizedTotalXP = Number.isFinite(totalXP) ? Math.max(totalXP, 0) : 0
+  let levelDefinition = LEVEL_DEFINITIONS[0]
+
+  for (let i = LEVEL_DEFINITIONS.length - 1; i >= 0; i--) {
+    if (normalizedTotalXP >= LEVEL_DEFINITIONS[i].minXp) {
+      levelDefinition = LEVEL_DEFINITIONS[i]
       break
     }
   }
-  const nextLevelXP = level < 10 ? XP_BY_LEVEL[level] : null
-  return { level, nextLevelXP }
+
+  const nextLevelDefinition = LEVEL_DEFINITIONS[levelDefinition.level] ?? null
+
+  return {
+    level: levelDefinition.level,
+    nextLevelXP: nextLevelDefinition?.minXp ?? null,
+  }
 }
 
 export function getRankTitleFromLevel(level: number): string {
@@ -34,7 +67,16 @@ export function getRankTitleFromLevel(level: number): string {
   if (level <= 4) return 'Вкатился'
   if (level <= 6) return 'Стабильный'
   if (level <= 8) return 'В форме'
-  return 'Мотор клуба'
+  if (level <= 10) return 'Мотор клуба'
+  if (level <= 20) return 'Ритм клуба'
+  if (level <= 30) return 'Темп клуба'
+  if (level <= 40) return 'Пейсмейкер'
+  if (level <= 50) return 'Капитан дистанции'
+  if (level <= 60) return 'Опора клуба'
+  if (level <= 70) return 'Сердце клуба'
+  if (level <= 80) return 'Лидер маршрута'
+  if (level <= 90) return 'Легенда трассы'
+  return 'Легенда клуба'
 }
 
 export function getRankTitleFromXP(totalXP: number): string {
@@ -42,11 +84,7 @@ export function getRankTitleFromXP(totalXP: number): string {
 }
 
 export function getClubLevelDefinitions(): ClubLevelDefinition[] {
-  return XP_BY_LEVEL.map((minXp, index) => ({
-    level: index + 1,
-    minXp,
-    title: getRankTitleFromLevel(index + 1),
-  }))
+  return LEVEL_DEFINITIONS
 }
 
 export function buildRunXpBreakdown({
@@ -126,7 +164,7 @@ export function getLevelProgressFromXP(totalXP: number): {
 } {
   const normalizedTotalXP = Number.isFinite(totalXP) ? Math.max(totalXP, 0) : 0
   const { level, nextLevelXP } = getLevelFromXP(normalizedTotalXP)
-  const currentLevelThreshold = XP_BY_LEVEL[level - 1] ?? 0
+  const currentLevelThreshold = LEVEL_DEFINITIONS[level - 1]?.minXp ?? 0
 
   if (nextLevelXP === null) {
     return {
