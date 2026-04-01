@@ -25,7 +25,7 @@ type RunCommentSnapshotRow = RunCommentRow & {
   liked_by_me: boolean | null
 }
 
-type RunCommentCountRow = Pick<RunCommentRow, 'run_id'>
+type RunCommentCountRow = Pick<RunCommentRow, 'id' | 'run_id' | 'parent_id' | 'created_at' | 'deleted_at'>
 
 export type RunCommentLikeRealtimeRow = {
   comment_id: string
@@ -59,6 +59,12 @@ export type RunCommentItem = {
 
 export type RunCommentThread = RunCommentItem & {
   replies: RunCommentItem[]
+}
+
+type RunCommentVisibilityItem = Pick<RunCommentItem, 'id' | 'parentId' | 'createdAt' | 'deletedAt'>
+
+type RunCommentVisibilityThread<TComment extends RunCommentVisibilityItem> = TComment & {
+  replies: TComment[]
 }
 
 type RunCommentMutationResponse = {
@@ -321,10 +327,10 @@ export function applyRunCommentLikeState(
   })
 }
 
-export function buildRunCommentThreads(comments: RunCommentItem[]) {
+function buildRunCommentVisibilityThreads<TComment extends RunCommentVisibilityItem>(comments: TComment[]) {
   const sortedComments = [...comments].sort(compareRunComments)
-  const threadsById = new Map<string, RunCommentThread>()
-  const threads: RunCommentThread[] = []
+  const threadsById = new Map<string, RunCommentVisibilityThread<TComment>>()
+  const threads: RunCommentVisibilityThread<TComment>[] = []
 
   for (const comment of sortedComments) {
     if (comment.parentId) {
@@ -337,7 +343,7 @@ export function buildRunCommentThreads(comments: RunCommentItem[]) {
       }
     }
 
-    const nextThread: RunCommentThread = {
+    const nextThread: RunCommentVisibilityThread<TComment> = {
       ...comment,
       replies: [],
     }
@@ -349,7 +355,9 @@ export function buildRunCommentThreads(comments: RunCommentItem[]) {
   return threads
 }
 
-export function filterVisibleRunCommentThreads(threads: RunCommentThread[]) {
+function filterVisibleCommentThreads<TComment extends RunCommentVisibilityItem>(
+  threads: RunCommentVisibilityThread<TComment>[]
+) {
   return threads.flatMap((thread) => {
     const visibleReplies = thread.replies.filter((reply) => !reply.deletedAt)
 
@@ -366,12 +374,27 @@ export function filterVisibleRunCommentThreads(threads: RunCommentThread[]) {
   })
 }
 
+function countVisibleCommentItems<TComment extends RunCommentVisibilityItem>(comments: TComment[]) {
+  return filterVisibleCommentThreads(buildRunCommentVisibilityThreads(comments)).reduce(
+    (totalCount, thread) => totalCount + 1 + thread.replies.length,
+    0
+  )
+}
+
+export function buildRunCommentThreads(comments: RunCommentItem[]) {
+  return buildRunCommentVisibilityThreads(comments)
+}
+
+export function filterVisibleRunCommentThreads(threads: RunCommentThread[]) {
+  return filterVisibleCommentThreads(threads)
+}
+
 export function flattenRunCommentThreads(threads: RunCommentThread[]) {
   return threads.flatMap((thread) => [thread, ...thread.replies])
 }
 
 export function countVisibleRunComments(comments: RunCommentItem[]) {
-  return flattenRunCommentThreads(filterVisibleRunCommentThreads(buildRunCommentThreads(comments))).length
+  return countVisibleCommentItems(comments)
 }
 
 export async function loadRunCommentCountsForRunIds(runIds: string[]) {
@@ -382,7 +405,7 @@ export async function loadRunCommentCountsForRunIds(runIds: string[]) {
   const uniqueRunIds = Array.from(new Set(runIds))
   const { data, error } = await supabase
     .from('run_comments')
-    .select('run_id')
+    .select('id, run_id, parent_id, created_at, deleted_at')
     .in('run_id', uniqueRunIds)
 
   if (error) {
@@ -395,8 +418,27 @@ export async function loadRunCommentCountsForRunIds(runIds: string[]) {
     countsByRunId[runId] = 0
   }
 
+  const visibilityItemsByRunId: Record<string, RunCommentVisibilityItem[]> = {}
+
+  for (const runId of uniqueRunIds) {
+    visibilityItemsByRunId[runId] = []
+  }
+
   for (const row of (data as RunCommentCountRow[] | null) ?? []) {
-    countsByRunId[row.run_id] = (countsByRunId[row.run_id] ?? 0) + 1
+    if (!visibilityItemsByRunId[row.run_id]) {
+      visibilityItemsByRunId[row.run_id] = []
+    }
+
+    visibilityItemsByRunId[row.run_id].push({
+      id: row.id,
+      parentId: row.parent_id,
+      createdAt: row.created_at,
+      deletedAt: row.deleted_at,
+    })
+  }
+
+  for (const runId of uniqueRunIds) {
+    countsByRunId[runId] = countVisibleCommentItems(visibilityItemsByRunId[runId] ?? [])
   }
 
   return countsByRunId

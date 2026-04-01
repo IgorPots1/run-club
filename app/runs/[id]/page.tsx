@@ -26,6 +26,7 @@ import {
   applyRunCommentLikeState,
   applyRunCommentInsert,
   applyRunCommentUpdate,
+  countVisibleRunComments,
   createRunComment,
   deleteRunComment,
   loadRunComments,
@@ -1184,7 +1185,7 @@ export default function RunDetailsPage() {
     }
   }, [lapsBackfillAttemptedRunId, loading, run, runId, runLaps.length, user])
 
-  const commentsCount = comments.length
+  const commentsCount = useMemo(() => countVisibleRunComments(comments), [comments])
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
     () => mapSeriesPointsToElapsedMinutes(runSeries.pace_points, chartDurationSeconds),
