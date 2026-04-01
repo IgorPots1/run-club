@@ -38,7 +38,7 @@ export default function LoginPage() {
 
         if (user) {
           setRedirecting(true)
-          router.replace('/dashboard')
+          router.replace('/auth/continue')
         }
       } finally {
         if (isMounted) {
@@ -79,7 +79,7 @@ export default function LoginPage() {
       }
 
       setRedirecting(true)
-      router.replace('/dashboard')
+      router.replace('/auth/continue')
     } catch {
       setMessage('Не удалось войти. Попробуйте еще раз.')
     } finally {

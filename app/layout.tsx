@@ -60,7 +60,7 @@ export default async function RootLayout({
   const requestHeaders = await headers()
   const pathname = requestHeaders.get("x-run-club-pathname") ?? ""
   const shouldHideNavbar =
-    pathname === "/" || pathname === "/login" || pathname === "/register" || pathname.startsWith("/auth")
+    pathname === "/" || pathname === "/login" || pathname === "/register" || pathname === "/onboarding" || pathname.startsWith("/auth")
 
   let resolvedNavbarUser: { id: string; email: string | null } | null = null
 

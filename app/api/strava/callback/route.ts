@@ -12,11 +12,18 @@ export async function GET(request: Request) {
   const cookieStore = await cookies()
   const storedState = cookieStore.get('strava_oauth_state')?.value
   const cookieUserId = cookieStore.get('strava_connect_user_id')?.value ?? null
+  const cookieNextPath = cookieStore.get('strava_connect_next')?.value ?? null
   const { user: authenticatedUser } = await getAuthenticatedUser()
   const connectUserId = authenticatedUser?.id ?? cookieUserId
+  const nextPath =
+    cookieNextPath && cookieNextPath.startsWith('/') && !cookieNextPath.startsWith('//')
+      ? cookieNextPath
+      : '/profile'
 
-  function buildProfileRedirect(status: 'connected' | 'error') {
-    return NextResponse.redirect(new URL(`/profile?strava=${status}`, url.origin))
+  function buildRedirect(status: 'connected' | 'error') {
+    const redirectUrl = new URL(nextPath, url.origin)
+    redirectUrl.searchParams.set('strava', status)
+    return NextResponse.redirect(redirectUrl)
   }
 
   function clearStravaConnectCookies(response: NextResponse) {
@@ -36,6 +43,14 @@ export async function GET(request: Request) {
       maxAge: 0,
     })
 
+    response.cookies.set('strava_connect_next', '', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 0,
+    })
+
     return response
   }
 
@@ -47,7 +62,7 @@ export async function GET(request: Request) {
       })
     }
 
-    return clearStravaConnectCookies(buildProfileRedirect('error'))
+    return clearStravaConnectCookies(buildRedirect('error'))
   }
 
   if (!state || !storedState || state !== storedState) {
@@ -60,7 +75,7 @@ export async function GET(request: Request) {
       })
     }
 
-    return clearStravaConnectCookies(buildProfileRedirect('error'))
+    return clearStravaConnectCookies(buildRedirect('error'))
   }
 
   if (!connectUserId) {
@@ -71,7 +86,7 @@ export async function GET(request: Request) {
       })
     }
 
-    return clearStravaConnectCookies(buildProfileRedirect('error'))
+    return clearStravaConnectCookies(buildRedirect('error'))
   }
 
   if (authenticatedUser?.id && cookieUserId && authenticatedUser.id !== cookieUserId) {
@@ -84,7 +99,7 @@ export async function GET(request: Request) {
       })
     }
 
-    return clearStravaConnectCookies(buildProfileRedirect('error'))
+    return clearStravaConnectCookies(buildRedirect('error'))
   }
 
   const supabase = await createSupabaseServerClient()
@@ -100,7 +115,7 @@ export async function GET(request: Request) {
         })
       }
 
-      return clearStravaConnectCookies(buildProfileRedirect('error'))
+      return clearStravaConnectCookies(buildRedirect('error'))
     }
 
     const connectionPayload = {
@@ -128,7 +143,7 @@ export async function GET(request: Request) {
         })
       }
 
-      return clearStravaConnectCookies(buildProfileRedirect('error'))
+      return clearStravaConnectCookies(buildRedirect('error'))
     }
 
     const { error: saveError } = existingConnection
@@ -154,7 +169,7 @@ export async function GET(request: Request) {
         })
       }
 
-      return clearStravaConnectCookies(buildProfileRedirect('error'))
+      return clearStravaConnectCookies(buildRedirect('error'))
     }
 
     if (debugMode) {
@@ -166,7 +181,7 @@ export async function GET(request: Request) {
       })
     }
 
-    return clearStravaConnectCookies(buildProfileRedirect('connected'))
+    return clearStravaConnectCookies(buildRedirect('connected'))
   } catch (caughtError) {
     if (debugMode) {
       return NextResponse.json({
@@ -176,6 +191,6 @@ export async function GET(request: Request) {
       })
     }
 
-    return clearStravaConnectCookies(buildProfileRedirect('error'))
+    return clearStravaConnectCookies(buildRedirect('error'))
   }
 }

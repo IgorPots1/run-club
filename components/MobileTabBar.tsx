@@ -39,7 +39,7 @@ function scrollPageToTop() {
 export default function MobileTabBar() {
   const pathname = usePathname()
   const [isChatKeyboardOpen, setIsChatKeyboardOpen] = useState(false)
-  const hiddenRoutes = ['/', '/login', '/register']
+  const hiddenRoutes = ['/', '/login', '/register', '/onboarding']
   const isRunDiscussionRoute = /^\/runs\/[^/]+\/discussion$/.test(pathname)
   const shouldHide =
     hiddenRoutes.includes(pathname) || pathname.startsWith('/auth') || isRunDiscussionRoute

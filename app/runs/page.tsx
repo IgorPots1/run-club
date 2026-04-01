@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import XpGainToast from '@/components/XpGainToast'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -446,6 +446,7 @@ function shouldShowPace(totalSeconds: number, distanceKm: number) {
 
 export default function RunsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<Run[]>([])
@@ -493,6 +494,7 @@ export default function RunsPage() {
   const selectedDate = runDate || getTodayDateValue()
   const todayDateValue = getTodayDateValue()
   const runDateLabel = formatRunDatePickerLabel(selectedDate)
+  const shouldReturnToDashboardAfterCreate = searchParams.get('from') === 'onboarding'
   const isWorkoutFormValid =
     Boolean(selectedDate) &&
     Number.isFinite(selectedDistanceKm) &&
@@ -849,6 +851,12 @@ export default function RunsPage() {
 
       if (createError) {
         setError(createError.message)
+        return
+      }
+
+      if (shouldReturnToDashboardAfterCreate) {
+        dispatchRunsUpdatedEvent()
+        router.replace('/dashboard')
         return
       }
 

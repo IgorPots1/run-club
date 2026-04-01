@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import DashboardPageClient from './DashboardPageClient'
 import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress } from '@/lib/challenges'
+import { getFirstSessionState } from '@/lib/onboarding'
 import { createSupabaseServerClient, getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP } from '@/lib/xp'
 
@@ -29,6 +30,12 @@ export default async function DashboardPage() {
 
   if (!user) {
     redirect('/login')
+  }
+
+  const { isFirstSession } = await getFirstSessionState(user.id)
+
+  if (isFirstSession) {
+    redirect('/onboarding')
   }
 
   const supabase = await createSupabaseServerClient()

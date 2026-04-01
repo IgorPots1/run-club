@@ -4,5 +4,5 @@ import { getAuthenticatedUser } from '@/lib/supabase-server'
 export default async function Home() {
   const { user } = await getAuthenticatedUser()
 
-  redirect(user ? '/dashboard' : '/login')
+  redirect(user ? '/auth/continue' : '/login')
 }

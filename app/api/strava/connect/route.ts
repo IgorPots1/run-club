@@ -3,7 +3,15 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { buildStravaAuthorizeUrl } from '@/lib/strava/strava-client'
 
-export async function GET() {
+function getSafeNextPath(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return '/profile'
+  }
+
+  return value
+}
+
+export async function GET(request: Request) {
   const { user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
@@ -17,6 +25,8 @@ export async function GET() {
     )
   }
 
+  const requestUrl = new URL(request.url)
+  const nextPath = getSafeNextPath(requestUrl.searchParams.get('next'))
   const state = crypto.randomUUID()
   const cookieStore = await cookies()
 
@@ -29,6 +39,14 @@ export async function GET() {
   })
 
   cookieStore.set('strava_connect_user_id', user.id, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 10,
+  })
+
+  cookieStore.set('strava_connect_next', nextPath, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

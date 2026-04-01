@@ -42,7 +42,7 @@ export default function RegisterPage() {
 
         if (user) {
           setRedirecting(true)
-          router.replace('/dashboard')
+          router.replace('/auth/continue')
         }
       } finally {
         if (isMounted) {
@@ -130,7 +130,7 @@ export default function RegisterPage() {
 
       if (data.session) {
         setRedirecting(true)
-        router.replace('/dashboard')
+        router.replace('/auth/continue')
         return
       }
 
