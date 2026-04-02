@@ -5,14 +5,9 @@ import { Heart, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
+import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMedia'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
-
-type WorkoutFeedCardPhoto = {
-  id: string
-  public_url: string
-  thumbnail_url: string | null
-}
 
 type WorkoutFeedCardMediaSlide =
   | {
@@ -50,7 +45,7 @@ type WorkoutFeedCardProps = {
   onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
   profileHref?: string | null
-  photos?: WorkoutFeedCardPhoto[]
+  photos?: WorkoutMediaPhoto[]
 }
 
 function StravaIcon() {
@@ -181,28 +176,42 @@ function WorkoutFeedCard({
   const locationLabel = city && country
     ? `${city}, ${country}`
     : city ?? country ?? null
+  const orderedMedia = useMemo(
+    () => buildWorkoutMedia({ mapPolyline, photos }),
+    [mapPolyline, photos]
+  )
   const mediaSlides = useMemo<WorkoutFeedCardMediaSlide[]>(() => {
     const slides: WorkoutFeedCardMediaSlide[] = []
 
-    if (showMapPreview && mapPreviewUrl) {
-      slides.push({
-        type: 'map',
-        key: `map-${runId || mapPreviewUrl}`,
-        src: mapPreviewUrl,
-      })
-    }
+    orderedMedia.forEach((mediaItem) => {
+      if (mediaItem.type === 'map') {
+        if (!showMapPreview || !mapPreviewUrl) {
+          return
+        }
 
-    photos.forEach((photo, index) => {
+        slides.push({
+          type: 'map',
+          key: `map-${runId || mapPreviewUrl}`,
+          src: mapPreviewUrl,
+        })
+        return
+      }
+
+      const photoIndex = photos.findIndex((photo) => photo.id === mediaItem.photo.id)
+      if (photoIndex < 0) {
+        return
+      }
+
       slides.push({
         type: 'photo',
-        key: photo.id,
-        src: photo.thumbnail_url ?? photo.public_url,
-        photoIndex: index,
+        key: mediaItem.photo.id,
+        src: mediaItem.photo.thumbnail_url ?? mediaItem.photo.public_url,
+        photoIndex,
       })
     })
 
     return slides
-  }, [mapPreviewUrl, photos, runId, showMapPreview])
+  }, [mapPreviewUrl, orderedMedia, photos, runId, showMapPreview])
   const shouldRenderMediaCarousel = mediaSlides.length > 1 && mediaSlides[0]?.type === 'map'
   const totalMediaSlides = mediaSlides.length
   const currentMediaIndex = Math.max(0, Math.min(activeMediaIndex, totalMediaSlides - 1))
