@@ -117,8 +117,9 @@ export type ChatMessageItem = {
   optimisticStatus?: 'sending' | 'failed'
   optimisticServerMessageId?: string | null
   optimisticLocalObjectUrl?: string | null
-  optimisticImageFiles?: File[] | null
+  optimisticImageFiles?: Array<File | null> | null
   optimisticAttachmentUploadState?: 'uploading' | 'uploaded' | 'failed' | null
+  optimisticAttachmentStates?: Array<'uploading' | 'uploaded' | 'attached' | 'failed'> | null
 }
 
 const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 15000
@@ -547,6 +548,7 @@ type CreateTextChatMessageApiPayload = {
   kind?: 'text'
   text?: string
   imageUrl?: string | null
+  pendingAttachmentCount?: number | null
   attachments?: {
     type: ChatMessageAttachmentType
     storagePath: string
@@ -556,6 +558,15 @@ type CreateTextChatMessageApiPayload = {
   replyToId?: string | null
   threadId?: string | null
   debugTraceId?: string | null
+}
+
+type AttachChatMessageImageApiPayload = {
+  type: 'image'
+  threadId?: string | null
+  storagePath: string
+  width?: number | null
+  height?: number | null
+  sortOrder: number
 }
 
 type CreateVoiceChatMessageApiPayload = {
@@ -639,7 +650,8 @@ export async function createChatMessage(
   threadId?: string | null,
   attachments: ChatComposerImageUpload[] = [],
   imageUrl?: string | null,
-  debugTraceId?: string | null
+  debugTraceId?: string | null,
+  options?: { pendingAttachmentCount?: number | null }
 ) {
   const trimmedText = text.trim()
   const normalizedAttachments = attachments
@@ -663,11 +675,49 @@ export async function createChatMessage(
     kind: 'text',
     text: trimmedText,
     imageUrl: imageUrl ?? null,
+    pendingAttachmentCount: options?.pendingAttachmentCount ?? null,
     attachments: normalizedAttachments,
     replyToId: replyToId ?? null,
     threadId: threadId ?? null,
     debugTraceId: debugTraceId ?? null,
   })
+}
+
+export async function attachImageToChatMessage(
+  messageId: string,
+  payload: AttachChatMessageImageApiPayload
+): Promise<{ error: Error | null; publicUrl?: string | null }> {
+  try {
+    const response = await fetch(`/api/chat/messages/${messageId}/attachments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const result = await response.json().catch(() => null) as
+      | {
+          error?: string
+          publicUrl?: string | null
+        }
+      | null
+
+    if (!response.ok) {
+      return {
+        error: new Error(result?.error ?? 'chat_message_attachment_failed'),
+      }
+    }
+
+    return {
+      error: null,
+      publicUrl: typeof result?.publicUrl === 'string' ? result.publicUrl : null,
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error('chat_message_attachment_failed'),
+    }
+  }
 }
 
 export async function createVoiceChatMessage(

@@ -22,6 +22,7 @@ import {
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
+  attachImageToChatMessage,
   CHAT_MESSAGE_MAX_ATTACHMENTS,
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
@@ -389,6 +390,101 @@ function getRealtimePreviewText(row: RealtimeChatMessageRow, optimisticMessage: 
   }
 
   return ''
+}
+
+function getOptimisticAttachmentStates(
+  message: Pick<ChatMessageItem, 'attachments' | 'optimisticAttachmentStates'>
+) {
+  if (message.optimisticAttachmentStates && message.optimisticAttachmentStates.length > 0) {
+    return [...message.optimisticAttachmentStates]
+  }
+
+  return message.attachments.map((attachment) => (attachment.storagePath ? 'attached' : 'uploading'))
+}
+
+function deriveOptimisticAttachmentUploadState(
+  states: ChatMessageItem['optimisticAttachmentStates']
+): ChatMessageItem['optimisticAttachmentUploadState'] {
+  if (!states || states.length === 0) {
+    return null
+  }
+
+  if (states.some((state) => state === 'uploading' || state === 'uploaded')) {
+    return 'uploading'
+  }
+
+  if (states.some((state) => state === 'failed')) {
+    return 'failed'
+  }
+
+  return null
+}
+
+function hasPendingOptimisticImageAttachments(message: ChatMessageItem) {
+  return Boolean(
+    message.isOptimistic &&
+    message.messageType === 'image' &&
+    getOptimisticAttachmentStates(message).some((state) => state !== 'attached')
+  )
+}
+
+function mergeServerMessageWithOptimisticImageState(
+  optimisticMessage: ChatMessageItem,
+  serverMessage: ChatMessageItem
+): ChatMessageItem {
+  if (!hasPendingOptimisticImageAttachments(optimisticMessage)) {
+    return serverMessage
+  }
+
+  const nextStates = getOptimisticAttachmentStates(optimisticMessage)
+  const optimisticAttachmentsBySortOrder = new Map(
+    optimisticMessage.attachments.map((attachment) => [attachment.sortOrder, attachment])
+  )
+  const serverAttachmentsBySortOrder = new Map(
+    serverMessage.attachments.map((attachment) => [attachment.sortOrder, attachment])
+  )
+  const maxAttachmentCount = Math.max(
+    optimisticMessage.attachments.length,
+    serverMessage.attachments.length,
+    nextStates.length
+  )
+  const mergedAttachments: ChatMessageAttachment[] = []
+
+  for (let sortOrder = 0; sortOrder < maxAttachmentCount; sortOrder += 1) {
+    const serverAttachment = serverAttachmentsBySortOrder.get(sortOrder) ?? null
+    const optimisticAttachment = optimisticAttachmentsBySortOrder.get(sortOrder) ?? null
+
+    if (serverAttachment) {
+      mergedAttachments.push(serverAttachment)
+      nextStates[sortOrder] = 'attached'
+      continue
+    }
+
+    if (optimisticAttachment && nextStates[sortOrder] && nextStates[sortOrder] !== 'attached') {
+      mergedAttachments.push(optimisticAttachment)
+    }
+  }
+
+  const hasPendingAttachments = nextStates.some((state) => state !== 'attached')
+
+  if (!hasPendingAttachments) {
+    return serverMessage
+  }
+
+  const overallAttachmentUploadState = deriveOptimisticAttachmentUploadState(nextStates)
+
+  return {
+    ...serverMessage,
+    attachments: mergedAttachments,
+    imageUrl: mergedAttachments[0]?.publicUrl ?? serverMessage.imageUrl,
+    isOptimistic: true,
+    optimisticStatus: overallAttachmentUploadState === 'failed' ? 'failed' : 'sending',
+    optimisticServerMessageId: optimisticMessage.optimisticServerMessageId ?? serverMessage.id,
+    optimisticLocalObjectUrl: null,
+    optimisticImageFiles: optimisticMessage.optimisticImageFiles ?? null,
+    optimisticAttachmentUploadState: overallAttachmentUploadState,
+    optimisticAttachmentStates: nextStates,
+  }
 }
 
 function finalizeOptimisticMessageFromRealtimeRow(
@@ -3590,29 +3686,39 @@ export default function ChatSection({
 
             if (optimisticTextOrImageMatch) {
               const finalizedMessage = finalizeOptimisticMessageFromRealtimeRow(optimisticTextOrImageMatch, realtimeRow)
+              const mergedMessage = mergeServerMessageWithOptimisticImageState(
+                {
+                  ...optimisticTextOrImageMatch,
+                  optimisticServerMessageId: optimisticTextOrImageMatch.optimisticServerMessageId ?? finalizedMessage.id,
+                },
+                finalizedMessage
+              )
               clearOptimisticRealtimeFallbackTimeout(nextMessageId)
               const traceId = pendingSendPerfByServerMessageIdRef.current[finalizedMessage.id] ?? null
               if (traceId) {
                 logChatPerfDebug('realtime-insert-received', {
                   traceId,
-                  messageId: finalizedMessage.id,
-                  messageType: finalizedMessage.messageType,
-                  attachmentCount: finalizedMessage.attachments.length,
+                  messageId: mergedMessage.id,
+                  messageType: mergedMessage.messageType,
+                  attachmentCount: mergedMessage.attachments.length,
                 })
                 logChatPerfDebug('optimistic-reconciliation-complete', {
                   traceId,
-                  messageId: finalizedMessage.id,
-                  messageType: finalizedMessage.messageType,
-                  attachmentCount: finalizedMessage.attachments.length,
+                  messageId: mergedMessage.id,
+                  messageType: mergedMessage.messageType,
+                  attachmentCount: mergedMessage.attachments.length,
                   source: 'realtime-text-image-match',
                 })
               }
-              releaseOptimisticClientMedia(optimisticTextOrImageMatch)
-              delete pendingSendPerfByOptimisticIdRef.current[optimisticTextOrImageMatch.id]
-              delete pendingSendPerfByServerMessageIdRef.current[finalizedMessage.id]
+
+              if (!mergedMessage.isOptimistic) {
+                releaseOptimisticClientMedia(optimisticTextOrImageMatch)
+                delete pendingSendPerfByOptimisticIdRef.current[optimisticTextOrImageMatch.id]
+                delete pendingSendPerfByServerMessageIdRef.current[mergedMessage.id]
+              }
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
-                  replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, finalizedMessage),
+                  replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, mergedMessage),
                   {
                     preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
                   }
@@ -3679,8 +3785,15 @@ export default function ChatSection({
               return
             }
 
+            const currentRenderedMessage =
+              messagesRef.current.find((message) => message.id === nextMessage.id) ?? null
+            const mergedMessage =
+              currentRenderedMessage && hasPendingOptimisticImageAttachments(currentRenderedMessage)
+                ? mergeServerMessageWithOptimisticImageState(currentRenderedMessage, nextMessage)
+                : nextMessage
+
             setMessages((currentMessages) =>
-              keepLatestRenderedMessages(upsertMessageById(currentMessages, nextMessage), {
+              keepLatestRenderedMessages(upsertMessageById(currentMessages, mergedMessage), {
                 preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
               })
             )
@@ -4216,6 +4329,236 @@ export default function ChatSection({
     })
   }
 
+  function getOptimisticServerMessageId(message: ChatMessageItem) {
+    if (message.optimisticServerMessageId) {
+      return message.optimisticServerMessageId
+    }
+
+    return message.isOptimistic && !message.id.startsWith('temp-') ? message.id : null
+  }
+
+  function matchesOptimisticMessageReference(
+    message: ChatMessageItem,
+    optimisticMessageId: string,
+    serverMessageId?: string | null
+  ) {
+    if (message.id === optimisticMessageId) {
+      return true
+    }
+
+    if (!serverMessageId) {
+      return false
+    }
+
+    return message.id === serverMessageId || message.optimisticServerMessageId === serverMessageId
+  }
+
+  function updateOptimisticMessageState(
+    optimisticMessageId: string,
+    serverMessageId: string | null,
+    updater: (message: ChatMessageItem) => ChatMessageItem
+  ) {
+    setMessages((currentMessages) =>
+      keepLatestRenderedMessages(
+        currentMessages.map((message) =>
+          matchesOptimisticMessageReference(message, optimisticMessageId, serverMessageId)
+            ? updater(message)
+            : message
+        ),
+        {
+          preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+        }
+      )
+    )
+  }
+
+  function patchOptimisticImageAttachment(
+    optimisticMessageId: string,
+    serverMessageId: string | null,
+    attachmentIndex: number,
+    nextState: NonNullable<ChatMessageItem['optimisticAttachmentStates']>[number],
+    nextAttachment: ChatMessageAttachment,
+    nextFile: File | null
+  ) {
+    updateOptimisticMessageState(optimisticMessageId, serverMessageId, (message) => {
+      const nextAttachments = [...message.attachments]
+      nextAttachments[attachmentIndex] = nextAttachment
+      const nextAttachmentStates = getOptimisticAttachmentStates(message)
+      nextAttachmentStates[attachmentIndex] = nextState
+      const nextImageFiles = [...(message.optimisticImageFiles ?? [])]
+      nextImageFiles[attachmentIndex] = nextFile
+      const nextOverallAttachmentState = deriveOptimisticAttachmentUploadState(nextAttachmentStates)
+
+      return {
+        ...message,
+        attachments: nextAttachments,
+        imageUrl: nextAttachments[0]?.publicUrl ?? message.imageUrl,
+        optimisticStatus: nextOverallAttachmentState === 'failed' ? 'failed' : 'sending',
+        optimisticServerMessageId: serverMessageId ?? message.optimisticServerMessageId,
+        optimisticImageFiles: nextImageFiles.some((file) => Boolean(file)) ? nextImageFiles : null,
+        optimisticAttachmentUploadState: nextOverallAttachmentState,
+        optimisticAttachmentStates: nextAttachmentStates,
+      }
+    })
+  }
+
+  async function uploadAndAttachImagesInBackground(
+    optimisticMessageId: string,
+    serverMessageId: string,
+    traceId: string | null,
+    fallbackMessage?: ChatMessageItem
+  ) {
+    const optimisticMessage =
+      messagesRef.current.find((message) => matchesOptimisticMessageReference(message, optimisticMessageId, serverMessageId))
+      ?? fallbackMessage
+      ?? null
+
+    if (!optimisticMessage || optimisticMessage.messageType !== 'image') {
+      return
+    }
+
+    const attachmentTargets = optimisticMessage.attachments
+      .map((attachment, index) => ({
+        attachment,
+        index,
+        file: optimisticMessage.optimisticImageFiles?.[index] ?? null,
+        state: getOptimisticAttachmentStates(optimisticMessage)[index] ?? 'attached',
+      }))
+      .filter(({ state }) => state !== 'attached')
+
+    if (attachmentTargets.length === 0) {
+      return
+    }
+
+    const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessageId] ?? null
+
+    if (perfEntry) {
+      logChatPerfDebug('image-upload-start', {
+        traceId: perfEntry.traceId,
+        messageType: 'image',
+        attachmentCount: attachmentTargets.length,
+        source: 'background-attach',
+      })
+    }
+
+    const uploadStartedAt = performance.now()
+
+    await Promise.allSettled(
+      attachmentTargets.map(async ({ attachment, index, file, state }) => {
+        let nextAttachment = attachment
+        let nextFile = file
+
+        try {
+          if (!nextAttachment.storagePath) {
+            if (!nextFile) {
+              throw new Error('chat_image_upload_missing_file')
+            }
+
+            const uploadedImage = await uploadChatImage(optimisticMessage.userId, nextFile, threadId)
+            const previousUrl = nextAttachment.publicUrl
+            nextAttachment = {
+              ...nextAttachment,
+              storagePath: uploadedImage.storagePath,
+              publicUrl: uploadedImage.publicUrl,
+              width: uploadedImage.width ?? nextAttachment.width,
+              height: uploadedImage.height ?? nextAttachment.height,
+            }
+            nextFile = null
+            patchOptimisticImageAttachment(
+              optimisticMessageId,
+              serverMessageId,
+              index,
+              'uploaded',
+              nextAttachment,
+              nextFile
+            )
+            revokeObjectUrlIfNeeded(previousUrl)
+          } else if (state === 'failed') {
+            patchOptimisticImageAttachment(
+              optimisticMessageId,
+              serverMessageId,
+              index,
+              'uploaded',
+              nextAttachment,
+              nextFile
+            )
+          }
+
+          const { error: attachError } = await attachImageToChatMessage(serverMessageId, {
+            type: 'image',
+            threadId,
+            storagePath: nextAttachment.storagePath!,
+            width: nextAttachment.width,
+            height: nextAttachment.height,
+            sortOrder: index,
+          })
+
+          if (attachError) {
+            throw attachError
+          }
+
+          patchOptimisticImageAttachment(
+            optimisticMessageId,
+            serverMessageId,
+            index,
+            'attached',
+            nextAttachment,
+            nextFile
+          )
+        } catch {
+          patchOptimisticImageAttachment(
+            optimisticMessageId,
+            serverMessageId,
+            index,
+            'failed',
+            nextAttachment,
+            nextFile
+          )
+        }
+      })
+    )
+
+    const nextMessage =
+      messagesRef.current.find((message) => matchesOptimisticMessageReference(message, optimisticMessageId, serverMessageId))
+      ?? null
+
+    if (perfEntry) {
+      const nextAttachmentStates = nextMessage?.optimisticAttachmentStates ?? []
+      logChatPerfDebug('image-upload-end', {
+        traceId: perfEntry.traceId,
+        messageType: 'image',
+        attachmentCount: nextMessage?.attachments.filter((attachment) => Boolean(attachment.storagePath)).length ?? 0,
+        source: 'background-attach',
+        durationMs: Math.round(performance.now() - uploadStartedAt),
+        status: nextAttachmentStates.some((state) => state === 'failed') ? 'error' : 'ok',
+      })
+    }
+
+    if (
+      nextMessage &&
+      !getOptimisticAttachmentStates(nextMessage).some((state) => state !== 'attached')
+    ) {
+      void loadChatMessageItem(serverMessageId, threadId)
+        .then((loadedMessage) => {
+          if (!loadedMessage) {
+            return
+          }
+
+          setMessages((currentMessages) =>
+            keepLatestRenderedMessages(
+              replaceMessageById(currentMessages, nextMessage.id, loadedMessage),
+              {
+                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+              }
+            )
+          )
+        })
+        .catch(() => {
+          // Leave the optimistic image message visible if final enrichment fails.
+        })
+    }
+  }
+
   function scheduleOptimisticRealtimeFallback(optimisticMessageId: string, serverMessageId: string) {
     clearOptimisticRealtimeFallbackTimeout(serverMessageId)
 
@@ -4234,10 +4577,14 @@ export default function ChatSection({
             return
           }
 
-          releaseOptimisticClientMedia(currentOptimisticMessage)
+          const mergedMessage = mergeServerMessageWithOptimisticImageState(currentOptimisticMessage, nextMessage)
+
+          if (!mergedMessage.isOptimistic) {
+            releaseOptimisticClientMedia(currentOptimisticMessage)
+          }
           setMessages((currentMessages) =>
             keepLatestRenderedMessages(
-              replaceMessageById(currentMessages, optimisticMessageId, nextMessage),
+              replaceMessageById(currentMessages, optimisticMessageId, mergedMessage),
               {
                 preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
               }
@@ -4297,20 +4644,24 @@ export default function ChatSection({
       optimisticLocalObjectUrl: null,
       optimisticImageFiles: attachments.map((attachment) => attachment.file),
       optimisticAttachmentUploadState: normalizedAttachments.length > 0 ? 'uploading' : null,
+      optimisticAttachmentStates: normalizedAttachments.length > 0
+        ? normalizedAttachments.map(() => 'uploading' as const)
+        : null,
     }
   }
 
   async function sendOptimisticTextOrImageMessage(optimisticMessage: ChatMessageItem) {
     const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id] ?? null
-    let workingMessage = optimisticMessage
-    const hasPendingAttachmentUploads = optimisticMessage.attachments.some(
-      (attachment, index) => !attachment.storagePath && Boolean(optimisticMessage.optimisticImageFiles?.[index])
-    )
-    if (hasPendingAttachmentUploads) {
-      workingMessage = {
-        ...optimisticMessage,
-        optimisticAttachmentUploadState: 'uploading',
-      }
+    const hasPendingAttachmentUploads = hasPendingOptimisticImageAttachments(optimisticMessage)
+    const workingMessage = {
+      ...optimisticMessage,
+      optimisticStatus: 'sending' as const,
+      optimisticAttachmentUploadState: hasPendingAttachmentUploads
+        ? 'uploading'
+        : optimisticMessage.optimisticAttachmentUploadState,
+      optimisticAttachmentStates: hasPendingAttachmentUploads
+        ? getOptimisticAttachmentStates(optimisticMessage)
+        : optimisticMessage.optimisticAttachmentStates ?? null,
     }
     const shouldAutoScroll = isNearBottom()
 
@@ -4327,7 +4678,6 @@ export default function ChatSection({
                 ? {
                     ...workingMessage,
                     optimisticStatus: 'sending',
-                    optimisticServerMessageId: null,
                   }
                 : message
             )
@@ -4347,165 +4697,86 @@ export default function ChatSection({
       })
     }
 
-    const attachmentsToUpload = workingMessage.attachments
-      .map((attachment, index) => ({
-        attachment,
-        index,
-        file: workingMessage.optimisticImageFiles?.[index] ?? null,
-      }))
-      .filter(({ attachment, file }) => !attachment.storagePath && file)
+    let serverMessageId = getOptimisticServerMessageId(workingMessage)
 
-    if (attachmentsToUpload.length > 0) {
-      const uploadStart = performance.now()
+    if (!serverMessageId) {
       if (perfEntry) {
-        logChatPerfDebug('image-upload-start', {
+        perfEntry.apiStartAt = performance.now()
+        logChatPerfDebug('api-request-start', {
           traceId: perfEntry.traceId,
-          messageType: 'image',
-          attachmentCount: attachmentsToUpload.length,
-          source: 'background-send',
+          messageType: optimisticMessage.messageType,
+          attachmentCount: optimisticMessage.attachments.length,
         })
       }
 
-      const uploadResults = await Promise.allSettled(
-        attachmentsToUpload.map(async ({ file }) => uploadChatImage(workingMessage.userId, file!, threadId))
-      )
-
-      let hasUploadFailure = false
-      const nextAttachments = workingMessage.attachments.map((attachment) => ({ ...attachment }))
-
-      uploadResults.forEach((result, uploadIndex) => {
-        const uploadTarget = attachmentsToUpload[uploadIndex]
-
-        if (!uploadTarget) {
-          return
-        }
-
-        if (result.status === 'fulfilled') {
-          const previousUrl = nextAttachments[uploadTarget.index]?.publicUrl ?? null
-          nextAttachments[uploadTarget.index] = {
-            ...nextAttachments[uploadTarget.index]!,
-            storagePath: result.value.storagePath,
-            publicUrl: result.value.publicUrl,
-            width: result.value.width ?? nextAttachments[uploadTarget.index]!.width,
-            height: result.value.height ?? nextAttachments[uploadTarget.index]!.height,
-          }
-          revokeObjectUrlIfNeeded(previousUrl)
-          return
-        }
-
-        hasUploadFailure = true
-      })
-
-      workingMessage = {
-        ...workingMessage,
-        imageUrl: nextAttachments[0]?.publicUrl ?? null,
-        attachments: nextAttachments,
-        optimisticImageFiles: hasUploadFailure ? workingMessage.optimisticImageFiles : null,
-        optimisticAttachmentUploadState: hasUploadFailure ? 'failed' : 'uploaded',
-      }
-
-      setMessages((currentMessages) =>
-        keepLatestRenderedMessages(
-          currentMessages.map((message) =>
-            message.id === workingMessage.id
-              ? {
-                  ...workingMessage,
-                  optimisticStatus: hasUploadFailure ? 'failed' : 'sending',
-                }
-              : message
-          ),
-          {
-            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-          }
-        )
+      const { error: insertError, messageId } = await createChatMessage(
+        workingMessage.userId,
+        workingMessage.text,
+        workingMessage.replyToId ?? null,
+        threadId,
+        hasPendingAttachmentUploads
+          ? []
+          : workingMessage.attachments
+            .filter((attachment): attachment is ChatMessageAttachment & { storagePath: string } => Boolean(attachment.storagePath))
+            .map((attachment) => ({
+              storagePath: attachment.storagePath,
+              publicUrl: attachment.publicUrl,
+              width: attachment.width,
+              height: attachment.height,
+            })),
+        hasPendingAttachmentUploads ? null : workingMessage.imageUrl,
+        perfEntry?.traceId ?? null,
+        hasPendingAttachmentUploads ? { pendingAttachmentCount: workingMessage.attachments.length } : undefined
       )
 
       if (perfEntry) {
-        logChatPerfDebug('image-upload-end', {
+        perfEntry.apiEndAt = performance.now()
+        logChatPerfDebug('api-request-end', {
           traceId: perfEntry.traceId,
-          messageType: 'image',
-          attachmentCount: workingMessage.attachments.filter((attachment) => Boolean(attachment.storagePath)).length,
-          source: 'background-send',
-          durationMs: Math.round(performance.now() - uploadStart),
-          status: hasUploadFailure ? 'error' : 'ok',
+          messageId: messageId ?? null,
+          messageType: workingMessage.messageType,
+          attachmentCount: workingMessage.attachments.length,
+          durationMs: Math.round(perfEntry.apiEndAt - (perfEntry.apiStartAt ?? perfEntry.startedAt)),
+        })
+        logChatPerfDebug('api-response-received', {
+          traceId: perfEntry.traceId,
+          messageId: messageId ?? null,
+          messageType: workingMessage.messageType,
+          attachmentCount: workingMessage.attachments.length,
         })
       }
 
-      if (hasUploadFailure) {
-        throw new Error('chat_image_upload_failed')
-      }
-    }
-
-    if (perfEntry) {
-      perfEntry.apiStartAt = performance.now()
-      logChatPerfDebug('api-request-start', {
-        traceId: perfEntry.traceId,
-        messageType: optimisticMessage.messageType,
-        attachmentCount: optimisticMessage.attachments.length,
-      })
-    }
-    const { error: insertError, messageId } = await createChatMessage(
-      workingMessage.userId,
-      workingMessage.text,
-      workingMessage.replyToId ?? null,
-      threadId,
-      workingMessage.attachments
-        .filter((attachment): attachment is ChatMessageAttachment & { storagePath: string } => Boolean(attachment.storagePath))
-        .map((attachment) => ({
-          storagePath: attachment.storagePath,
-          publicUrl: attachment.publicUrl,
-          width: attachment.width,
-          height: attachment.height,
-        })),
-      workingMessage.imageUrl,
-      perfEntry?.traceId ?? null
-    )
-    if (perfEntry) {
-      perfEntry.apiEndAt = performance.now()
-      logChatPerfDebug('api-request-end', {
-        traceId: perfEntry.traceId,
-        messageId: messageId ?? null,
-        messageType: workingMessage.messageType,
-        attachmentCount: workingMessage.attachments.length,
-        durationMs: Math.round(perfEntry.apiEndAt - (perfEntry.apiStartAt ?? perfEntry.startedAt)),
-      })
-      logChatPerfDebug('api-response-received', {
-        traceId: perfEntry.traceId,
-        messageId: messageId ?? null,
-        messageType: workingMessage.messageType,
-        attachmentCount: workingMessage.attachments.length,
-      })
-    }
-
-    if (insertError) {
-      setMessages((currentMessages) =>
-        keepLatestRenderedMessages(
-          currentMessages.map((message) =>
-            message.id === workingMessage.id
-              ? {
-                  ...message,
-                  optimisticStatus: 'failed',
-                  optimisticAttachmentUploadState: message.messageType === 'image'
-                    ? (message.optimisticAttachmentUploadState ?? 'failed')
-                    : message.optimisticAttachmentUploadState,
-                }
-              : message
-          ),
-          {
-            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-          }
+      if (insertError || !messageId) {
+        setMessages((currentMessages) =>
+          keepLatestRenderedMessages(
+            currentMessages.map((message) =>
+              message.id === workingMessage.id
+                ? {
+                    ...message,
+                    optimisticStatus: 'failed',
+                    optimisticAttachmentUploadState: message.messageType === 'image'
+                      ? (message.optimisticAttachmentUploadState ?? 'failed')
+                      : message.optimisticAttachmentUploadState,
+                  }
+                : message
+            ),
+            {
+              preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+            }
+          )
         )
-      )
-      if (perfEntry) {
-        delete pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
+        if (perfEntry) {
+          delete pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
+        }
+        throw insertError ?? new Error('chat_message_create_failed')
       }
-      throw insertError
-    }
 
-    if (messageId) {
+      serverMessageId = messageId
+
       if (perfEntry) {
         pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
       }
+
       scheduleOptimisticRealtimeFallback(workingMessage.id, messageId)
       setMessages((currentMessages) =>
         keepLatestRenderedMessages(
@@ -4513,6 +4784,7 @@ export default function ChatSection({
             message.id === workingMessage.id
               ? {
                   ...message,
+                  optimisticStatus: 'sending',
                   optimisticServerMessageId: messageId,
                 }
               : message
@@ -4521,6 +4793,15 @@ export default function ChatSection({
             preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
           }
         )
+      )
+    }
+
+    if (serverMessageId && hasPendingAttachmentUploads) {
+      void uploadAndAttachImagesInBackground(
+        workingMessage.id,
+        serverMessageId,
+        perfEntry?.traceId ?? null,
+        workingMessage
       )
     }
   }
@@ -4559,6 +4840,7 @@ export default function ChatSection({
       optimisticLocalObjectUrl: localObjectUrl,
       optimisticImageFiles: null,
       optimisticAttachmentUploadState: null,
+      optimisticAttachmentStates: null,
     }
   }
 
