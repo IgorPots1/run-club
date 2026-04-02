@@ -2291,6 +2291,20 @@ export default function ChatSection({
     }
   }, [keepLatestRenderedMessages, threadId])
 
+  const releaseOptimisticClientMedia = useCallback((message: ChatMessageItem) => {
+    revokeOptimisticVoiceObjectUrl(message)
+    revokeOptimisticImageObjectUrls(message)
+  }, [])
+
+  const clearOptimisticRealtimeFallbackTimeout = useCallback((messageId: string) => {
+    const timeoutId = optimisticRealtimeFallbackTimeoutsRef.current[messageId]
+
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId)
+      delete optimisticRealtimeFallbackTimeoutsRef.current[messageId]
+    }
+  }, [])
+
   const resizeComposerTextarea = useCallback(() => {
     const textarea = composerTextareaRef.current
 
@@ -4200,20 +4214,6 @@ export default function ChatSection({
     message.attachments.forEach((attachment) => {
       revokeObjectUrlIfNeeded(attachment.publicUrl)
     })
-  }
-
-  function releaseOptimisticClientMedia(message: ChatMessageItem) {
-    revokeOptimisticVoiceObjectUrl(message)
-    revokeOptimisticImageObjectUrls(message)
-  }
-
-  function clearOptimisticRealtimeFallbackTimeout(messageId: string) {
-    const timeoutId = optimisticRealtimeFallbackTimeoutsRef.current[messageId]
-
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId)
-      delete optimisticRealtimeFallbackTimeoutsRef.current[messageId]
-    }
   }
 
   function scheduleOptimisticRealtimeFallback(optimisticMessageId: string, serverMessageId: string) {
