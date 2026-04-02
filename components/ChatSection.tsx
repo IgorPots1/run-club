@@ -45,6 +45,7 @@ const SWIPE_REPLY_MAX_OFFSET_PX = 96
 const SWIPE_REPLY_VERTICAL_LOCK_PX = 12
 const SWIPE_REPLY_HORIZONTAL_DOMINANCE_RATIO = 1.5
 const REACTION_ANIMATION_DURATION_MS = 200
+const OPTIMISTIC_MESSAGE_MATCH_WINDOW_MS = 2 * 60 * 1000
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
 const VOICE_PLAYBACK_SPEEDS = [1, 1.5, 2] as const
@@ -166,6 +167,65 @@ function replaceMessageById(
   const nextMessages = [...messages]
   nextMessages[existingIndex] = nextMessage
   return nextMessages
+}
+
+function getOptimisticMessageReplyPreview(message: ChatMessageItem | null) {
+  if (!message) {
+    return null
+  }
+
+  return {
+    id: message.id,
+    userId: message.userId,
+    displayName: message.displayName,
+    text: message.previewText || message.text,
+  }
+}
+
+function createOptimisticMessageId(prefix: 'text' | 'image') {
+  return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+}
+
+function findMatchingOptimisticTextOrImageMessage(
+  messages: ChatMessageItem[],
+  nextMessage: ChatMessageItem
+) {
+  if (nextMessage.messageType === 'voice') {
+    return null
+  }
+
+  const nextMessageCreatedAtMs = new Date(nextMessage.createdAt).getTime()
+  const matchingOptimisticMessages = messages.filter((message) => {
+    if (!message.isOptimistic) {
+      return false
+    }
+
+    if (message.messageType === 'voice' || nextMessage.messageType === 'voice') {
+      return false
+    }
+
+    const messageCreatedAtMs = new Date(message.createdAt).getTime()
+
+    return (
+      message.userId === nextMessage.userId &&
+      message.text === nextMessage.text &&
+      message.imageUrl === nextMessage.imageUrl &&
+      message.replyToId === nextMessage.replyToId &&
+      Math.abs(messageCreatedAtMs - nextMessageCreatedAtMs) <= OPTIMISTIC_MESSAGE_MATCH_WINDOW_MS
+    )
+  })
+
+  if (matchingOptimisticMessages.length === 0) {
+    return null
+  }
+
+  return matchingOptimisticMessages
+    .slice()
+    .sort((left, right) => {
+      const leftCreatedAtMs = Math.abs(new Date(left.createdAt).getTime() - nextMessageCreatedAtMs)
+      const rightCreatedAtMs = Math.abs(new Date(right.createdAt).getTime() - nextMessageCreatedAtMs)
+      return leftCreatedAtMs - rightCreatedAtMs
+    })[0] ?? null
 }
 
 function toggleReactionOnMessage(
@@ -1136,6 +1196,8 @@ function ChatMessageBody({
   )
   const hasVoiceAttachment = message.messageType === 'voice'
   const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && !hasVoiceAttachment)
+  const isPendingMessage = message.isOptimistic && message.optimisticStatus === 'sending'
+  const isFailedMessage = message.isOptimistic && message.optimisticStatus === 'failed'
 
   return (
     <>
@@ -1269,9 +1331,15 @@ function ChatMessageBody({
         </p>
       ) : null}
       {!isImageOnlyMessage ? (
-        <p className={`app-text-secondary ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
+        <p className={`${isFailedMessage ? 'text-red-600' : 'app-text-secondary'} ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
           {message.createdAtLabel}
           {message.editedAt ? ' • изменено' : ''}
+          {isPendingMessage ? ' • Отправка...' : ''}
+          {isFailedMessage ? ' • Не отправлено' : ''}
+        </p>
+      ) : isPendingMessage || isFailedMessage ? (
+        <p className={`mt-1 text-[11px] ${isOwnMessage ? 'text-right' : ''} ${isFailedMessage ? 'text-red-600' : 'app-text-secondary opacity-70'}`}>
+          {isPendingMessage ? 'Отправка...' : 'Не отправлено'}
         </p>
       ) : null}
       {message.reactions.length > 0 ? (
@@ -2335,12 +2403,20 @@ export default function ChatSection({
         async (payload) => {
           const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
           const shouldAutoScroll = isNearBottom()
+          const optimisticServerMatch = messagesRef.current.find((message) =>
+            message.isOptimistic &&
+            message.optimisticStatus === 'sending' &&
+            message.optimisticServerMessageId === nextMessageId
+          ) ?? null
 
           if (!nextMessageId) {
             return
           }
 
-          if (messagesRef.current.some((message) => message.id === nextMessageId)) {
+          if (
+            messagesRef.current.some((message) => message.id === nextMessageId) &&
+            !optimisticServerMatch
+          ) {
             return
           }
 
@@ -2368,6 +2444,22 @@ export default function ChatSection({
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
                   replaceMessageById(currentMessages, optimisticVoiceMatch.id, nextMessage),
+                  {
+                    preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+                  }
+                )
+              )
+              return
+            }
+
+            const optimisticTextOrImageMatch =
+              optimisticServerMatch ??
+              findMatchingOptimisticTextOrImageMessage(messagesRef.current, nextMessage)
+
+            if (optimisticTextOrImageMatch) {
+              setMessages((currentMessages) =>
+                keepLatestRenderedMessages(
+                  replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, nextMessage),
                   {
                     preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
                   }
@@ -2558,7 +2650,33 @@ export default function ChatSection({
           )
         }
       } else {
-        const { error: insertError } = await createChatMessage(
+        const optimisticMessage = createOptimisticTextOrImageMessage({
+          userId: currentUserId,
+          text: trimmedDraftMessage,
+          imageUrl: pendingImageUrl,
+        })
+        const shouldAutoScroll = isNearBottom()
+
+        if (shouldAutoScroll) {
+          pendingAutoScrollToBottomRef.current = true
+          setPendingNewMessagesCount(0)
+        }
+
+        setMessages((currentMessages) =>
+          keepLatestRenderedMessages(insertMessageChronologically(currentMessages, optimisticMessage), {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          })
+        )
+
+        setDraftMessage('')
+        clearSelectedImage()
+        setReplyingToMessage(null)
+        setEditingMessageId(null)
+        window.requestAnimationFrame(() => {
+          resizeComposerTextarea()
+        })
+
+        const { error: insertError, messageId } = await createChatMessage(
           currentUserId,
           trimmedDraftMessage,
           replyingToMessage?.id ?? null,
@@ -2567,18 +2685,39 @@ export default function ChatSection({
         )
 
         if (insertError) {
+          setMessages((currentMessages) =>
+            keepLatestRenderedMessages(
+              currentMessages.map((message) =>
+                message.id === optimisticMessage.id
+                  ? {
+                      ...message,
+                      optimisticStatus: 'failed',
+                    }
+                  : message
+              ),
+              {
+                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+              }
+            )
+          )
           throw insertError
+        }
+
+        if (messageId) {
+          await reconcileOptimisticMessageWithServerMessage(optimisticMessage, messageId)
         }
       }
 
       setPendingNewMessagesCount(0)
-      setDraftMessage('')
-      clearSelectedImage()
-      setReplyingToMessage(null)
-      setEditingMessageId(null)
-      window.requestAnimationFrame(() => {
-        resizeComposerTextarea()
-      })
+      if (editingMessageId) {
+        setDraftMessage('')
+        clearSelectedImage()
+        setReplyingToMessage(null)
+        setEditingMessageId(null)
+        window.requestAnimationFrame(() => {
+          resizeComposerTextarea()
+        })
+      }
     } catch {
       setSubmitError('Не удалось отправить сообщение')
     } finally {
@@ -2815,6 +2954,82 @@ export default function ChatSection({
     URL.revokeObjectURL(message.optimisticLocalObjectUrl)
   }
 
+  function createOptimisticTextOrImageMessage({
+    userId,
+    text,
+    imageUrl,
+  }: {
+    userId: string
+    text: string
+    imageUrl: string | null
+  }): ChatMessageItem {
+    const createdAt = new Date().toISOString()
+    const messageType = imageUrl ? 'image' : 'text'
+    const previewText = text.trim() || (imageUrl ? 'Фото' : '')
+
+    return {
+      id: createOptimisticMessageId(messageType),
+      userId,
+      text,
+      messageType,
+      imageUrl,
+      mediaUrl: null,
+      mediaDurationSeconds: null,
+      editedAt: null,
+      createdAt,
+      createdAtLabel: 'Сейчас',
+      isDeleted: false,
+      displayName: 'Вы',
+      avatarUrl: null,
+      replyToId: replyingToMessage?.id ?? null,
+      replyTo: getOptimisticMessageReplyPreview(replyingToMessage),
+      reactions: [],
+      previewText,
+      isOptimistic: true,
+      optimisticStatus: 'sending',
+      optimisticServerMessageId: null,
+      optimisticLocalObjectUrl: null,
+    }
+  }
+
+  async function reconcileOptimisticMessageWithServerMessage(
+    optimisticMessage: ChatMessageItem,
+    messageId: string
+  ) {
+    try {
+      const nextMessage = await loadChatMessageItem(messageId, threadId)
+
+      if (!nextMessage) {
+        throw new Error('chat_message_item_missing')
+      }
+
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(
+          replaceMessageById(currentMessages, optimisticMessage.id, nextMessage),
+          {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          }
+        )
+      )
+    } catch {
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(
+          currentMessages.map((message) =>
+            message.id === optimisticMessage.id
+              ? {
+                  ...message,
+                  optimisticServerMessageId: messageId,
+                }
+              : message
+          ),
+          {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          }
+        )
+      )
+    }
+  }
+
   function createOptimisticVoiceMessage(file: File, userId: string, durationSeconds: number | null): ChatMessageItem {
     const createdAt = new Date().toISOString()
     const localObjectUrl = URL.createObjectURL(file)
@@ -2843,6 +3058,8 @@ export default function ChatSection({
       reactions: [],
       previewText: 'Голосовое сообщение',
       isOptimistic: true,
+      optimisticStatus: 'sending',
+      optimisticServerMessageId: null,
       optimisticLocalObjectUrl: localObjectUrl,
     }
   }
@@ -3176,6 +3393,10 @@ export default function ChatSection({
   }, [])
 
   const startLongPress = useCallback((message: ChatMessageItem) => {
+    if (message.isOptimistic) {
+      return
+    }
+
     clearLongPressTimeout()
     longPressTimeoutRef.current = window.setTimeout(() => {
       navigator.vibrate?.(10)
@@ -3307,6 +3528,11 @@ export default function ChatSection({
 
   const handleMessageContextMenu = useCallback((message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
+
+    if (message.isOptimistic) {
+      return
+    }
+
     clearLongPressTimeout()
     setSelectedMessage(message)
     setIsActionSheetOpen(true)

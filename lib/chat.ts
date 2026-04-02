@@ -69,6 +69,8 @@ export type ChatMessageItem = {
   }[]
   previewText: string
   isOptimistic?: boolean
+  optimisticStatus?: 'sending' | 'failed'
+  optimisticServerMessageId?: string | null
   optimisticLocalObjectUrl?: string | null
 }
 
@@ -387,6 +389,7 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
 
 type CreateChatMessageApiResult = {
   error: Error | null
+  messageId?: string | null
 }
 
 type CreateTextChatMessageApiPayload = {
@@ -420,21 +423,27 @@ async function createChatMessageViaApi(
     const result = await response.json().catch(() => null) as
       | {
           error?: string
+          message?: {
+            id?: string
+          } | null
         }
       | null
 
     if (!response.ok) {
       return {
         error: new Error(result?.error ?? 'chat_message_create_failed'),
+        messageId: null,
       }
     }
 
     return {
       error: null,
+      messageId: typeof result?.message?.id === 'string' ? result.message.id : null,
     }
   } catch (error) {
     return {
       error: error instanceof Error ? error : new Error('chat_message_create_failed'),
+      messageId: null,
     }
   }
 }
