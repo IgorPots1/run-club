@@ -46,7 +46,7 @@ export default function MessageThreadPage() {
   const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
-  const isThreadLayoutReady = !loading && Boolean(threadTitle.trim())
+  const isThreadLayoutReady = !loading
   const routeDebugStateRef = useRef({
     threadId: threadId || null,
     loading,
