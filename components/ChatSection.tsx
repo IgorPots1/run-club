@@ -420,6 +420,35 @@ function deriveOptimisticAttachmentUploadState(
   return null
 }
 
+function getOptimisticAttachmentProgress(
+  message: Pick<ChatMessageItem, 'attachments' | 'optimisticAttachmentStates'>
+) {
+  const states = getOptimisticAttachmentStates(message)
+
+  return {
+    total: states.length,
+    attachedCount: states.filter((state) => state === 'attached').length,
+    availableCount: states.filter((state) => state === 'attached' || state === 'uploaded').length,
+    uploadingCount: states.filter((state) => state === 'uploading' || state === 'uploaded').length,
+    failedCount: states.filter((state) => state === 'failed').length,
+  }
+}
+
+function getImageAttachmentCardStyle(
+  attachment: Pick<ChatMessageAttachment, 'width' | 'height'>,
+  compactPreview: boolean
+) {
+  if (attachment.width && attachment.height) {
+    return {
+      aspectRatio: `${attachment.width} / ${attachment.height}`,
+    }
+  }
+
+  return {
+    minHeight: compactPreview ? '10rem' : '14rem',
+  }
+}
+
 function hasPendingOptimisticImageAttachments(message: ChatMessageItem) {
   return Boolean(
     message.isOptimistic &&
@@ -1647,6 +1676,7 @@ function getGalleryTileClass(attachmentCount: number, index: number) {
 
 function ChatImageAttachments({
   attachments,
+  attachmentStates,
   createdAtLabel,
   isOwnMessage,
   isImageOnlyMessage,
@@ -1655,6 +1685,7 @@ function ChatImageAttachments({
   onImageLoad,
 }: {
   attachments: ChatMessageAttachment[]
+  attachmentStates?: ChatMessageItem['optimisticAttachmentStates']
   createdAtLabel: string
   isOwnMessage: boolean
   isImageOnlyMessage: boolean
@@ -1665,6 +1696,16 @@ function ChatImageAttachments({
   if (attachments.length === 0) {
     return null
   }
+
+  const normalizedAttachmentStates = attachments.map((attachment, index) => (
+    attachmentStates?.[index] ?? 'attached'
+  ))
+  const [failedPreviewIds, setFailedPreviewIds] = useState<Record<string, true>>({})
+  const attachmentRenderKey = attachments.map((attachment) => `${attachment.id}:${attachment.publicUrl}`).join('|')
+
+  useEffect(() => {
+    setFailedPreviewIds({})
+  }, [attachmentRenderKey])
 
   const wrapperClassName = `relative mt-1 block overflow-hidden rounded-2xl ${
     compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
@@ -1678,24 +1719,116 @@ function ChatImageAttachments({
         : ''
   }`
 
+  function handleAttachmentPreviewError(attachmentId: string) {
+    setFailedPreviewIds((currentIds) => (
+      currentIds[attachmentId]
+        ? currentIds
+        : {
+            ...currentIds,
+            [attachmentId]: true,
+          }
+    ))
+  }
+
+  function renderAttachmentMedia(
+    attachment: ChatMessageAttachment,
+    index: number,
+    className: string,
+    style?: {
+      aspectRatio?: string
+      minHeight?: string
+    }
+  ) {
+    const attachmentState = normalizedAttachmentStates[index] ?? 'attached'
+    const previewFailedToLoad = Boolean(failedPreviewIds[attachment.id])
+    const canShowImage = Boolean(attachment.publicUrl) && !previewFailedToLoad
+    const isPendingAttachment = attachmentState === 'uploading' || attachmentState === 'uploaded'
+    const isFailedAttachment = attachmentState === 'failed'
+    const canOpenAttachment = Boolean(onImageClick && canShowImage && !isFailedAttachment)
+
+    return (
+      <button
+        key={attachment.id}
+        type="button"
+        onClick={canOpenAttachment ? () => onImageClick?.(attachments, index) : undefined}
+        disabled={!canOpenAttachment}
+        className={className}
+        style={style}
+        aria-label={
+          isFailedAttachment
+            ? `Не удалось загрузить изображение ${index + 1}`
+            : `Открыть изображение ${index + 1}`
+        }
+      >
+        {canShowImage ? (
+          <img
+            src={attachment.publicUrl}
+            alt={`Вложение ${index + 1}`}
+            onLoad={onImageLoad}
+            onError={() => handleAttachmentPreviewError(attachment.id)}
+            className={`h-full w-full object-cover transition duration-300 ${
+              isPendingAttachment ? 'scale-[1.01] opacity-85 blur-[1px]' : 'opacity-100'
+            }`}
+          />
+        ) : null}
+
+        {!canShowImage ? (
+          <span
+            aria-hidden="true"
+            className={`absolute inset-0 block ${
+              isFailedAttachment
+                ? 'bg-red-100/90 dark:bg-red-950/50'
+                : 'bg-black/[0.04] dark:bg-white/[0.07]'
+            }`}
+          />
+        ) : null}
+
+        {isPendingAttachment ? (
+          <>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 opacity-80 animate-pulse dark:via-white/15"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-black/10 dark:bg-black/20"
+            />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 top-auto h-12 bg-gradient-to-t from-black/30 to-transparent" />
+            <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/38 px-2 py-1 text-[10px] font-medium leading-none text-white backdrop-blur-[2px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-white/90 animate-pulse" />
+              {attachmentState === 'uploaded' ? 'Обработка' : 'Загрузка'}
+            </span>
+          </>
+        ) : null}
+
+        {isFailedAttachment ? (
+          <>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-red-950/12 dark:bg-red-950/35"
+            />
+            <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded-xl bg-red-600/90 px-2 py-1 text-center text-[10px] font-medium leading-tight text-white shadow-sm dark:bg-red-500/90">
+              Не удалось загрузить
+            </span>
+          </>
+        ) : null}
+      </button>
+    )
+  }
+
   if (attachments.length === 1) {
     const attachment = attachments[0]!
 
     return (
-      <button
-        type="button"
-        onClick={() => onImageClick?.(attachments, 0)}
-        className={wrapperClassName}
-        aria-label="Открыть изображение"
-      >
-        <img
-          src={attachment.publicUrl}
-          alt="Вложение"
-          onLoad={onImageLoad}
-          className={`w-auto rounded-2xl object-cover ${
+      <div className={wrapperClassName}>
+        {renderAttachmentMedia(
+          attachment,
+          0,
+          `relative block w-full overflow-hidden rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] ${
             compactPreview ? 'max-h-40' : 'max-h-80'
-          }`}
-        />
+          }`,
+          getImageAttachmentCardStyle(attachment, compactPreview)
+        )}
         <span
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 via-black/15 to-transparent"
@@ -1703,31 +1836,22 @@ function ChatImageAttachments({
         <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/38 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
           {createdAtLabel}
         </span>
-      </button>
+      </div>
     )
   }
 
   return (
     <div className={wrapperClassName}>
       <div className={`grid ${getGalleryGridClass(attachments.length)} gap-1`}>
-        {attachments.map((attachment, index) => (
-          <button
-            key={attachment.id}
-            type="button"
-            onClick={() => onImageClick?.(attachments, index)}
-            className={`relative aspect-square overflow-hidden rounded-[18px] bg-black/[0.04] dark:bg-white/[0.06] ${
+        {attachments.map((attachment, index) =>
+          renderAttachmentMedia(
+            attachment,
+            index,
+            `relative aspect-square overflow-hidden rounded-[18px] bg-black/[0.04] dark:bg-white/[0.06] ${
               getGalleryTileClass(attachments.length, index)
-            }`}
-            aria-label={`Открыть изображение ${index + 1}`}
-          >
-            <img
-              src={attachment.publicUrl}
-              alt={`Вложение ${index + 1}`}
-              onLoad={onImageLoad}
-              className="h-full w-full object-cover"
-            />
-          </button>
-        ))}
+            }`
+          )
+        )}
       </div>
       <span
         aria-hidden="true"
@@ -1775,12 +1899,41 @@ function ChatMessageBody({
   const isImageOnlyMessage = Boolean(hasImageAttachments && !message.text && !message.replyTo && !hasVoiceAttachment)
   const isPendingMessage = message.isOptimistic && message.optimisticStatus === 'sending'
   const isFailedMessage = message.isOptimistic && message.optimisticStatus === 'failed'
+  const attachmentProgress = hasImageAttachments
+    ? getOptimisticAttachmentProgress(message)
+    : null
+  const hasPendingAttachmentUploads = Boolean(
+    attachmentProgress && attachmentProgress.uploadingCount > 0
+  )
+  const hasAttachmentFailures = Boolean(
+    attachmentProgress && attachmentProgress.failedCount > 0
+  )
+  const hasServerBackedImageMessage = Boolean(
+    message.messageType === 'image' &&
+    message.isOptimistic &&
+    (message.optimisticServerMessageId || !message.id.startsWith('temp-'))
+  )
+  const isAttachmentFailureState = Boolean(hasServerBackedImageMessage && hasAttachmentFailures)
+  const isMessageSendFailureState = Boolean(isFailedMessage && !isAttachmentFailureState)
   const isUploadingImageMessage = Boolean(
     message.isOptimistic &&
     hasImageAttachments &&
     message.optimisticAttachmentUploadState === 'uploading'
   )
-  const pendingStatusLabel = isUploadingImageMessage ? 'Загрузка фото...' : 'Отправка...'
+  const pendingStatusLabel = isUploadingImageMessage
+    ? attachmentProgress && attachmentProgress.total > 1
+      ? `Загрузка фото... ${attachmentProgress.availableCount} из ${attachmentProgress.total}`
+      : 'Загрузка фото...'
+    : 'Отправка...'
+  const failedStatusLabel = isAttachmentFailureState
+    ? attachmentProgress?.failedCount === 1
+      ? 'Не удалось загрузить 1 фото'
+      : `Не удалось загрузить ${attachmentProgress?.failedCount ?? 0} фото`
+    : 'Не отправлено'
+  const shouldShowRetryButton = Boolean(
+    onRetryFailedMessage &&
+    (isMessageSendFailureState || (isAttachmentFailureState && !hasPendingAttachmentUploads))
+  )
 
   return (
     <>
@@ -1827,6 +1980,7 @@ function ChatMessageBody({
       {hasImageAttachments ? (
         <ChatImageAttachments
           attachments={message.attachments}
+          attachmentStates={message.optimisticAttachmentStates}
           createdAtLabel={message.createdAtLabel}
           isOwnMessage={isOwnMessage}
           isImageOnlyMessage={isImageOnlyMessage}
@@ -1898,22 +2052,22 @@ function ChatMessageBody({
         </p>
       ) : null}
       {!isImageOnlyMessage ? (
-        <p className={`${isFailedMessage ? 'text-red-600' : 'app-text-secondary'} ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
+        <p className={`${isMessageSendFailureState || isAttachmentFailureState ? 'text-red-600' : 'app-text-secondary'} ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
           {message.createdAtLabel}
           {message.editedAt ? ' • изменено' : ''}
           {isPendingMessage ? ` • ${pendingStatusLabel}` : ''}
-          {isFailedMessage ? ' • Не отправлено' : ''}
+          {!isPendingMessage && (isMessageSendFailureState || isAttachmentFailureState) ? ` • ${failedStatusLabel}` : ''}
         </p>
-      ) : isPendingMessage || isFailedMessage ? (
-        <p className={`mt-1 text-[11px] ${isOwnMessage ? 'text-right' : ''} ${isFailedMessage ? 'text-red-600' : 'app-text-secondary opacity-70'}`}>
-          {isPendingMessage ? pendingStatusLabel : 'Не отправлено'}
+      ) : isPendingMessage || isMessageSendFailureState || isAttachmentFailureState ? (
+        <p className={`mt-1 text-[11px] ${isOwnMessage ? 'text-right' : ''} ${isMessageSendFailureState || isAttachmentFailureState ? 'text-red-600' : 'app-text-secondary opacity-70'}`}>
+          {isPendingMessage ? pendingStatusLabel : failedStatusLabel}
         </p>
       ) : null}
-      {isFailedMessage && onRetryFailedMessage ? (
+      {shouldShowRetryButton ? (
         <div className={`mt-1 flex ${isOwnMessage ? 'justify-end' : ''}`}>
           <button
             type="button"
-            onClick={() => onRetryFailedMessage(message)}
+            onClick={() => onRetryFailedMessage?.(message)}
             className="rounded-full border border-red-500/25 px-2.5 py-1 text-[11px] font-medium text-red-600 transition-colors active:scale-[0.98] dark:border-red-400/25 dark:text-red-300"
           >
             Повторить
