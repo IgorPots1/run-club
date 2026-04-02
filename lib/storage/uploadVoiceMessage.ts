@@ -50,7 +50,9 @@ export async function uploadVoiceMessage({
   const safeUserId = sanitizePathSegment(userId)
   const timestamp = Date.now()
   const randomSegment = createUploadRandomSegment()
-  const path = `voice/${safeUserId}/${timestamp}-${randomSegment}.webm`
+  // Use a user-owned top-level namespace for new uploads. Legacy
+  // voice/{userId}/... paths remain readable via storage policies.
+  const path = `${safeUserId}/${timestamp}-${randomSegment}.webm`
   console.log('[voice] upload target', {
     bucket: CHAT_VOICE_BUCKET,
     path,
