@@ -80,6 +80,10 @@ const CHAT_MEDIA_BUCKET = 'chat-media'
 const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
 const SAFE_STORAGE_FILE_NAME_REGEX = /^[A-Za-z0-9._-]+$/
 
+function getChatThreadTargetUrl(threadId: string) {
+  return `/messages/${threadId}`
+}
+
 function sanitizeStoragePathSegment(value: string) {
   const trimmedValue = value.trim()
 
@@ -501,7 +505,7 @@ async function sendChatMessagePushNotifications(
             payload: {
               title: notificationContent.title,
               body: notificationContent.body,
-              targetUrl: `/messages/${context.threadId}`,
+              targetUrl: getChatThreadTargetUrl(context.threadId),
               threadId: context.threadId,
               threadType: context.threadType,
             },

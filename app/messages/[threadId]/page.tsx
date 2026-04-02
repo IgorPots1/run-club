@@ -20,6 +20,7 @@ type ProfileRow = {
 }
 
 const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
+const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
 
 function dispatchUnreadCountDelta(delta: number) {
   if (typeof window === 'undefined' || delta === 0) {
@@ -283,6 +284,16 @@ export default function MessageThreadPage() {
       }
     }
 
+    function handleNotificationNavigation(event: Event) {
+      const detail = (event as CustomEvent<{ threadId?: string | null }>).detail
+
+      if (detail?.threadId !== threadId) {
+        return
+      }
+
+      scheduleMarkThreadAsRead(50)
+    }
+
     const channel = supabase
       .channel(`thread-read-refresh:${threadId}`)
       .on(
@@ -306,6 +317,7 @@ export default function MessageThreadPage() {
       .subscribe()
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener(CHAT_NOTIFICATION_NAVIGATE_EVENT, handleNotificationNavigation as EventListener)
 
     return () => {
       if (markReadTimeoutRef.current !== null) {
@@ -315,6 +327,7 @@ export default function MessageThreadPage() {
 
       pendingMarkThreadReadRef.current = false
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener(CHAT_NOTIFICATION_NAVIGATE_EVENT, handleNotificationNavigation as EventListener)
       void supabase.removeChannel(channel)
     }
   }, [currentUserId, error, loading, threadId])
