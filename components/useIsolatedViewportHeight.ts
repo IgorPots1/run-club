@@ -1,7 +1,6 @@
 'use client'
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CHAT_OPEN_DEBUG, pushChatOpenDebug } from '@/lib/chatOpenDebug'
 
 const ISOLATED_VIEWPORT_HEIGHT_CSS_VAR = '--chat-app-height'
 const DEFAULT_ISOLATED_VIEWPORT_HEIGHT = '100svh'
@@ -42,39 +41,6 @@ export function useIsolatedViewportHeight() {
     let nestedFrameId: number | null = null
     let timeoutId: number | null = null
 
-    function logViewportDebug(source: string, details: {
-      visualViewportHeight: number
-      visualViewportOffsetTop: number
-      effectiveViewportHeight: number
-      cssVarChanged: boolean
-      nextIsKeyboardOpen: boolean
-    }) {
-      if (!CHAT_OPEN_DEBUG) {
-        return
-      }
-
-      pushChatOpenDebug({
-        now: Math.round(performance.now()),
-        scope: 'viewport',
-        source,
-        threadId: null,
-        scrollTop: null,
-        scrollHeight: null,
-        clientHeight: null,
-        distanceFromBottom: null,
-        pendingInitialScroll: null,
-        isInitialBottomLockActive: null,
-        showScrollToBottomButton: null,
-        messageCount: null,
-        innerHeight: window.innerHeight,
-        visualViewportHeight: details.visualViewportHeight,
-        visualViewportOffsetTop: details.visualViewportOffsetTop,
-        effectiveViewportHeight: details.effectiveViewportHeight,
-        cssVarChanged: details.cssVarChanged,
-        isKeyboardOpen: details.nextIsKeyboardOpen,
-      })
-    }
-
     function applyViewportHeight(source: string) {
       const visualViewport = window.visualViewport
       const viewportHeight = visualViewport?.height ?? window.innerHeight
@@ -93,14 +59,6 @@ export function useIsolatedViewportHeight() {
         setIsKeyboardOpen(nextIsKeyboardOpen)
         lastKeyboardOpenRef.current = nextIsKeyboardOpen
       }
-
-      logViewportDebug(source, {
-        visualViewportHeight: viewportHeight,
-        visualViewportOffsetTop: viewportOffsetTop,
-        effectiveViewportHeight,
-        cssVarChanged,
-        nextIsKeyboardOpen,
-      })
     }
 
     function clearScheduledViewportSync() {

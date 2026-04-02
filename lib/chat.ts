@@ -1,5 +1,4 @@
 import { formatRunDateTimeLabel } from './format'
-import { CHAT_PERF_DEBUG, pushChatPerfDebug } from './chatPerfDebug'
 import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
@@ -25,19 +24,6 @@ export type ChatComposerImageUpload = {
   publicUrl: string
   width: number | null
   height: number | null
-}
-
-function logChatPerfDebug(event: string, extra?: Record<string, unknown>) {
-  if (!CHAT_PERF_DEBUG || typeof window === 'undefined') {
-    return
-  }
-
-  pushChatPerfDebug({
-    now: Math.round(performance.now()),
-    scope: 'chat-data',
-    event,
-    ...extra,
-  })
 }
 
 type ChatMessageRow = {
@@ -176,30 +162,14 @@ export function getCachedRecentChatMessages(threadId?: string | null) {
   const entry = recentChatMessagesCacheByThreadId.get(threadId)
 
   if (!entry) {
-    logChatPerfDebug('cache-lookup', {
-      threadId: threadId ?? null,
-      cacheStatus: 'miss',
-      messageCount: 0,
-    })
     return null
   }
 
   if (isRecentChatMessagesCacheEntryExpired(entry)) {
     recentChatMessagesCacheByThreadId.delete(threadId)
-    logChatPerfDebug('cache-lookup', {
-      threadId: threadId ?? null,
-      cacheStatus: 'miss',
-      source: 'expired-entry',
-      messageCount: 0,
-    })
     return null
   }
 
-  logChatPerfDebug('cache-lookup', {
-    threadId: threadId ?? null,
-    cacheStatus: 'hit',
-    messageCount: entry.messages.length,
-  })
   return entry
 }
 
@@ -557,7 +527,6 @@ type CreateTextChatMessageApiPayload = {
   }[]
   replyToId?: string | null
   threadId?: string | null
-  debugTraceId?: string | null
 }
 
 type AttachChatMessageImageApiPayload = {
@@ -575,14 +544,12 @@ type CreateVoiceChatMessageApiPayload = {
   mediaDurationSeconds?: number | null
   replyToId?: string | null
   threadId?: string | null
-  debugTraceId?: string | null
 }
 
 async function createChatMessageViaApi(
   payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
 ): Promise<CreateChatMessageApiResult> {
   try {
-    const requestStart = typeof window !== 'undefined' ? performance.now() : 0
     const response = await fetch('/api/chat/messages', {
       method: 'POST',
       headers: {
@@ -608,29 +575,12 @@ async function createChatMessageViaApi(
         : null
 
     if (!response.ok) {
-      logChatPerfDebug('api-response', {
-        threadId: payload.threadId ?? null,
-        traceId: payload.debugTraceId ?? null,
-        messageType: payload.kind === 'voice' ? 'voice' : payload.attachments?.length || payload.imageUrl ? 'image' : 'text',
-        attachmentCount: payload.kind === 'voice' ? 0 : payload.attachments?.length ?? (payload.imageUrl ? 1 : 0),
-        durationMs: Math.round(performance.now() - requestStart),
-        status: 'error',
-      })
       return {
         error: new Error(result?.error ?? 'chat_message_create_failed'),
         messageId: null,
       }
     }
 
-    logChatPerfDebug('api-response', {
-      threadId: payload.threadId ?? null,
-      traceId: payload.debugTraceId ?? null,
-      messageId: responseMessageId,
-      messageType: payload.kind === 'voice' ? 'voice' : payload.attachments?.length || payload.imageUrl ? 'image' : 'text',
-      attachmentCount: payload.kind === 'voice' ? 0 : payload.attachments?.length ?? (payload.imageUrl ? 1 : 0),
-      durationMs: Math.round(performance.now() - requestStart),
-      status: 'ok',
-    })
     return {
       error: null,
       messageId: responseMessageId,
@@ -650,7 +600,6 @@ export async function createChatMessage(
   threadId?: string | null,
   attachments: ChatComposerImageUpload[] = [],
   imageUrl?: string | null,
-  debugTraceId?: string | null,
   options?: { pendingAttachmentCount?: number | null }
 ) {
   const trimmedText = text.trim()
@@ -679,7 +628,6 @@ export async function createChatMessage(
     attachments: normalizedAttachments,
     replyToId: replyToId ?? null,
     threadId: threadId ?? null,
-    debugTraceId: debugTraceId ?? null,
   })
 }
 
@@ -725,8 +673,7 @@ export async function createVoiceChatMessage(
   mediaPath: string,
   mediaDurationSeconds?: number | null,
   replyToId?: string | null,
-  threadId?: string | null,
-  debugTraceId?: string | null
+  threadId?: string | null
 ) {
   const trimmedMediaPath = mediaPath.trim()
 
@@ -740,7 +687,6 @@ export async function createVoiceChatMessage(
     mediaDurationSeconds: mediaDurationSeconds ?? null,
     replyToId: replyToId ?? null,
     threadId: threadId ?? null,
-    debugTraceId: debugTraceId ?? null,
   })
 }
 
@@ -864,12 +810,6 @@ export async function uploadChatImage(userId: string, file: File, threadId?: str
   const safeExtension = fileExtension.replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${userId}/${threadId ?? 'club'}/${createRandomUploadUuid()}.${safeExtension}`
   const dimensions = await getImageFileDimensions(file)
-  const uploadStartedAt = typeof window !== 'undefined' ? performance.now() : 0
-  logChatPerfDebug('storage-image-upload-start', {
-    threadId: threadId ?? null,
-    attachmentCount: 1,
-    source: path,
-  })
   const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, {
     contentType: file.type || `image/${safeExtension}`,
   })
@@ -885,12 +825,6 @@ export async function uploadChatImage(userId: string, file: File, threadId?: str
   }
 
   const { data } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path)
-  logChatPerfDebug('storage-image-upload-end', {
-    threadId: threadId ?? null,
-    attachmentCount: 1,
-    source: path,
-    durationMs: Math.round(performance.now() - uploadStartedAt),
-  })
   return {
     storagePath: path,
     publicUrl: data.publicUrl,
@@ -1043,28 +977,13 @@ export function getPrefetchedRecentChatMessages(limit = 50, threadId?: string | 
   const entry = getRecentChatMessagesPrefetchEntry(limit, threadId)
 
   if (!entry) {
-    logChatPerfDebug('prefetch-lookup', {
-      threadId: threadId ?? null,
-      cacheStatus: 'prefetch-miss',
-      messageCount: 0,
-    })
     return null
   }
 
   if (entry.data) {
-    logChatPerfDebug('prefetch-lookup', {
-      threadId: threadId ?? null,
-      cacheStatus: 'prefetch-hit',
-      messageCount: entry.data.length,
-    })
     return Promise.resolve(entry.data)
   }
 
-  logChatPerfDebug('prefetch-lookup', {
-    threadId: threadId ?? null,
-    cacheStatus: 'prefetch-hit',
-    source: 'pending-promise',
-  })
   return entry.promise
 }
 
@@ -1114,19 +1033,7 @@ export function prefetchRecentChatMessages(limit = 50, threadId?: string | null)
 }
 
 export async function loadRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
-  const startedAt = typeof window !== 'undefined' ? performance.now() : 0
-  logChatPerfDebug('db-recent-messages-load-start', {
-    threadId: threadId ?? null,
-    source: `limit:${limit}`,
-  })
-  const messages = await fetchRecentChatMessages(limit, threadId)
-  logChatPerfDebug('db-recent-messages-load-end', {
-    threadId: threadId ?? null,
-    source: `limit:${limit}`,
-    messageCount: messages.length,
-    durationMs: Math.round(performance.now() - startedAt),
-  })
-  return messages
+  return fetchRecentChatMessages(limit, threadId)
 }
 
 export async function loadOlderChatMessages(

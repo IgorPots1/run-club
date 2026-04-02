@@ -1,4 +1,3 @@
-import { CHAT_PERF_DEBUG, pushChatPerfDebug } from '@/lib/chatPerfDebug'
 import { supabase } from '@/lib/supabase'
 
 const CHAT_VOICE_BUCKET = 'chat-voice'
@@ -54,21 +53,6 @@ export async function uploadVoiceMessage({
   // Use a user-owned top-level namespace for new uploads. Legacy
   // voice/{userId}/... paths remain readable via storage policies.
   const path = `${safeUserId}/${timestamp}-${randomSegment}.webm`
-  const uploadStartedAt = typeof window !== 'undefined' ? performance.now() : 0
-  if (CHAT_PERF_DEBUG && typeof window !== 'undefined') {
-    pushChatPerfDebug({
-      now: Math.round(performance.now()),
-      scope: 'voice-upload',
-      event: 'voice-upload-start',
-      source: path,
-      messageType: 'voice',
-      attachmentCount: 0,
-    })
-  }
-  console.log('[voice] upload target', {
-    bucket: CHAT_VOICE_BUCKET,
-    path,
-  })
 
   const { error: uploadError } = await supabase.storage.from(CHAT_VOICE_BUCKET).upload(path, file, {
     contentType: file.type || 'audio/webm',
@@ -83,18 +67,6 @@ export async function uploadVoiceMessage({
       path,
     })
     throw new Error(`voice_upload_failed:${uploadError.message}`)
-  }
-
-  if (CHAT_PERF_DEBUG && typeof window !== 'undefined') {
-    pushChatPerfDebug({
-      now: Math.round(performance.now()),
-      scope: 'voice-upload',
-      event: 'voice-upload-end',
-      source: path,
-      messageType: 'voice',
-      attachmentCount: 0,
-      durationMs: Math.round(performance.now() - uploadStartedAt),
-    })
   }
   return {
     path,

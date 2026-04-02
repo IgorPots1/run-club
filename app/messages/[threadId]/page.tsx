@@ -6,8 +6,6 @@ import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
-import { CHAT_OPEN_DEBUG, pushChatOpenDebug } from '@/lib/chatOpenDebug'
-import { CHAT_PERF_DEBUG, pushChatPerfDebug } from '@/lib/chatPerfDebug'
 import {
   dispatchChatUnreadUpdated,
   markThreadAsRead,
@@ -47,93 +45,21 @@ export default function MessageThreadPage() {
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
   const isThreadLayoutReady = !loading
-  const routeDebugStateRef = useRef({
-    threadId: threadId || null,
-    loading,
-    currentUserId,
-    threadTitle,
-    error,
-    threadMuted,
-    threadMuteError,
-  })
-  routeDebugStateRef.current = {
-    threadId: threadId || null,
-    loading,
-    currentUserId,
-    threadTitle,
-    error,
-    threadMuted,
-    threadMuteError,
-  }
-  const logRoutePerf = useCallback((event: string, extra?: Record<string, unknown>) => {
-    if (!CHAT_PERF_DEBUG) {
-      return
-    }
-
-    const snapshotState = routeDebugStateRef.current
-
-    pushChatPerfDebug({
-      now: Math.round(performance.now()),
-      scope: 'thread-route',
-      event,
-      threadId: snapshotState.threadId,
-      messageCount: null,
-      ...extra,
-    })
-  }, [])
-
-  const logRouteDebug = useCallback((event: string, extra?: Record<string, unknown>) => {
-    if (!CHAT_OPEN_DEBUG) {
-      return
-    }
-
-    const snapshotState = routeDebugStateRef.current
-
-    pushChatOpenDebug({
-      now: Math.round(performance.now()),
-      scope: 'thread-route',
-      event,
-      threadId: snapshotState.threadId,
-      scrollTop: null,
-      scrollHeight: null,
-      clientHeight: null,
-      distanceFromBottom: null,
-      pendingInitialScroll: null,
-      isInitialBottomLockActive: null,
-      showScrollToBottomButton: null,
-      messageCount: null,
-      loading: snapshotState.loading,
-      currentUserId: snapshotState.currentUserId,
-      threadTitle: snapshotState.threadTitle,
-      error: snapshotState.error,
-      threadMuted: snapshotState.threadMuted,
-      threadMuteError: snapshotState.threadMuteError,
-      ...extra,
-    })
-  }, [])
 
   useEffect(() => {
-    logRouteDebug('mount')
-    logRoutePerf('route-mount-start')
-
     return () => {
-      logRouteDebug('unmount')
       if (markReadTimeoutRef.current !== null) {
         window.clearTimeout(markReadTimeoutRef.current)
       }
     }
-  }, [logRouteDebug, logRoutePerf])
+  }, [])
 
   useEffect(() => {
     let isMounted = true
 
     async function loadThreadPage() {
       try {
-        logRoutePerf('current-user-load-start')
         const user = await getBootstrapUser()
-        logRoutePerf('current-user-load-end', {
-          currentUserId: user?.id ?? null,
-        })
 
         if (!isMounted) {
           return
@@ -145,15 +71,7 @@ export default function MessageThreadPage() {
         }
 
         setCurrentUserId(user.id)
-        logRoutePerf('current-user-set', {
-          currentUserId: user.id,
-        })
-        logRoutePerf('thread-fetch-start')
         const thread = await getChatThreadById(threadId)
-        logRoutePerf('thread-fetch-end', {
-          threadType: thread?.type ?? null,
-          ownerUserId: thread?.owner_user_id ?? null,
-        })
 
         if (!isMounted) {
           return
@@ -165,35 +83,23 @@ export default function MessageThreadPage() {
         }
 
         if (thread.type === 'club') {
-          logRoutePerf('thread-title-set', {
-            source: 'club-thread',
-          })
           setThreadTitle('Общий чат')
           setError('')
           return
         }
 
         if (user.id !== COACH_USER_ID) {
-          logRoutePerf('thread-title-set', {
-            source: 'direct-coach-static',
-          })
           setThreadTitle('Связь с тренером')
           setError('')
           return
         }
 
         if (!thread.owner_user_id) {
-          logRoutePerf('thread-title-set', {
-            source: 'direct-generic',
-          })
           setThreadTitle('Личный чат')
           setError('')
           return
         }
 
-        logRoutePerf('thread-title-profile-fetch-start', {
-          ownerUserId: thread.owner_user_id,
-        })
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('id, name, nickname, email')
@@ -203,17 +109,11 @@ export default function MessageThreadPage() {
         if (profileError) {
           throw profileError
         }
-        logRoutePerf('thread-title-profile-fetch-end', {
-          ownerUserId: thread.owner_user_id,
-        })
 
         if (!isMounted) {
           return
         }
 
-        logRoutePerf('thread-title-set', {
-          source: 'profile-load',
-        })
         setThreadTitle(getProfileDisplayName((profile as ProfileRow | null) ?? null, 'Ученик'))
         setError('')
       } catch {
@@ -222,9 +122,6 @@ export default function MessageThreadPage() {
         }
       } finally {
         if (isMounted) {
-          logRoutePerf('thread-open-route-ready', {
-            loading: false,
-          })
           setLoading(false)
         }
       }
@@ -241,34 +138,7 @@ export default function MessageThreadPage() {
     return () => {
       isMounted = false
     }
-  }, [logRoutePerf, router, threadId])
-
-  useEffect(() => {
-    if (!currentUserId) {
-      return
-    }
-
-    logRouteDebug('current-user-set')
-    logRoutePerf('current-user-state-committed')
-  }, [currentUserId, logRouteDebug, logRoutePerf])
-
-  useEffect(() => {
-    if (!threadTitle) {
-      return
-    }
-
-    logRouteDebug('thread-title-set')
-    logRoutePerf('thread-title-state-committed')
-  }, [logRouteDebug, logRoutePerf, threadTitle])
-
-  useEffect(() => {
-    if (loading) {
-      return
-    }
-
-    logRouteDebug('loading-false')
-    logRoutePerf('loading-false')
-  }, [loading, logRouteDebug, logRoutePerf])
+  }, [router, threadId])
 
   useEffect(() => {
     if (!threadId || !currentUserId) {
