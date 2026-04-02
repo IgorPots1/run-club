@@ -1660,6 +1660,7 @@ export default function ChatSection({
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
+  const [hasDeferredInitialSettle, setHasDeferredInitialSettle] = useState(false)
   const [isInitialBottomLockActive, setIsInitialBottomLockActive] = useState(false)
   const [pendingNewMessagesCount, setPendingNewMessagesCount] = useState(0)
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
@@ -1720,6 +1721,7 @@ export default function ChatSection({
   const chatOpenDebugStateRef = useRef({
     threadId: threadId || null,
     pendingInitialScroll,
+    hasDeferredInitialSettle,
     isInitialBottomLockActive,
     isThreadLayoutReady,
     showScrollToBottomButton,
@@ -1728,6 +1730,7 @@ export default function ChatSection({
   chatOpenDebugStateRef.current = {
     threadId: threadId || null,
     pendingInitialScroll,
+    hasDeferredInitialSettle,
     isInitialBottomLockActive,
     isThreadLayoutReady,
     showScrollToBottomButton,
@@ -1761,6 +1764,7 @@ export default function ChatSection({
       clientHeight,
       distanceFromBottom,
       pendingInitialScroll: snapshotState.pendingInitialScroll,
+      hasDeferredInitialSettle: snapshotState.hasDeferredInitialSettle,
       isInitialBottomLockActive: snapshotState.isInitialBottomLockActive,
       isThreadLayoutReady: snapshotState.isThreadLayoutReady,
       showScrollToBottomButton: snapshotState.showScrollToBottomButton,
@@ -2025,6 +2029,11 @@ export default function ChatSection({
   const handleMessageImageLoad = useCallback(() => {
     logChatOpenDebug('image-load')
 
+    if (!isThreadLayoutReady && hasDeferredInitialSettle) {
+      logChatOpenDebug('image-load-deferred-for-thread-layout')
+      return
+    }
+
     if (isInitialBottomLockActive) {
       keepInitialBottomLockAnchored('image-load')
       return
@@ -2040,8 +2049,10 @@ export default function ChatSection({
       scrollPageToBottom('auto', 'image-load')
     })
   }, [
+    hasDeferredInitialSettle,
     isInitialBottomLockActive,
     isNearBottom,
+    isThreadLayoutReady,
     logChatOpenDebug,
     keepInitialBottomLockAnchored,
     scrollPageToBottom,
@@ -2243,7 +2254,8 @@ export default function ChatSection({
     pendingDeletedMessageIdsRef.current.clear()
     messagesRef.current = []
     setMessages(cachedRecentMessages?.messages ?? [])
-    setPendingInitialScroll(Boolean(cachedRecentMessages?.messages.length))
+    setPendingInitialScroll(false)
+    setHasDeferredInitialSettle(Boolean(cachedRecentMessages?.messages.length))
     setPendingNewMessagesCount(0)
     setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
     setError('')
@@ -2472,10 +2484,13 @@ export default function ChatSection({
         setMessages(keepLatestRenderedMessages(initialMessages))
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
-        logChatOpenDebug('pending-initial-scroll-set', {
-          nextPendingInitialScroll: !hasCachedMessages && initialMessages.length > 0,
-        })
-        setPendingInitialScroll(!hasCachedMessages && initialMessages.length > 0)
+        if (!hasCachedMessages) {
+          logChatOpenDebug('initial-settle-requested', {
+            nextHasDeferredInitialSettle: initialMessages.length > 0,
+          })
+          setPendingInitialScroll(false)
+          setHasDeferredInitialSettle(initialMessages.length > 0)
+        }
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить чат')
@@ -2493,6 +2508,28 @@ export default function ChatSection({
       isMounted = false
     }
   }, [currentUserId, keepLatestRenderedMessages, logChatOpenDebug, threadId])
+
+  useEffect(() => {
+    if (loading || !isThreadLayoutReady || !hasDeferredInitialSettle) {
+      return
+    }
+
+    if (messages.length === 0) {
+      return
+    }
+
+    logChatOpenDebug('pending-initial-scroll-set', {
+      source: 'thread-layout-ready',
+    })
+    setPendingInitialScroll(true)
+    setHasDeferredInitialSettle(false)
+  }, [
+    hasDeferredInitialSettle,
+    isThreadLayoutReady,
+    loading,
+    logChatOpenDebug,
+    messages.length,
+  ])
 
   useLayoutEffect(() => {
     if (loading || !pendingInitialScroll) {
