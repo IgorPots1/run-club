@@ -1,5 +1,6 @@
 export const CHAT_SEND_DEBUG_PREFIX = '[chat-send-debug]'
-export const CHAT_SEND_DEBUG = process.env.NEXT_PUBLIC_CHAT_SEND_DEBUG === '1'
+// TEMP: force debug ON for mobile debugging, revert after investigation
+export const CHAT_SEND_DEBUG = true
 const MAX_CHAT_SEND_DEBUG_EVENTS = 50
 
 export type ChatSendDebugErrorCategory =
