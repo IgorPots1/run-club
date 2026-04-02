@@ -40,6 +40,7 @@ type ChatSectionProps = {
   threadId?: string | null
   currentUserId?: string | null
   isKeyboardOpen?: boolean
+  isThreadLayoutReady?: boolean
   title?: string
   description?: string
 }
@@ -1611,6 +1612,7 @@ export default function ChatSection({
   threadId = null,
   currentUserId = null,
   isKeyboardOpen = false,
+  isThreadLayoutReady = false,
   title,
   description,
 }: ChatSectionProps) {
@@ -1719,6 +1721,7 @@ export default function ChatSection({
     threadId: threadId || null,
     pendingInitialScroll,
     isInitialBottomLockActive,
+    isThreadLayoutReady,
     showScrollToBottomButton,
     messageCount: messages.length,
   })
@@ -1726,6 +1729,7 @@ export default function ChatSection({
     threadId: threadId || null,
     pendingInitialScroll,
     isInitialBottomLockActive,
+    isThreadLayoutReady,
     showScrollToBottomButton,
     messageCount: messages.length,
   }
@@ -1758,6 +1762,7 @@ export default function ChatSection({
       distanceFromBottom,
       pendingInitialScroll: snapshotState.pendingInitialScroll,
       isInitialBottomLockActive: snapshotState.isInitialBottomLockActive,
+      isThreadLayoutReady: snapshotState.isThreadLayoutReady,
       showScrollToBottomButton: snapshotState.showScrollToBottomButton,
       messageCount: snapshotState.messageCount,
       contentHeight: scrollContent ? Math.round(scrollContent.getBoundingClientRect().height) : null,
@@ -2498,6 +2503,11 @@ export default function ChatSection({
       return
     }
 
+    if (!isThreadLayoutReady) {
+      logChatOpenDebug('initial-open-waiting-for-thread-layout')
+      return
+    }
+
     initialBottomLockUserCancelledRef.current = false
     initialBottomLockNextSourceRef.current = 'initial-open'
     initialBottomLockLastGeometryRef.current = getInitialBottomLockGeometry()
@@ -2505,7 +2515,14 @@ export default function ChatSection({
     logChatOpenDebug('bottom-lock-activate', { source: 'initial-open' })
     setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
-  }, [getInitialBottomLockGeometry, loading, logChatOpenDebug, messages.length, pendingInitialScroll])
+  }, [
+    getInitialBottomLockGeometry,
+    isThreadLayoutReady,
+    loading,
+    logChatOpenDebug,
+    messages.length,
+    pendingInitialScroll,
+  ])
 
   useLayoutEffect(() => {
     if (!isInitialBottomLockActive || loading || messages.length === 0) {
