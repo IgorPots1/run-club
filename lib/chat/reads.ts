@@ -8,6 +8,28 @@ type UnreadCountRpcRow = {
 
 export type UnreadCountsByThread = Record<string, number>
 
+export const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
+
+export type ChatUnreadUpdatedDetail = {
+  count?: number
+  delta?: number
+  threadId?: string | null
+  unreadCountByThread?: number
+  refreshRequested?: boolean
+}
+
+export function dispatchChatUnreadUpdated(detail: ChatUnreadUpdatedDetail) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<ChatUnreadUpdatedDetail>(CHAT_UNREAD_UPDATED_EVENT, {
+      detail,
+    })
+  )
+}
+
 async function requireCurrentUserId() {
   const user = await getBootstrapUser()
 

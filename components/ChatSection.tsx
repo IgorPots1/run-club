@@ -6,6 +6,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
+import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
+import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
@@ -59,6 +61,21 @@ const REPLY_TARGET_HIGHLIGHT_CLASSES = [
 ]
 
 let activeVoiceMessageAudio: HTMLAudioElement | null = null
+
+function toThreadLastMessage(message: ChatMessageItem, threadId: string): ChatThreadLastMessage {
+  return {
+    id: message.id,
+    threadId,
+    userId: message.userId,
+    text: message.text,
+    messageType: message.messageType,
+    mediaUrl: message.mediaUrl,
+    mediaDurationSeconds: message.mediaDurationSeconds,
+    createdAt: message.createdAt,
+    senderDisplayName: message.displayName,
+    previewText: message.previewText || 'Новое сообщение',
+  }
+}
 
 function AvatarFallback({ className = 'h-10 w-10' }: { className?: string }) {
   return (
@@ -1920,6 +1937,20 @@ export default function ChatSection({
       hasMoreOlderMessages,
     })
   }, [hasMoreOlderMessages, loading, messages, threadId])
+
+  useEffect(() => {
+    if (!threadId || loading) {
+      return
+    }
+
+    const latestStableMessage =
+      [...messages].reverse().find((message) => !message.isOptimistic) ?? null
+
+    updatePrefetchedMessagesListThreadLastMessage(
+      threadId,
+      latestStableMessage ? toThreadLastMessage(latestStableMessage, threadId) : null
+    )
+  }, [loading, messages, threadId])
 
   useLayoutEffect(() => {
     resizeComposerTextarea()

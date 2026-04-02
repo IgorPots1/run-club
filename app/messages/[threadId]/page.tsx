@@ -5,7 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
-import { markThreadAsRead } from '@/lib/chat/reads'
+import {
+  CHAT_UNREAD_UPDATED_EVENT,
+  dispatchChatUnreadUpdated,
+  markThreadAsRead,
+} from '@/lib/chat/reads'
+import { updatePrefetchedMessagesListThreadUnreadCount } from '@/lib/chat/messagesListPrefetch'
 import { getChatThreadById } from '@/lib/chat/threads'
 import { COACH_USER_ID } from '@/lib/constants'
 import { loadThreadMuteState, toggleThreadMute } from '@/lib/notifications/toggleThreadMute'
@@ -19,22 +24,7 @@ type ProfileRow = {
   email: string | null
 }
 
-const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
-
-function dispatchUnreadCountDelta(delta: number) {
-  if (typeof window === 'undefined' || delta === 0) {
-    return
-  }
-
-  window.dispatchEvent(
-    new CustomEvent(CHAT_UNREAD_UPDATED_EVENT, {
-      detail: {
-        delta,
-      },
-    })
-  )
-}
 
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
@@ -252,7 +242,13 @@ export default function MessageThreadPage() {
 
       try {
         const { clearedUnreadCount } = await markThreadAsRead(threadId)
-        dispatchUnreadCountDelta(-clearedUnreadCount)
+        updatePrefetchedMessagesListThreadUnreadCount(threadId, 0)
+        dispatchChatUnreadUpdated({
+          delta: -clearedUnreadCount,
+          threadId,
+          unreadCountByThread: 0,
+          refreshRequested: true,
+        })
       } catch {
         // Keep read refresh non-blocking while the thread stays open.
       } finally {

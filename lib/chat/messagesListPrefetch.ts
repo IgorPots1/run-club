@@ -51,6 +51,19 @@ function getMessagesListPrefetchEntry() {
   return messagesListPrefetchEntry
 }
 
+function updateMessagesListPrefetchEntry(
+  updater: (data: MessagesListPrefetchData) => MessagesListPrefetchData
+) {
+  const entry = getMessagesListPrefetchEntry()
+
+  if (!entry?.data) {
+    return
+  }
+
+  entry.data = updater(entry.data)
+  entry.expiresAt = Date.now() + MESSAGES_LIST_PREFETCH_TTL_MS
+}
+
 async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData | null> {
   const user = await getBootstrapUser()
 
@@ -136,4 +149,52 @@ export function prefetchMessagesListData(): Promise<MessagesListPrefetchData | n
     })
 
   return nextEntry.promise
+}
+
+export function updatePrefetchedMessagesListUnreadCounts(unreadCountsByThread: UnreadCountsByThread) {
+  updateMessagesListPrefetchEntry((data) => ({
+    ...data,
+    unreadCountsByThread,
+  }))
+}
+
+export function updatePrefetchedMessagesListThreadUnreadCount(threadId: string, unreadCount: number) {
+  updateMessagesListPrefetchEntry((data) => ({
+    ...data,
+    unreadCountsByThread: {
+      ...data.unreadCountsByThread,
+      [threadId]: unreadCount,
+    },
+  }))
+}
+
+export function updatePrefetchedMessagesListThreadLastMessage(
+  threadId: string,
+  lastMessage: ChatThreadLastMessage | null
+) {
+  updateMessagesListPrefetchEntry((data) => ({
+    ...data,
+    clubThread:
+      data.clubThread?.id === threadId
+        ? {
+            ...data.clubThread,
+            lastMessage,
+          }
+        : data.clubThread,
+    coachThread:
+      data.coachThread?.id === threadId
+        ? {
+            ...data.coachThread,
+            lastMessage,
+          }
+        : data.coachThread,
+    directThreads: data.directThreads.map((thread) =>
+      thread.id === threadId
+        ? {
+            ...thread,
+            lastMessage,
+          }
+        : thread
+    ),
+  }))
 }

@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { getBootstrapUser } from '@/lib/auth'
-import { getTotalUnreadCount } from '@/lib/chat/reads'
+import { CHAT_UNREAD_UPDATED_EVENT, getTotalUnreadCount } from '@/lib/chat/reads'
 import { supabase } from '@/lib/supabase'
-
-const CHAT_UNREAD_UPDATED_EVENT = 'chat-unread-updated'
 
 type UnreadCountListener = (count: number) => void
 
@@ -40,6 +38,10 @@ function handleUnreadCountEvent(event: Event) {
   if (typeof event.detail?.delta === 'number') {
     emitUnreadCount(Math.max(0, sharedTotalUnreadCount + event.detail.delta))
   }
+
+  if (event.detail?.refreshRequested) {
+    scheduleSharedTotalUnreadCountRefresh()
+  }
 }
 
 function attachUnreadCountEventListener() {
@@ -71,8 +73,7 @@ async function refreshSharedTotalUnreadCount() {
       emitUnreadCount(nextTotalUnreadCount)
       return nextTotalUnreadCount
     } catch {
-      emitUnreadCount(0)
-      return 0
+      return sharedTotalUnreadCount
     }
   })()
 
@@ -206,6 +207,30 @@ export function useRealtimeTotalUnreadCount({ enabled = true }: { enabled?: bool
     }
 
     void ensureUnreadStoreInitialized()
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') {
+      return
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        scheduleSharedTotalUnreadCountRefresh(0)
+      }
+    }
+
+    function handleWindowFocus() {
+      scheduleSharedTotalUnreadCountRefresh(0)
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleWindowFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleWindowFocus)
+    }
   }, [enabled])
 
   return {
