@@ -26,6 +26,8 @@ type ProfileRow = {
 }
 
 const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
+const CHAT_OPEN_DEBUG = true
+const CHAT_OPEN_DEBUG_PREFIX = '[chat-open-debug]'
 
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
@@ -45,14 +47,65 @@ export default function MessageThreadPage() {
   const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
+  const routeDebugStateRef = useRef({
+    threadId: threadId || null,
+    loading,
+    currentUserId,
+    threadTitle,
+    error,
+    threadMuted,
+    threadMuteError,
+  })
+  routeDebugStateRef.current = {
+    threadId: threadId || null,
+    loading,
+    currentUserId,
+    threadTitle,
+    error,
+    threadMuted,
+    threadMuteError,
+  }
+
+  const logRouteDebug = useCallback((event: string, extra?: Record<string, unknown>) => {
+    if (!CHAT_OPEN_DEBUG) {
+      return
+    }
+
+    const snapshotState = routeDebugStateRef.current
+
+    console.log(CHAT_OPEN_DEBUG_PREFIX, {
+      now: Math.round(performance.now()),
+      scope: 'thread-route',
+      event,
+      threadId: snapshotState.threadId,
+      scrollTop: null,
+      scrollHeight: null,
+      clientHeight: null,
+      distanceFromBottom: null,
+      pendingInitialScroll: null,
+      isInitialBottomLockActive: null,
+      showScrollToBottomButton: null,
+      messageCount: null,
+      loading: snapshotState.loading,
+      currentUserId: snapshotState.currentUserId,
+      threadTitle: snapshotState.threadTitle,
+      error: snapshotState.error,
+      threadMuted: snapshotState.threadMuted,
+      threadMuteError: snapshotState.threadMuteError,
+      ...extra,
+    })
+  }, [])
 
   useEffect(() => {
+    logRouteDebug('mount')
+
     return () => {
+      logRouteDebug('unmount')
       if (markReadTimeoutRef.current !== null) {
         window.clearTimeout(markReadTimeoutRef.current)
       }
     }
-  }, [])
+  }, [logRouteDebug])
 
   useEffect(() => {
     let isMounted = true
@@ -139,6 +192,30 @@ export default function MessageThreadPage() {
       isMounted = false
     }
   }, [router, threadId])
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return
+    }
+
+    logRouteDebug('current-user-set')
+  }, [currentUserId, logRouteDebug])
+
+  useEffect(() => {
+    if (!threadTitle) {
+      return
+    }
+
+    logRouteDebug('thread-title-set')
+  }, [logRouteDebug, threadTitle])
+
+  useEffect(() => {
+    if (loading) {
+      return
+    }
+
+    logRouteDebug('loading-false')
+  }, [loading, logRouteDebug])
 
   useEffect(() => {
     if (!threadId || !currentUserId) {

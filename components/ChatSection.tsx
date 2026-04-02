@@ -52,6 +52,8 @@ const OPTIMISTIC_MESSAGE_MATCH_WINDOW_MS = 2 * 60 * 1000
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
 const VOICE_PLAYBACK_SPEEDS = [1, 1.5, 2] as const
+const CHAT_OPEN_DEBUG = true
+const CHAT_OPEN_DEBUG_PREFIX = '[chat-open-debug]'
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -1574,6 +1576,7 @@ export default function ChatSection({
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const scrollContentRef = useRef<HTMLDivElement | null>(null)
+  const composerWrapperRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
@@ -1600,6 +1603,7 @@ export default function ChatSection({
   const initialBottomLockQuietTimeoutRef = useRef<number | null>(null)
   const initialBottomLockProgrammaticFrameRef = useRef<number | null>(null)
   const initialBottomLockProgrammaticResetFrameRef = useRef<number | null>(null)
+  const initialBottomLockNextSourceRef = useRef<string | null>(null)
   const initialBottomLockUserCancelledRef = useRef(false)
   const initialBottomLockUserScrollIntentRef = useRef(false)
   const isStoppingVoiceRecordingRef = useRef(false)
@@ -1665,6 +1669,56 @@ export default function ChatSection({
     currentUserId && selectedReaction?.userIds.includes(currentUserId)
   )
   const initialBottomLockQuietMs = 200
+  const chatOpenDebugStateRef = useRef({
+    threadId: threadId || null,
+    pendingInitialScroll,
+    isInitialBottomLockActive,
+    showScrollToBottomButton,
+    messageCount: messages.length,
+  })
+  chatOpenDebugStateRef.current = {
+    threadId: threadId || null,
+    pendingInitialScroll,
+    isInitialBottomLockActive,
+    showScrollToBottomButton,
+    messageCount: messages.length,
+  }
+
+  const logChatOpenDebug = useCallback((event: string, extra?: Record<string, unknown>) => {
+    if (!CHAT_OPEN_DEBUG || typeof window === 'undefined') {
+      return
+    }
+
+    const snapshotState = chatOpenDebugStateRef.current
+    const scrollContainer = scrollContainerRef.current
+    const scrollContent = scrollContentRef.current
+    const composerWrapper = composerWrapperRef.current
+    const scrollTop = scrollContainer?.scrollTop ?? null
+    const scrollHeight = scrollContainer?.scrollHeight ?? null
+    const clientHeight = scrollContainer?.clientHeight ?? null
+    const distanceFromBottom =
+      scrollTop === null || scrollHeight === null || clientHeight === null
+        ? null
+        : scrollHeight - (scrollTop + clientHeight)
+
+    console.log(CHAT_OPEN_DEBUG_PREFIX, {
+      now: Math.round(performance.now()),
+      scope: 'chat-section',
+      event,
+      threadId: snapshotState.threadId,
+      scrollTop,
+      scrollHeight,
+      clientHeight,
+      distanceFromBottom,
+      pendingInitialScroll: snapshotState.pendingInitialScroll,
+      isInitialBottomLockActive: snapshotState.isInitialBottomLockActive,
+      showScrollToBottomButton: snapshotState.showScrollToBottomButton,
+      messageCount: snapshotState.messageCount,
+      contentHeight: scrollContent ? Math.round(scrollContent.getBoundingClientRect().height) : null,
+      composerHeight: composerWrapper ? Math.round(composerWrapper.getBoundingClientRect().height) : null,
+      ...extra,
+    })
+  }, [])
 
   const clearInitialBottomLockQuietTimeout = useCallback(() => {
     if (initialBottomLockQuietTimeoutRef.current !== null) {
@@ -1685,7 +1739,7 @@ export default function ChatSection({
     }
   }, [])
 
-  const deactivateInitialBottomLock = useCallback((preserveUserCancelled = false) => {
+  const deactivateInitialBottomLock = useCallback((reason = 'unspecified', preserveUserCancelled = false) => {
     clearInitialBottomLockQuietTimeout()
     clearInitialBottomLockFrames()
 
@@ -1694,8 +1748,12 @@ export default function ChatSection({
     }
     initialBottomLockUserScrollIntentRef.current = false
 
+    logChatOpenDebug('bottom-lock-deactivate', {
+      reason,
+      preserveUserCancelled,
+    })
     setIsInitialBottomLockActive(false)
-  }, [clearInitialBottomLockFrames, clearInitialBottomLockQuietTimeout])
+  }, [clearInitialBottomLockFrames, clearInitialBottomLockQuietTimeout, logChatOpenDebug])
 
   const keepLatestRenderedMessages = useCallback((
     nextMessages: ChatMessageItem[],
@@ -1757,48 +1815,57 @@ export default function ChatSection({
     return distanceFromBottom <= thresholdPx
   }, [])
 
-  const scrollPageToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const scrollPageToBottom = useCallback((
+    behavior: ScrollBehavior = 'auto',
+    source = 'unspecified'
+  ) => {
     const scrollContainer = scrollContainerRef.current
 
     if (!scrollContainer) {
+      logChatOpenDebug('scroll-to-bottom-skipped', { source, behavior, reason: 'missing-scroll-container' })
       return
     }
 
+    logChatOpenDebug('scroll-to-bottom', { source, behavior })
     scrollContainer.scrollTo({
       top: scrollContainer.scrollHeight,
       behavior,
     })
-  }, [])
+  }, [logChatOpenDebug])
 
   const scheduleInitialBottomLockRelease = useCallback(() => {
     clearInitialBottomLockQuietTimeout()
 
     initialBottomLockQuietTimeoutRef.current = window.setTimeout(() => {
       if (!initialBottomLockUserCancelledRef.current) {
-        deactivateInitialBottomLock()
+        deactivateInitialBottomLock('quiet-period-complete')
       }
     }, initialBottomLockQuietMs)
   }, [clearInitialBottomLockQuietTimeout, deactivateInitialBottomLock, initialBottomLockQuietMs])
 
-  const keepInitialBottomLockAnchored = useCallback(() => {
+  const keepInitialBottomLockAnchored = useCallback((source = 'unspecified') => {
     if (initialBottomLockUserCancelledRef.current) {
+      logChatOpenDebug('bottom-lock-reanchor-skipped', { source, reason: 'user-cancelled' })
       return
     }
 
     clearInitialBottomLockFrames()
     initialBottomLockProgrammaticFrameRef.current = window.requestAnimationFrame(() => {
       initialBottomLockProgrammaticFrameRef.current = null
-      scrollPageToBottom()
+      logChatOpenDebug('bottom-lock-reanchor', { source })
+      scrollPageToBottom('auto', source)
       initialBottomLockProgrammaticResetFrameRef.current = window.requestAnimationFrame(() => {
         initialBottomLockProgrammaticResetFrameRef.current = null
       })
     })
     scheduleInitialBottomLockRelease()
-  }, [clearInitialBottomLockFrames, scheduleInitialBottomLockRelease, scrollPageToBottom])
+  }, [clearInitialBottomLockFrames, logChatOpenDebug, scheduleInitialBottomLockRelease, scrollPageToBottom])
 
   const handleMessageImageLoad = useCallback(() => {
+    logChatOpenDebug('image-load')
+
     if (isInitialBottomLockActive) {
-      keepInitialBottomLockAnchored()
+      keepInitialBottomLockAnchored('image-load')
       return
     }
 
@@ -1809,11 +1876,12 @@ export default function ChatSection({
     }
 
     window.requestAnimationFrame(() => {
-      scrollPageToBottom()
+      scrollPageToBottom('auto', 'image-load')
     })
   }, [
     isInitialBottomLockActive,
     isNearBottom,
+    logChatOpenDebug,
     keepInitialBottomLockAnchored,
     scrollPageToBottom,
     showScrollToBottomButton,
@@ -2006,7 +2074,11 @@ export default function ChatSection({
       ? getCachedRecentChatMessages(threadId)
       : null
 
-    deactivateInitialBottomLock()
+    logChatOpenDebug('thread-reset', {
+      cachedMessageCount: cachedRecentMessages?.messages.length ?? 0,
+      nextPendingInitialScroll: Boolean(cachedRecentMessages?.messages.length),
+    })
+    deactivateInitialBottomLock('thread-reset')
     pendingDeletedMessageIdsRef.current.clear()
     messagesRef.current = []
     setMessages(cachedRecentMessages?.messages ?? [])
@@ -2021,7 +2093,7 @@ export default function ChatSection({
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
     setLoading(!cachedRecentMessages)
-  }, [currentUserId, deactivateInitialBottomLock, threadId])
+  }, [currentUserId, deactivateInitialBottomLock, logChatOpenDebug, threadId])
 
   useEffect(() => {
     if (!threadId || loading) {
@@ -2053,7 +2125,7 @@ export default function ChatSection({
 
   useEffect(() => {
     return () => {
-      deactivateInitialBottomLock()
+      deactivateInitialBottomLock('component-unmount')
       if (longPressTimeoutRef.current !== null) {
         window.clearTimeout(longPressTimeoutRef.current)
       }
@@ -2092,6 +2164,10 @@ export default function ChatSection({
       window.removeEventListener('resize', updateScrollToBottomButtonVisibility)
     }
   }, [isNearBottom, messages.length])
+
+  useEffect(() => {
+    logChatOpenDebug('scroll-to-bottom-button-visibility')
+  }, [logChatOpenDebug, showScrollToBottomButton])
 
   useEffect(() => {
     return () => {
@@ -2228,9 +2304,16 @@ export default function ChatSection({
           return
         }
 
+        logChatOpenDebug('initial-messages-ready', {
+          initialMessageCount: initialMessages.length,
+          hasCachedMessages,
+        })
         setMessages(keepLatestRenderedMessages(initialMessages))
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
+        logChatOpenDebug('pending-initial-scroll-set', {
+          nextPendingInitialScroll: !hasCachedMessages && initialMessages.length > 0,
+        })
         setPendingInitialScroll(!hasCachedMessages && initialMessages.length > 0)
       } catch {
         if (isMounted) {
@@ -2248,7 +2331,7 @@ export default function ChatSection({
     return () => {
       isMounted = false
     }
-  }, [currentUserId, keepLatestRenderedMessages, threadId])
+  }, [currentUserId, keepLatestRenderedMessages, logChatOpenDebug, threadId])
 
   useLayoutEffect(() => {
     if (loading || !pendingInitialScroll) {
@@ -2260,16 +2343,20 @@ export default function ChatSection({
     }
 
     initialBottomLockUserCancelledRef.current = false
+    initialBottomLockNextSourceRef.current = 'initial-open'
+    logChatOpenDebug('bottom-lock-activate', { source: 'initial-open' })
     setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
-  }, [loading, messages.length, pendingInitialScroll])
+  }, [loading, logChatOpenDebug, messages.length, pendingInitialScroll])
 
   useLayoutEffect(() => {
     if (!isInitialBottomLockActive || loading || messages.length === 0) {
       return
     }
 
-    keepInitialBottomLockAnchored()
+    const source = initialBottomLockNextSourceRef.current ?? 'bottom-lock-layout-effect'
+    initialBottomLockNextSourceRef.current = null
+    keepInitialBottomLockAnchored(source)
   }, [isInitialBottomLockActive, keepInitialBottomLockAnchored, loading, messages.length])
 
   useEffect(() => {
@@ -2284,33 +2371,54 @@ export default function ChatSection({
       return
     }
 
-    function handleLayoutChange() {
-      keepInitialBottomLockAnchored()
+    function handleLayoutChange(source: string) {
+      logChatOpenDebug('layout-change', { source })
+      keepInitialBottomLockAnchored(source)
     }
 
     if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', handleLayoutChange)
+      const handleWindowResize = () => {
+        handleLayoutChange('window-resize')
+      }
+
+      window.addEventListener('resize', handleWindowResize)
 
       return () => {
-        window.removeEventListener('resize', handleLayoutChange)
+        window.removeEventListener('resize', handleWindowResize)
       }
     }
 
-    const observer = new ResizeObserver(() => {
-      keepInitialBottomLockAnchored()
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const source =
+          entry.target === scrollContainerRef.current
+            ? 'resize-observer-scroll-container'
+            : entry.target === scrollContentRef.current
+              ? 'resize-observer-content'
+              : 'resize-observer-unknown'
+
+        logChatOpenDebug('resize-observer', {
+          source,
+          entryHeight: Math.round(entry.contentRect.height),
+        })
+        keepInitialBottomLockAnchored(source)
+      }
     })
 
     observer.observe(scrollContainer)
     if (scrollContent) {
       observer.observe(scrollContent)
     }
-    window.addEventListener('resize', handleLayoutChange)
+    const handleWindowResize = () => {
+      handleLayoutChange('window-resize')
+    }
+    window.addEventListener('resize', handleWindowResize)
 
     return () => {
       observer.disconnect()
-      window.removeEventListener('resize', handleLayoutChange)
+      window.removeEventListener('resize', handleWindowResize)
     }
-  }, [isInitialBottomLockActive, keepInitialBottomLockAnchored])
+  }, [isInitialBottomLockActive, keepInitialBottomLockAnchored, logChatOpenDebug])
 
   useEffect(() => {
     if (!isInitialBottomLockActive) {
@@ -2338,11 +2446,13 @@ export default function ChatSection({
 
       initialBottomLockUserScrollIntentRef.current = false
       initialBottomLockUserCancelledRef.current = true
-      deactivateInitialBottomLock(true)
+      logChatOpenDebug('manual-scroll-detected')
+      deactivateInitialBottomLock('user-scroll-away', true)
     }
 
     function markUserScrollIntent() {
       initialBottomLockUserScrollIntentRef.current = true
+      logChatOpenDebug('user-scroll-intent')
     }
 
     function clearUserScrollIntent() {
@@ -2362,7 +2472,7 @@ export default function ChatSection({
       scrollContainer.removeEventListener('touchcancel', clearUserScrollIntent)
       scrollContainer.removeEventListener('scroll', handleScroll)
     }
-  }, [deactivateInitialBottomLock, isInitialBottomLockActive, isNearBottom])
+  }, [deactivateInitialBottomLock, isInitialBottomLockActive, isNearBottom, logChatOpenDebug])
 
   useEffect(() => {
     if (!pendingAutoScrollToBottomRef.current || messages.length === 0) {
@@ -2377,7 +2487,7 @@ export default function ChatSection({
     let nestedAnimationFrameId: number | null = null
     const animationFrameId = window.requestAnimationFrame(() => {
       nestedAnimationFrameId = window.requestAnimationFrame(() => {
-        scrollPageToBottom()
+        scrollPageToBottom('auto', 'pending-auto-scroll')
         pendingAutoScrollToBottomRef.current = false
       })
     })
@@ -4078,7 +4188,7 @@ export default function ChatSection({
                 type="button"
                 onClick={() => {
                   setPendingNewMessagesCount(0)
-                  scrollPageToBottom('smooth')
+                  scrollPageToBottom('smooth', 'scroll-to-bottom-button')
                 }}
                 className="pointer-events-auto relative flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.04] bg-[color:var(--background)]/90 text-black shadow-sm backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white"
                 aria-label={pendingNewMessagesCount > 0 ? getNewMessagesLabel(pendingNewMessagesCount) : 'Прокрутить вниз'}
@@ -4147,6 +4257,7 @@ export default function ChatSection({
             </div>
           </div>
           <div
+            ref={composerWrapperRef}
             className={`shrink-0 pt-3 ${
               isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
             }`}
