@@ -91,6 +91,12 @@ type ChatMessageInsertPayload = {
   thread_id: string | null
 }
 
+type ChatMessageValidationRow = {
+  thread_exists: boolean
+  can_access: boolean
+  safe_reply_to_id: string | null
+}
+
 function logChatPerfServer(event: string, extra?: Record<string, unknown>) {
   console.log(CHAT_PERF_DEBUG_PREFIX, {
     now: Date.now(),
@@ -324,65 +330,41 @@ function validateVoiceMediaPath(mediaPath: string, userId: string) {
   return trimmedPath
 }
 
-async function resolveSafeReplyToId(
+async function validateChatMessageRequest(
   supabase: SupabaseClient,
-  replyToId?: string | null,
-  threadId?: string | null
+  threadId?: string | null,
+  replyToId?: string | null
 ) {
-  if (!replyToId) {
-    return null
+  if (!threadId) {
+    return {
+      safeReplyToId: null,
+    }
   }
 
   const { data, error } = await supabase
-    .from('chat_messages')
-    .select('id, thread_id')
-    .eq('id', replyToId)
+    .rpc('validate_chat_message_request', {
+      p_thread_id: threadId,
+      p_reply_to_id: replyToId ?? null,
+    })
     .maybeSingle()
 
   if (error) {
     throw error
   }
 
-  const originalThreadId = ((data as { id: string; thread_id: string | null } | null) ?? null)?.thread_id ?? null
-  const currentThreadId = threadId ?? null
+  const validation = (data as ChatMessageValidationRow | null) ?? null
 
-  return originalThreadId === currentThreadId ? replyToId : null
-}
-
-async function assertUserCanAccessThread(
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
-  userId: string,
-  threadId?: string | null
-) {
-  if (!threadId) {
-    return null
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('chat_threads')
-    .select('id, type, owner_user_id, coach_user_id')
-    .eq('id', threadId)
-    .maybeSingle()
-
-  if (error) {
-    throw error
-  }
-
-  const thread = (data as ChatThreadRow | null) ?? null
-
-  if (!thread) {
+  if (!validation?.thread_exists) {
     throw new Error('thread_not_found')
   }
 
-  if (thread.type === 'club') {
-    return thread
-  }
-
-  if (thread.owner_user_id !== userId && thread.coach_user_id !== userId) {
+  if (!validation.can_access) {
     throw new Error('thread_access_denied')
   }
 
-  return thread
+  return {
+    safeReplyToId: validation.safe_reply_to_id ?? null,
+  }
 }
 
 function toInsertedMessageRow(
@@ -825,7 +807,7 @@ export async function POST(request: Request) {
   const requestStartedAt = performance.now()
   let previousStageAt = requestStartedAt
   logChatPerfServer('request-start')
-  const [{ user, error: userError }, body] = await Promise.all([
+  const [{ supabase: userSupabase, user, error: userError }, body] = await Promise.all([
     getAuthenticatedUser(),
     request.json().catch(() => null) as Promise<CreateChatMessageRequestBody | null>,
   ])
@@ -875,8 +857,7 @@ export async function POST(request: Request) {
 
   try {
     const supabaseAdmin = createSupabaseAdminClient()
-    await assertUserCanAccessThread(supabaseAdmin, user.id, threadId)
-    const safeReplyToId = await resolveSafeReplyToId(supabaseAdmin, replyToId, threadId)
+    const { safeReplyToId } = await validateChatMessageRequest(userSupabase, threadId, replyToId)
     logStage('validation-thread-reply-end', {
       hasReply: Boolean(safeReplyToId),
     })
