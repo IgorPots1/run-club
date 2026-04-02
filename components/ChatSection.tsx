@@ -1315,7 +1315,13 @@ function ChatMessageBody({
           className={`relative mt-1 block overflow-hidden rounded-2xl ${
             compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
           } ${
-            isOwnMessage ? 'ml-auto' : ''
+            isImageOnlyMessage
+              ? isOwnMessage
+                ? 'ml-auto mr-1.5'
+                : ''
+              : isOwnMessage
+                ? 'ml-auto'
+                : ''
           }`}
           aria-label="Открыть изображение"
         >
