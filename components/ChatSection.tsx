@@ -110,7 +110,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'ui_error_path_trigger',
 ])
 
-function formatChatSendDebugValue(value: unknown) {
+function formatChatSendDebugValue(value: unknown): string | null {
   if (value === null || value === undefined || value === '') {
     return null
   }
