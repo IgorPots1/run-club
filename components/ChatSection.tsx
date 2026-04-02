@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import {
@@ -1580,6 +1581,7 @@ export default function ChatSection({
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [selectedMessageAnchorRect, setSelectedMessageAnchorRect] = useState<DOMRect | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
+  const [deleteConfirmationMessage, setDeleteConfirmationMessage] = useState<ChatMessageItem | null>(null)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [selectedViewerImageUrl, setSelectedViewerImageUrl] = useState<string | null>(null)
@@ -2716,20 +2718,23 @@ export default function ChatSection({
     }
   }
 
-  async function handleDeleteMessage(message: ChatMessageItem) {
+  function handleDeleteMessage(message: ChatMessageItem) {
     if (!currentUserId || deletingMessageId || message.userId !== currentUserId || message.isDeleted) {
       return
     }
 
-    const shouldDelete = typeof window === 'undefined'
-      ? true
-      : window.confirm('Удалить это сообщение?')
+    setDeleteConfirmationMessage(message)
+  }
 
-    if (!shouldDelete) {
+  async function confirmDeleteMessage() {
+    const message = deleteConfirmationMessage
+
+    if (!currentUserId || !message || deletingMessageId || message.userId !== currentUserId || message.isDeleted) {
       return
     }
 
     setDeletingMessageId(message.id)
+    setDeleteConfirmationMessage(null)
     pendingDeletedMessageIdsRef.current.add(message.id)
     setMessages((currentMessages) => removeMessageById(currentMessages, message.id))
 
@@ -3943,6 +3948,23 @@ export default function ChatSection({
           onToggleReaction={handleToggleReaction}
         />
       ) : null}
+      <ConfirmActionSheet
+        open={Boolean(deleteConfirmationMessage)}
+        title="Удалить сообщение?"
+        description="Сообщение исчезнет из чата. Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        cancelLabel="Отмена"
+        loading={Boolean(deleteConfirmationMessage && deletingMessageId === deleteConfirmationMessage.id)}
+        destructive
+        onConfirm={() => {
+          void confirmDeleteMessage()
+        }}
+        onCancel={() => {
+          if (!deletingMessageId) {
+            setDeleteConfirmationMessage(null)
+          }
+        }}
+      />
     </div>
   )
 }
