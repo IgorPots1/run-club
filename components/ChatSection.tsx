@@ -1192,6 +1192,7 @@ function ChatMessageBody({
   showSenderName = true,
   onReplyPreviewClick,
   onImageClick,
+  onImageLoad,
   onRetryFailedMessage,
   currentUserId = null,
   onReactionToggle,
@@ -1204,6 +1205,7 @@ function ChatMessageBody({
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
   onImageClick?: (imageUrl: string) => void
+  onImageLoad?: () => void
   onRetryFailedMessage?: (message: ChatMessageItem) => void
   currentUserId?: string | null
   onReactionToggle?: (messageId: string, emoji: string) => void
@@ -1275,6 +1277,7 @@ function ChatMessageBody({
           <img
             src={message.imageUrl}
             alt="Вложение"
+            onLoad={onImageLoad}
             className={`w-auto rounded-2xl object-cover ${
               compactPreview ? 'max-h-40' : 'max-h-80'
             }`}
@@ -1436,6 +1439,7 @@ const ChatMessageList = memo(function ChatMessageList({
   messageRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
   onReplyPreviewClick: (replyToMessageId: string) => void
   onImageClick: (imageUrl: string) => void
+  onImageLoad: () => void
   onRetryFailedMessage: (message: ChatMessageItem) => void
   onReactionToggle: (messageId: string, emoji: string) => void
   onReactionDetailsOpen: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
@@ -1541,6 +1545,7 @@ const ChatMessageList = memo(function ChatMessageList({
                       animatedReactionKey={animatedReactionKey}
                       onReplyPreviewClick={replyPreviewTargetId ? () => onReplyPreviewClick(replyPreviewTargetId) : undefined}
                       onImageClick={onImageClick}
+                      onImageLoad={onImageLoad}
                       onRetryFailedMessage={onRetryFailedMessage}
                       onReactionToggle={onReactionToggle}
                       onReactionDetailsOpen={onReactionDetailsOpen}
@@ -1695,7 +1700,7 @@ export default function ChatSection({
       textarea.scrollHeight > CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [])
 
-  const isNearBottom = useCallback(() => {
+  const isNearBottom = useCallback((thresholdPx = 100) => {
     if (typeof window === 'undefined') {
       return false
     }
@@ -1709,7 +1714,7 @@ export default function ChatSection({
     const distanceFromBottom =
       scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight)
 
-    return distanceFromBottom <= 100
+    return distanceFromBottom <= thresholdPx
   }, [])
 
   const scrollPageToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -1724,6 +1729,18 @@ export default function ChatSection({
       behavior,
     })
   }, [])
+
+  const handleMessageImageLoad = useCallback(() => {
+    const shouldStickToBottom = isNearBottom(80) || !showScrollToBottomButton
+
+    if (!shouldStickToBottom) {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      scrollPageToBottom()
+    })
+  }, [isNearBottom, scrollPageToBottom, showScrollToBottomButton])
 
   const clearReplyTargetHighlight = useCallback(() => {
     if (highlightedMessageTimeoutRef.current !== null) {
@@ -3932,6 +3949,7 @@ export default function ChatSection({
                   messageRefs={messageRefs}
                   onReplyPreviewClick={handleReplyPreviewClick}
                   onImageClick={setSelectedViewerImageUrl}
+                  onImageLoad={handleMessageImageLoad}
                   onRetryFailedMessage={handleRetryFailedMessage}
                   onReactionToggle={handleToggleReaction}
                   onReactionDetailsOpen={handleReactionDetailsOpen}
