@@ -1,5 +1,6 @@
 export const CHAT_SEND_DEBUG_PREFIX = '[chat-send-debug]'
 export const CHAT_SEND_DEBUG = process.env.NEXT_PUBLIC_CHAT_SEND_DEBUG === '1'
+const MAX_CHAT_SEND_DEBUG_EVENTS = 50
 
 export type ChatSendDebugErrorCategory =
   | 'network_error'
@@ -12,10 +13,21 @@ export type ChatSendDebugErrorCategory =
 
 type ChatSendDebugPayload = Record<string, unknown>
 
+export type ChatSendDebugEvent = {
+  id: string
+  timestamp: string
+  level: 'log' | 'error'
+  phase: string
+  payload: ChatSendDebugPayload
+}
+
 type ChatSendDebugError = Error & {
   chatSendCategory?: ChatSendDebugErrorCategory
   chatSendDetails?: ChatSendDebugPayload
 }
+
+const chatSendDebugEvents: ChatSendDebugEvent[] = []
+const chatSendDebugListeners = new Set<() => void>()
 
 function toSerializableValue(value: unknown): unknown {
   if (value instanceof Error) {
@@ -47,8 +59,30 @@ function emitChatSendDebugLog(
   if (!CHAT_SEND_DEBUG) {
     return
   }
+  const serializedPayload = (payload ? toSerializableValue(payload) : {}) as ChatSendDebugPayload
 
-  console[level](CHAT_SEND_DEBUG_PREFIX, phase, payload ? toSerializableValue(payload) : {})
+  if (typeof window !== 'undefined') {
+    chatSendDebugEvents.unshift({
+      id:
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      timestamp: new Date().toISOString(),
+      level,
+      phase,
+      payload: serializedPayload,
+    })
+
+    if (chatSendDebugEvents.length > MAX_CHAT_SEND_DEBUG_EVENTS) {
+      chatSendDebugEvents.length = MAX_CHAT_SEND_DEBUG_EVENTS
+    }
+
+    chatSendDebugListeners.forEach((listener) => {
+      listener()
+    })
+  }
+
+  console[level](CHAT_SEND_DEBUG_PREFIX, phase, serializedPayload)
 }
 
 export function logChatSendDebug(phase: string, payload?: ChatSendDebugPayload) {
@@ -103,5 +137,21 @@ export function getChatSendDebugErrorDetails(error: unknown) {
 
   return {
     raw: String(error),
+  }
+}
+
+export function getRecentChatSendDebugEvents() {
+  return [...chatSendDebugEvents]
+}
+
+export function subscribeChatSendDebugEvents(listener: () => void) {
+  if (!CHAT_SEND_DEBUG || typeof window === 'undefined') {
+    return () => {}
+  }
+
+  chatSendDebugListeners.add(listener)
+
+  return () => {
+    chatSendDebugListeners.delete(listener)
   }
 }

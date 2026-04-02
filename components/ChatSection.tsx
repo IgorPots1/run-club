@@ -7,10 +7,14 @@ import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
 import {
+  CHAT_SEND_DEBUG,
+  type ChatSendDebugEvent,
   getChatSendDebugErrorCategory,
   getChatSendDebugErrorDetails,
+  getRecentChatSendDebugEvents,
   logChatSendDebug,
   logChatSendDebugError,
+  subscribeChatSendDebugEvents,
 } from '@/lib/chatSendDebug'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
@@ -86,6 +90,179 @@ function getComposerAttachmentDebugCounts(images: PendingComposerImage[]) {
     image: images.length,
     voice: 0,
   }
+}
+
+const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
+  'send_start',
+  'request_start',
+  'response_status',
+  'parsed_response',
+  'request_success',
+  'attachment_task_queued',
+  'attachment_upload_start',
+  'attachment_upload_success',
+  'attachment_upload_failed',
+  'attachment_attach_success',
+  'attachment_attach_failed',
+  'reconciliation_waiting_realtime',
+  'reconciliation_success',
+  'reconciliation_failure',
+  'ui_error_path_trigger',
+])
+
+function formatChatSendDebugValue(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  if (typeof value === 'string') {
+    return value.length > 48 ? `${value.slice(0, 45)}...` : value
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.map((item) => formatChatSendDebugValue(item)).filter(Boolean).join(', ') : null
+  }
+
+  try {
+    const serialized = JSON.stringify(value)
+    return serialized.length > 64 ? `${serialized.slice(0, 61)}...` : serialized
+  } catch {
+    return String(value)
+  }
+}
+
+function summarizeChatSendDebugPayload(payload: Record<string, unknown>) {
+  const summaryKeys = [
+    'category',
+    'status',
+    'messageId',
+    'serverMessageId',
+    'optimisticMessageId',
+    'threadId',
+    'contentKind',
+    'textLength',
+    'attachmentCount',
+    'attachmentKinds',
+    'attachmentStates',
+    'source',
+    'reason',
+    'error',
+    'result',
+  ] as const
+
+  const summary = summaryKeys
+    .map((key) => {
+      const formattedValue = formatChatSendDebugValue(payload[key])
+      return formattedValue ? `${key}=${formattedValue}` : null
+    })
+    .filter((item): item is string => Boolean(item))
+    .join(' | ')
+
+  return summary || 'no-payload'
+}
+
+function formatChatSendDebugTimestamp(timestamp: string) {
+  try {
+    return new Date(timestamp).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  } catch {
+    return timestamp
+  }
+}
+
+function ChatSendDebugPanel({
+  events,
+  expanded,
+  copyStatus,
+  keyboardOpen,
+  onToggle,
+  onCopy,
+}: {
+  events: ChatSendDebugEvent[]
+  expanded: boolean
+  copyStatus: string
+  keyboardOpen: boolean
+  onToggle: () => void
+  onCopy: () => void
+}) {
+  const latestEvent = events[0] ?? null
+
+  return (
+    <div className={`pointer-events-none absolute left-3 right-3 z-30 md:left-auto md:right-4 md:w-[24rem] ${
+      keyboardOpen
+        ? 'bottom-24 md:bottom-24'
+        : 'bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-24'
+    }`}>
+      <div className="pointer-events-auto overflow-hidden rounded-2xl border border-amber-500/25 bg-black/85 text-white shadow-xl backdrop-blur-md">
+        <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="min-w-0 flex-1 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200">
+                Chat Debug
+              </span>
+              <span className="text-[11px] text-white/65">
+                {events.length} events
+              </span>
+            </div>
+            <p className="mt-1 truncate text-[11px] text-white/80">
+              {latestEvent
+                ? `${formatChatSendDebugTimestamp(latestEvent.timestamp)} ${latestEvent.phase}`
+                : 'No events yet'}
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={onCopy}
+            className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90"
+          >
+            Copy debug
+          </button>
+        </div>
+        {copyStatus ? (
+          <div className="border-t border-white/10 px-3 py-1.5 text-[10px] text-emerald-200">
+            {copyStatus}
+          </div>
+        ) : null}
+        {expanded ? (
+          <div className="max-h-[min(42svh,320px)] overflow-y-auto border-t border-white/10 px-2 py-2">
+            {events.length > 0 ? events.map((event) => (
+              <div
+                key={event.id}
+                className="mb-2 rounded-xl border border-white/8 bg-white/[0.04] px-2.5 py-2 last:mb-0"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[11px] font-semibold text-white">
+                    {event.phase}
+                  </p>
+                  <span className={`shrink-0 text-[10px] ${event.level === 'error' ? 'text-red-200' : 'text-white/55'}`}>
+                    {formatChatSendDebugTimestamp(event.timestamp)}
+                  </span>
+                </div>
+                <p className="mt-1 break-words text-[11px] leading-4 text-white/75">
+                  {summarizeChatSendDebugPayload(event.payload)}
+                </p>
+              </div>
+            )) : (
+              <p className="px-1 py-2 text-[11px] text-white/65">
+                Waiting for send events...
+              </p>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 const LONG_PRESS_MS = 450
@@ -2330,6 +2507,7 @@ export default function ChatSection({
   const shouldCancelVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
+  const chatSendDebugCopyTimeoutRef = useRef<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
@@ -2347,6 +2525,13 @@ export default function ChatSection({
   const [recordingTime, setRecordingTime] = useState(0)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [chatSendDebugEvents, setChatSendDebugEvents] = useState<ChatSendDebugEvent[]>(() =>
+    CHAT_SEND_DEBUG
+      ? getRecentChatSendDebugEvents().filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
+      : []
+  )
+  const [isChatSendDebugPanelExpanded, setIsChatSendDebugPanelExpanded] = useState(false)
+  const [chatSendDebugCopyStatus, setChatSendDebugCopyStatus] = useState('')
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [selectedMessageAnchorRect, setSelectedMessageAnchorRect] = useState<DOMRect | null>(null)
@@ -2372,6 +2557,12 @@ export default function ChatSection({
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
+  const visibleChatSendDebugEvents = useMemo(
+    () => chatSendDebugEvents
+      .filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
+      .slice(0, 20),
+    [chatSendDebugEvents]
+  )
 
   const trimmedDraftMessage = draftMessage.trim()
   const editingMessage = editingMessageId
@@ -2396,6 +2587,42 @@ export default function ChatSection({
   )
   const initialBottomLockRequiredStableSamples = 3
   const initialBottomLockSafetyTimeoutMs = 4000
+
+  useEffect(() => {
+    if (!CHAT_SEND_DEBUG) {
+      return
+    }
+
+    const syncDebugEvents = () => {
+      setChatSendDebugEvents(
+        getRecentChatSendDebugEvents().filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
+      )
+    }
+
+    syncDebugEvents()
+
+    return subscribeChatSendDebugEvents(syncDebugEvents)
+  }, [])
+
+  useEffect(() => {
+    const latestDebugEvent = visibleChatSendDebugEvents[0]
+
+    if (!latestDebugEvent) {
+      return
+    }
+
+    if (latestDebugEvent.level === 'error' || latestDebugEvent.phase === 'ui_error_path_trigger') {
+      setIsChatSendDebugPanelExpanded(true)
+    }
+  }, [visibleChatSendDebugEvents])
+
+  useEffect(() => {
+    return () => {
+      if (chatSendDebugCopyTimeoutRef.current !== null) {
+        window.clearTimeout(chatSendDebugCopyTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const clearInitialBottomLockSafetyTimeout = useCallback(() => {
     if (initialBottomLockSafetyTimeoutRef.current !== null) {
@@ -5216,6 +5443,38 @@ export default function ChatSection({
     }
   }, [])
 
+  const handleCopyChatSendDebug = useCallback(async () => {
+    const exportPayload = visibleChatSendDebugEvents.map((event) => ({
+      timestamp: event.timestamp,
+      phase: event.phase,
+      level: event.level,
+      summary: summarizeChatSendDebugPayload(event.payload),
+      payload: event.payload,
+    }))
+
+    const formattedText = exportPayload.map((event) => (
+      `[${event.timestamp}] ${event.phase} (${event.level})\nsummary: ${event.summary}\npayload: ${JSON.stringify(event.payload)}`
+    )).join('\n\n')
+
+    try {
+      await navigator.clipboard.writeText(formattedText)
+      setChatSendDebugCopyStatus('Скопировано. Вставьте этот текст в чат с разработчиком.')
+    } catch (error) {
+      setChatSendDebugCopyStatus(
+        `Не удалось скопировать автоматически: ${error instanceof Error ? error.message : 'clipboard_unavailable'}`
+      )
+    }
+
+    if (chatSendDebugCopyTimeoutRef.current !== null) {
+      window.clearTimeout(chatSendDebugCopyTimeoutRef.current)
+    }
+
+    chatSendDebugCopyTimeoutRef.current = window.setTimeout(() => {
+      setChatSendDebugCopyStatus('')
+      chatSendDebugCopyTimeoutRef.current = null
+    }, 3000)
+  }, [visibleChatSendDebugEvents])
+
   function renderComposer() {
     return (
       <div>
@@ -5514,6 +5773,20 @@ export default function ChatSection({
                 ) : null}
               </button>
             </div>
+          ) : null}
+          {CHAT_SEND_DEBUG ? (
+            <ChatSendDebugPanel
+              events={visibleChatSendDebugEvents}
+              expanded={isChatSendDebugPanelExpanded}
+              copyStatus={chatSendDebugCopyStatus}
+              keyboardOpen={isKeyboardOpen}
+              onToggle={() => {
+                setIsChatSendDebugPanelExpanded((currentValue) => !currentValue)
+              }}
+              onCopy={() => {
+                void handleCopyChatSendDebug()
+              }}
+            />
           ) : null}
           <div
             ref={scrollContainerRef}
