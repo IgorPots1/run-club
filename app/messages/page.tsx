@@ -19,6 +19,7 @@ import {
   getCoachDirectThreads,
   getDirectCoachThread,
   loadChatThreadLastMessage,
+  loadLatestChatThreadMessageByThreadId,
   getOrCreateCoachDirectThreadForStudent,
   getOrCreateDirectCoachThread,
   getStudents,
@@ -165,6 +166,7 @@ function ThreadListRow({
 export default function MessagesPage() {
   const router = useRouter()
   const processedInsertedMessageIdsRef = useRef<Set<string>>(new Set())
+  const currentThreadLastMessageIdByThreadIdRef = useRef<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [clubThread, setClubThread] = useState<ClubThread | null>(null)
@@ -267,6 +269,16 @@ export default function MessagesPage() {
       ].join(','),
     [clubThread?.id, coachThread?.id, directThreads]
   )
+
+  useEffect(() => {
+    currentThreadLastMessageIdByThreadIdRef.current = {
+      ...(clubThread ? { [clubThread.id]: clubThread.lastMessage?.id ?? null } : {}),
+      ...(coachThread ? { [coachThread.id]: coachThread.lastMessage?.id ?? null } : {}),
+      ...Object.fromEntries(
+        directThreads.map((thread) => [thread.id, thread.lastMessage?.id ?? null] as const)
+      ),
+    }
+  }, [clubThread, coachThread, directThreads])
 
   useEffect(() => {
     let isMounted = true
@@ -456,6 +468,64 @@ export default function MessagesPage() {
             }
           } catch {
             processedInsertedMessageIdsRef.current.delete(nextMessageId)
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        async (payload) => {
+          const updatedMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+          const updatedMessageThreadId = String((payload.new as { thread_id?: string } | null)?.thread_id ?? '')
+
+          if (!updatedMessageId || !updatedMessageThreadId || !knownThreadIds.has(updatedMessageThreadId)) {
+            return
+          }
+
+          const currentLastMessageId =
+            currentThreadLastMessageIdByThreadIdRef.current[updatedMessageThreadId] ?? null
+
+          if (currentLastMessageId !== updatedMessageId) {
+            return
+          }
+
+          try {
+            const nextLastMessage = await loadLatestChatThreadMessageByThreadId(updatedMessageThreadId)
+
+            setClubThread((currentThread) =>
+              currentThread?.id === updatedMessageThreadId
+                ? {
+                    ...currentThread,
+                    lastMessage: nextLastMessage,
+                  }
+                : currentThread
+            )
+
+            setCoachThread((currentThread) =>
+              currentThread?.id === updatedMessageThreadId
+                ? {
+                    ...currentThread,
+                    lastMessage: nextLastMessage,
+                  }
+                : currentThread
+            )
+
+            setDirectThreads((currentThreads) =>
+              currentThreads.map((thread) =>
+                thread.id === updatedMessageThreadId
+                  ? {
+                      ...thread,
+                      lastMessage: nextLastMessage,
+                    }
+                  : thread
+              )
+            )
+          } catch {
+            // Keep thread list realtime non-blocking if preview refresh fails.
           }
         }
       )

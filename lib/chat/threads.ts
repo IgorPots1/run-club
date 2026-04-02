@@ -203,6 +203,11 @@ async function loadLastMessageByThreadId(threadIds: string[]) {
   ) as Record<string, ChatThreadLastMessage>
 }
 
+export async function loadLatestChatThreadMessageByThreadId(threadId: string): Promise<ChatThreadLastMessage | null> {
+  const lastMessageByThreadId = await loadLastMessageByThreadId([threadId])
+  return lastMessageByThreadId[threadId] ?? null
+}
+
 export async function loadChatThreadLastMessage(messageId: string): Promise<ChatThreadLastMessage | null> {
   const { data, error } = await supabase
     .from('chat_messages')
