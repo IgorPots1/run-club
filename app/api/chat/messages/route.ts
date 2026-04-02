@@ -80,6 +80,17 @@ type ValidatedImageAttachment = {
   sortOrder: number
 }
 
+type ChatMessageInsertPayload = {
+  user_id: string
+  text: string
+  message_type: 'text' | 'image' | 'voice'
+  image_url: string | null
+  media_url?: string | null
+  media_duration_seconds?: number | null
+  reply_to_id: string | null
+  thread_id: string | null
+}
+
 function logChatPerfServer(event: string, extra?: Record<string, unknown>) {
   console.log(CHAT_PERF_DEBUG_PREFIX, {
     now: Date.now(),
@@ -336,6 +347,57 @@ async function resolveSafeReplyToId(
   const currentThreadId = threadId ?? null
 
   return originalThreadId === currentThreadId ? replyToId : null
+}
+
+async function assertUserCanAccessThread(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string,
+  threadId?: string | null
+) {
+  if (!threadId) {
+    return null
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('chat_threads')
+    .select('id, type, owner_user_id, coach_user_id')
+    .eq('id', threadId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  const thread = (data as ChatThreadRow | null) ?? null
+
+  if (!thread) {
+    throw new Error('thread_not_found')
+  }
+
+  if (thread.type === 'club') {
+    return thread
+  }
+
+  if (thread.owner_user_id !== userId && thread.coach_user_id !== userId) {
+    throw new Error('thread_access_denied')
+  }
+
+  return thread
+}
+
+function toInsertedMessageRow(
+  insertedRow: { id: string; thread_id: string | null },
+  payload: ChatMessageInsertPayload
+): InsertedChatMessageRow {
+  return {
+    id: insertedRow.id,
+    user_id: payload.user_id,
+    text: payload.text,
+    message_type: payload.message_type,
+    image_url: payload.image_url,
+    media_url: payload.media_url ?? null,
+    thread_id: insertedRow.thread_id ?? payload.thread_id,
+  }
 }
 
 function getMessagePreview(message: Pick<InsertedChatMessageRow, 'text' | 'message_type' | 'image_url' | 'media_url'>) {
@@ -761,7 +823,10 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
 
 export async function POST(request: Request) {
   logChatPerfServer('route-entry')
-  const { user, error: userError, supabase } = await getAuthenticatedUser()
+  const [{ user, error: userError }, body] = await Promise.all([
+    getAuthenticatedUser(),
+    request.json().catch(() => null) as Promise<CreateChatMessageRequestBody | null>,
+  ])
 
   if (userError || !user) {
     return NextResponse.json(
@@ -773,7 +838,6 @@ export async function POST(request: Request) {
     )
   }
 
-  const body = await request.json().catch(() => null) as CreateChatMessageRequestBody | null
   const kind = body?.kind === 'voice' ? 'voice' : 'text'
   const threadId = body?.threadId?.trim() || null
   const replyToId = body?.replyToId?.trim() || null
@@ -791,7 +855,9 @@ export async function POST(request: Request) {
   })
 
   try {
-    const safeReplyToId = await resolveSafeReplyToId(supabase, replyToId, threadId)
+    const supabaseAdmin = createSupabaseAdminClient()
+    await assertUserCanAccessThread(supabaseAdmin, user.id, threadId)
+    const safeReplyToId = await resolveSafeReplyToId(supabaseAdmin, replyToId, threadId)
     logChatPerfServer('reply-validation-done', {
       threadId,
       traceId: debugTraceId,
@@ -801,7 +867,7 @@ export async function POST(request: Request) {
     })
     let validatedTextAttachments: ValidatedImageAttachment[] = []
 
-    const insertPayload =
+    const insertPayload: ChatMessageInsertPayload =
       kind === 'voice'
         ? (() => {
             const mediaPath = voiceBody?.mediaPath?.trim() ?? ''
@@ -865,10 +931,10 @@ export async function POST(request: Request) {
       messageType: kind,
       attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (insertPayload.image_url ? 1 : 0),
     })
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('chat_messages')
       .insert(insertPayload)
-      .select('id, user_id, text, message_type, image_url, media_url, thread_id')
+      .select('id, thread_id')
       .single()
 
     if (error) {
@@ -882,7 +948,7 @@ export async function POST(request: Request) {
       messageId: (data as InsertedChatMessageRow | null)?.id ?? null,
     })
 
-    const message = data as InsertedChatMessageRow
+    const message = toInsertedMessageRow(data as { id: string; thread_id: string | null }, insertPayload)
 
     if (kind === 'text' && validatedTextAttachments.length > 0) {
       logChatPerfServer('attachments-insert-start', {
@@ -892,7 +958,7 @@ export async function POST(request: Request) {
         attachmentCount: validatedTextAttachments.length,
         messageId: message.id,
       })
-      const { error: attachmentsInsertError } = await supabase
+      const { error: attachmentsInsertError } = await supabaseAdmin
         .from('chat_message_attachments')
         .insert(
           validatedTextAttachments.map((attachment) => ({
@@ -907,7 +973,7 @@ export async function POST(request: Request) {
         )
 
       if (attachmentsInsertError) {
-        await supabase
+        await supabaseAdmin
           .from('chat_messages')
           .delete()
           .eq('id', message.id)
@@ -922,24 +988,26 @@ export async function POST(request: Request) {
         attachmentCount: validatedTextAttachments.length,
         messageId: message.id,
       })
-
-      const { error: touchMessageError } = await supabase
-        .from('chat_messages')
-        .update({
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', message.id)
-        .eq('user_id', user.id)
-
-      if (touchMessageError) {
-        console.error('Failed to touch chat message after attachments insert', {
-          messageId: message.id,
-          error: touchMessageError.message,
-        })
-      }
     }
 
     after(async () => {
+      if (kind === 'text' && validatedTextAttachments.length > 0) {
+        const { error: touchMessageError } = await supabaseAdmin
+          .from('chat_messages')
+          .update({
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', message.id)
+          .eq('user_id', user.id)
+
+        if (touchMessageError) {
+          console.error('Failed to touch chat message after attachments insert', {
+            messageId: message.id,
+            error: touchMessageError.message,
+          })
+        }
+      }
+
       await runChatMessageFanout(message)
     })
 
