@@ -1175,6 +1175,7 @@ function ChatMessageBody({
   showSenderName = true,
   onReplyPreviewClick,
   onImageClick,
+  onRetryFailedMessage,
   currentUserId = null,
   onReactionToggle,
   onReactionDetailsOpen,
@@ -1186,6 +1187,7 @@ function ChatMessageBody({
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
   onImageClick?: (imageUrl: string) => void
+  onRetryFailedMessage?: (message: ChatMessageItem) => void
   currentUserId?: string | null
   onReactionToggle?: (messageId: string, emoji: string) => void
   onReactionDetailsOpen?: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
@@ -1343,6 +1345,17 @@ function ChatMessageBody({
           {isPendingMessage ? 'Отправка...' : 'Не отправлено'}
         </p>
       ) : null}
+      {isFailedMessage && onRetryFailedMessage ? (
+        <div className={`mt-1 flex ${isOwnMessage ? 'justify-end' : ''}`}>
+          <button
+            type="button"
+            onClick={() => onRetryFailedMessage(message)}
+            className="rounded-full border border-red-500/25 px-2.5 py-1 text-[11px] font-medium text-red-600 transition-colors active:scale-[0.98] dark:border-red-400/25 dark:text-red-300"
+          >
+            Повторить
+          </button>
+        </div>
+      ) : null}
       {message.reactions.length > 0 ? (
         <div className={`flex flex-wrap ${compactPreview ? 'mt-1.5 gap-0.5' : 'mt-2 gap-1'} ${isOwnMessage ? 'justify-end' : ''}`}>
           {message.reactions.map((reaction) => {
@@ -1386,6 +1399,7 @@ const ChatMessageList = memo(function ChatMessageList({
   messageRefs,
   onReplyPreviewClick,
   onImageClick,
+  onRetryFailedMessage,
   onReactionToggle,
   onReactionDetailsOpen,
   onMessageTouchStart,
@@ -1405,6 +1419,7 @@ const ChatMessageList = memo(function ChatMessageList({
   messageRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
   onReplyPreviewClick: (replyToMessageId: string) => void
   onImageClick: (imageUrl: string) => void
+  onRetryFailedMessage: (message: ChatMessageItem) => void
   onReactionToggle: (messageId: string, emoji: string) => void
   onReactionDetailsOpen: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
   onMessageTouchStart: (message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => void
@@ -1509,6 +1524,7 @@ const ChatMessageList = memo(function ChatMessageList({
                       animatedReactionKey={animatedReactionKey}
                       onReplyPreviewClick={replyPreviewTargetId ? () => onReplyPreviewClick(replyPreviewTargetId) : undefined}
                       onImageClick={onImageClick}
+                      onRetryFailedMessage={onRetryFailedMessage}
                       onReactionToggle={onReactionToggle}
                       onReactionDetailsOpen={onReactionDetailsOpen}
                     />
@@ -2648,18 +2664,6 @@ export default function ChatSection({
           text: trimmedDraftMessage,
           imageUrl: pendingImageUrl,
         })
-        const shouldAutoScroll = isNearBottom()
-
-        if (shouldAutoScroll) {
-          pendingAutoScrollToBottomRef.current = true
-          setPendingNewMessagesCount(0)
-        }
-
-        setMessages((currentMessages) =>
-          keepLatestRenderedMessages(insertMessageChronologically(currentMessages, optimisticMessage), {
-            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-          })
-        )
 
         setDraftMessage('')
         clearSelectedImage()
@@ -2669,36 +2673,7 @@ export default function ChatSection({
           resizeComposerTextarea()
         })
 
-        const { error: insertError, messageId } = await createChatMessage(
-          currentUserId,
-          trimmedDraftMessage,
-          replyingToMessage?.id ?? null,
-          threadId,
-          pendingImageUrl
-        )
-
-        if (insertError) {
-          setMessages((currentMessages) =>
-            keepLatestRenderedMessages(
-              currentMessages.map((message) =>
-                message.id === optimisticMessage.id
-                  ? {
-                      ...message,
-                      optimisticStatus: 'failed',
-                    }
-                  : message
-              ),
-              {
-                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-              }
-            )
-          )
-          throw insertError
-        }
-
-        if (messageId) {
-          await reconcileOptimisticMessageWithServerMessage(optimisticMessage, messageId)
-        }
+        await sendOptimisticTextOrImageMessage(optimisticMessage)
       }
 
       setPendingNewMessagesCount(0)
@@ -2775,6 +2750,27 @@ export default function ChatSection({
       setDeletingMessageId(null)
     }
   }
+
+  const handleRetryFailedMessage = useCallback(async (message: ChatMessageItem) => {
+    if (
+      !currentUserId ||
+      message.userId !== currentUserId ||
+      !message.isOptimistic ||
+      message.optimisticStatus !== 'failed' ||
+      message.messageType === 'voice'
+    ) {
+      return
+    }
+
+    setSubmitError('')
+    setError('')
+
+    try {
+      await sendOptimisticTextOrImageMessage(message)
+    } catch {
+      setSubmitError('Не удалось повторно отправить сообщение')
+    }
+  }, [currentUserId, sendOptimisticTextOrImageMessage])
 
   function handleActionSheetOpenChange(open: boolean) {
     setIsActionSheetOpen(open)
@@ -3023,6 +3019,65 @@ export default function ChatSection({
           }
         )
       )
+    }
+  }
+
+  async function sendOptimisticTextOrImageMessage(optimisticMessage: ChatMessageItem) {
+    const shouldAutoScroll = isNearBottom()
+
+    if (shouldAutoScroll) {
+      pendingAutoScrollToBottomRef.current = true
+      setPendingNewMessagesCount(0)
+    }
+
+    setMessages((currentMessages) =>
+      keepLatestRenderedMessages(
+        currentMessages.some((message) => message.id === optimisticMessage.id)
+          ? currentMessages.map((message) =>
+              message.id === optimisticMessage.id
+                ? {
+                    ...optimisticMessage,
+                    optimisticStatus: 'sending',
+                    optimisticServerMessageId: null,
+                  }
+                : message
+            )
+          : insertMessageChronologically(currentMessages, optimisticMessage),
+        {
+          preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+        }
+      )
+    )
+
+    const { error: insertError, messageId } = await createChatMessage(
+      optimisticMessage.userId,
+      optimisticMessage.text,
+      optimisticMessage.replyToId ?? null,
+      threadId,
+      optimisticMessage.imageUrl
+    )
+
+    if (insertError) {
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(
+          currentMessages.map((message) =>
+            message.id === optimisticMessage.id
+              ? {
+                  ...message,
+                  optimisticStatus: 'failed',
+                }
+              : message
+          ),
+          {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          }
+        )
+      )
+      throw insertError
+    }
+
+    if (messageId) {
+      await reconcileOptimisticMessageWithServerMessage(optimisticMessage, messageId)
     }
   }
 
@@ -3846,6 +3901,7 @@ export default function ChatSection({
                   messageRefs={messageRefs}
                   onReplyPreviewClick={handleReplyPreviewClick}
                   onImageClick={setSelectedViewerImageUrl}
+                  onRetryFailedMessage={handleRetryFailedMessage}
                   onReactionToggle={handleToggleReaction}
                   onReactionDetailsOpen={handleReactionDetailsOpen}
                   onMessageTouchStart={handleMessageTouchStart}
