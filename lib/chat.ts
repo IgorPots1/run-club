@@ -105,7 +105,7 @@ export type ChatMessageItem = {
   optimisticLocalObjectUrl?: string | null
   optimisticImageFiles?: Array<File | null> | null
   optimisticAttachmentUploadState?: 'uploading' | 'uploaded' | 'failed' | null
-  optimisticAttachmentStates?: Array<'uploading' | 'uploaded' | 'attached' | 'failed'> | null
+  optimisticAttachmentStates?: Array<'pending' | 'uploading' | 'uploaded' | 'attached' | 'failed'> | null
 }
 
 const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 15000
