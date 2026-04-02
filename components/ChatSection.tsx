@@ -1419,6 +1419,7 @@ const ChatMessageList = memo(function ChatMessageList({
   messageRefs,
   onReplyPreviewClick,
   onImageClick,
+  onImageLoad,
   onRetryFailedMessage,
   onReactionToggle,
   onReactionDetailsOpen,
