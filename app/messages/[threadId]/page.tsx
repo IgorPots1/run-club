@@ -66,15 +66,7 @@ export default function MessageThreadPage() {
 
     async function loadThreadPage() {
       try {
-        console.log('[thread-open-debug] loadThreadPage:start', {
-          threadId,
-        })
-
         const user = await getBootstrapUser()
-        console.log('[thread-open-debug] getBootstrapUser:result', {
-          threadId,
-          userId: user?.id ?? null,
-        })
 
         if (!isMounted) {
           return
@@ -86,17 +78,7 @@ export default function MessageThreadPage() {
         }
 
         setCurrentUserId(user.id)
-
-        console.log('[thread-open-debug] getChatThreadById:before', {
-          threadId,
-          userId: user.id,
-        })
         const thread = await getChatThreadById(threadId)
-        console.log('[thread-open-debug] getChatThreadById:result', {
-          threadId,
-          userId: user.id,
-          thread,
-        })
 
         if (!isMounted) {
           return
@@ -141,11 +123,7 @@ export default function MessageThreadPage() {
 
         setThreadTitle(getProfileDisplayName((profile as ProfileRow | null) ?? null, 'Ученик'))
         setError('')
-      } catch (error) {
-        console.error('[thread-open-debug] loadThreadPage:error', {
-          threadId,
-          error,
-        })
+      } catch {
         if (isMounted) {
           setError('Не удалось открыть чат')
         }

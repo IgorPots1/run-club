@@ -711,9 +711,6 @@ export default function MessagesPage() {
             </section>
           ) : null}
         </div>
-        <p className="app-text-secondary mt-4 text-center text-[11px] opacity-70">
-          chat build: stable-chat
-        </p>
       </div>
     </main>
   )

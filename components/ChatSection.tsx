@@ -1754,7 +1754,7 @@ export default function ChatSection({
   }, [scrollAndHighlightMessage, threadId])
 
   function getNewMessagesLabel(count: number) {
-    return count === 1 ? '1 new message' : `${count} new messages`
+    return count === 1 ? '1 новое сообщение' : `${count} новых сообщений`
   }
 
   function filterPendingDeletedMessages(nextMessages: ChatMessageItem[]) {
@@ -2163,10 +2163,6 @@ export default function ChatSection({
       return
     }
 
-    console.log('[chat] restore scroll after prepend', {
-      previousScrollTop: pendingRestore.scrollTop,
-      scrollHeightDelta,
-    })
     scrollContainer.scrollTop = Math.max(0, pendingRestore.scrollTop + scrollHeightDelta)
     prependScrollRestoreRef.current = null
   }, [messages])
@@ -2265,11 +2261,6 @@ export default function ChatSection({
         if (!scrollContainer || scrollContainer.scrollHeight > scrollContainer.clientHeight) {
           return
         }
-
-        console.log('[chat] auto-loading older messages to fill viewport', {
-          threadId,
-          remainingBatches,
-        })
 
         const result = await loadOlderMessages({ requireNearTop: false })
 
