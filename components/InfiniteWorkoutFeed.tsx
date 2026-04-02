@@ -514,6 +514,7 @@ export default function InfiniteWorkoutFeed({
               distanceKm={item.distance_km}
               pace={item.pace}
               movingTime={item.movingTime}
+              mapPolyline={item.map_polyline}
               xp={item.xp}
               createdAt={item.created_at}
               displayName={item.displayName}
