@@ -583,11 +583,18 @@ async function createChatMessageViaApi(
     const result = await response.json().catch(() => null) as
       | {
           error?: string
+          messageId?: string
           message?: {
             id?: string
           } | null
         }
       | null
+
+    const responseMessageId = typeof result?.messageId === 'string'
+      ? result.messageId
+      : typeof result?.message?.id === 'string'
+        ? result.message.id
+        : null
 
     if (!response.ok) {
       logChatPerfDebug('api-response', {
@@ -607,7 +614,7 @@ async function createChatMessageViaApi(
     logChatPerfDebug('api-response', {
       threadId: payload.threadId ?? null,
       traceId: payload.debugTraceId ?? null,
-      messageId: typeof result?.message?.id === 'string' ? result.message.id : null,
+      messageId: responseMessageId,
       messageType: payload.kind === 'voice' ? 'voice' : payload.attachments?.length || payload.imageUrl ? 'image' : 'text',
       attachmentCount: payload.kind === 'voice' ? 0 : payload.attachments?.length ?? (payload.imageUrl ? 1 : 0),
       durationMs: Math.round(performance.now() - requestStart),
@@ -615,7 +622,7 @@ async function createChatMessageViaApi(
     })
     return {
       error: null,
-      messageId: typeof result?.message?.id === 'string' ? result.message.id : null,
+      messageId: responseMessageId,
     }
   } catch (error) {
     return {

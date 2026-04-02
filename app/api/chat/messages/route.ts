@@ -386,7 +386,7 @@ async function assertUserCanAccessThread(
 }
 
 function toInsertedMessageRow(
-  insertedRow: { id: string; thread_id: string | null },
+  insertedRow: { id: string; thread_id?: string | null },
   payload: ChatMessageInsertPayload
 ): InsertedChatMessageRow {
   return {
@@ -822,13 +822,48 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
 }
 
 export async function POST(request: Request) {
-  logChatPerfServer('route-entry')
+  const requestStartedAt = performance.now()
+  let previousStageAt = requestStartedAt
+  logChatPerfServer('request-start')
   const [{ user, error: userError }, body] = await Promise.all([
     getAuthenticatedUser(),
     request.json().catch(() => null) as Promise<CreateChatMessageRequestBody | null>,
   ])
 
+  const kind = body?.kind === 'voice' ? 'voice' : 'text'
+  const threadId = body?.threadId?.trim() || null
+  const replyToId = body?.replyToId?.trim() || null
+  const voiceBody = kind === 'voice' ? (body as VoiceChatMessageRequestBody | null) : null
+  const textBody = kind === 'text' ? (body as TextChatMessageRequestBody | null) : null
+  const debugTraceId = body?.debugTraceId?.trim() || null
+  const attachmentCount = kind === 'voice'
+    ? 0
+    : Array.isArray(textBody?.attachments)
+      ? textBody.attachments.length
+      : (textBody?.imageUrl ? 1 : 0)
+
+  function logStage(event: string, extra?: Record<string, unknown>) {
+    const now = performance.now()
+    logChatPerfServer(event, {
+      elapsedMs: Math.round(now - requestStartedAt),
+      stageDurationMs: Math.round(now - previousStageAt),
+      threadId,
+      traceId: debugTraceId,
+      messageType: kind,
+      attachmentCount,
+      userId: user?.id ?? null,
+      ...extra,
+    })
+    previousStageAt = now
+  }
+
+  logStage('auth-session-end')
+
   if (userError || !user) {
+    logStage('response-error', {
+      status: 401,
+      error: userError?.message ?? 'auth_required',
+    })
     return NextResponse.json(
       {
         ok: false,
@@ -838,31 +873,11 @@ export async function POST(request: Request) {
     )
   }
 
-  const kind = body?.kind === 'voice' ? 'voice' : 'text'
-  const threadId = body?.threadId?.trim() || null
-  const replyToId = body?.replyToId?.trim() || null
-  const voiceBody = kind === 'voice' ? (body as VoiceChatMessageRequestBody | null) : null
-  const textBody = kind === 'text' ? (body as TextChatMessageRequestBody | null) : null
-  const debugTraceId = body?.debugTraceId?.trim() || null
-  const attachmentCount = kind === 'voice' ? 0 : Array.isArray(textBody?.attachments) ? textBody.attachments.length : (textBody?.imageUrl ? 1 : 0)
-
-  logChatPerfServer('auth-user-resolved', {
-    threadId,
-    traceId: debugTraceId,
-    messageType: kind,
-    attachmentCount,
-    userId: user?.id ?? null,
-  })
-
   try {
     const supabaseAdmin = createSupabaseAdminClient()
     await assertUserCanAccessThread(supabaseAdmin, user.id, threadId)
     const safeReplyToId = await resolveSafeReplyToId(supabaseAdmin, replyToId, threadId)
-    logChatPerfServer('reply-validation-done', {
-      threadId,
-      traceId: debugTraceId,
-      messageType: kind,
-      attachmentCount,
+    logStage('validation-thread-reply-end', {
       hasReply: Boolean(safeReplyToId),
     })
     let validatedTextAttachments: ValidatedImageAttachment[] = []
@@ -918,43 +933,31 @@ export async function POST(request: Request) {
             }
           })()
 
-    logChatPerfServer('payload-validation-done', {
-      threadId,
-      traceId: debugTraceId,
-      messageType: kind,
+    logStage('validation-payload-end', {
       attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (insertPayload.image_url ? 1 : 0),
     })
 
-    logChatPerfServer('db-insert-start', {
-      threadId,
-      traceId: debugTraceId,
-      messageType: kind,
+    logStage('db-insert-start', {
       attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (insertPayload.image_url ? 1 : 0),
     })
     const { data, error } = await supabaseAdmin
       .from('chat_messages')
       .insert(insertPayload)
-      .select('id, thread_id')
+      .select('id')
       .single()
 
     if (error) {
       throw error
     }
-    logChatPerfServer('db-insert-end', {
-      threadId,
-      traceId: debugTraceId,
-      messageType: kind,
-      attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || ((data as InsertedChatMessageRow | null)?.image_url ? 1 : 0),
-      messageId: (data as InsertedChatMessageRow | null)?.id ?? null,
+    logStage('db-insert-end', {
+      attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (insertPayload.image_url ? 1 : 0),
+      messageId: (data as { id?: string } | null)?.id ?? null,
     })
 
-    const message = toInsertedMessageRow(data as { id: string; thread_id: string | null }, insertPayload)
+    const message = toInsertedMessageRow(data as { id: string; thread_id?: string | null }, insertPayload)
 
     if (kind === 'text' && validatedTextAttachments.length > 0) {
-      logChatPerfServer('attachments-insert-start', {
-        threadId,
-        traceId: debugTraceId,
-        messageType: kind,
+      logStage('post-processing-attachments-start', {
         attachmentCount: validatedTextAttachments.length,
         messageId: message.id,
       })
@@ -981,10 +984,7 @@ export async function POST(request: Request) {
 
         throw attachmentsInsertError
       }
-      logChatPerfServer('attachments-insert-end', {
-        threadId,
-        traceId: debugTraceId,
-        messageType: kind,
+      logStage('post-processing-attachments-end', {
         attachmentCount: validatedTextAttachments.length,
         messageId: message.id,
       })
@@ -1011,20 +1011,24 @@ export async function POST(request: Request) {
       await runChatMessageFanout(message)
     })
 
-    logChatPerfServer('response-sent', {
-      threadId,
-      traceId: debugTraceId,
-      messageType: kind,
+    logStage('post-processing-end', {
       attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (message.image_url ? 1 : 0),
+      messageId: message.id,
+    })
+    logStage('response-sent', {
       messageId: message.id,
     })
 
     return NextResponse.json({
       ok: true,
-      message,
+      messageId: message.id,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'chat_message_create_failed'
+    logStage('response-error', {
+      status: 400,
+      error: message,
+    })
     return NextResponse.json(
       {
         ok: false,
