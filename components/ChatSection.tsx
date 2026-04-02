@@ -93,6 +93,7 @@ function getComposerAttachmentDebugCounts(images: PendingComposerImage[]) {
 }
 
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
+  'panel_mounted',
   'send_start',
   'request_start',
   'response_status',
@@ -181,26 +182,26 @@ function ChatSendDebugPanel({
   events,
   expanded,
   copyStatus,
-  keyboardOpen,
+  debugEnabled,
+  mounted,
+  threadId,
   onToggle,
   onCopy,
 }: {
   events: ChatSendDebugEvent[]
   expanded: boolean
   copyStatus: string
-  keyboardOpen: boolean
+  debugEnabled: boolean
+  mounted: boolean
+  threadId: string | null
   onToggle: () => void
   onCopy: () => void
 }) {
   const latestEvent = events[0] ?? null
 
   return (
-    <div className={`pointer-events-none absolute left-3 right-3 z-30 md:left-auto md:right-4 md:w-[24rem] ${
-      keyboardOpen
-        ? 'bottom-24 md:bottom-24'
-        : 'bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-24'
-    }`}>
-      <div className="pointer-events-auto overflow-hidden rounded-2xl border border-amber-500/25 bg-black/85 text-white shadow-xl backdrop-blur-md">
+    <div className="pointer-events-none fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[120] md:left-auto md:right-4 md:top-4 md:w-[26rem]">
+      <div className="pointer-events-auto overflow-hidden rounded-2xl border-2 border-amber-400 bg-black/92 text-white shadow-2xl backdrop-blur-md">
         <div className="flex items-center justify-between gap-2 px-3 py-2">
           <button
             type="button"
@@ -208,8 +209,8 @@ function ChatSendDebugPanel({
             className="min-w-0 flex-1 text-left"
           >
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200">
-                Chat Debug
+              <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
+                CHAT SEND DEBUG
               </span>
               <span className="text-[11px] text-white/65">
                 {events.length} events
@@ -228,6 +229,10 @@ function ChatSendDebugPanel({
           >
             Copy debug
           </button>
+        </div>
+        <div className="border-t border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] leading-4 text-white/80">
+          <p>{`enabled: ${debugEnabled ? 'yes' : 'no'} | mounted: ${mounted ? 'yes' : 'no'} | event_count: ${events.length}`}</p>
+          <p className="mt-1">{`thread: ${threadId ?? 'club/all'}`}</p>
         </div>
         {copyStatus ? (
           <div className="border-t border-white/10 px-3 py-1.5 text-[10px] text-emerald-200">
@@ -255,7 +260,7 @@ function ChatSendDebugPanel({
               </div>
             )) : (
               <p className="px-1 py-2 text-[11px] text-white/65">
-                Waiting for send events...
+                No send debug events yet
               </p>
             )}
           </div>
@@ -2530,7 +2535,7 @@ export default function ChatSection({
       ? getRecentChatSendDebugEvents().filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
       : []
   )
-  const [isChatSendDebugPanelExpanded, setIsChatSendDebugPanelExpanded] = useState(false)
+  const [isChatSendDebugPanelExpanded, setIsChatSendDebugPanelExpanded] = useState(true)
   const [chatSendDebugCopyStatus, setChatSendDebugCopyStatus] = useState('')
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
@@ -2600,9 +2605,15 @@ export default function ChatSection({
     }
 
     syncDebugEvents()
+    const unsubscribe = subscribeChatSendDebugEvents(syncDebugEvents)
+    logChatSendDebug('panel_mounted', {
+      threadId,
+      enabled: CHAT_SEND_DEBUG,
+      mounted: true,
+    })
 
-    return subscribeChatSendDebugEvents(syncDebugEvents)
-  }, [])
+    return unsubscribe
+  }, [threadId])
 
   useEffect(() => {
     const latestDebugEvent = visibleChatSendDebugEvents[0]
@@ -5779,7 +5790,9 @@ export default function ChatSection({
               events={visibleChatSendDebugEvents}
               expanded={isChatSendDebugPanelExpanded}
               copyStatus={chatSendDebugCopyStatus}
-              keyboardOpen={isKeyboardOpen}
+              debugEnabled={CHAT_SEND_DEBUG}
+              mounted
+              threadId={threadId}
               onToggle={() => {
                 setIsChatSendDebugPanelExpanded((currentValue) => !currentValue)
               }}
