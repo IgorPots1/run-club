@@ -416,7 +416,7 @@ function mergeServerMessageWithOptimisticImageState(
     attachments: mergedAttachments,
     imageUrl: mergedAttachments[0]?.publicUrl ?? serverMessage.imageUrl,
     isOptimistic: true,
-    optimisticStatus: overallAttachmentUploadState === 'failed' ? 'failed' : 'sending',
+    optimisticStatus: undefined,
     optimisticServerMessageId: optimisticMessage.optimisticServerMessageId ?? serverMessage.id,
     optimisticLocalObjectUrl: null,
     optimisticImageFiles: optimisticMessage.optimisticImageFiles ?? null,
