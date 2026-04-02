@@ -2138,6 +2138,7 @@ export default function ChatSection({
 
       try {
         const cachedRecentMessages = getCachedRecentChatMessages(threadId)
+        const hasCachedMessages = Boolean(cachedRecentMessages?.messages.length)
 
         const initialMessages =
           cachedRecentMessages?.messages ??
@@ -2151,7 +2152,7 @@ export default function ChatSection({
         setMessages(keepLatestRenderedMessages(initialMessages))
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
-        setPendingInitialScroll(true)
+        setPendingInitialScroll(!hasCachedMessages && initialMessages.length > 0)
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить чат')
