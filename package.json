@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:login": "npx supabase login",
+    "db:link": "npx supabase link",
+    "db:diff": "npx supabase db diff",
+    "db:push": "npx supabase db push",
+    "db:remote": "npx supabase migration list",
+    "db:new": "npx supabase migration new"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
