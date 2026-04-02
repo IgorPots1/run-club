@@ -1,11 +1,10 @@
 'use client'
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { CHAT_OPEN_DEBUG, pushChatOpenDebug } from '@/lib/chatOpenDebug'
 
 const ISOLATED_VIEWPORT_HEIGHT_CSS_VAR = '--chat-app-height'
 const DEFAULT_ISOLATED_VIEWPORT_HEIGHT = '100svh'
-const CHAT_OPEN_DEBUG = true
-const CHAT_OPEN_DEBUG_PREFIX = '[chat-open-debug]'
 
 export function useIsolatedViewportHeight() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
@@ -54,7 +53,7 @@ export function useIsolatedViewportHeight() {
         return
       }
 
-      console.log(CHAT_OPEN_DEBUG_PREFIX, {
+      pushChatOpenDebug({
         now: Math.round(performance.now()),
         scope: 'viewport',
         source,

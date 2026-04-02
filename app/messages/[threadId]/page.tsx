@@ -6,6 +6,7 @@ import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
+import { CHAT_OPEN_DEBUG, pushChatOpenDebug } from '@/lib/chatOpenDebug'
 import {
   CHAT_UNREAD_UPDATED_EVENT,
   dispatchChatUnreadUpdated,
@@ -26,8 +27,6 @@ type ProfileRow = {
 }
 
 const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
-const CHAT_OPEN_DEBUG = true
-const CHAT_OPEN_DEBUG_PREFIX = '[chat-open-debug]'
 
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
@@ -73,7 +72,7 @@ export default function MessageThreadPage() {
 
     const snapshotState = routeDebugStateRef.current
 
-    console.log(CHAT_OPEN_DEBUG_PREFIX, {
+    pushChatOpenDebug({
       now: Math.round(performance.now()),
       scope: 'thread-route',
       event,

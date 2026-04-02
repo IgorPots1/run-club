@@ -5,6 +5,13 @@ import Link from 'next/link'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
+import {
+  CHAT_OPEN_DEBUG,
+  CHAT_OPEN_DEBUG_EVENT,
+  getChatOpenDebugEntries,
+  pushChatOpenDebug,
+  type ChatOpenDebugOverlayEntry,
+} from '@/lib/chatOpenDebug'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
@@ -52,8 +59,6 @@ const OPTIMISTIC_MESSAGE_MATCH_WINDOW_MS = 2 * 60 * 1000
 const CHAT_VOICE_BUCKET = 'chat-voice'
 const CHAT_VOICE_SIGNED_URL_TTL_SECONDS = 60 * 60
 const VOICE_PLAYBACK_SPEEDS = [1, 1.5, 2] as const
-const CHAT_OPEN_DEBUG = true
-const CHAT_OPEN_DEBUG_PREFIX = '[chat-open-debug]'
 const REPLY_TARGET_HIGHLIGHT_CLASSES = [
   'bg-yellow-100',
   'dark:bg-yellow-500/20',
@@ -63,6 +68,43 @@ const REPLY_TARGET_HIGHLIGHT_CLASSES = [
 ]
 
 let activeVoiceMessageAudio: HTMLAudioElement | null = null
+
+function ChatOpenDebugOverlay() {
+  const [entries, setEntries] = useState<ChatOpenDebugOverlayEntry[]>([])
+
+  useEffect(() => {
+    if (!CHAT_OPEN_DEBUG || typeof window === 'undefined') {
+      return
+    }
+
+    setEntries(getChatOpenDebugEntries())
+
+    function handleDebugEvent(event: Event) {
+      const detail = (event as CustomEvent<ChatOpenDebugOverlayEntry[]>).detail
+      setEntries(detail ?? [])
+    }
+
+    window.addEventListener(CHAT_OPEN_DEBUG_EVENT, handleDebugEvent as EventListener)
+
+    return () => {
+      window.removeEventListener(CHAT_OPEN_DEBUG_EVENT, handleDebugEvent as EventListener)
+    }
+  }, [])
+
+  if (!CHAT_OPEN_DEBUG || entries.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="pointer-events-none fixed inset-x-2 bottom-2 z-[90] rounded-xl bg-black/70 px-2 py-1.5 text-[10px] leading-4 text-white shadow-lg backdrop-blur-sm">
+      {entries.map((entry) => (
+        <div key={entry.id} className="truncate">
+          {entry.now} {entry.label}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function toThreadLastMessage(message: ChatMessageItem, threadId: string): ChatThreadLastMessage {
   return {
@@ -1701,7 +1743,7 @@ export default function ChatSection({
         ? null
         : scrollHeight - (scrollTop + clientHeight)
 
-    console.log(CHAT_OPEN_DEBUG_PREFIX, {
+    pushChatOpenDebug({
       now: Math.round(performance.now()),
       scope: 'chat-section',
       event,
@@ -4272,6 +4314,7 @@ export default function ChatSection({
           onClose={() => setSelectedViewerImageUrl(null)}
         />
       ) : null}
+      <ChatOpenDebugOverlay />
       {selectedReactionMessage && selectedReaction ? (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/20 p-3 sm:items-center">
           <button
