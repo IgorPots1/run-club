@@ -1499,7 +1499,7 @@ const ChatMessageList = memo(function ChatMessageList({
   onMessageContextMenu: (message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => void
 }) {
   return (
-    <section className="flex flex-1 flex-col px-0 pt-1">
+    <section className="mt-auto flex flex-col px-0 pt-1">
       <div className="flex flex-col">
         {messages.map((message, index) => {
           const isOwnMessage = currentUserId === message.userId
