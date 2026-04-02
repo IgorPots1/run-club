@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
-import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
@@ -33,6 +32,7 @@ type ChatSectionProps = {
   showTitle?: boolean
   threadId?: string | null
   currentUserId?: string | null
+  isKeyboardOpen?: boolean
   title?: string
   description?: string
 }
@@ -1566,10 +1566,10 @@ export default function ChatSection({
   showTitle = true,
   threadId = null,
   currentUserId = null,
+  isKeyboardOpen = false,
   title,
   description,
 }: ChatSectionProps) {
-  const { isKeyboardOpen } = useIsolatedViewportHeight()
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)

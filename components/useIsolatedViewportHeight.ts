@@ -1,12 +1,14 @@
 'use client'
 
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const ISOLATED_VIEWPORT_HEIGHT_CSS_VAR = '--chat-app-height'
 const DEFAULT_ISOLATED_VIEWPORT_HEIGHT = '100svh'
 
 export function useIsolatedViewportHeight() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const lastAppliedViewportHeightRef = useRef<number | null>(null)
+  const lastKeyboardOpenRef = useRef<boolean | null>(null)
   const isolatedViewportStyle = useMemo(
     () => ({
       height: `var(${ISOLATED_VIEWPORT_HEIGHT_CSS_VAR}, ${DEFAULT_ISOLATED_VIEWPORT_HEIGHT})`,
@@ -45,9 +47,17 @@ export function useIsolatedViewportHeight() {
       const viewportOffsetTop = visualViewport?.offsetTop ?? 0
       const isMobileViewport = window.innerWidth < 768
       const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
+      const nextIsKeyboardOpen = isMobileViewport && window.innerHeight - effectiveViewportHeight > 120
 
-      rootStyle.setProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
-      setIsKeyboardOpen(isMobileViewport && window.innerHeight - effectiveViewportHeight > 120)
+      if (lastAppliedViewportHeightRef.current !== effectiveViewportHeight) {
+        rootStyle.setProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
+        lastAppliedViewportHeightRef.current = effectiveViewportHeight
+      }
+
+      if (lastKeyboardOpenRef.current !== nextIsKeyboardOpen) {
+        setIsKeyboardOpen(nextIsKeyboardOpen)
+        lastKeyboardOpenRef.current = nextIsKeyboardOpen
+      }
     }
 
     function clearScheduledViewportSync() {
@@ -93,6 +103,8 @@ export function useIsolatedViewportHeight() {
       window.visualViewport?.removeEventListener('resize', syncViewportHeight)
       window.visualViewport?.removeEventListener('scroll', syncViewportHeight)
       window.removeEventListener('resize', syncViewportHeight)
+      lastAppliedViewportHeightRef.current = null
+      lastKeyboardOpenRef.current = null
       rootStyle.removeProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR)
     }
   }, [])

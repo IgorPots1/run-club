@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
+import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_UNREAD_UPDATED_EVENT,
@@ -29,6 +30,7 @@ const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
   const router = useRouter()
+  const { isKeyboardOpen, isolatedViewportStyle } = useIsolatedViewportHeight()
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
   const markReadTimeoutRef = useRef<number | null>(null)
   const isMarkingThreadReadRef = useRef(false)
@@ -330,7 +332,11 @@ export default function MessageThreadPage() {
 
   if (!loading && (error || !currentUserId || !threadId)) {
     return (
-      <main className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]">
+      <main
+        data-chat-isolated-route="true"
+        className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
+        style={isolatedViewportStyle}
+      >
         <div className="mx-auto max-w-3xl">
           <InnerPageHeader title="Чат" fallbackHref="/messages" minimal />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
@@ -379,10 +385,7 @@ export default function MessageThreadPage() {
     <main
       data-chat-isolated-route="true"
       className="flex flex-col overflow-hidden"
-      style={{
-        height: 'var(--chat-app-height, 100svh)',
-        minHeight: 'var(--chat-app-height, 100svh)',
-      }}
+      style={isolatedViewportStyle}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
         <InnerPageHeader title={threadTitle || ' '} fallbackHref="/messages" minimal rightSlot={headerRightSlot} />
@@ -396,6 +399,7 @@ export default function MessageThreadPage() {
             showTitle={false}
             threadId={threadId}
             currentUserId={currentUserId}
+            isKeyboardOpen={isKeyboardOpen}
           />
         </div>
       </div>
