@@ -318,56 +318,151 @@ function getOptimisticMessageReplyPreview(message: ChatMessageItem | null) {
   }
 }
 
-function haveSameImageAttachments(left: ChatMessageItem, right: ChatMessageItem) {
-  if (left.attachments.length !== right.attachments.length) {
-    return false
-  }
-
-  return left.attachments.every((attachment, index) => {
-    const matchingAttachment = right.attachments[index]
-
-    if (!matchingAttachment) {
-      return false
-    }
-
-    return (
-      attachment.publicUrl === matchingAttachment.publicUrl &&
-      attachment.storagePath === matchingAttachment.storagePath &&
-      attachment.type === matchingAttachment.type
-    )
-  })
+type RealtimeChatMessageRow = {
+  id: string
+  user_id: string
+  text: string | null
+  message_type: string | null
+  image_url: string | null
+  media_url: string | null
+  media_duration_seconds: number | null
+  edited_at: string | null
+  created_at: string
+  reply_to_id: string | null
 }
 
-function createOptimisticMessageId(prefix: 'text' | 'image') {
-  return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-}
-
-function findMatchingOptimisticTextOrImageMessage(
-  messages: ChatMessageItem[],
-  nextMessage: ChatMessageItem
-) {
-  if (nextMessage.messageType === 'voice') {
+function toRealtimeChatMessageRow(value: unknown): RealtimeChatMessageRow | null {
+  if (!value || typeof value !== 'object') {
     return null
   }
 
-  const nextMessageCreatedAtMs = new Date(nextMessage.createdAt).getTime()
-  const matchingOptimisticMessages = messages.filter((message) => {
-    if (!message.isOptimistic) {
-      return false
-    }
+  const row = value as Record<string, unknown>
+  const id = typeof row.id === 'string' ? row.id : ''
+  const userId = typeof row.user_id === 'string' ? row.user_id : ''
+  const createdAt = typeof row.created_at === 'string' ? row.created_at : ''
 
-    if (message.messageType === 'voice' || nextMessage.messageType === 'voice') {
+  if (!id || !userId || !createdAt) {
+    return null
+  }
+
+  return {
+    id,
+    user_id: userId,
+    text: typeof row.text === 'string' ? row.text : null,
+    message_type: typeof row.message_type === 'string' ? row.message_type : null,
+    image_url: typeof row.image_url === 'string' ? row.image_url : null,
+    media_url: typeof row.media_url === 'string' ? row.media_url : null,
+    media_duration_seconds: typeof row.media_duration_seconds === 'number' ? row.media_duration_seconds : null,
+    edited_at: typeof row.edited_at === 'string' ? row.edited_at : null,
+    created_at: createdAt,
+    reply_to_id: typeof row.reply_to_id === 'string' ? row.reply_to_id : null,
+  }
+}
+
+function resolveRealtimeMessageType(row: RealtimeChatMessageRow): ChatMessageItem['messageType'] {
+  if (row.message_type === 'voice') {
+    return 'voice'
+  }
+
+  if (row.message_type === 'image' || row.image_url) {
+    return 'image'
+  }
+
+  return 'text'
+}
+
+function getRealtimePreviewText(row: RealtimeChatMessageRow, optimisticMessage: ChatMessageItem) {
+  const trimmedText = row.text?.trim() ?? ''
+
+  if (trimmedText) {
+    return trimmedText
+  }
+
+  const messageType = resolveRealtimeMessageType(row)
+
+  if (messageType === 'voice') {
+    return 'Голосовое сообщение'
+  }
+
+  if (messageType === 'image') {
+    return optimisticMessage.attachments.length > 1 ? `${optimisticMessage.attachments.length} фото` : 'Фото'
+  }
+
+  return ''
+}
+
+function finalizeOptimisticMessageFromRealtimeRow(
+  optimisticMessage: ChatMessageItem,
+  realtimeRow: RealtimeChatMessageRow
+): ChatMessageItem {
+  const messageType = resolveRealtimeMessageType(realtimeRow)
+  const attachments = messageType === 'image'
+    ? (
+        optimisticMessage.attachments.length > 0
+          ? optimisticMessage.attachments
+          : realtimeRow.image_url
+            ? [{
+                id: `legacy-${realtimeRow.id}`,
+                type: 'image' as const,
+                storagePath: null,
+                publicUrl: realtimeRow.image_url,
+                width: null,
+                height: null,
+                sortOrder: 0,
+              }]
+            : []
+      )
+    : []
+  const imageUrl = attachments[0]?.publicUrl ?? realtimeRow.image_url ?? null
+
+  return {
+    ...optimisticMessage,
+    id: realtimeRow.id,
+    userId: realtimeRow.user_id,
+    text: realtimeRow.text ?? '',
+    messageType,
+    imageUrl,
+    attachments,
+    mediaUrl: realtimeRow.media_url ?? null,
+    mediaDurationSeconds: realtimeRow.media_duration_seconds ?? optimisticMessage.mediaDurationSeconds,
+    editedAt: realtimeRow.edited_at ?? null,
+    createdAt: realtimeRow.created_at,
+    createdAtLabel: 'Сейчас',
+    replyToId: realtimeRow.reply_to_id,
+    previewText: getRealtimePreviewText(realtimeRow, optimisticMessage),
+    isOptimistic: false,
+    optimisticStatus: undefined,
+    optimisticServerMessageId: null,
+    optimisticLocalObjectUrl: null,
+    optimisticImageFiles: null,
+    optimisticAttachmentUploadState: null,
+  }
+}
+
+function findMatchingOptimisticTextOrImageMessageForRealtime(
+  messages: ChatMessageItem[],
+  realtimeRow: RealtimeChatMessageRow
+) {
+  if (resolveRealtimeMessageType(realtimeRow) === 'voice') {
+    return null
+  }
+
+  const nextMessageCreatedAtMs = new Date(realtimeRow.created_at).getTime()
+  const nextMessageType = resolveRealtimeMessageType(realtimeRow)
+
+  const matchingOptimisticMessages = messages.filter((message) => {
+    if (!message.isOptimistic || message.messageType === 'voice') {
       return false
     }
 
     const messageCreatedAtMs = new Date(message.createdAt).getTime()
 
     return (
-      message.userId === nextMessage.userId &&
-      message.text === nextMessage.text &&
-      message.imageUrl === nextMessage.imageUrl &&
-      haveSameImageAttachments(message, nextMessage) &&
-      message.replyToId === nextMessage.replyToId &&
+      message.userId === realtimeRow.user_id &&
+      message.text === (realtimeRow.text ?? '') &&
+      message.messageType === nextMessageType &&
+      (realtimeRow.image_url ? message.imageUrl === realtimeRow.image_url : true) &&
+      message.replyToId === realtimeRow.reply_to_id &&
       Math.abs(messageCreatedAtMs - nextMessageCreatedAtMs) <= OPTIMISTIC_MESSAGE_MATCH_WINDOW_MS
     )
   })
@@ -383,6 +478,10 @@ function findMatchingOptimisticTextOrImageMessage(
       const rightCreatedAtMs = Math.abs(new Date(right.createdAt).getTime() - nextMessageCreatedAtMs)
       return leftCreatedAtMs - rightCreatedAtMs
     })[0] ?? null
+}
+
+function createOptimisticMessageId(prefix: 'text' | 'image') {
+  return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
 }
 
 function toggleReactionOnMessage(
@@ -1945,6 +2044,7 @@ export default function ChatSection({
   }>>({})
   const pendingSendPerfByServerMessageIdRef = useRef<Record<string, string>>({})
   const confirmedRenderedServerMessageIdsRef = useRef<Set<string>>(new Set())
+  const optimisticRealtimeFallbackTimeoutsRef = useRef<Record<string, number>>({})
   const longPressTimeoutRef = useRef<number | null>(null)
   const pendingReplyJumpTargetIdRef = useRef<string | null>(null)
   const swipeGestureMessageIdRef = useRef<string | null>(null)
@@ -2626,6 +2726,10 @@ export default function ChatSection({
     pendingImagesRef.current.forEach((image) => {
       revokeObjectUrlIfNeeded(image.previewUrl)
     })
+    Object.values(optimisticRealtimeFallbackTimeoutsRef.current).forEach((timeoutId) => {
+      window.clearTimeout(timeoutId)
+    })
+    optimisticRealtimeFallbackTimeoutsRef.current = {}
     messagesRef.current.forEach((message) => {
       releaseOptimisticClientMedia(message)
     })
@@ -2683,6 +2787,10 @@ export default function ChatSection({
       pendingImagesRef.current.forEach((image) => {
         revokeObjectUrlIfNeeded(image.previewUrl)
       })
+      Object.values(optimisticRealtimeFallbackTimeoutsRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId)
+      })
+      optimisticRealtimeFallbackTimeoutsRef.current = {}
       messagesRef.current.forEach((message) => {
         releaseOptimisticClientMedia(message)
       })
@@ -3389,7 +3497,8 @@ export default function ChatSection({
           ...messageChangeConfig,
         },
         async (payload) => {
-          const nextMessageId = String((payload.new as { id?: string } | null)?.id ?? '')
+          const realtimeRow = toRealtimeChatMessageRow(payload.new)
+          const nextMessageId = realtimeRow?.id ?? ''
           const shouldAutoScroll = isNearBottom()
           const optimisticServerMatch = messagesRef.current.find((message) =>
             message.isOptimistic &&
@@ -3397,7 +3506,7 @@ export default function ChatSection({
             message.optimisticServerMessageId === nextMessageId
           ) ?? null
 
-          if (!nextMessageId) {
+          if (!realtimeRow || !nextMessageId) {
             return
           }
 
@@ -3413,41 +3522,42 @@ export default function ChatSection({
           }
 
           try {
-            const nextMessage = await loadChatMessageItem(nextMessageId, threadId)
-
-            if (!nextMessage) {
-              return
-            }
-
-            const optimisticVoiceMatch = messagesRef.current.find((message) =>
-              message.isOptimistic &&
-              message.messageType === 'voice' &&
-              nextMessage.messageType === 'voice' &&
-              message.userId === nextMessage.userId &&
-              message.mediaUrl === nextMessage.mediaUrl
-            )
+            const optimisticVoiceMatch =
+              optimisticServerMatch?.messageType === 'voice'
+                ? optimisticServerMatch
+                : messagesRef.current.find((message) =>
+                    message.isOptimistic &&
+                    message.messageType === 'voice' &&
+                    resolveRealtimeMessageType(realtimeRow) === 'voice' &&
+                    message.userId === realtimeRow.user_id &&
+                    message.mediaUrl === realtimeRow.media_url
+                  ) ?? null
 
             if (optimisticVoiceMatch) {
-              const traceId = pendingSendPerfByServerMessageIdRef.current[nextMessage.id] ?? null
+              const finalizedMessage = finalizeOptimisticMessageFromRealtimeRow(optimisticVoiceMatch, realtimeRow)
+              clearOptimisticRealtimeFallbackTimeout(nextMessageId)
+              const traceId = pendingSendPerfByServerMessageIdRef.current[finalizedMessage.id] ?? null
               if (traceId) {
                 logChatPerfDebug('realtime-insert-received', {
                   traceId,
-                  messageId: nextMessage.id,
-                  messageType: nextMessage.messageType,
-                  attachmentCount: nextMessage.attachments.length,
+                  messageId: finalizedMessage.id,
+                  messageType: finalizedMessage.messageType,
+                  attachmentCount: finalizedMessage.attachments.length,
                 })
                 logChatPerfDebug('optimistic-reconciliation-complete', {
                   traceId,
-                  messageId: nextMessage.id,
-                  messageType: nextMessage.messageType,
-                  attachmentCount: nextMessage.attachments.length,
+                  messageId: finalizedMessage.id,
+                  messageType: finalizedMessage.messageType,
+                  attachmentCount: finalizedMessage.attachments.length,
                   source: 'realtime-voice-match',
                 })
               }
-              revokeOptimisticVoiceObjectUrl(optimisticVoiceMatch)
+              releaseOptimisticClientMedia(optimisticVoiceMatch)
+              delete pendingSendPerfByOptimisticIdRef.current[optimisticVoiceMatch.id]
+              delete pendingSendPerfByServerMessageIdRef.current[finalizedMessage.id]
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
-                  replaceMessageById(currentMessages, optimisticVoiceMatch.id, nextMessage),
+                  replaceMessageById(currentMessages, optimisticVoiceMatch.id, finalizedMessage),
                   {
                     preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
                   }
@@ -3457,29 +3567,38 @@ export default function ChatSection({
             }
 
             const optimisticTextOrImageMatch =
-              optimisticServerMatch ??
-              findMatchingOptimisticTextOrImageMessage(messagesRef.current, nextMessage)
+              (
+                optimisticServerMatch && optimisticServerMatch.messageType !== 'voice'
+                  ? optimisticServerMatch
+                  : null
+              ) ??
+              findMatchingOptimisticTextOrImageMessageForRealtime(messagesRef.current, realtimeRow)
 
             if (optimisticTextOrImageMatch) {
-              const traceId = pendingSendPerfByServerMessageIdRef.current[nextMessage.id] ?? null
+              const finalizedMessage = finalizeOptimisticMessageFromRealtimeRow(optimisticTextOrImageMatch, realtimeRow)
+              clearOptimisticRealtimeFallbackTimeout(nextMessageId)
+              const traceId = pendingSendPerfByServerMessageIdRef.current[finalizedMessage.id] ?? null
               if (traceId) {
                 logChatPerfDebug('realtime-insert-received', {
                   traceId,
-                  messageId: nextMessage.id,
-                  messageType: nextMessage.messageType,
-                  attachmentCount: nextMessage.attachments.length,
+                  messageId: finalizedMessage.id,
+                  messageType: finalizedMessage.messageType,
+                  attachmentCount: finalizedMessage.attachments.length,
                 })
                 logChatPerfDebug('optimistic-reconciliation-complete', {
                   traceId,
-                  messageId: nextMessage.id,
-                  messageType: nextMessage.messageType,
-                  attachmentCount: nextMessage.attachments.length,
+                  messageId: finalizedMessage.id,
+                  messageType: finalizedMessage.messageType,
+                  attachmentCount: finalizedMessage.attachments.length,
                   source: 'realtime-text-image-match',
                 })
               }
+              releaseOptimisticClientMedia(optimisticTextOrImageMatch)
+              delete pendingSendPerfByOptimisticIdRef.current[optimisticTextOrImageMatch.id]
+              delete pendingSendPerfByServerMessageIdRef.current[finalizedMessage.id]
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
-                  replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, nextMessage),
+                  replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, finalizedMessage),
                   {
                     preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
                   }
@@ -3493,6 +3612,12 @@ export default function ChatSection({
               setPendingNewMessagesCount(0)
             } else {
               setPendingNewMessagesCount((currentCount) => currentCount + 1)
+            }
+
+            const nextMessage = await loadChatMessageItem(nextMessageId, threadId)
+
+            if (!nextMessage) {
+              return
             }
 
             setMessages((currentMessages) =>
@@ -3555,7 +3680,17 @@ export default function ChatSection({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [currentUserId, isNearBottom, keepLatestRenderedMessages, loading, logChatPerfDebug, refreshMessages, threadId])
+  }, [
+    clearOptimisticRealtimeFallbackTimeout,
+    currentUserId,
+    isNearBottom,
+    keepLatestRenderedMessages,
+    loading,
+    logChatPerfDebug,
+    refreshMessages,
+    releaseOptimisticClientMedia,
+    threadId,
+  ])
 
   useEffect(() => {
     if (loading || !currentUserId) {
@@ -4072,6 +4207,49 @@ export default function ChatSection({
     revokeOptimisticImageObjectUrls(message)
   }
 
+  function clearOptimisticRealtimeFallbackTimeout(messageId: string) {
+    const timeoutId = optimisticRealtimeFallbackTimeoutsRef.current[messageId]
+
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId)
+      delete optimisticRealtimeFallbackTimeoutsRef.current[messageId]
+    }
+  }
+
+  function scheduleOptimisticRealtimeFallback(optimisticMessageId: string, serverMessageId: string) {
+    clearOptimisticRealtimeFallbackTimeout(serverMessageId)
+
+    optimisticRealtimeFallbackTimeoutsRef.current[serverMessageId] = window.setTimeout(() => {
+      delete optimisticRealtimeFallbackTimeoutsRef.current[serverMessageId]
+
+      const currentOptimisticMessage = messagesRef.current.find((message) => message.id === optimisticMessageId)
+
+      if (!currentOptimisticMessage?.isOptimistic) {
+        return
+      }
+
+      void loadChatMessageItem(serverMessageId, threadId)
+        .then((nextMessage) => {
+          if (!nextMessage) {
+            return
+          }
+
+          releaseOptimisticClientMedia(currentOptimisticMessage)
+          setMessages((currentMessages) =>
+            keepLatestRenderedMessages(
+              replaceMessageById(currentMessages, optimisticMessageId, nextMessage),
+              {
+                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+              }
+            )
+          )
+        })
+        .catch(() => {
+          // Leave the optimistic message intact if the fallback enrichment fails.
+        })
+    }, 4000)
+  }
+
   function createOptimisticTextOrImageMessage({
     userId,
     text,
@@ -4119,60 +4297,6 @@ export default function ChatSection({
       optimisticLocalObjectUrl: null,
       optimisticImageFiles: attachments.map((attachment) => attachment.file),
       optimisticAttachmentUploadState: normalizedAttachments.length > 0 ? 'uploading' : null,
-    }
-  }
-
-  async function reconcileOptimisticMessageWithServerMessage(
-    optimisticMessage: ChatMessageItem,
-    messageId: string
-  ) {
-    try {
-      const nextMessage = await loadChatMessageItem(messageId, threadId)
-
-      if (!nextMessage) {
-        throw new Error('chat_message_item_missing')
-      }
-
-      const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
-      if (perfEntry) {
-        perfEntry.reconciledAt = performance.now()
-        pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
-        logChatPerfDebug('optimistic-reconciliation-complete', {
-          traceId: perfEntry.traceId,
-          messageId,
-          messageType: nextMessage.messageType,
-          attachmentCount: nextMessage.attachments.length,
-          durationMs: Math.round(perfEntry.reconciledAt - perfEntry.startedAt),
-          source: 'load-message-by-id',
-        })
-      }
-
-      revokeOptimisticImageObjectUrls(optimisticMessage)
-      delete pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
-      setMessages((currentMessages) =>
-        keepLatestRenderedMessages(
-          replaceMessageById(currentMessages, optimisticMessage.id, nextMessage),
-          {
-            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-          }
-        )
-      )
-    } catch {
-      setMessages((currentMessages) =>
-        keepLatestRenderedMessages(
-          currentMessages.map((message) =>
-            message.id === optimisticMessage.id
-              ? {
-                  ...message,
-                  optimisticServerMessageId: messageId,
-                }
-              : message
-          ),
-          {
-            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-          }
-        )
-      )
     }
   }
 
@@ -4382,7 +4506,22 @@ export default function ChatSection({
       if (perfEntry) {
         pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
       }
-      await reconcileOptimisticMessageWithServerMessage(workingMessage, messageId)
+      scheduleOptimisticRealtimeFallback(workingMessage.id, messageId)
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(
+          currentMessages.map((message) =>
+            message.id === workingMessage.id
+              ? {
+                  ...message,
+                  optimisticServerMessageId: messageId,
+                }
+              : message
+          ),
+          {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          }
+        )
+      )
     }
   }
 
