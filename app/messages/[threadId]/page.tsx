@@ -380,8 +380,8 @@ export default function MessageThreadPage() {
       data-chat-isolated-route="true"
       className="flex flex-col overflow-hidden"
       style={{
-        height: 'var(--chat-app-height, 100dvh)',
-        minHeight: 'var(--chat-app-height, 100dvh)',
+        height: 'var(--chat-app-height, 100svh)',
+        minHeight: 'var(--chat-app-height, 100svh)',
       }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">

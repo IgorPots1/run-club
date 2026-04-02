@@ -1,20 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useState } from 'react'
 
 const ISOLATED_VIEWPORT_HEIGHT_CSS_VAR = '--chat-app-height'
+const DEFAULT_ISOLATED_VIEWPORT_HEIGHT = '100svh'
 
 export function useIsolatedViewportHeight() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const isolatedViewportStyle = useMemo(
     () => ({
-      height: `var(${ISOLATED_VIEWPORT_HEIGHT_CSS_VAR}, 100dvh)`,
-      minHeight: `var(${ISOLATED_VIEWPORT_HEIGHT_CSS_VAR}, 100dvh)`,
+      height: `var(${ISOLATED_VIEWPORT_HEIGHT_CSS_VAR}, ${DEFAULT_ISOLATED_VIEWPORT_HEIGHT})`,
+      minHeight: `var(${ISOLATED_VIEWPORT_HEIGHT_CSS_VAR}, ${DEFAULT_ISOLATED_VIEWPORT_HEIGHT})`,
     }),
     []
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === 'undefined') {
       return
     }
@@ -28,7 +29,7 @@ export function useIsolatedViewportHeight() {
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return
     }
