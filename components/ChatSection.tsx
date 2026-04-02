@@ -65,6 +65,12 @@ type PendingComposerImage = {
   height: number | null
 }
 
+type ChatSendErrorGuardState = {
+  hasRequestSuccess: boolean
+  hasResponseOk: boolean
+  hasReconciliationSuccess: boolean
+}
+
 function getChatSendContentKind(options: {
   textLength: number
   imageCount: number
@@ -2479,6 +2485,7 @@ export default function ChatSection({
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const optimisticRealtimeFallbackTimeoutsRef = useRef<Record<string, number>>({})
+  const chatSendErrorGuardStateRef = useRef<Record<string, ChatSendErrorGuardState>>({})
   const longPressTimeoutRef = useRef<number | null>(null)
   const pendingReplyJumpTargetIdRef = useRef<string | null>(null)
   const swipeGestureMessageIdRef = useRef<string | null>(null)
@@ -3866,6 +3873,9 @@ export default function ChatSection({
             if (optimisticVoiceMatch) {
               const finalizedMessage = finalizeOptimisticMessageFromRealtimeRow(optimisticVoiceMatch, realtimeRow)
               clearOptimisticRealtimeFallbackTimeout(nextMessageId)
+              updateChatSendErrorGuardState(optimisticVoiceMatch.id, {
+                hasReconciliationSuccess: true,
+              })
               logChatSendDebug('reconciliation_success', {
                 threadId,
                 optimisticMessageId: optimisticVoiceMatch.id,
@@ -3903,6 +3913,9 @@ export default function ChatSection({
                 finalizedMessage
               )
               clearOptimisticRealtimeFallbackTimeout(nextMessageId)
+              updateChatSendErrorGuardState(optimisticTextOrImageMatch.id, {
+                hasReconciliationSuccess: true,
+              })
               logChatSendDebug('reconciliation_success', {
                 threadId,
                 optimisticMessageId: optimisticTextOrImageMatch.id,
@@ -4101,6 +4114,7 @@ export default function ChatSection({
 
     setSubmitting(true)
     setSubmitError('')
+    let submitOptimisticMessageId: string | null = null
 
     try {
       const editingMessageSnapshot = editingMessage
@@ -4161,6 +4175,7 @@ export default function ChatSection({
           text: trimmedDraftMessage,
           attachments: pendingImages,
         })
+        submitOptimisticMessageId = optimisticMessage.id
 
         setDraftMessage('')
         clearSelectedImages({ revokePreviews: false })
@@ -4184,8 +4199,23 @@ export default function ChatSection({
         })
       }
     } catch (error) {
+      const guardState = getChatSendErrorGuardState(submitOptimisticMessageId)
+      logChatSendDebug('error_guard_check', {
+        threadId,
+        optimisticMessageId: submitOptimisticMessageId,
+        hasRequestSuccess: guardState.hasRequestSuccess,
+        hasResponseOk: guardState.hasResponseOk,
+        hasReconciliationSuccess: guardState.hasReconciliationSuccess,
+      })
+
+      if (guardState.hasRequestSuccess) {
+        setSubmitError('')
+        return
+      }
+
       logChatSendDebugError('ui_error_path_trigger', {
         threadId,
+        optimisticMessageId: submitOptimisticMessageId,
         category: getChatSendDebugErrorCategory(error),
         error: getChatSendDebugErrorDetails(error),
       })
@@ -4627,6 +4657,9 @@ export default function ChatSection({
           const mergedMessage = mergeMessageWithPendingMediaTaskState(
             mergeServerMessageWithOptimisticImageState(currentOptimisticMessage, nextMessage)
           )
+          updateChatSendErrorGuardState(optimisticMessageId, {
+            hasReconciliationSuccess: true,
+          })
           logChatSendDebug('reconciliation_success', {
             threadId,
             optimisticMessageId,
@@ -4768,6 +4801,11 @@ export default function ChatSection({
     let serverMessageId = getOptimisticServerMessageId(workingMessage)
 
     if (!serverMessageId) {
+      chatSendErrorGuardStateRef.current[workingMessage.id] = {
+        hasRequestSuccess: false,
+        hasResponseOk: false,
+        hasReconciliationSuccess: false,
+      }
       logChatSendDebug('request_start', {
         threadId,
         optimisticMessageId: workingMessage.id,
@@ -4831,6 +4869,11 @@ export default function ChatSection({
       }
 
       serverMessageId = messageId
+      updateChatSendErrorGuardState(workingMessage.id, {
+        hasRequestSuccess: true,
+        hasResponseOk: true,
+      })
+      setSubmitError('')
       logChatSendDebug('request_success', {
         threadId,
         optimisticMessageId: workingMessage.id,
@@ -5056,6 +5099,11 @@ export default function ChatSection({
       durationSeconds,
     })
     const optimisticMessage = createOptimisticVoiceMessage(file, currentUserId, durationSeconds)
+    chatSendErrorGuardStateRef.current[optimisticMessage.id] = {
+      hasRequestSuccess: false,
+      hasResponseOk: false,
+      hasReconciliationSuccess: false,
+    }
     const shouldAutoScroll = isNearBottom()
 
     if (shouldAutoScroll) {
@@ -5103,6 +5151,11 @@ export default function ChatSection({
         throw new Error(`voice_insert_failed:${insertError.message}`)
       }
 
+      updateChatSendErrorGuardState(optimisticMessage.id, {
+        hasRequestSuccess: true,
+        hasResponseOk: true,
+      })
+      setSubmitError('')
       logChatSendDebug('request_success', {
         threadId,
         optimisticMessageId: optimisticMessage.id,
@@ -5114,6 +5167,21 @@ export default function ChatSection({
       setReplyingToMessage(null)
       cleanupVoiceRecordingResources()
     } catch (error) {
+      const guardState = getChatSendErrorGuardState(optimisticMessage.id)
+      logChatSendDebug('error_guard_check', {
+        threadId,
+        optimisticMessageId: optimisticMessage.id,
+        hasRequestSuccess: guardState.hasRequestSuccess,
+        hasResponseOk: guardState.hasResponseOk,
+        hasReconciliationSuccess: guardState.hasReconciliationSuccess,
+      })
+
+      if (guardState.hasRequestSuccess) {
+        setSubmitError('')
+        cleanupVoiceRecordingResources()
+        return
+      }
+
       setMessages((currentMessages) => {
         const optimisticMatch = currentMessages.find((message) => message.id === optimisticMessage.id)
 
@@ -5125,8 +5193,10 @@ export default function ChatSection({
       })
       const errorDetails = getErrorDetails(error)
       console.error('Failed to send voice message', errorDetails)
+
       logChatSendDebugError('ui_error_path_trigger', {
         threadId,
+        optimisticMessageId: optimisticMessage.id,
         category: getChatSendDebugErrorCategory(error),
         error: getChatSendDebugErrorDetails(error),
         contentKind: 'voice',
@@ -5453,6 +5523,37 @@ export default function ChatSection({
       })
     }
   }, [])
+
+  const getChatSendErrorGuardState = useCallback((optimisticMessageId: string | null | undefined): ChatSendErrorGuardState => {
+    if (!optimisticMessageId) {
+      return {
+        hasRequestSuccess: false,
+        hasResponseOk: false,
+        hasReconciliationSuccess: false,
+      }
+    }
+
+    return chatSendErrorGuardStateRef.current[optimisticMessageId] ?? {
+      hasRequestSuccess: false,
+      hasResponseOk: false,
+      hasReconciliationSuccess: false,
+    }
+  }, [])
+
+  const updateChatSendErrorGuardState = useCallback((
+    optimisticMessageId: string | null | undefined,
+    nextState: Partial<ChatSendErrorGuardState>
+  ) => {
+    if (!optimisticMessageId) {
+      return
+    }
+
+    const currentState = getChatSendErrorGuardState(optimisticMessageId)
+    chatSendErrorGuardStateRef.current[optimisticMessageId] = {
+      ...currentState,
+      ...nextState,
+    }
+  }, [getChatSendErrorGuardState])
 
   const handleCopyChatSendDebug = useCallback(async () => {
     const exportPayload = visibleChatSendDebugEvents.map((event) => ({
