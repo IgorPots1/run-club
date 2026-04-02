@@ -174,6 +174,34 @@ function parseDateValue(dateValue: string) {
   return parsedDate
 }
 
+function buildManualRunCreatedAt(dateValue: string) {
+  const [yearString, monthString, dayString] = dateValue.split('-')
+  const year = Number(yearString)
+  const month = Number(monthString)
+  const day = Number(dayString)
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+
+  const now = new Date()
+  const createdAt = new Date(
+    year,
+    month - 1,
+    day,
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds()
+  )
+
+  if (Number.isNaN(createdAt.getTime())) {
+    return null
+  }
+
+  return createdAt
+}
+
 function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 12)
 }
@@ -808,8 +836,8 @@ export default function RunsPage() {
       return
     }
 
-    const createdAtDate = new Date(`${selectedDate}T12:00:00`)
-    if (Number.isNaN(createdAtDate.getTime())) {
+    const createdAtDate = buildManualRunCreatedAt(selectedDate)
+    if (!createdAtDate || Number.isNaN(createdAtDate.getTime())) {
       setError('Укажите корректную дату тренировки')
       return
     }
