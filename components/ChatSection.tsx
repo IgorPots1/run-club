@@ -1642,12 +1642,15 @@ export default function ChatSection({
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const initialBottomLockQuietTimeoutRef = useRef<number | null>(null)
+  const initialBottomLockSafetyTimeoutRef = useRef<number | null>(null)
+  const initialBottomLockStabilityFrameRef = useRef<number | null>(null)
   const initialBottomLockProgrammaticFrameRef = useRef<number | null>(null)
   const initialBottomLockProgrammaticResetFrameRef = useRef<number | null>(null)
   const initialBottomLockNextSourceRef = useRef<string | null>(null)
   const initialBottomLockUserCancelledRef = useRef(false)
   const initialBottomLockUserScrollIntentRef = useRef(false)
+  const initialBottomLockLastGeometryRef = useRef<{ scrollHeight: number; clientHeight: number } | null>(null)
+  const initialBottomLockStableSampleCountRef = useRef(0)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldCancelVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
@@ -1710,7 +1713,8 @@ export default function ChatSection({
   const isCurrentUserSelectedInReaction = Boolean(
     currentUserId && selectedReaction?.userIds.includes(currentUserId)
   )
-  const initialBottomLockQuietMs = 200
+  const initialBottomLockRequiredStableSamples = 3
+  const initialBottomLockSafetyTimeoutMs = 4000
   const chatOpenDebugStateRef = useRef({
     threadId: threadId || null,
     pendingInitialScroll,
@@ -1762,14 +1766,19 @@ export default function ChatSection({
     })
   }, [])
 
-  const clearInitialBottomLockQuietTimeout = useCallback(() => {
-    if (initialBottomLockQuietTimeoutRef.current !== null) {
-      window.clearTimeout(initialBottomLockQuietTimeoutRef.current)
-      initialBottomLockQuietTimeoutRef.current = null
+  const clearInitialBottomLockSafetyTimeout = useCallback(() => {
+    if (initialBottomLockSafetyTimeoutRef.current !== null) {
+      window.clearTimeout(initialBottomLockSafetyTimeoutRef.current)
+      initialBottomLockSafetyTimeoutRef.current = null
     }
   }, [])
 
   const clearInitialBottomLockFrames = useCallback(() => {
+    if (initialBottomLockStabilityFrameRef.current !== null) {
+      window.cancelAnimationFrame(initialBottomLockStabilityFrameRef.current)
+      initialBottomLockStabilityFrameRef.current = null
+    }
+
     if (initialBottomLockProgrammaticFrameRef.current !== null) {
       window.cancelAnimationFrame(initialBottomLockProgrammaticFrameRef.current)
       initialBottomLockProgrammaticFrameRef.current = null
@@ -1782,20 +1791,22 @@ export default function ChatSection({
   }, [])
 
   const deactivateInitialBottomLock = useCallback((reason = 'unspecified', preserveUserCancelled = false) => {
-    clearInitialBottomLockQuietTimeout()
+    clearInitialBottomLockSafetyTimeout()
     clearInitialBottomLockFrames()
 
     if (!preserveUserCancelled) {
       initialBottomLockUserCancelledRef.current = false
     }
     initialBottomLockUserScrollIntentRef.current = false
+    initialBottomLockLastGeometryRef.current = null
+    initialBottomLockStableSampleCountRef.current = 0
 
     logChatOpenDebug('bottom-lock-deactivate', {
       reason,
       preserveUserCancelled,
     })
     setIsInitialBottomLockActive(false)
-  }, [clearInitialBottomLockFrames, clearInitialBottomLockQuietTimeout, logChatOpenDebug])
+  }, [clearInitialBottomLockFrames, clearInitialBottomLockSafetyTimeout, logChatOpenDebug])
 
   const keepLatestRenderedMessages = useCallback((
     nextMessages: ChatMessageItem[],
@@ -1875,20 +1886,115 @@ export default function ChatSection({
     })
   }, [logChatOpenDebug])
 
-  const scheduleInitialBottomLockRelease = useCallback(() => {
-    clearInitialBottomLockQuietTimeout()
+  const getInitialBottomLockGeometry = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current
 
-    initialBottomLockQuietTimeoutRef.current = window.setTimeout(() => {
+    if (!scrollContainer) {
+      return null
+    }
+
+    return {
+      scrollHeight: scrollContainer.scrollHeight,
+      clientHeight: scrollContainer.clientHeight,
+    }
+  }, [])
+
+  const scheduleInitialBottomLockSafetyTimeout = useCallback(() => {
+    clearInitialBottomLockSafetyTimeout()
+
+    initialBottomLockSafetyTimeoutRef.current = window.setTimeout(() => {
       if (!initialBottomLockUserCancelledRef.current) {
-        deactivateInitialBottomLock('quiet-period-complete')
+        deactivateInitialBottomLock('safety-timeout')
       }
-    }, initialBottomLockQuietMs)
-  }, [clearInitialBottomLockQuietTimeout, deactivateInitialBottomLock, initialBottomLockQuietMs])
+    }, initialBottomLockSafetyTimeoutMs)
+  }, [clearInitialBottomLockSafetyTimeout, deactivateInitialBottomLock, initialBottomLockSafetyTimeoutMs])
+
+  const scheduleInitialBottomLockStabilityCheck = useCallback((source = 'unspecified') => {
+    if (initialBottomLockUserCancelledRef.current) {
+      return
+    }
+
+    if (initialBottomLockStabilityFrameRef.current !== null) {
+      window.cancelAnimationFrame(initialBottomLockStabilityFrameRef.current)
+    }
+
+    initialBottomLockStabilityFrameRef.current = window.requestAnimationFrame(() => {
+      initialBottomLockStabilityFrameRef.current = null
+
+      if (initialBottomLockUserCancelledRef.current) {
+        return
+      }
+
+      const geometry = getInitialBottomLockGeometry()
+
+      if (!geometry) {
+        return
+      }
+
+      const previousGeometry = initialBottomLockLastGeometryRef.current
+      const geometryChanged = !previousGeometry ||
+        previousGeometry.scrollHeight !== geometry.scrollHeight ||
+        previousGeometry.clientHeight !== geometry.clientHeight
+
+      if (geometryChanged) {
+        initialBottomLockLastGeometryRef.current = geometry
+        initialBottomLockStableSampleCountRef.current = 0
+        logChatOpenDebug('bottom-lock-stability-reset', {
+          source,
+          stableSampleCount: 0,
+          observedScrollHeight: geometry.scrollHeight,
+          observedClientHeight: geometry.clientHeight,
+        })
+        scheduleInitialBottomLockStabilityCheck('geometry-changed')
+        return
+      }
+
+      initialBottomLockStableSampleCountRef.current += 1
+      logChatOpenDebug('bottom-lock-stability-sample', {
+        source,
+        stableSampleCount: initialBottomLockStableSampleCountRef.current,
+        observedScrollHeight: geometry.scrollHeight,
+        observedClientHeight: geometry.clientHeight,
+      })
+
+      if (initialBottomLockStableSampleCountRef.current >= initialBottomLockRequiredStableSamples) {
+        deactivateInitialBottomLock('stable-geometry')
+        return
+      }
+
+      scheduleInitialBottomLockStabilityCheck('stable-sample')
+    })
+  }, [
+    deactivateInitialBottomLock,
+    getInitialBottomLockGeometry,
+    initialBottomLockRequiredStableSamples,
+    logChatOpenDebug,
+  ])
 
   const keepInitialBottomLockAnchored = useCallback((source = 'unspecified') => {
     if (initialBottomLockUserCancelledRef.current) {
       logChatOpenDebug('bottom-lock-reanchor-skipped', { source, reason: 'user-cancelled' })
       return
+    }
+
+    const geometry = getInitialBottomLockGeometry()
+    const previousGeometry = initialBottomLockLastGeometryRef.current
+    const geometryChanged = !previousGeometry ||
+      !geometry ||
+      previousGeometry.scrollHeight !== geometry.scrollHeight ||
+      previousGeometry.clientHeight !== geometry.clientHeight
+
+    if (geometry) {
+      initialBottomLockLastGeometryRef.current = geometry
+    }
+
+    if (geometryChanged) {
+      initialBottomLockStableSampleCountRef.current = 0
+      logChatOpenDebug('bottom-lock-geometry-changed', {
+        source,
+        observedScrollHeight: geometry?.scrollHeight ?? null,
+        observedClientHeight: geometry?.clientHeight ?? null,
+      })
     }
 
     clearInitialBottomLockFrames()
@@ -1900,8 +2006,16 @@ export default function ChatSection({
         initialBottomLockProgrammaticResetFrameRef.current = null
       })
     })
-    scheduleInitialBottomLockRelease()
-  }, [clearInitialBottomLockFrames, logChatOpenDebug, scheduleInitialBottomLockRelease, scrollPageToBottom])
+    scheduleInitialBottomLockSafetyTimeout()
+    scheduleInitialBottomLockStabilityCheck(source)
+  }, [
+    clearInitialBottomLockFrames,
+    getInitialBottomLockGeometry,
+    logChatOpenDebug,
+    scheduleInitialBottomLockSafetyTimeout,
+    scheduleInitialBottomLockStabilityCheck,
+    scrollPageToBottom,
+  ])
 
   const handleMessageImageLoad = useCallback(() => {
     logChatOpenDebug('image-load')
@@ -2386,10 +2500,12 @@ export default function ChatSection({
 
     initialBottomLockUserCancelledRef.current = false
     initialBottomLockNextSourceRef.current = 'initial-open'
+    initialBottomLockLastGeometryRef.current = getInitialBottomLockGeometry()
+    initialBottomLockStableSampleCountRef.current = 0
     logChatOpenDebug('bottom-lock-activate', { source: 'initial-open' })
     setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
-  }, [loading, logChatOpenDebug, messages.length, pendingInitialScroll])
+  }, [getInitialBottomLockGeometry, loading, logChatOpenDebug, messages.length, pendingInitialScroll])
 
   useLayoutEffect(() => {
     if (!isInitialBottomLockActive || loading || messages.length === 0) {
