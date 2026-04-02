@@ -1,6 +1,11 @@
 import { formatRunDateTimeLabel } from './format'
 import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
+import {
+  createChatSendDebugError,
+  logChatSendDebug,
+  logChatSendDebugError,
+} from './chatSendDebug'
 
 export const CHAT_MESSAGE_MAX_LENGTH = 500
 export const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
@@ -546,10 +551,61 @@ type CreateVoiceChatMessageApiPayload = {
   threadId?: string | null
 }
 
+function getApiPayloadAttachmentKinds(
+  payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
+) {
+  if (payload.kind === 'voice') {
+    return ['voice']
+  }
+
+  return Array.isArray(payload.attachments) && payload.attachments.length > 0 ? ['image'] : []
+}
+
+function getApiPayloadAttachmentCount(
+  payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
+) {
+  if (payload.kind === 'voice') {
+    return 0
+  }
+
+  return Array.isArray(payload.attachments) && payload.attachments.length > 0
+    ? payload.attachments.length
+    : Math.max(0, Math.round(payload.pendingAttachmentCount ?? 0))
+}
+
+function getApiPayloadTextLength(
+  payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
+) {
+  return payload.kind === 'voice' ? 0 : payload.text?.trim().length ?? 0
+}
+
+function parseJsonResponse<T>(rawText: string): T | null {
+  if (!rawText.trim()) {
+    return null
+  }
+
+  return JSON.parse(rawText) as T
+}
+
 async function createChatMessageViaApi(
   payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
 ): Promise<CreateChatMessageApiResult> {
+  const requestStartedAt = Date.now()
+  const requestMeta = {
+    kind: payload.kind ?? 'text',
+    threadId: payload.threadId ?? null,
+    textLength: getApiPayloadTextLength(payload),
+    attachmentCount: getApiPayloadAttachmentCount(payload),
+    attachmentKinds: getApiPayloadAttachmentKinds(payload),
+    pendingAttachmentCount:
+      payload.kind === 'voice'
+        ? 0
+        : Math.max(0, Math.round(payload.pendingAttachmentCount ?? 0)),
+  }
+
   try {
+    logChatSendDebug('request_start', requestMeta)
+
     const response = await fetch('/api/chat/messages', {
       method: 'POST',
       headers: {
@@ -558,15 +614,52 @@ async function createChatMessageViaApi(
       body: JSON.stringify(payload),
     })
 
-    const result = await response.json().catch(() => null) as
+    const rawText = await response.text()
+    logChatSendDebug('response_status', {
+      ...requestMeta,
+      status: response.status,
+      ok: response.ok,
+      elapsedMs: Date.now() - requestStartedAt,
+    })
+
+    let result:
       | {
           error?: string
+          ok?: boolean
           messageId?: string
           message?: {
             id?: string
           } | null
         }
-      | null
+      | null = null
+
+    try {
+      result = parseJsonResponse(rawText)
+    } catch (error) {
+      logChatSendDebugError('response_parse_failed', {
+        ...requestMeta,
+        status: response.status,
+        ok: response.ok,
+        rawText,
+        parseError: error instanceof Error ? error.message : 'invalid_json',
+      })
+
+      return {
+        error: createChatSendDebugError('invalid_json', 'chat_message_invalid_json', {
+          ...requestMeta,
+          status: response.status,
+          rawText,
+        }),
+        messageId: null,
+      }
+    }
+
+    logChatSendDebug('parsed_response', {
+      ...requestMeta,
+      status: response.status,
+      ok: response.ok,
+      result,
+    })
 
     const responseMessageId = typeof result?.messageId === 'string'
       ? result.messageId
@@ -575,8 +668,42 @@ async function createChatMessageViaApi(
         : null
 
     if (!response.ok) {
+      logChatSendDebugError('response_error_body', {
+        ...requestMeta,
+        status: response.status,
+        result,
+        rawText,
+      })
+
       return {
-        error: new Error(result?.error ?? 'chat_message_create_failed'),
+        error: createChatSendDebugError('non_200_response', result?.error ?? 'chat_message_create_failed', {
+          ...requestMeta,
+          status: response.status,
+          result,
+          rawText,
+        }),
+        messageId: null,
+      }
+    }
+
+    if (result?.ok === false) {
+      return {
+        error: createChatSendDebugError('api_error', result.error ?? 'chat_message_create_failed', {
+          ...requestMeta,
+          status: response.status,
+          result,
+        }),
+        messageId: responseMessageId,
+      }
+    }
+
+    if (!responseMessageId) {
+      return {
+        error: createChatSendDebugError('api_error', 'chat_message_id_missing', {
+          ...requestMeta,
+          status: response.status,
+          result,
+        }),
         messageId: null,
       }
     }
@@ -586,8 +713,22 @@ async function createChatMessageViaApi(
       messageId: responseMessageId,
     }
   } catch (error) {
+    logChatSendDebugError('request_failed', {
+      ...requestMeta,
+      error,
+      elapsedMs: Date.now() - requestStartedAt,
+    })
+
     return {
-      error: error instanceof Error ? error : new Error('chat_message_create_failed'),
+      error: error instanceof Error
+        ? createChatSendDebugError('network_error', error.message, {
+            ...requestMeta,
+            originalError: error,
+          })
+        : createChatSendDebugError('network_error', 'chat_message_create_failed', {
+            ...requestMeta,
+            rawError: error,
+          }),
       messageId: null,
     }
   }
@@ -635,7 +776,18 @@ export async function attachImageToChatMessage(
   messageId: string,
   payload: AttachChatMessageImageApiPayload
 ): Promise<{ error: Error | null; publicUrl?: string | null }> {
+  const requestStartedAt = Date.now()
+  const requestMeta = {
+    messageId,
+    threadId: payload.threadId ?? null,
+    sortOrder: payload.sortOrder,
+    attachmentType: payload.type,
+    storagePath: payload.storagePath,
+  }
+
   try {
+    logChatSendDebug('attachment_request_start', requestMeta)
+
     const response = await fetch(`/api/chat/messages/${messageId}/attachments`, {
       method: 'POST',
       headers: {
@@ -644,16 +796,74 @@ export async function attachImageToChatMessage(
       body: JSON.stringify(payload),
     })
 
-    const result = await response.json().catch(() => null) as
+    const rawText = await response.text()
+    logChatSendDebug('attachment_response_status', {
+      ...requestMeta,
+      status: response.status,
+      ok: response.ok,
+      elapsedMs: Date.now() - requestStartedAt,
+    })
+
+    let result:
       | {
           error?: string
+          ok?: boolean
           publicUrl?: string | null
         }
-      | null
+      | null = null
+
+    try {
+      result = parseJsonResponse(rawText)
+    } catch (error) {
+      logChatSendDebugError('attachment_response_parse_failed', {
+        ...requestMeta,
+        status: response.status,
+        ok: response.ok,
+        rawText,
+        parseError: error instanceof Error ? error.message : 'invalid_json',
+      })
+
+      return {
+        error: createChatSendDebugError('invalid_json', 'chat_message_attachment_invalid_json', {
+          ...requestMeta,
+          status: response.status,
+          rawText,
+        }),
+      }
+    }
+
+    logChatSendDebug('attachment_parsed_response', {
+      ...requestMeta,
+      status: response.status,
+      ok: response.ok,
+      result,
+    })
 
     if (!response.ok) {
+      logChatSendDebugError('attachment_response_error_body', {
+        ...requestMeta,
+        status: response.status,
+        result,
+        rawText,
+      })
+
       return {
-        error: new Error(result?.error ?? 'chat_message_attachment_failed'),
+        error: createChatSendDebugError('non_200_response', result?.error ?? 'chat_message_attachment_failed', {
+          ...requestMeta,
+          status: response.status,
+          result,
+          rawText,
+        }),
+      }
+    }
+
+    if (result?.ok === false) {
+      return {
+        error: createChatSendDebugError('api_error', result.error ?? 'chat_message_attachment_failed', {
+          ...requestMeta,
+          status: response.status,
+          result,
+        }),
       }
     }
 
@@ -662,8 +872,22 @@ export async function attachImageToChatMessage(
       publicUrl: typeof result?.publicUrl === 'string' ? result.publicUrl : null,
     }
   } catch (error) {
+    logChatSendDebugError('attachment_request_failed', {
+      ...requestMeta,
+      error,
+      elapsedMs: Date.now() - requestStartedAt,
+    })
+
     return {
-      error: error instanceof Error ? error : new Error('chat_message_attachment_failed'),
+      error: error instanceof Error
+        ? createChatSendDebugError('network_error', error.message, {
+            ...requestMeta,
+            originalError: error,
+          })
+        : createChatSendDebugError('network_error', 'chat_message_attachment_failed', {
+            ...requestMeta,
+            rawError: error,
+          }),
     }
   }
 }
@@ -810,11 +1034,26 @@ export async function uploadChatImage(userId: string, file: File, threadId?: str
   const safeExtension = fileExtension.replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${userId}/${threadId ?? 'club'}/${createRandomUploadUuid()}.${safeExtension}`
   const dimensions = await getImageFileDimensions(file)
+  logChatSendDebug('attachment_upload_start', {
+    userId,
+    threadId: threadId ?? null,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+    storagePath: path,
+  })
   const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, {
     contentType: file.type || `image/${safeExtension}`,
   })
 
   if (uploadError) {
+    logChatSendDebugError('attachment_upload_failed', {
+      userId,
+      threadId: threadId ?? null,
+      fileName: file.name,
+      storagePath: path,
+      error: uploadError.message,
+    })
     console.error('Failed to upload chat image', {
       message: uploadError.message,
       status: 'status' in uploadError ? uploadError.status : undefined,
@@ -825,6 +1064,15 @@ export async function uploadChatImage(userId: string, file: File, threadId?: str
   }
 
   const { data } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path)
+  logChatSendDebug('attachment_upload_success', {
+    userId,
+    threadId: threadId ?? null,
+    fileName: file.name,
+    storagePath: path,
+    publicUrl: data.publicUrl,
+    width: dimensions.width,
+    height: dimensions.height,
+  })
   return {
     storagePath: path,
     publicUrl: data.publicUrl,

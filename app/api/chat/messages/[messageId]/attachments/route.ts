@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 import { decodeRequestUserId } from '@/lib/server/chatRequestAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
@@ -106,14 +107,28 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ messageId: string }> }
 ) {
+  const routeStartedAt = Date.now()
   const userId = decodeRequestUserId(request)
   const body = await request.json().catch(() => null) as ChatMessageAttachmentRequestBody | null
   const params = await context.params
   const messageId = params.messageId?.trim() ?? ''
   const threadId = body?.threadId?.trim() || null
   const sortOrder = typeof body?.sortOrder === 'number' ? Math.round(body.sortOrder) : -1
+  const routeMeta = {
+    userId: userId ?? null,
+    messageId,
+    threadId,
+    sortOrder,
+    attachmentType: body?.type ?? null,
+  }
+
+  logChatSendDebug('attachment_route_enter', routeMeta)
 
   if (!userId) {
+    logChatSendDebug('attachment_auth_resolved', {
+      ...routeMeta,
+      authenticated: false,
+    })
     return NextResponse.json(
       {
         ok: false,
@@ -124,6 +139,10 @@ export async function POST(
   }
 
   if (!messageId) {
+    logChatSendDebugError('attachment_catch_error', {
+      ...routeMeta,
+      error: 'invalid_message_id',
+    })
     return NextResponse.json(
       {
         ok: false,
@@ -134,6 +153,10 @@ export async function POST(
   }
 
   try {
+    logChatSendDebug('attachment_auth_resolved', {
+      ...routeMeta,
+      authenticated: true,
+    })
     if (body?.type !== 'image') {
       throw new Error('invalid_chat_attachment_type')
     }
@@ -146,6 +169,12 @@ export async function POST(
     const validatedWidth = sanitizeAttachmentDimension(body?.width)
     const validatedHeight = sanitizeAttachmentDimension(body?.height)
     const publicUrl = getChatMediaPublicUrl(validatedStoragePath)
+    logChatSendDebug('attachment_payload_validated', {
+      ...routeMeta,
+      storagePath: validatedStoragePath,
+      width: validatedWidth,
+      height: validatedHeight,
+    })
 
     const supabaseAdmin = createSupabaseAdminClient()
     const { data: message, error: messageError } = await supabaseAdmin
@@ -174,6 +203,11 @@ export async function POST(
       throw new Error('thread_access_denied')
     }
 
+    logChatSendDebug('attachment_message_lookup_success', {
+      ...routeMeta,
+      elapsedMs: Date.now() - routeStartedAt,
+    })
+
     const { error: attachmentError } = await supabaseAdmin
       .from('chat_message_attachments')
       .upsert(
@@ -195,6 +229,12 @@ export async function POST(
       throw attachmentError
     }
 
+    logChatSendDebug('attachment_upsert_success', {
+      ...routeMeta,
+      storagePath: validatedStoragePath,
+      publicUrl,
+    })
+
     const { error: touchError } = await supabaseAdmin
       .from('chat_messages')
       .update({
@@ -207,6 +247,13 @@ export async function POST(
       throw touchError
     }
 
+    logChatSendDebug('attachment_response_ready', {
+      ...routeMeta,
+      storagePath: validatedStoragePath,
+      publicUrl,
+      elapsedMs: Date.now() - routeStartedAt,
+    })
+
     return NextResponse.json({
       ok: true,
       storagePath: validatedStoragePath,
@@ -215,6 +262,11 @@ export async function POST(
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'chat_message_attachment_failed'
+    logChatSendDebugError('attachment_catch_error', {
+      ...routeMeta,
+      error: message,
+      elapsedMs: Date.now() - routeStartedAt,
+    })
     return NextResponse.json(
       {
         ok: false,

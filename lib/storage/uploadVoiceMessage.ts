@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 
 const CHAT_VOICE_BUCKET = 'chat-voice'
 
@@ -53,6 +54,13 @@ export async function uploadVoiceMessage({
   // Use a user-owned top-level namespace for new uploads. Legacy
   // voice/{userId}/... paths remain readable via storage policies.
   const path = `${safeUserId}/${timestamp}-${randomSegment}.webm`
+  logChatSendDebug('voice_upload_start', {
+    userId,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+    storagePath: path,
+  })
 
   const { error: uploadError } = await supabase.storage.from(CHAT_VOICE_BUCKET).upload(path, file, {
     contentType: file.type || 'audio/webm',
@@ -60,6 +68,11 @@ export async function uploadVoiceMessage({
   })
 
   if (uploadError) {
+    logChatSendDebugError('voice_upload_failed', {
+      userId,
+      storagePath: path,
+      error: uploadError.message,
+    })
     console.error('Failed to upload voice message file', {
       message: uploadError.message,
       status: 'status' in uploadError ? uploadError.status : undefined,
@@ -68,6 +81,10 @@ export async function uploadVoiceMessage({
     })
     throw new Error(`voice_upload_failed:${uploadError.message}`)
   }
+  logChatSendDebug('voice_upload_success', {
+    userId,
+    storagePath: path,
+  })
   return {
     path,
     success: true,

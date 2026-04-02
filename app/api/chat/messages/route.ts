@@ -1,5 +1,6 @@
 import { after, NextResponse } from 'next/server'
 import { createAppEvents } from '@/lib/events/createAppEvent'
+import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { decodeRequestUserId } from '@/lib/server/chatRequestAuth'
@@ -784,6 +785,7 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
 }
 
 export async function POST(request: Request) {
+  const routeStartedAt = Date.now()
   const [body, userId] = await Promise.all([
     request.json().catch(() => null) as Promise<CreateChatMessageRequestBody | null>,
     Promise.resolve(decodeRequestUserId(request)),
@@ -797,8 +799,55 @@ export async function POST(request: Request) {
   const pendingAttachmentCount = kind === 'voice'
     ? 0
     : Math.max(0, Math.min(CHAT_MESSAGE_MAX_ATTACHMENTS, Math.round(textBody?.pendingAttachmentCount ?? 0)))
+  const routeMeta = {
+    kind,
+    userId: userId ?? null,
+    threadId,
+    textLength: kind === 'voice' ? 0 : textBody?.text?.trim().length ?? 0,
+    attachmentCount: kind === 'voice'
+      ? 0
+      : Array.isArray(textBody?.attachments) && textBody.attachments.length > 0
+        ? textBody.attachments.length
+        : pendingAttachmentCount,
+    attachmentKinds:
+      kind === 'voice'
+        ? ['voice']
+        : (
+            Array.isArray(textBody?.attachments) && textBody.attachments.length > 0
+              ? ['image']
+              : pendingAttachmentCount > 0 || Boolean(textBody?.imageUrl?.trim())
+                ? ['image']
+                : []
+          ),
+  }
+  let lastPhaseAt = routeStartedAt
+  const logPhase = (phase: string, payload: Record<string, unknown> = {}) => {
+    const now = Date.now()
+    logChatSendDebug(phase, {
+      ...routeMeta,
+      ...payload,
+      elapsedMs: now - routeStartedAt,
+      phaseDurationMs: now - lastPhaseAt,
+    })
+    lastPhaseAt = now
+  }
+  const logPhaseError = (phase: string, payload: Record<string, unknown> = {}) => {
+    const now = Date.now()
+    logChatSendDebugError(phase, {
+      ...routeMeta,
+      ...payload,
+      elapsedMs: now - routeStartedAt,
+      phaseDurationMs: now - lastPhaseAt,
+    })
+    lastPhaseAt = now
+  }
+
+  logPhase('route_enter')
 
   if (!userId) {
+    logPhase('auth_resolved', {
+      authenticated: false,
+    })
     return NextResponse.json(
       {
         ok: false,
@@ -810,6 +859,9 @@ export async function POST(request: Request) {
 
   try {
     const supabaseAdmin = createSupabaseAdminClient()
+    logPhase('auth_resolved', {
+      authenticated: true,
+    })
     const { safeReplyToId } = await validateChatMessageRequest(supabaseAdmin, userId, threadId, replyToId)
     let validatedTextAttachments: ValidatedImageAttachment[] = []
 
@@ -866,6 +918,23 @@ export async function POST(request: Request) {
             }
           })()
 
+    logPhase('payload_validated', {
+      messageType: insertPayload.message_type,
+      attachmentCount: kind === 'voice' ? 0 : Math.max(validatedTextAttachments.length, pendingAttachmentCount),
+      attachmentKinds:
+        kind === 'voice'
+          ? ['voice']
+          : validatedTextAttachments.length > 0 || pendingAttachmentCount > 0 || Boolean(insertPayload.image_url)
+            ? ['image']
+            : [],
+    })
+    logPhase('thread_access_checked', {
+      safeReplyToId,
+    })
+
+    logPhase('message_insert_start', {
+      messageType: insertPayload.message_type,
+    })
     const { data, error } = await supabaseAdmin
       .from('chat_messages')
       .insert(insertPayload)
@@ -877,6 +946,16 @@ export async function POST(request: Request) {
     }
 
     const message = toInsertedMessageRow(data as { id: string; thread_id?: string | null }, insertPayload)
+    logPhase('message_insert_success', {
+      messageId: message.id,
+    })
+
+    if (kind === 'text') {
+      logPhase('attachment_phase_start', {
+        attachmentCount: validatedTextAttachments.length,
+        pendingAttachmentCount,
+      })
+    }
 
     if (kind === 'text' && validatedTextAttachments.length > 0) {
       const { error: attachmentsInsertError } = await supabaseAdmin
@@ -904,7 +983,22 @@ export async function POST(request: Request) {
       }
     }
 
+    if (kind === 'text') {
+      logPhase('attachment_phase_result', {
+        attachmentCount: validatedTextAttachments.length,
+        pendingAttachmentCount,
+        attachedImmediately: validatedTextAttachments.length,
+      })
+    }
+
     after(async () => {
+      const afterStartedAt = Date.now()
+      logChatSendDebug('after_fanout_start', {
+        ...routeMeta,
+        messageId: message.id,
+        elapsedMs: afterStartedAt - routeStartedAt,
+      })
+
       if (kind === 'text' && validatedTextAttachments.length > 0) {
         const { error: touchMessageError } = await supabaseAdmin
           .from('chat_messages')
@@ -923,14 +1017,28 @@ export async function POST(request: Request) {
       }
 
       await runChatMessageFanout(message)
+
+      logChatSendDebug('after_fanout_done', {
+        ...routeMeta,
+        messageId: message.id,
+        elapsedMs: Date.now() - routeStartedAt,
+        phaseDurationMs: Date.now() - afterStartedAt,
+      })
     })
 
+    logPhase('response_ready', {
+      messageId: message.id,
+      status: 200,
+    })
     return NextResponse.json({
       ok: true,
       messageId: message.id,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'chat_message_create_failed'
+    logPhaseError('catch_error', {
+      error: message,
+    })
     return NextResponse.json(
       {
         ok: false,

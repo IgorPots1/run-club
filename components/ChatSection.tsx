@@ -6,6 +6,12 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
+import {
+  getChatSendDebugErrorCategory,
+  getChatSendDebugErrorDetails,
+  logChatSendDebug,
+  logChatSendDebugError,
+} from '@/lib/chatSendDebug'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
   CHAT_MESSAGE_MAX_ATTACHMENTS,
@@ -53,6 +59,33 @@ type PendingComposerImage = {
   previewUrl: string
   width: number | null
   height: number | null
+}
+
+function getChatSendContentKind(options: {
+  textLength: number
+  imageCount: number
+  voiceCount?: number
+}) {
+  if ((options.voiceCount ?? 0) > 0) {
+    return 'voice'
+  }
+
+  if (options.imageCount > 0 && options.textLength > 0) {
+    return 'mixed'
+  }
+
+  if (options.imageCount > 0) {
+    return 'image'
+  }
+
+  return 'text-only'
+}
+
+function getComposerAttachmentDebugCounts(images: PendingComposerImage[]) {
+  return {
+    image: images.length,
+    voice: 0,
+  }
 }
 
 const LONG_PRESS_MS = 450
@@ -3595,6 +3628,13 @@ export default function ChatSection({
             if (optimisticVoiceMatch) {
               const finalizedMessage = finalizeOptimisticMessageFromRealtimeRow(optimisticVoiceMatch, realtimeRow)
               clearOptimisticRealtimeFallbackTimeout(nextMessageId)
+              logChatSendDebug('reconciliation_success', {
+                threadId,
+                optimisticMessageId: optimisticVoiceMatch.id,
+                serverMessageId: nextMessageId,
+                source: 'realtime_insert',
+                messageType: 'voice',
+              })
               releaseOptimisticClientMedia(optimisticVoiceMatch)
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
@@ -3625,6 +3665,14 @@ export default function ChatSection({
                 finalizedMessage
               )
               clearOptimisticRealtimeFallbackTimeout(nextMessageId)
+              logChatSendDebug('reconciliation_success', {
+                threadId,
+                optimisticMessageId: optimisticTextOrImageMatch.id,
+                serverMessageId: nextMessageId,
+                source: 'realtime_insert',
+                messageType: finalizedMessage.messageType,
+                isStillOptimistic: Boolean(mergedMessage.isOptimistic),
+              })
 
               if (!mergedMessage.isOptimistic) {
                 releaseOptimisticClientMedia(optimisticTextOrImageMatch)
@@ -3664,7 +3712,14 @@ export default function ChatSection({
                 }
               )
             )
-          } catch {
+          } catch (error) {
+            logChatSendDebugError('reconciliation_failure', {
+              threadId,
+              serverMessageId: nextMessageId,
+              source: 'realtime_insert',
+              category: 'optimistic_reconcile_error',
+              error: getChatSendDebugErrorDetails(error),
+            })
             void refreshMessages()
           }
         }
@@ -3853,6 +3908,16 @@ export default function ChatSection({
           )
         }
       } else {
+        logChatSendDebug('send_start', {
+          threadId,
+          textLength: trimmedDraftMessage.length,
+          attachmentCounts: getComposerAttachmentDebugCounts(pendingImages),
+          attachmentKinds: pendingImages.length > 0 ? ['image'] : [],
+          contentKind: getChatSendContentKind({
+            textLength: trimmedDraftMessage.length,
+            imageCount: pendingImages.length,
+          }),
+        })
         const optimisticMessage = createOptimisticTextOrImageMessage({
           userId: currentUserId,
           text: trimmedDraftMessage,
@@ -3880,7 +3945,12 @@ export default function ChatSection({
           resizeComposerTextarea()
         })
       }
-    } catch {
+    } catch (error) {
+      logChatSendDebugError('ui_error_path_trigger', {
+        threadId,
+        category: getChatSendDebugErrorCategory(error),
+        error: getChatSendDebugErrorDetails(error),
+      })
       setSubmitError('Не удалось отправить сообщение')
     } finally {
       setSubmitting(false)
@@ -4148,6 +4218,16 @@ export default function ChatSection({
     }
 
     const filesToUpload = nextFiles.slice(0, availableSlots)
+    logChatSendDebug('local_files_picked', {
+      threadId,
+      attachmentCount: filesToUpload.length,
+      attachmentKinds: filesToUpload.length > 0 ? ['image'] : [],
+      attachments: filesToUpload.map((file) => ({
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      })),
+    })
 
     if (filesToUpload.some((file) => !file.type.startsWith('image/'))) {
       setSubmitError('Можно выбрать только изображения')
@@ -4184,6 +4264,15 @@ export default function ChatSection({
       }))
 
       setPendingImages((currentImages) => [...currentImages, ...pendingSelections])
+      logChatSendDebug('local_files_prepared', {
+        threadId,
+        attachmentCount: pendingSelections.length,
+        attachments: pendingSelections.map((selection) => ({
+          id: selection.id,
+          width: selection.width,
+          height: selection.height,
+        })),
+      })
 
       if (filesToUpload.length < nextFiles.length) {
         setSubmitError(`Можно прикрепить не больше ${CHAT_MESSAGE_MAX_ATTACHMENTS} фото`)
@@ -4267,6 +4356,12 @@ export default function ChatSection({
 
   function scheduleOptimisticRealtimeFallback(optimisticMessageId: string, serverMessageId: string) {
     clearOptimisticRealtimeFallbackTimeout(serverMessageId)
+    logChatSendDebug('reconciliation_waiting_realtime', {
+      threadId,
+      optimisticMessageId,
+      serverMessageId,
+      source: 'fallback_timer_scheduled',
+    })
 
     optimisticRealtimeFallbackTimeoutsRef.current[serverMessageId] = window.setTimeout(() => {
       delete optimisticRealtimeFallbackTimeoutsRef.current[serverMessageId]
@@ -4280,12 +4375,27 @@ export default function ChatSection({
       void loadChatMessageItem(serverMessageId, threadId)
         .then((nextMessage) => {
           if (!nextMessage) {
+            logChatSendDebugError('reconciliation_failure', {
+              threadId,
+              optimisticMessageId,
+              serverMessageId,
+              source: 'fallback_fetch',
+              category: 'optimistic_reconcile_error',
+              reason: 'message_not_found',
+            })
             return
           }
 
           const mergedMessage = mergeMessageWithPendingMediaTaskState(
             mergeServerMessageWithOptimisticImageState(currentOptimisticMessage, nextMessage)
           )
+          logChatSendDebug('reconciliation_success', {
+            threadId,
+            optimisticMessageId,
+            serverMessageId,
+            source: 'fallback_fetch',
+            isStillOptimistic: Boolean(mergedMessage.isOptimistic),
+          })
 
           if (!mergedMessage.isOptimistic) {
             releaseOptimisticClientMedia(currentOptimisticMessage)
@@ -4299,7 +4409,15 @@ export default function ChatSection({
             )
           )
         })
-        .catch(() => {
+        .catch((error) => {
+          logChatSendDebugError('reconciliation_failure', {
+            threadId,
+            optimisticMessageId,
+            serverMessageId,
+            source: 'fallback_fetch',
+            category: 'optimistic_reconcile_error',
+            error: getChatSendDebugErrorDetails(error),
+          })
           // Leave the optimistic message intact if the fallback enrichment fails.
         })
     }, 4000)
@@ -4371,6 +4489,20 @@ export default function ChatSection({
         : optimisticMessage.optimisticAttachmentStates ?? null,
     }
     const shouldAutoScroll = isNearBottom()
+    logChatSendDebug('optimistic_message_created', {
+      threadId,
+      optimisticMessageId: optimisticMessage.id,
+      textLength: optimisticMessage.text.trim().length,
+      attachmentCounts: {
+        image: optimisticMessage.attachments.length,
+        voice: 0,
+      },
+      attachmentKinds: optimisticMessage.attachments.length > 0 ? ['image'] : [],
+      contentKind: getChatSendContentKind({
+        textLength: optimisticMessage.text.trim().length,
+        imageCount: optimisticMessage.attachments.length,
+      }),
+    })
 
     if (shouldAutoScroll) {
       pendingAutoScrollToBottomRef.current = true
@@ -4398,6 +4530,21 @@ export default function ChatSection({
     let serverMessageId = getOptimisticServerMessageId(workingMessage)
 
     if (!serverMessageId) {
+      logChatSendDebug('request_start', {
+        threadId,
+        optimisticMessageId: workingMessage.id,
+        textLength: workingMessage.text.trim().length,
+        attachmentCounts: {
+          image: workingMessage.attachments.length,
+          voice: 0,
+        },
+        attachmentKinds: workingMessage.attachments.length > 0 ? ['image'] : [],
+        contentKind: getChatSendContentKind({
+          textLength: workingMessage.text.trim().length,
+          imageCount: workingMessage.attachments.length,
+        }),
+        hasPendingAttachmentUploads,
+      })
       const { error: insertError, messageId } = await createChatMessage(
         workingMessage.userId,
         workingMessage.text,
@@ -4418,6 +4565,12 @@ export default function ChatSection({
       )
 
       if (insertError || !messageId) {
+        logChatSendDebugError('request_failed', {
+          threadId,
+          optimisticMessageId: workingMessage.id,
+          error: insertError ? getChatSendDebugErrorDetails(insertError) : null,
+          messageId,
+        })
         setMessages((currentMessages) =>
           keepLatestRenderedMessages(
             currentMessages.map((message) =>
@@ -4440,6 +4593,11 @@ export default function ChatSection({
       }
 
       serverMessageId = messageId
+      logChatSendDebug('request_success', {
+        threadId,
+        optimisticMessageId: workingMessage.id,
+        serverMessageId: messageId,
+      })
 
       if (hasPendingAttachmentUploads) {
         const queuedTask = queuePendingChatMediaTask({
@@ -4454,6 +4612,13 @@ export default function ChatSection({
             width: attachment.width,
             height: attachment.height,
           })),
+        })
+        logChatSendDebug('attachment_task_queued', {
+          threadId,
+          optimisticMessageId: workingMessage.id,
+          serverMessageId: messageId,
+          attachmentCount: queuedTask.attachments.length,
+          attachmentStates: queuedTask.attachments.map((attachment) => attachment.state),
         })
 
         setMessages((currentMessages) =>
@@ -4637,6 +4802,21 @@ export default function ChatSection({
     setSubmitError('')
 
     const durationSeconds = await getVoiceFileDurationSeconds(file)
+    logChatSendDebug('send_start', {
+      threadId,
+      textLength: 0,
+      attachmentCounts: {
+        image: 0,
+        voice: 1,
+      },
+      attachmentKinds: ['voice'],
+      contentKind: getChatSendContentKind({
+        textLength: 0,
+        imageCount: 0,
+        voiceCount: 1,
+      }),
+      durationSeconds,
+    })
     const optimisticMessage = createOptimisticVoiceMessage(file, currentUserId, durationSeconds)
     const shouldAutoScroll = isNearBottom()
 
@@ -4685,6 +4865,13 @@ export default function ChatSection({
         throw new Error(`voice_insert_failed:${insertError.message}`)
       }
 
+      logChatSendDebug('request_success', {
+        threadId,
+        optimisticMessageId: optimisticMessage.id,
+        serverMessageId: messageId ?? null,
+        contentKind: 'voice',
+      })
+
       setPendingNewMessagesCount(0)
       setReplyingToMessage(null)
       cleanupVoiceRecordingResources()
@@ -4700,6 +4887,12 @@ export default function ChatSection({
       })
       const errorDetails = getErrorDetails(error)
       console.error('Failed to send voice message', errorDetails)
+      logChatSendDebugError('ui_error_path_trigger', {
+        threadId,
+        category: getChatSendDebugErrorCategory(error),
+        error: getChatSendDebugErrorDetails(error),
+        contentKind: 'voice',
+      })
       setSubmitError('Не удалось отправить голосовое сообщение')
       cleanupVoiceRecordingResources()
     } finally {
