@@ -3,9 +3,28 @@ import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
 
 export const CHAT_MESSAGE_MAX_LENGTH = 500
+export const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 export const CHAT_MEDIA_BUCKET = 'chat-media'
 
 export type ChatMessageType = 'text' | 'image' | 'voice'
+export type ChatMessageAttachmentType = 'image'
+
+export type ChatMessageAttachment = {
+  id: string
+  type: ChatMessageAttachmentType
+  storagePath: string | null
+  publicUrl: string
+  width: number | null
+  height: number | null
+  sortOrder: number
+}
+
+export type ChatComposerImageUpload = {
+  storagePath: string
+  publicUrl: string
+  width: number | null
+  height: number | null
+}
 
 type ChatMessageRow = {
   id: string
@@ -28,6 +47,17 @@ type ChatMessageReactionRow = {
   emoji: string
 }
 
+type ChatMessageAttachmentRow = {
+  id: string
+  message_id: string
+  attachment_type: ChatMessageAttachmentType
+  storage_path: string
+  public_url: string
+  width: number | null
+  height: number | null
+  sort_order: number
+}
+
 type ProfileRow = {
   id: string
   name: string | null
@@ -42,6 +72,7 @@ export type ChatMessageItem = {
   text: string
   messageType: ChatMessageType
   imageUrl: string | null
+  attachments: ChatMessageAttachment[]
   mediaUrl: string | null
   mediaDurationSeconds: number | null
   editedAt: string | null
@@ -220,7 +251,62 @@ function resolveChatMessageImageUrl(message: Pick<ChatMessageRow, 'message_type'
   return resolveChatMessageType(message) === 'image' ? message.media_url ?? null : null
 }
 
-function getChatMessagePreviewText(message: Pick<ChatMessageRow, 'text' | 'message_type' | 'image_url' | 'media_url'>) {
+function toChatMessageAttachment(row: ChatMessageAttachmentRow): ChatMessageAttachment {
+  return {
+    id: row.id,
+    type: row.attachment_type,
+    storagePath: row.storage_path ?? null,
+    publicUrl: row.public_url,
+    width: row.width ?? null,
+    height: row.height ?? null,
+    sortOrder: row.sort_order,
+  }
+}
+
+function normalizeChatMessageAttachments(
+  message: Pick<ChatMessageRow, 'id' | 'message_type' | 'image_url' | 'media_url'>,
+  attachmentRows: ChatMessageAttachmentRow[] = []
+) {
+  const normalizedRows = attachmentRows
+    .slice()
+    .sort((left, right) => {
+      if (left.sort_order === right.sort_order) {
+        return left.id.localeCompare(right.id)
+      }
+
+      return left.sort_order - right.sort_order
+    })
+    .map(toChatMessageAttachment)
+
+  if (normalizedRows.length > 0) {
+    return normalizedRows
+  }
+
+  const legacyImageUrl = resolveChatMessageImageUrl(message)
+
+  if (!legacyImageUrl) {
+    return []
+  }
+
+  return [{
+    id: `legacy-${message.id}`,
+    type: 'image' as const,
+    storagePath: null,
+    publicUrl: legacyImageUrl,
+    width: null,
+    height: null,
+    sortOrder: 0,
+  }]
+}
+
+function getPrimaryAttachmentImageUrl(attachments: ChatMessageAttachment[]) {
+  return attachments[0]?.publicUrl ?? null
+}
+
+function getChatMessagePreviewText(
+  message: Pick<ChatMessageRow, 'text' | 'message_type' | 'image_url' | 'media_url'>,
+  attachmentCount = 0
+) {
   const trimmedText = message.text?.trim() ?? ''
 
   if (trimmedText) {
@@ -234,7 +320,7 @@ function getChatMessagePreviewText(message: Pick<ChatMessageRow, 'text' | 'messa
   }
 
   if (messageType === 'image') {
-    return 'Фото'
+    return attachmentCount > 1 ? `${attachmentCount} фото` : 'Фото'
   }
 
   return ''
@@ -304,16 +390,19 @@ function toChatMessageItem(
   replyToMessage?: ChatMessageRow | null,
   replyToProfile?: ProfileRow,
   reactions: { emoji: string; count: number; userIds: string[] }[] = [],
-  profileById: Record<string, ProfileRow> = {}
+  profileById: Record<string, ProfileRow> = {},
+  attachmentRows: ChatMessageAttachmentRow[] = []
 ): ChatMessageItem {
   const messageType = resolveChatMessageType(message)
+  const attachments = normalizeChatMessageAttachments(message, attachmentRows)
 
   return {
     id: message.id,
     userId: message.user_id,
     text: message.text ?? '',
     messageType,
-    imageUrl: resolveChatMessageImageUrl(message),
+    imageUrl: getPrimaryAttachmentImageUrl(attachments),
+    attachments,
     mediaUrl: message.media_url ?? null,
     mediaDurationSeconds: message.media_duration_seconds ?? null,
     editedAt: message.edited_at ?? null,
@@ -338,7 +427,7 @@ function toChatMessageItem(
         }
       }),
     })),
-    previewText: getChatMessagePreviewText(message),
+    previewText: getChatMessagePreviewText(message, attachments.length),
   }
 }
 
@@ -357,6 +446,36 @@ async function loadChatReactionsByMessageIds(messageIds: string[]) {
   }
 
   return buildReactionsByMessageId((reactions as ChatMessageReactionRow[] | null) ?? [])
+}
+
+async function loadChatAttachmentsByMessageIds(messageIds: string[]) {
+  if (messageIds.length === 0) {
+    return {}
+  }
+
+  const { data: attachments, error: attachmentsError } = await supabase
+    .from('chat_message_attachments')
+    .select('id, message_id, attachment_type, storage_path, public_url, width, height, sort_order')
+    .in('message_id', messageIds)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+
+  if (attachmentsError) {
+    throw attachmentsError
+  }
+
+  const attachmentsByMessageId: Record<string, ChatMessageAttachmentRow[]> = {}
+
+  for (const row of (attachments as ChatMessageAttachmentRow[] | null) ?? []) {
+    if (!attachmentsByMessageId[row.message_id]) {
+      attachmentsByMessageId[row.message_id] = []
+    }
+
+    attachmentsByMessageId[row.message_id]!.push(row)
+  }
+
+  return attachmentsByMessageId
 }
 
 async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | null) {
@@ -396,6 +515,12 @@ type CreateTextChatMessageApiPayload = {
   kind?: 'text'
   text?: string
   imageUrl?: string | null
+  attachments?: {
+    type: ChatMessageAttachmentType
+    storagePath: string
+    width?: number | null
+    height?: number | null
+  }[]
   replyToId?: string | null
   threadId?: string | null
 }
@@ -453,11 +578,20 @@ export async function createChatMessage(
   text: string,
   replyToId?: string | null,
   threadId?: string | null,
+  attachments: ChatComposerImageUpload[] = [],
   imageUrl?: string | null
 ) {
   const trimmedText = text.trim()
+  const normalizedAttachments = attachments
+    .slice(0, CHAT_MESSAGE_MAX_ATTACHMENTS)
+    .map((attachment) => ({
+      type: 'image' as const,
+      storagePath: attachment.storagePath,
+      width: attachment.width ?? null,
+      height: attachment.height ?? null,
+    }))
 
-  if (!trimmedText && !imageUrl) {
+  if (!trimmedText && normalizedAttachments.length === 0 && !imageUrl) {
     throw new Error('empty_message')
   }
 
@@ -469,6 +603,7 @@ export async function createChatMessage(
     kind: 'text',
     text: trimmedText,
     imageUrl: imageUrl ?? null,
+    attachments: normalizedAttachments,
     replyToId: replyToId ?? null,
     threadId: threadId ?? null,
   })
@@ -587,12 +722,35 @@ function createRandomUploadUuid() {
   throw new Error('secure_random_uuid_unavailable')
 }
 
+async function getImageFileDimensions(file: File): Promise<{ width: number | null; height: number | null }> {
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new window.Image()
+      nextImage.onload = () => resolve(nextImage)
+      nextImage.onerror = () => reject(new Error('chat_image_dimensions_unavailable'))
+      nextImage.src = objectUrl
+    })
+
+    const width = Number.isFinite(image.naturalWidth) && image.naturalWidth > 0 ? image.naturalWidth : null
+    const height = Number.isFinite(image.naturalHeight) && image.naturalHeight > 0 ? image.naturalHeight : null
+
+    return { width, height }
+  } catch {
+    return { width: null, height: null }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 export async function uploadChatImage(userId: string, file: File, threadId?: string | null) {
   const fileExtension = file.name.includes('.')
     ? file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
     : 'jpg'
   const safeExtension = fileExtension.replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${userId}/${threadId ?? 'club'}/${createRandomUploadUuid()}.${safeExtension}`
+  const dimensions = await getImageFileDimensions(file)
   const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, {
     contentType: file.type || `image/${safeExtension}`,
   })
@@ -608,7 +766,26 @@ export async function uploadChatImage(userId: string, file: File, threadId?: str
   }
 
   const { data } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path)
-  return data.publicUrl
+  return {
+    storagePath: path,
+    publicUrl: data.publicUrl,
+    width: dimensions.width,
+    height: dimensions.height,
+  } satisfies ChatComposerImageUpload
+}
+
+export async function deleteUploadedChatImage(storagePath: string) {
+  const trimmedPath = storagePath.trim()
+
+  if (!trimmedPath) {
+    return
+  }
+
+  const { error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).remove([trimmedPath])
+
+  if (error) {
+    throw error
+  }
 }
 
 export async function softDeleteChatMessage(messageId: string, userId: string, threadId?: string | null) {
@@ -654,7 +831,10 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     threadId
   )
   const replyMessage = messageRow.reply_to_id ? replyById[messageRow.reply_to_id] ?? null : null
-  const reactionsByMessageId = await loadChatReactionsByMessageIds([messageRow.id])
+  const [reactionsByMessageId, attachmentsByMessageId] = await Promise.all([
+    loadChatReactionsByMessageIds([messageRow.id]),
+    loadChatAttachmentsByMessageIds([messageRow.id]),
+  ])
   const profileIds = Array.from(
     new Set([
       messageRow.user_id,
@@ -670,7 +850,8 @@ export async function loadChatMessageItem(messageId: string, threadId?: string |
     replyMessage,
     replyMessage ? profileById[replyMessage.user_id] : undefined,
     reactionsByMessageId[messageRow.id] ?? [],
-    profileById
+    profileById,
+    attachmentsByMessageId[messageRow.id] ?? []
   )
 }
 
@@ -704,9 +885,10 @@ async function fetchRecentChatMessages(limit = 50, threadId?: string | null): Pr
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
   const messageIds = messageRows.map((message) => message.id)
-  const [replyById, reactionsByMessageId] = await Promise.all([
+  const [replyById, reactionsByMessageId, attachmentsByMessageId] = await Promise.all([
     loadChatReplyRowsByIds(replyIds, threadId),
     loadChatReactionsByMessageIds(messageIds),
+    loadChatAttachmentsByMessageIds(messageIds),
   ])
   const userIds = Array.from(
     new Set([
@@ -726,7 +908,8 @@ async function fetchRecentChatMessages(limit = 50, threadId?: string | null): Pr
       replyMessage,
       replyMessage ? profileById[replyMessage.user_id] : undefined,
       reactionsByMessageId[message.id] ?? [],
-      profileById
+      profileById,
+      attachmentsByMessageId[message.id] ?? []
     )
   })
 }
@@ -826,8 +1009,12 @@ export async function loadOlderChatMessages(
   const replyIds = Array.from(
     new Set(messageRows.map((message) => message.reply_to_id).filter((replyToId): replyToId is string => Boolean(replyToId)))
   )
-  const replyById = await loadChatReplyRowsByIds(replyIds, threadId)
-  const reactionsByMessageId = await loadChatReactionsByMessageIds(messageRows.map((message) => message.id))
+  const messageIds = messageRows.map((message) => message.id)
+  const [replyById, reactionsByMessageId, attachmentsByMessageId] = await Promise.all([
+    loadChatReplyRowsByIds(replyIds, threadId),
+    loadChatReactionsByMessageIds(messageIds),
+    loadChatAttachmentsByMessageIds(messageIds),
+  ])
   const userIds = Array.from(
     new Set([
       ...messageRows.map((message) => message.user_id),
@@ -846,7 +1033,8 @@ export async function loadOlderChatMessages(
       replyMessage,
       replyMessage ? profileById[replyMessage.user_id] : undefined,
       reactionsByMessageId[message.id] ?? [],
-      profileById
+      profileById,
+      attachmentsByMessageId[message.id] ?? []
     )
   })
 }

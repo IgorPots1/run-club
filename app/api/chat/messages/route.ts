@@ -12,6 +12,12 @@ type TextChatMessageRequestBody = {
   replyToId?: string | null
   threadId?: string | null
   imageUrl?: string | null
+  attachments?: {
+    type?: 'image'
+    storagePath?: string
+    width?: number | null
+    height?: number | null
+  }[]
 }
 
 type VoiceChatMessageRequestBody = {
@@ -62,6 +68,15 @@ type ChatDeliveryContext = {
   threadId: string
 }
 
+type ValidatedImageAttachment = {
+  type: 'image'
+  storagePath: string
+  publicUrl: string
+  width: number | null
+  height: number | null
+  sortOrder: number
+}
+
 type ChatNotificationContent = {
   title: string
   body: string
@@ -77,6 +92,7 @@ type UserNotificationSettingRow = {
 
 const PUSH_DELIVERY_THROTTLE_WINDOW_MS = 15_000
 const CHAT_MEDIA_BUCKET = 'chat-media'
+const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
 const SAFE_STORAGE_FILE_NAME_REGEX = /^[A-Za-z0-9._-]+$/
 
@@ -164,6 +180,91 @@ function validateChatImageUrl(imageUrl: string, userId: string, threadId?: strin
   sanitizeStorageFileName(fileName ?? '')
 
   return imageUrl
+}
+
+function validateChatImageStoragePath(storagePath: string, userId: string, threadId?: string | null) {
+  const trimmedPath = storagePath.trim()
+
+  if (!trimmedPath || trimmedPath.includes('://') || trimmedPath.startsWith('/')) {
+    throw new Error('invalid_chat_image_path')
+  }
+
+  const pathSegments = trimmedPath.split('/').filter(Boolean)
+
+  if (pathSegments.length !== 3) {
+    throw new Error('invalid_chat_image_path')
+  }
+
+  const [pathUserId, pathThreadId, fileName] = pathSegments
+  const expectedThreadSegment = threadId ? sanitizeStoragePathSegment(threadId) : 'club'
+
+  if (
+    sanitizeStoragePathSegment(pathUserId ?? '') !== sanitizeStoragePathSegment(userId) ||
+    sanitizeStoragePathSegment(pathThreadId ?? '') !== expectedThreadSegment
+  ) {
+    throw new Error('chat_image_not_owned_by_user')
+  }
+
+  sanitizeStorageFileName(fileName ?? '')
+
+  return trimmedPath
+}
+
+function getChatMediaPublicUrl(storagePath: string) {
+  const encodedPath = storagePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+
+  return `${getSupabaseOrigin()}/storage/v1/object/public/${CHAT_MEDIA_BUCKET}/${encodedPath}`
+}
+
+function sanitizeAttachmentDimension(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (!Number.isFinite(value)) {
+    throw new Error('invalid_chat_attachment_dimensions')
+  }
+
+  const roundedValue = Math.round(value)
+
+  if (roundedValue <= 0 || roundedValue > 20000) {
+    throw new Error('invalid_chat_attachment_dimensions')
+  }
+
+  return roundedValue
+}
+
+function validateImageAttachments(
+  attachments: TextChatMessageRequestBody['attachments'],
+  userId: string,
+  threadId?: string | null
+) {
+  const normalizedAttachments = Array.isArray(attachments) ? attachments : []
+
+  if (normalizedAttachments.length > CHAT_MESSAGE_MAX_ATTACHMENTS) {
+    throw new Error('too_many_attachments')
+  }
+
+  return normalizedAttachments.map((attachment, index) => {
+    if (attachment?.type !== 'image') {
+      throw new Error('invalid_chat_attachment_type')
+    }
+
+    const storagePath = validateChatImageStoragePath(attachment.storagePath?.trim() ?? '', userId, threadId)
+
+    return {
+      type: 'image',
+      storagePath,
+      publicUrl: getChatMediaPublicUrl(storagePath),
+      width: sanitizeAttachmentDimension(attachment.width),
+      height: sanitizeAttachmentDimension(attachment.height),
+      sortOrder: index,
+    } satisfies ValidatedImageAttachment
+  })
 }
 
 function validateVoiceMediaPath(mediaPath: string, userId: string) {
@@ -658,6 +759,7 @@ export async function POST(request: Request) {
 
   try {
     const safeReplyToId = await resolveSafeReplyToId(supabase, replyToId, threadId)
+    let validatedTextAttachments: ValidatedImageAttachment[] = []
 
     const insertPayload =
       kind === 'voice'
@@ -684,8 +786,9 @@ export async function POST(request: Request) {
         : (() => {
             const text = textBody?.text?.trim() ?? ''
             const imageUrl = textBody?.imageUrl?.trim() || null
+            validatedTextAttachments = validateImageAttachments(textBody?.attachments, user.id, threadId)
 
-            if (!text && !imageUrl) {
+            if (!text && !imageUrl && validatedTextAttachments.length === 0) {
               throw new Error('empty_message')
             }
 
@@ -693,13 +796,16 @@ export async function POST(request: Request) {
               throw new Error('message_too_long')
             }
 
-            const validatedImageUrl = imageUrl
+            const validatedImageUrl = validatedTextAttachments.length > 0
+              ? null
+              : imageUrl
               ? validateChatImageUrl(imageUrl, user.id, threadId)
               : null
 
             return {
               user_id: user.id,
               text,
+              message_type: validatedTextAttachments.length > 0 || validatedImageUrl ? 'image' : 'text',
               image_url: validatedImageUrl,
               reply_to_id: safeReplyToId,
               thread_id: threadId,
@@ -717,6 +823,47 @@ export async function POST(request: Request) {
     }
 
     const message = data as InsertedChatMessageRow
+
+    if (kind === 'text' && validatedTextAttachments.length > 0) {
+      const { error: attachmentsInsertError } = await supabase
+        .from('chat_message_attachments')
+        .insert(
+          validatedTextAttachments.map((attachment) => ({
+            message_id: message.id,
+            attachment_type: attachment.type,
+            storage_path: attachment.storagePath,
+            public_url: attachment.publicUrl,
+            width: attachment.width,
+            height: attachment.height,
+            sort_order: attachment.sortOrder,
+          }))
+        )
+
+      if (attachmentsInsertError) {
+        await supabase
+          .from('chat_messages')
+          .delete()
+          .eq('id', message.id)
+          .eq('user_id', user.id)
+
+        throw attachmentsInsertError
+      }
+
+      const { error: touchMessageError } = await supabase
+        .from('chat_messages')
+        .update({
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', message.id)
+        .eq('user_id', user.id)
+
+      if (touchMessageError) {
+        console.error('Failed to touch chat message after attachments insert', {
+          messageId: message.id,
+          error: touchMessageError.message,
+        })
+      }
+    }
 
     after(async () => {
       await runChatMessageFanout(message)

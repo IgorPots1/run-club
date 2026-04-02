@@ -15,9 +15,11 @@ import {
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
+  CHAT_MESSAGE_MAX_ATTACHMENTS,
   CHAT_MESSAGE_MAX_LENGTH,
   createChatMessage,
   createVoiceChatMessage,
+  deleteUploadedChatImage,
   getCachedRecentChatMessages,
   getPrefetchedRecentChatMessages,
   loadChatMessageById,
@@ -27,6 +29,8 @@ import {
   setCachedRecentChatMessages,
   softDeleteChatMessage,
   toggleChatMessageReaction,
+  type ChatComposerImageUpload,
+  type ChatMessageAttachment,
   type ChatMessageItem,
   updateChatMessage,
   uploadChatImage,
@@ -71,14 +75,18 @@ const REPLY_TARGET_HIGHLIGHT_CLASSES = [
 let activeVoiceMessageAudio: HTMLAudioElement | null = null
 
 function ChatOpenDebugOverlay() {
-  const [entries, setEntries] = useState<ChatOpenDebugOverlayEntry[]>([])
+  const [entries, setEntries] = useState<ChatOpenDebugOverlayEntry[]>(() => {
+    if (!CHAT_OPEN_DEBUG || typeof window === 'undefined') {
+      return []
+    }
+
+    return getChatOpenDebugEntries()
+  })
 
   useEffect(() => {
     if (!CHAT_OPEN_DEBUG || typeof window === 'undefined') {
       return
     }
-
-    setEntries(getChatOpenDebugEntries())
 
     function handleDebugEvent(event: Event) {
       const detail = (event as CustomEvent<ChatOpenDebugOverlayEntry[]>).detail
@@ -245,6 +253,26 @@ function getOptimisticMessageReplyPreview(message: ChatMessageItem | null) {
   }
 }
 
+function haveSameImageAttachments(left: ChatMessageItem, right: ChatMessageItem) {
+  if (left.attachments.length !== right.attachments.length) {
+    return false
+  }
+
+  return left.attachments.every((attachment, index) => {
+    const matchingAttachment = right.attachments[index]
+
+    if (!matchingAttachment) {
+      return false
+    }
+
+    return (
+      attachment.publicUrl === matchingAttachment.publicUrl &&
+      attachment.storagePath === matchingAttachment.storagePath &&
+      attachment.type === matchingAttachment.type
+    )
+  })
+}
+
 function createOptimisticMessageId(prefix: 'text' | 'image') {
   return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
 }
@@ -273,6 +301,7 @@ function findMatchingOptimisticTextOrImageMessage(
       message.userId === nextMessage.userId &&
       message.text === nextMessage.text &&
       message.imageUrl === nextMessage.imageUrl &&
+      haveSameImageAttachments(message, nextMessage) &&
       message.replyToId === nextMessage.replyToId &&
       Math.abs(messageCreatedAtMs - nextMessageCreatedAtMs) <= OPTIMISTIC_MESSAGE_MATCH_WINDOW_MS
     )
@@ -434,19 +463,26 @@ function ReactionChip({
       return
     }
 
-    let animationFrameId: number | null = null
+    let startFrameId: number | null = null
+    let endFrameId: number | null = null
     const timeoutId = window.setTimeout(() => {
       setBurstPhase('idle')
     }, REACTION_ANIMATION_DURATION_MS + 30)
 
-    setBurstPhase('start')
-    animationFrameId = window.requestAnimationFrame(() => {
-      setBurstPhase('end')
+    startFrameId = window.requestAnimationFrame(() => {
+      setBurstPhase('start')
+      endFrameId = window.requestAnimationFrame(() => {
+        setBurstPhase('end')
+      })
     })
 
     return () => {
-      if (animationFrameId !== null) {
-        window.cancelAnimationFrame(animationFrameId)
+      if (startFrameId !== null) {
+        window.cancelAnimationFrame(startFrameId)
+      }
+
+      if (endFrameId !== null) {
+        window.cancelAnimationFrame(endFrameId)
       }
 
       window.clearTimeout(timeoutId)
@@ -614,13 +650,22 @@ type TouchPointLike = {
 }
 
 function FullscreenImageViewer({
-  imageUrl,
+  images,
+  initialIndex,
   onClose,
 }: {
-  imageUrl: string
+  images: ChatMessageAttachment[]
+  initialIndex: number
   onClose: () => void
 }) {
   const [isVisible, setIsVisible] = useState(false)
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (images.length === 0) {
+      return 0
+    }
+
+    return Math.min(Math.max(initialIndex, 0), images.length - 1)
+  })
   const [scale, setScale] = useState(1)
   const [translateX, setTranslateX] = useState(0)
   const [translateY, setTranslateY] = useState(0)
@@ -636,6 +681,8 @@ function FullscreenImageViewer({
     startTouchY: number
     startDistance: number
     hasMoved: boolean
+    lastDeltaX: number
+    lastDeltaY: number
   }>({
     mode: 'idle',
     startScale: 1,
@@ -646,8 +693,12 @@ function FullscreenImageViewer({
     startTouchY: 0,
     startDistance: 0,
     hasMoved: false,
+    lastDeltaX: 0,
+    lastDeltaY: 0,
   })
   const lastTapRef = useRef<{ time: number }>({ time: 0 })
+  const currentImage = images[currentIndex] ?? images[0] ?? null
+  const hasMultipleImages = images.length > 1
 
   function clampValue(value: number, min: number, max: number) {
     return Math.min(Math.max(value, min), max)
@@ -676,6 +727,24 @@ function FullscreenImageViewer({
 
   function getTouchDistance(touchA: TouchPointLike, touchB: TouchPointLike) {
     return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY)
+  }
+
+  function showPreviousImage() {
+    if (!hasMultipleImages) {
+      return
+    }
+
+    resetViewerTransform()
+    setCurrentIndex((current) => (current - 1 + images.length) % images.length)
+  }
+
+  function showNextImage() {
+    if (!hasMultipleImages) {
+      return
+    }
+
+    resetViewerTransform()
+    setCurrentIndex((current) => (current + 1) % images.length)
   }
 
   useEffect(() => {
@@ -723,6 +792,8 @@ function FullscreenImageViewer({
         startTouchY: 0,
         startDistance: getTouchDistance(firstTouch, secondTouch),
         hasMoved: false,
+        lastDeltaX: 0,
+        lastDeltaY: 0,
       }
       setIsGesturing(true)
       return
@@ -744,6 +815,8 @@ function FullscreenImageViewer({
       startTouchY: firstTouch.clientY,
       startDistance: 0,
       hasMoved: false,
+      lastDeltaX: 0,
+      lastDeltaY: 0,
     }
     setIsGesturing(true)
   }
@@ -775,6 +848,8 @@ function FullscreenImageViewer({
 
     const deltaX = firstTouch.clientX - gestureState.startTouchX
     const deltaY = firstTouch.clientY - gestureState.startTouchY
+    gestureState.lastDeltaX = deltaX
+    gestureState.lastDeltaY = deltaY
     if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
       gestureState.hasMoved = true
     }
@@ -791,6 +866,11 @@ function FullscreenImageViewer({
     }
 
     if (gestureState.mode === 'dismiss' && gestureState.startScale === 1) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) + 10) {
+        setDismissTranslateY(0)
+        return
+      }
+
       setDismissTranslateY(Math.max(0, gestureState.startDismissTranslateY + deltaY))
     }
   }
@@ -800,6 +880,23 @@ function FullscreenImageViewer({
     const dismissThreshold = 120
 
     if (gestureState.mode === 'dismiss') {
+      if (
+        hasMultipleImages &&
+        Math.abs(gestureState.lastDeltaX) > 56 &&
+        Math.abs(gestureState.lastDeltaX) > Math.abs(gestureState.lastDeltaY) + 12
+      ) {
+        if (gestureState.lastDeltaX < 0) {
+          showNextImage()
+        } else {
+          showPreviousImage()
+        }
+
+        setDismissTranslateY(0)
+        gestureStateRef.current.mode = 'idle'
+        setIsGesturing(false)
+        return
+      }
+
       if (dismissTranslateY > dismissThreshold) {
         onClose()
         return
@@ -866,6 +963,10 @@ function FullscreenImageViewer({
   const overlayOpacity = clampValue(1 - dismissTranslateY / 220, 0.45, 1)
   const imageTransform = `translate3d(${translateX}px, ${translateY + dismissTranslateY}px, 0) scale(${scale})`
 
+  if (!currentImage) {
+    return null
+  }
+
   return (
     <div
       className={`fixed inset-0 z-[80] flex items-center justify-center p-3 transition-opacity duration-150 ${
@@ -882,6 +983,39 @@ function FullscreenImageViewer({
       >
         <CloseIcon className="h-5 w-5" />
       </button>
+      {hasMultipleImages ? (
+        <>
+          <div className="absolute left-1/2 top-4 z-[81] -translate-x-1/2 rounded-full bg-black/35 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+            {currentIndex + 1} / {images.length}
+          </div>
+          <button
+            type="button"
+            aria-label="Предыдущее изображение"
+            className="absolute left-3 top-1/2 z-[81] hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-transform duration-150 active:scale-95 md:flex"
+            onClick={(event) => {
+              event.stopPropagation()
+              showPreviousImage()
+            }}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="m15 18-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="Следующее изображение"
+            className="absolute right-3 top-1/2 z-[81] hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-transform duration-150 active:scale-95 md:flex"
+            onClick={(event) => {
+              event.stopPropagation()
+              showNextImage()
+            }}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </>
+      ) : null}
       <div
         className={`flex max-h-full max-w-full items-center justify-center ${
           isGesturing ? '' : 'transition-transform duration-200'
@@ -903,7 +1037,7 @@ function FullscreenImageViewer({
         onTouchCancel={handleImageTouchEnd}
       >
         <img
-          src={imageUrl}
+          src={currentImage.publicUrl}
           alt="Полноразмерное изображение"
           className="max-h-[calc(100svh-1.5rem)] max-w-[calc(100vw-1.5rem)] object-contain"
         />
@@ -1231,6 +1365,121 @@ function VoiceMessageAudio({
   )
 }
 
+function getGalleryGridClass(attachmentCount: number) {
+  if (attachmentCount <= 4) {
+    return 'grid-cols-2'
+  }
+
+  return 'grid-cols-3'
+}
+
+function getGalleryTileClass(attachmentCount: number, index: number) {
+  if (attachmentCount === 3 && index === 0) {
+    return 'row-span-2'
+  }
+
+  if ((attachmentCount === 5 || attachmentCount === 7) && index === 0) {
+    return 'col-span-2 row-span-2'
+  }
+
+  return ''
+}
+
+function ChatImageAttachments({
+  attachments,
+  createdAtLabel,
+  isOwnMessage,
+  isImageOnlyMessage,
+  compactPreview,
+  onImageClick,
+  onImageLoad,
+}: {
+  attachments: ChatMessageAttachment[]
+  createdAtLabel: string
+  isOwnMessage: boolean
+  isImageOnlyMessage: boolean
+  compactPreview: boolean
+  onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
+  onImageLoad?: () => void
+}) {
+  if (attachments.length === 0) {
+    return null
+  }
+
+  const wrapperClassName = `relative mt-1 block overflow-hidden rounded-2xl ${
+    compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
+  } ${
+    isImageOnlyMessage
+      ? isOwnMessage
+        ? 'ml-auto mr-1.5'
+        : ''
+      : isOwnMessage
+        ? 'ml-auto'
+        : ''
+  }`
+
+  if (attachments.length === 1) {
+    const attachment = attachments[0]!
+
+    return (
+      <button
+        type="button"
+        onClick={() => onImageClick?.(attachments, 0)}
+        className={wrapperClassName}
+        aria-label="Открыть изображение"
+      >
+        <img
+          src={attachment.publicUrl}
+          alt="Вложение"
+          onLoad={onImageLoad}
+          className={`w-auto rounded-2xl object-cover ${
+            compactPreview ? 'max-h-40' : 'max-h-80'
+          }`}
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 via-black/15 to-transparent"
+        />
+        <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/38 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
+          {createdAtLabel}
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <div className={wrapperClassName}>
+      <div className={`grid ${getGalleryGridClass(attachments.length)} gap-1`}>
+        {attachments.map((attachment, index) => (
+          <button
+            key={attachment.id}
+            type="button"
+            onClick={() => onImageClick?.(attachments, index)}
+            className={`relative aspect-square overflow-hidden rounded-[18px] bg-black/[0.04] dark:bg-white/[0.06] ${
+              getGalleryTileClass(attachments.length, index)
+            }`}
+            aria-label={`Открыть изображение ${index + 1}`}
+          >
+            <img
+              src={attachment.publicUrl}
+              alt={`Вложение ${index + 1}`}
+              onLoad={onImageLoad}
+              className="h-full w-full object-cover"
+            />
+          </button>
+        ))}
+      </div>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-black/45 via-black/10 to-transparent"
+      />
+      <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/40 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
+        {createdAtLabel}
+      </span>
+    </div>
+  )
+}
+
 function ChatMessageBody({
   message,
   isOwnMessage = false,
@@ -1249,7 +1498,7 @@ function ChatMessageBody({
   isOwnMessage?: boolean
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
-  onImageClick?: (imageUrl: string) => void
+  onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
   onImageLoad?: () => void
   onRetryFailedMessage?: (message: ChatMessageItem) => void
   currentUserId?: string | null
@@ -1262,7 +1511,8 @@ function ChatMessageBody({
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
   )
   const hasVoiceAttachment = message.messageType === 'voice'
-  const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && !hasVoiceAttachment)
+  const hasImageAttachments = message.attachments.length > 0
+  const isImageOnlyMessage = Boolean(hasImageAttachments && !message.text && !message.replyTo && !hasVoiceAttachment)
   const isPendingMessage = message.isOptimistic && message.optimisticStatus === 'sending'
   const isFailedMessage = message.isOptimistic && message.optimisticStatus === 'failed'
 
@@ -1308,39 +1558,16 @@ function ChatMessageBody({
           ) : null}
         </button>
       ) : null}
-      {message.imageUrl ? (
-        <button
-          type="button"
-          onClick={() => onImageClick?.(message.imageUrl!)}
-          className={`relative mt-1 block overflow-hidden rounded-2xl ${
-            compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
-          } ${
-            isImageOnlyMessage
-              ? isOwnMessage
-                ? 'ml-auto mr-1.5'
-                : ''
-              : isOwnMessage
-                ? 'ml-auto'
-                : ''
-          }`}
-          aria-label="Открыть изображение"
-        >
-          <img
-            src={message.imageUrl}
-            alt="Вложение"
-            onLoad={onImageLoad}
-            className={`w-auto rounded-2xl object-cover ${
-              compactPreview ? 'max-h-40' : 'max-h-80'
-            }`}
-          />
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 via-black/15 to-transparent"
-          />
-          <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/38 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
-            {message.createdAtLabel}
-          </span>
-        </button>
+      {hasImageAttachments ? (
+        <ChatImageAttachments
+          attachments={message.attachments}
+          createdAtLabel={message.createdAtLabel}
+          isOwnMessage={isOwnMessage}
+          isImageOnlyMessage={isImageOnlyMessage}
+          compactPreview={compactPreview}
+          onImageClick={onImageClick}
+          onImageLoad={onImageLoad}
+        />
       ) : null}
       {hasVoiceAttachment ? (
         <>
@@ -1386,7 +1613,7 @@ function ChatMessageBody({
       {message.text ? (
         <p
           className={`app-text-primary break-words whitespace-pre-wrap text-left text-sm ${
-            message.replyTo || message.imageUrl || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
+            message.replyTo || hasImageAttachments || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
           } ${
             compactPreview ? 'leading-5' : 'leading-[1.32]'
           }`}
@@ -1490,7 +1717,7 @@ const ChatMessageList = memo(function ChatMessageList({
   animatedReactionKey: string | null
   messageRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
   onReplyPreviewClick: (replyToMessageId: string) => void
-  onImageClick: (imageUrl: string) => void
+  onImageClick: (attachments: ChatMessageAttachment[], index: number) => void
   onImageLoad: () => void
   onRetryFailedMessage: (message: ChatMessageItem) => void
   onReactionToggle: (messageId: string, emoji: string) => void
@@ -1509,7 +1736,12 @@ const ChatMessageList = memo(function ChatMessageList({
       <div className="flex flex-col">
         {messages.map((message, index) => {
           const isOwnMessage = currentUserId === message.userId
-          const isImageOnlyMessage = Boolean(message.imageUrl && !message.text && !message.replyTo && message.messageType !== 'voice')
+          const isImageOnlyMessage = Boolean(
+            message.attachments.length > 0 &&
+            !message.text &&
+            !message.replyTo &&
+            message.messageType !== 'voice'
+          )
           const isSwipeActive = swipingMessageId === message.id
           const previousMessage = index > 0 ? messages[index - 1] : null
           const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
@@ -1672,7 +1904,6 @@ export default function ChatSection({
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
-  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingVoice, setUploadingVoice] = useState(false)
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
@@ -1688,7 +1919,12 @@ export default function ChatSection({
   const [deleteConfirmationMessage, setDeleteConfirmationMessage] = useState<ChatMessageItem | null>(null)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
-  const [selectedViewerImageUrl, setSelectedViewerImageUrl] = useState<string | null>(null)
+  const [pendingImages, setPendingImages] = useState<ChatComposerImageUpload[]>([])
+  const pendingImagesRef = useRef<ChatComposerImageUpload[]>([])
+  const [selectedViewerState, setSelectedViewerState] = useState<{
+    attachments: ChatMessageAttachment[]
+    initialIndex: number
+  } | null>(null)
   const [animatedReactionKey, setAnimatedReactionKey] = useState<string | null>(null)
   const [selectedReactionDetails, setSelectedReactionDetails] = useState<{
     messageId: string
@@ -1706,9 +1942,10 @@ export default function ChatSection({
   const editingMessage = editingMessageId
     ? messages.find((message) => message.id === editingMessageId) ?? null
     : null
-  const hasPendingImage = Boolean(pendingImageUrl)
+  pendingImagesRef.current = pendingImages
+  const hasPendingImage = pendingImages.length > 0
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
-  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImageUrl)
+  const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImages.length > 0)
   const shouldShowVoiceRecorderButton = !editingMessage && !trimmedDraftMessage && !hasPendingImage
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
@@ -3159,8 +3396,8 @@ export default function ChatSection({
       return
     }
 
-    if (!trimmedDraftMessage && !pendingImageUrl) {
-      setSubmitError('Введите сообщение или выберите изображение')
+    if (!trimmedDraftMessage && pendingImages.length === 0) {
+      setSubmitError('Введите сообщение или выберите фото')
       return
     }
 
@@ -3219,11 +3456,11 @@ export default function ChatSection({
         const optimisticMessage = createOptimisticTextOrImageMessage({
           userId: currentUserId,
           text: trimmedDraftMessage,
-          imageUrl: pendingImageUrl,
+          attachments: pendingImages,
         })
 
         setDraftMessage('')
-        clearSelectedImage()
+        clearSelectedImages({ deleteFiles: false })
         setReplyingToMessage(null)
         setEditingMessageId(null)
         window.requestAnimationFrame(() => {
@@ -3236,7 +3473,7 @@ export default function ChatSection({
       setPendingNewMessagesCount(0)
       if (editingMessageId) {
         setDraftMessage('')
-        clearSelectedImage()
+        clearSelectedImages()
         setReplyingToMessage(null)
         setEditingMessageId(null)
         window.requestAnimationFrame(() => {
@@ -3292,6 +3529,20 @@ export default function ChatSection({
             mediaUrl: message.mediaUrl,
             error,
           })
+        }
+      }
+
+      if (message.attachments.length > 0) {
+        const removableStoragePaths = message.attachments
+          .map((attachment) => attachment.storagePath)
+          .filter((storagePath): storagePath is string => Boolean(storagePath))
+
+        if (removableStoragePaths.length > 0) {
+          await Promise.allSettled(
+            removableStoragePaths.map(async (storagePath) => {
+              await deleteUploadedChatImage(storagePath)
+            })
+          )
         }
       }
 
@@ -3423,7 +3674,7 @@ export default function ChatSection({
 
     setEditingMessageId(message.id)
     setReplyingToMessage(null)
-    clearSelectedImage()
+    clearSelectedImages()
     setDraftMessage(message.text)
     setSubmitError('')
     setSelectedMessage(null)
@@ -3434,30 +3685,72 @@ export default function ChatSection({
     })
   }
 
-  function clearSelectedImage() {
-    setPendingImageUrl(null)
-
+  function resetImageInput() {
     if (imageInputRef.current) {
       imageInputRef.current.value = ''
     }
   }
 
-  async function handleImageInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const nextFile = event.target.files?.[0]
+  function clearSelectedImages(options?: { deleteFiles?: boolean }) {
+    const shouldDeleteFiles = options?.deleteFiles ?? true
+    const imagesToClear = pendingImagesRef.current
 
-    if (!nextFile) {
+    setPendingImages([])
+    resetImageInput()
+
+    if (!shouldDeleteFiles || imagesToClear.length === 0) {
+      return
+    }
+
+    void Promise.allSettled(
+      imagesToClear.map(async (image) => {
+        await deleteUploadedChatImage(image.storagePath)
+      })
+    )
+  }
+
+  function handleRemovePendingImage(storagePath: string) {
+    const imageToRemove = pendingImagesRef.current.find((image) => image.storagePath === storagePath) ?? null
+
+    setPendingImages((currentImages) =>
+      currentImages.filter((image) => image.storagePath !== storagePath)
+    )
+    resetImageInput()
+
+    if (!imageToRemove) {
+      return
+    }
+
+    void deleteUploadedChatImage(imageToRemove.storagePath).catch((error) => {
+      console.error('Failed to delete removed chat image before send', error)
+    })
+  }
+
+  async function handleImageInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const nextFiles = Array.from(event.target.files ?? [])
+    resetImageInput()
+
+    if (nextFiles.length === 0) {
       return
     }
 
     if (!currentUserId) {
-      clearSelectedImage()
-      setSubmitError('Нужно войти, чтобы отправлять изображения')
+      clearSelectedImages()
+      setSubmitError('Нужно войти, чтобы отправлять фото')
       return
     }
 
-    if (!nextFile.type.startsWith('image/')) {
-      clearSelectedImage()
-      setSubmitError('Можно выбрать только изображение')
+    const availableSlots = CHAT_MESSAGE_MAX_ATTACHMENTS - pendingImagesRef.current.length
+
+    if (availableSlots <= 0) {
+      setSubmitError(`Можно прикрепить не больше ${CHAT_MESSAGE_MAX_ATTACHMENTS} фото`)
+      return
+    }
+
+    const filesToUpload = nextFiles.slice(0, availableSlots)
+
+    if (filesToUpload.some((file) => !file.type.startsWith('image/'))) {
+      setSubmitError('Можно выбрать только изображения')
       return
     }
 
@@ -3465,12 +3758,25 @@ export default function ChatSection({
     setSubmitError('')
 
     try {
-      const publicUrl = await uploadChatImage(currentUserId, nextFile, threadId)
-      setPendingImageUrl(publicUrl)
+      const uploadResults = await Promise.allSettled(
+        filesToUpload.map((file) => uploadChatImage(currentUserId, file, threadId))
+      )
+      const uploadedImages = uploadResults
+        .filter((result): result is PromiseFulfilledResult<ChatComposerImageUpload> => result.status === 'fulfilled')
+        .map((result) => result.value)
+
+      if (uploadedImages.length > 0) {
+        setPendingImages((currentImages) => [...currentImages, ...uploadedImages])
+      }
+
+      if (filesToUpload.length < nextFiles.length) {
+        setSubmitError(`Можно прикрепить не больше ${CHAT_MESSAGE_MAX_ATTACHMENTS} фото`)
+      } else if (uploadedImages.length !== filesToUpload.length) {
+        setSubmitError('Не удалось загрузить все выбранные фото')
+      }
     } catch (error) {
-      console.error('Failed to upload image in chat composer', error)
-      clearSelectedImage()
-      setSubmitError('Не удалось загрузить изображение')
+      console.error('Failed to upload images in chat composer', error)
+      setSubmitError('Не удалось загрузить фото')
     } finally {
       setUploadingImage(false)
     }
@@ -3506,22 +3812,32 @@ export default function ChatSection({
   function createOptimisticTextOrImageMessage({
     userId,
     text,
-    imageUrl,
+    attachments,
   }: {
     userId: string
     text: string
-    imageUrl: string | null
+    attachments: ChatComposerImageUpload[]
   }): ChatMessageItem {
     const createdAt = new Date().toISOString()
-    const messageType = imageUrl ? 'image' : 'text'
-    const previewText = text.trim() || (imageUrl ? 'Фото' : '')
+    const normalizedAttachments = attachments.map((attachment, index) => ({
+      id: `temp-attachment-${index}-${attachment.storagePath}`,
+      type: 'image' as const,
+      storagePath: attachment.storagePath,
+      publicUrl: attachment.publicUrl,
+      width: attachment.width ?? null,
+      height: attachment.height ?? null,
+      sortOrder: index,
+    }))
+    const messageType = normalizedAttachments.length > 0 ? 'image' : 'text'
+    const previewText = text.trim() || (normalizedAttachments.length > 1 ? `${normalizedAttachments.length} фото` : normalizedAttachments.length === 1 ? 'Фото' : '')
 
     return {
       id: createOptimisticMessageId(messageType),
       userId,
       text,
       messageType,
-      imageUrl,
+      imageUrl: normalizedAttachments[0]?.publicUrl ?? null,
+      attachments: normalizedAttachments,
       mediaUrl: null,
       mediaDurationSeconds: null,
       editedAt: null,
@@ -3611,6 +3927,14 @@ export default function ChatSection({
       optimisticMessage.text,
       optimisticMessage.replyToId ?? null,
       threadId,
+      optimisticMessage.attachments
+        .filter((attachment): attachment is ChatMessageAttachment & { storagePath: string } => Boolean(attachment.storagePath))
+        .map((attachment) => ({
+          storagePath: attachment.storagePath,
+          publicUrl: attachment.publicUrl,
+          width: attachment.width,
+          height: attachment.height,
+        })),
       optimisticMessage.imageUrl
     )
 
@@ -3648,6 +3972,7 @@ export default function ChatSection({
       text: '',
       messageType: 'voice',
       imageUrl: null,
+      attachments: [],
       mediaUrl: localObjectUrl,
       mediaDurationSeconds: durationSeconds,
       editedAt: null,
@@ -4167,6 +4492,7 @@ export default function ChatSection({
               ref={imageInputRef}
               type="file"
               accept="image/*"
+              multiple
               onChange={handleImageInputChange}
               className="sr-only"
               tabIndex={-1}
@@ -4208,21 +4534,37 @@ export default function ChatSection({
             {hasPendingImage ? (
               <div className="mb-2 flex items-start justify-between gap-3 rounded-[18px] border border-black/[0.05] bg-black/[0.03] px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.04]">
                 <div className="min-w-0 flex-1">
-                  <p className="app-text-primary text-sm font-medium">Изображение готово</p>
-                  <img
-                    src={pendingImageUrl ?? undefined}
-                    alt="Предпросмотр"
-                    className="mt-2 max-h-36 w-auto max-w-[160px] rounded-2xl object-cover"
-                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="app-text-primary text-sm font-medium">
+                      {pendingImages.length > 1 ? 'Фото готовы' : 'Фото готово'}
+                    </p>
+                    <p className="app-text-secondary text-xs">
+                      {pendingImages.length}/{CHAT_MESSAGE_MAX_ATTACHMENTS}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {pendingImages.map((image, index) => (
+                      <div
+                        key={image.storagePath}
+                        className="relative aspect-square overflow-hidden rounded-2xl bg-black/[0.04] dark:bg-white/[0.06]"
+                      >
+                        <img
+                          src={image.publicUrl}
+                          alt={`Предпросмотр ${index + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePendingImage(image.storagePath)}
+                          className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
+                          aria-label={`Убрать фото ${index + 1}`}
+                        >
+                          <CloseIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={clearSelectedImage}
-                  className="app-text-secondary mt-0.5 shrink-0 rounded-full p-1"
-                  aria-label="Убрать изображение"
-                >
-                  <CloseIcon className="h-3.5 w-3.5" />
-                </button>
               </div>
             ) : null}
             {isRecordingVoice || isStartingVoiceRecording || isSendingVoice ? (
@@ -4273,9 +4615,15 @@ export default function ChatSection({
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
-                  disabled={submitting || uploadingImage || uploadingVoice || Boolean(editingMessageId)}
+                  disabled={
+                    submitting ||
+                    uploadingImage ||
+                    uploadingVoice ||
+                    Boolean(editingMessageId) ||
+                    pendingImages.length >= CHAT_MESSAGE_MAX_ATTACHMENTS
+                  }
                   className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
-                  aria-label="Выбрать изображение"
+                  aria-label="Выбрать фото"
                 >
                   {uploadingImage ? '...' : '+'}
                 </button>
@@ -4293,7 +4641,7 @@ export default function ChatSection({
                     }}
                     onFocus={() => setIsComposerFocused(true)}
                     onBlur={() => setIsComposerFocused(false)}
-                    placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись' : 'Сообщение'}
+                    placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись к фото' : 'Сообщение'}
                     disabled={submitting || uploadingImage || uploadingVoice}
                     maxLength={CHAT_MESSAGE_MAX_LENGTH}
                     rows={1}
@@ -4325,7 +4673,9 @@ export default function ChatSection({
             )}
             <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
               <p className="app-text-secondary text-xs">
-                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}{hasPendingImage ? ' + фото' : ''}{isRecordingVoice || isStartingVoiceRecording ? ' + запись' : uploadingVoice ? ' + аудио' : ''}
+                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
+                {hasPendingImage ? ` • ${pendingImages.length}/${CHAT_MESSAGE_MAX_ATTACHMENTS} фото` : ''}
+                {isRecordingVoice || isStartingVoiceRecording ? ' + запись' : uploadingVoice ? ' + аудио' : ''}
               </p>
               {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
             </div>
@@ -4457,7 +4807,12 @@ export default function ChatSection({
                   animatedReactionKey={animatedReactionKey}
                   messageRefs={messageRefs}
                   onReplyPreviewClick={handleReplyPreviewClick}
-                  onImageClick={setSelectedViewerImageUrl}
+                  onImageClick={(attachments, index) => {
+                    setSelectedViewerState({
+                      attachments,
+                      initialIndex: index,
+                    })
+                  }}
                   onImageLoad={handleMessageImageLoad}
                   onRetryFailedMessage={handleRetryFailedMessage}
                   onReactionToggle={handleToggleReaction}
@@ -4484,10 +4839,11 @@ export default function ChatSection({
           </div>
         </>
       </div>
-      {selectedViewerImageUrl ? (
+      {selectedViewerState ? (
         <FullscreenImageViewer
-          imageUrl={selectedViewerImageUrl}
-          onClose={() => setSelectedViewerImageUrl(null)}
+          images={selectedViewerState.attachments}
+          initialIndex={selectedViewerState.initialIndex}
+          onClose={() => setSelectedViewerState(null)}
         />
       ) : null}
       <ChatOpenDebugOverlay />
