@@ -409,7 +409,6 @@ export default function MessageThreadPage() {
             showTitle={false}
             threadId={threadId}
             currentUserId={currentUserId}
-            enableReadState={false}
           />
         </div>
       </div>

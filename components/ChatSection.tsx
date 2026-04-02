@@ -12,7 +12,6 @@ import {
   getCachedRecentChatMessages,
   getPrefetchedRecentChatMessages,
   loadChatMessageById,
-  loadChatReadState,
   loadChatMessageItem,
   loadOlderChatMessages,
   loadRecentChatMessages,
@@ -22,7 +21,6 @@ import {
   type ChatMessageItem,
   updateChatMessage,
   uploadChatImage,
-  upsertChatReadState,
 } from '@/lib/chat'
 import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
@@ -34,7 +32,6 @@ type ChatSectionProps = {
   currentUserId?: string | null
   title?: string
   description?: string
-  enableReadState?: boolean
 }
 
 const LONG_PRESS_MS = 450
@@ -1314,7 +1311,6 @@ function ChatMessageBody({
 const ChatMessageList = memo(function ChatMessageList({
   messages,
   currentUserId,
-  firstUnreadMessageId,
   swipingMessageId,
   swipeOffsetX,
   animatedReactionKey,
@@ -1334,7 +1330,6 @@ const ChatMessageList = memo(function ChatMessageList({
 }: {
   messages: ChatMessageItem[]
   currentUserId: string | null
-  firstUnreadMessageId: string | null
   swipingMessageId: string | null
   swipeOffsetX: number
   animatedReactionKey: string | null
@@ -1373,13 +1368,6 @@ const ChatMessageList = memo(function ChatMessageList({
               key={message.id}
               className={messageSpacingClass}
             >
-              {message.id === firstUnreadMessageId ? (
-                <div className="mb-3.5 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                  <p className="app-text-secondary text-xs font-medium">Непрочитанные сообщения</p>
-                  <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                </div>
-              ) : null}
               <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
                 {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
                   <Image
@@ -1472,10 +1460,8 @@ export default function ChatSection({
   currentUserId = null,
   title,
   description,
-  enableReadState = true,
 }: ChatSectionProps) {
   const { isKeyboardOpen } = useIsolatedViewportHeight()
-  const bottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -1492,7 +1478,6 @@ export default function ChatSection({
   const highlightedMessageIdRef = useRef<string | null>(null)
   const highlightedMessageTimeoutRef = useRef<number | null>(null)
   const animatedReactionTimeoutRef = useRef<number | null>(null)
-  const isMarkingReadRef = useRef(false)
   const pendingAutoScrollToBottomRef = useRef(false)
   const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number | null } | null>(null)
   const isLoadingOlderMessagesRef = useRef(false)
@@ -1509,8 +1494,6 @@ export default function ChatSection({
   const isSendingVoiceMessageRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
-  const [lastReadAt, setLastReadAt] = useState<string | null>(null)
-  const [hasLoadedReadState, setHasLoadedReadState] = useState(false)
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
   const [pendingNewMessagesCount, setPendingNewMessagesCount] = useState(0)
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
@@ -1565,22 +1548,6 @@ export default function ChatSection({
   const isCurrentUserSelectedInReaction = Boolean(
     currentUserId && selectedReaction?.userIds.includes(currentUserId)
   )
-  const firstUnreadMessageId = (() => {
-    if (!enableReadState) {
-      return null
-    }
-
-    if (messages.length === 0) {
-      return null
-    }
-
-    if (!lastReadAt) {
-      return null
-    }
-
-    const lastReadAtMs = new Date(lastReadAt).getTime()
-    return messages.find((message) => new Date(message.createdAt).getTime() > lastReadAtMs)?.id ?? null
-  })()
 
   const keepLatestRenderedMessages = useCallback((
     nextMessages: ChatMessageItem[],
@@ -1750,41 +1717,6 @@ export default function ChatSection({
     return nextMessages
   }, [])
 
-  const markMessagesRead = useCallback(async (nextLastReadAt: string) => {
-    if (!currentUserId || document.visibilityState !== 'visible') {
-      return
-    }
-
-    const nextLastReadAtMs = new Date(nextLastReadAt).getTime()
-    const currentLastReadAtMs = lastReadAt ? new Date(lastReadAt).getTime() : null
-
-    if ((currentLastReadAtMs ?? 0) >= nextLastReadAtMs || isMarkingReadRef.current) {
-      return
-    }
-
-    isMarkingReadRef.current = true
-
-    try {
-      const { error: upsertError } = await upsertChatReadState(currentUserId, nextLastReadAt)
-
-      if (upsertError) {
-        throw upsertError
-      }
-
-      setLastReadAt((currentLastReadValue) => {
-        if (!currentLastReadValue || new Date(currentLastReadValue).getTime() < nextLastReadAtMs) {
-          return nextLastReadAt
-        }
-
-        return currentLastReadValue
-      })
-    } catch {
-      // Keep read tracking non-blocking for the chat experience.
-    } finally {
-      isMarkingReadRef.current = false
-    }
-  }, [currentUserId, lastReadAt])
-
   const loadOlderMessages = useCallback(async (
     { requireNearTop = true }: { requireNearTop?: boolean } = {}
   ) => {
@@ -1873,16 +1805,13 @@ export default function ChatSection({
   }, [messages, selectedReactionDetails])
 
   useLayoutEffect(() => {
-    const cachedRecentMessages =
-      currentUserId && !enableReadState
-        ? getCachedRecentChatMessages(threadId)
-        : null
+    const cachedRecentMessages = currentUserId
+      ? getCachedRecentChatMessages(threadId)
+      : null
 
     pendingDeletedMessageIdsRef.current.clear()
     messagesRef.current = []
     setMessages(cachedRecentMessages?.messages ?? [])
-    setLastReadAt(null)
-    setHasLoadedReadState(Boolean(cachedRecentMessages))
     setPendingInitialScroll(Boolean(cachedRecentMessages?.messages.length))
     setPendingNewMessagesCount(0)
     setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
@@ -1894,7 +1823,7 @@ export default function ChatSection({
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
     setLoading(!cachedRecentMessages)
-  }, [currentUserId, enableReadState, threadId])
+  }, [currentUserId, threadId])
 
   useEffect(() => {
     if (!threadId || loading) {
@@ -2076,39 +2005,10 @@ export default function ChatSection({
       try {
         const cachedRecentMessages = getCachedRecentChatMessages(threadId)
 
-        if (cachedRecentMessages && !enableReadState) {
-          if (!isMounted) {
-            return
-          }
-
-          setMessages(
-            keepLatestRenderedMessages(cachedRecentMessages.messages, {
-              preserveExpandedHistory: true,
-            })
-          )
-          setError('')
-          setLastReadAt(null)
-          setHasLoadedReadState(true)
-          setHasMoreOlderMessages(cachedRecentMessages.hasMoreOlderMessages)
-          setPendingInitialScroll(cachedRecentMessages.messages.length > 0)
-          setLoading(false)
-          return
-        }
-
         const initialMessages =
           cachedRecentMessages?.messages ??
           (await getPrefetchedRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)) ??
           await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
-        let nextLastReadAt: string | null = null
-
-        if (enableReadState) {
-          try {
-            nextLastReadAt = await loadChatReadState(currentUserId)
-          } catch (readStateError) {
-            console.error('Failed to load chat read state', readStateError)
-            nextLastReadAt = null
-          }
-        }
 
         if (!isMounted) {
           return
@@ -2116,8 +2016,6 @@ export default function ChatSection({
 
         setMessages(keepLatestRenderedMessages(initialMessages))
         setError('')
-        setLastReadAt(nextLastReadAt)
-        setHasLoadedReadState(true)
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         setPendingInitialScroll(true)
       } catch {
@@ -2136,10 +2034,10 @@ export default function ChatSection({
     return () => {
       isMounted = false
     }
-  }, [currentUserId, enableReadState, keepLatestRenderedMessages, threadId])
+  }, [currentUserId, keepLatestRenderedMessages, threadId])
 
   useLayoutEffect(() => {
-    if (loading || !hasLoadedReadState || !pendingInitialScroll) {
+    if (loading || !pendingInitialScroll) {
       return
     }
 
@@ -2149,53 +2047,7 @@ export default function ChatSection({
 
     scrollPageToBottom()
     setPendingInitialScroll(false)
-  }, [hasLoadedReadState, loading, messages.length, pendingInitialScroll, scrollPageToBottom])
-
-  useEffect(() => {
-    if (
-      loading ||
-      !currentUserId ||
-      !enableReadState ||
-      !hasLoadedReadState ||
-      !latestLoadedMessageCreatedAt ||
-      typeof IntersectionObserver === 'undefined'
-    ) {
-      return
-    }
-
-    const bottomSentinel = bottomSentinelRef.current
-
-    if (!bottomSentinel) {
-      return
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) {
-          return
-        }
-
-        void markMessagesRead(latestLoadedMessageCreatedAt)
-      },
-      {
-        root: scrollContainerRef.current,
-        threshold: 0.1,
-      }
-    )
-
-    observer.observe(bottomSentinel)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [
-    currentUserId,
-    enableReadState,
-    hasLoadedReadState,
-    latestLoadedMessageCreatedAt,
-    loading,
-    markMessagesRead,
-  ])
+  }, [loading, messages.length, pendingInitialScroll, scrollPageToBottom])
 
   useEffect(() => {
     if (!pendingAutoScrollToBottomRef.current || messages.length === 0) {
@@ -3766,7 +3618,6 @@ export default function ChatSection({
                 <ChatMessageList
                   messages={messages}
                   currentUserId={currentUserId}
-                  firstUnreadMessageId={firstUnreadMessageId}
                   swipingMessageId={swipingMessageId}
                   swipeOffsetX={swipeOffsetX}
                   animatedReactionKey={animatedReactionKey}
@@ -3785,7 +3636,6 @@ export default function ChatSection({
                   onMessageContextMenu={handleMessageContextMenu}
                 />
               )}
-              <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden="true" />
             </div>
           </div>
           <div
