@@ -1,4 +1,5 @@
 create or replace function public.validate_chat_message_request(
+  p_user_id uuid,
   p_thread_id uuid default null,
   p_reply_to_id uuid default null
 )
@@ -33,8 +34,8 @@ as $$
         select 1
         from thread_context t
         where t.type = 'club'
-           or t.owner_user_id = auth.uid()
-           or t.coach_user_id = auth.uid()
+           or t.owner_user_id = p_user_id
+           or t.coach_user_id = p_user_id
       ) then true
       else false
     end as can_access,
@@ -48,5 +49,5 @@ as $$
     ) as safe_reply_to_id;
 $$;
 
-revoke all on function public.validate_chat_message_request(uuid, uuid) from public;
-grant execute on function public.validate_chat_message_request(uuid, uuid) to authenticated;
+revoke all on function public.validate_chat_message_request(uuid, uuid, uuid) from public;
+grant execute on function public.validate_chat_message_request(uuid, uuid, uuid) to authenticated;
