@@ -1573,6 +1573,7 @@ export default function ChatSection({
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const scrollContentRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
@@ -1596,6 +1597,11 @@ export default function ChatSection({
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const initialBottomLockQuietTimeoutRef = useRef<number | null>(null)
+  const initialBottomLockProgrammaticFrameRef = useRef<number | null>(null)
+  const initialBottomLockProgrammaticResetFrameRef = useRef<number | null>(null)
+  const initialBottomLockUserCancelledRef = useRef(false)
+  const initialBottomLockUserScrollIntentRef = useRef(false)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldCancelVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
@@ -1603,6 +1609,7 @@ export default function ChatSection({
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
+  const [isInitialBottomLockActive, setIsInitialBottomLockActive] = useState(false)
   const [pendingNewMessagesCount, setPendingNewMessagesCount] = useState(0)
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
   const [error, setError] = useState('')
@@ -1657,6 +1664,38 @@ export default function ChatSection({
   const isCurrentUserSelectedInReaction = Boolean(
     currentUserId && selectedReaction?.userIds.includes(currentUserId)
   )
+  const initialBottomLockQuietMs = 200
+
+  const clearInitialBottomLockQuietTimeout = useCallback(() => {
+    if (initialBottomLockQuietTimeoutRef.current !== null) {
+      window.clearTimeout(initialBottomLockQuietTimeoutRef.current)
+      initialBottomLockQuietTimeoutRef.current = null
+    }
+  }, [])
+
+  const clearInitialBottomLockFrames = useCallback(() => {
+    if (initialBottomLockProgrammaticFrameRef.current !== null) {
+      window.cancelAnimationFrame(initialBottomLockProgrammaticFrameRef.current)
+      initialBottomLockProgrammaticFrameRef.current = null
+    }
+
+    if (initialBottomLockProgrammaticResetFrameRef.current !== null) {
+      window.cancelAnimationFrame(initialBottomLockProgrammaticResetFrameRef.current)
+      initialBottomLockProgrammaticResetFrameRef.current = null
+    }
+  }, [])
+
+  const deactivateInitialBottomLock = useCallback((preserveUserCancelled = false) => {
+    clearInitialBottomLockQuietTimeout()
+    clearInitialBottomLockFrames()
+
+    if (!preserveUserCancelled) {
+      initialBottomLockUserCancelledRef.current = false
+    }
+    initialBottomLockUserScrollIntentRef.current = false
+
+    setIsInitialBottomLockActive(false)
+  }, [clearInitialBottomLockFrames, clearInitialBottomLockQuietTimeout])
 
   const keepLatestRenderedMessages = useCallback((
     nextMessages: ChatMessageItem[],
@@ -1731,7 +1770,38 @@ export default function ChatSection({
     })
   }, [])
 
+  const scheduleInitialBottomLockRelease = useCallback(() => {
+    clearInitialBottomLockQuietTimeout()
+
+    initialBottomLockQuietTimeoutRef.current = window.setTimeout(() => {
+      if (!initialBottomLockUserCancelledRef.current) {
+        deactivateInitialBottomLock()
+      }
+    }, initialBottomLockQuietMs)
+  }, [clearInitialBottomLockQuietTimeout, deactivateInitialBottomLock, initialBottomLockQuietMs])
+
+  const keepInitialBottomLockAnchored = useCallback(() => {
+    if (initialBottomLockUserCancelledRef.current) {
+      return
+    }
+
+    clearInitialBottomLockFrames()
+    initialBottomLockProgrammaticFrameRef.current = window.requestAnimationFrame(() => {
+      initialBottomLockProgrammaticFrameRef.current = null
+      scrollPageToBottom()
+      initialBottomLockProgrammaticResetFrameRef.current = window.requestAnimationFrame(() => {
+        initialBottomLockProgrammaticResetFrameRef.current = null
+      })
+    })
+    scheduleInitialBottomLockRelease()
+  }, [clearInitialBottomLockFrames, scheduleInitialBottomLockRelease, scrollPageToBottom])
+
   const handleMessageImageLoad = useCallback(() => {
+    if (isInitialBottomLockActive) {
+      keepInitialBottomLockAnchored()
+      return
+    }
+
     const shouldStickToBottom = isNearBottom(80) || !showScrollToBottomButton
 
     if (!shouldStickToBottom) {
@@ -1741,7 +1811,13 @@ export default function ChatSection({
     window.requestAnimationFrame(() => {
       scrollPageToBottom()
     })
-  }, [isNearBottom, scrollPageToBottom, showScrollToBottomButton])
+  }, [
+    isInitialBottomLockActive,
+    isNearBottom,
+    keepInitialBottomLockAnchored,
+    scrollPageToBottom,
+    showScrollToBottomButton,
+  ])
 
   const clearReplyTargetHighlight = useCallback(() => {
     if (highlightedMessageTimeoutRef.current !== null) {
@@ -1930,6 +2006,7 @@ export default function ChatSection({
       ? getCachedRecentChatMessages(threadId)
       : null
 
+    deactivateInitialBottomLock()
     pendingDeletedMessageIdsRef.current.clear()
     messagesRef.current = []
     setMessages(cachedRecentMessages?.messages ?? [])
@@ -1944,7 +2021,7 @@ export default function ChatSection({
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
     setLoading(!cachedRecentMessages)
-  }, [currentUserId, threadId])
+  }, [currentUserId, deactivateInitialBottomLock, threadId])
 
   useEffect(() => {
     if (!threadId || loading) {
@@ -1976,6 +2053,7 @@ export default function ChatSection({
 
   useEffect(() => {
     return () => {
+      deactivateInitialBottomLock()
       if (longPressTimeoutRef.current !== null) {
         window.clearTimeout(longPressTimeoutRef.current)
       }
@@ -1991,7 +2069,7 @@ export default function ChatSection({
 
       mediaRecorderRef.current = null
     }
-  }, [])
+  }, [deactivateInitialBottomLock])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -2181,9 +2259,110 @@ export default function ChatSection({
       return
     }
 
-    scrollPageToBottom()
+    initialBottomLockUserCancelledRef.current = false
+    setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
-  }, [loading, messages.length, pendingInitialScroll, scrollPageToBottom])
+  }, [loading, messages.length, pendingInitialScroll])
+
+  useLayoutEffect(() => {
+    if (!isInitialBottomLockActive || loading || messages.length === 0) {
+      return
+    }
+
+    keepInitialBottomLockAnchored()
+  }, [isInitialBottomLockActive, keepInitialBottomLockAnchored, loading, messages.length])
+
+  useEffect(() => {
+    if (!isInitialBottomLockActive) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+    const scrollContent = scrollContentRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    function handleLayoutChange() {
+      keepInitialBottomLockAnchored()
+    }
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', handleLayoutChange)
+
+      return () => {
+        window.removeEventListener('resize', handleLayoutChange)
+      }
+    }
+
+    const observer = new ResizeObserver(() => {
+      keepInitialBottomLockAnchored()
+    })
+
+    observer.observe(scrollContainer)
+    if (scrollContent) {
+      observer.observe(scrollContent)
+    }
+    window.addEventListener('resize', handleLayoutChange)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', handleLayoutChange)
+    }
+  }, [isInitialBottomLockActive, keepInitialBottomLockAnchored])
+
+  useEffect(() => {
+    if (!isInitialBottomLockActive) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    function handleScroll() {
+      if (!initialBottomLockUserScrollIntentRef.current) {
+        return
+      }
+
+      if (initialBottomLockProgrammaticFrameRef.current !== null || initialBottomLockProgrammaticResetFrameRef.current !== null) {
+        return
+      }
+
+      if (isNearBottom(24)) {
+        return
+      }
+
+      initialBottomLockUserScrollIntentRef.current = false
+      initialBottomLockUserCancelledRef.current = true
+      deactivateInitialBottomLock(true)
+    }
+
+    function markUserScrollIntent() {
+      initialBottomLockUserScrollIntentRef.current = true
+    }
+
+    function clearUserScrollIntent() {
+      initialBottomLockUserScrollIntentRef.current = false
+    }
+
+    scrollContainer.addEventListener('wheel', markUserScrollIntent, { passive: true })
+    scrollContainer.addEventListener('touchstart', markUserScrollIntent, { passive: true })
+    scrollContainer.addEventListener('touchend', clearUserScrollIntent, { passive: true })
+    scrollContainer.addEventListener('touchcancel', clearUserScrollIntent, { passive: true })
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      scrollContainer.removeEventListener('wheel', markUserScrollIntent)
+      scrollContainer.removeEventListener('touchstart', markUserScrollIntent)
+      scrollContainer.removeEventListener('touchend', clearUserScrollIntent)
+      scrollContainer.removeEventListener('touchcancel', clearUserScrollIntent)
+      scrollContainer.removeEventListener('scroll', handleScroll)
+    }
+  }, [deactivateInitialBottomLock, isInitialBottomLockActive, isNearBottom])
 
   useEffect(() => {
     if (!pendingAutoScrollToBottomRef.current || messages.length === 0) {
@@ -3929,7 +4108,7 @@ export default function ChatSection({
             ref={scrollContainerRef}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
           >
-            <div className="flex min-h-full flex-col">
+            <div ref={scrollContentRef} className="flex min-h-full flex-col">
               {error ? (
                 <section className="flex flex-1 p-1">
                   <p className="text-sm text-red-600">{error}</p>
