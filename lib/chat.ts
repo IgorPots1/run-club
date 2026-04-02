@@ -752,8 +752,18 @@ export async function createChatMessage(
       width: attachment.width ?? null,
       height: attachment.height ?? null,
     }))
+  const pendingAttachmentCount = Math.max(0, Math.round(options?.pendingAttachmentCount ?? 0))
 
-  if (!trimmedText && normalizedAttachments.length === 0 && !imageUrl) {
+  logChatSendDebug('validation_check', {
+    hasText: Boolean(trimmedText),
+    attachmentCount: normalizedAttachments.length > 0
+      ? normalizedAttachments.length
+      : imageUrl
+        ? 1
+        : pendingAttachmentCount,
+  })
+
+  if (!trimmedText && normalizedAttachments.length === 0 && !imageUrl && pendingAttachmentCount === 0) {
     throw new Error('empty_message')
   }
 
@@ -765,7 +775,7 @@ export async function createChatMessage(
     kind: 'text',
     text: trimmedText,
     imageUrl: imageUrl ?? null,
-    pendingAttachmentCount: options?.pendingAttachmentCount ?? null,
+    pendingAttachmentCount: pendingAttachmentCount || null,
     attachments: normalizedAttachments,
     replyToId: replyToId ?? null,
     threadId: threadId ?? null,

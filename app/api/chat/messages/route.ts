@@ -891,6 +891,14 @@ export async function POST(request: Request) {
             const text = textBody?.text?.trim() ?? ''
             const imageUrl = textBody?.imageUrl?.trim() || null
             validatedTextAttachments = validateImageAttachments(textBody?.attachments, userId, threadId)
+            logPhase('validation_check', {
+              hasText: Boolean(text),
+              attachmentCount: validatedTextAttachments.length > 0
+                ? validatedTextAttachments.length
+                : imageUrl
+                  ? 1
+                  : pendingAttachmentCount,
+            })
 
             if (!text && !imageUrl && validatedTextAttachments.length === 0 && pendingAttachmentCount === 0) {
               throw new Error('empty_message')
