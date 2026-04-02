@@ -36,7 +36,6 @@ import {
   setCachedRecentChatMessages,
   softDeleteChatMessage,
   toggleChatMessageReaction,
-  type ChatComposerImageUpload,
   type ChatMessageAttachment,
   type ChatMessageItem,
   updateChatMessage,
@@ -54,6 +53,14 @@ type ChatSectionProps = {
   isThreadLayoutReady?: boolean
   title?: string
   description?: string
+}
+
+type PendingComposerImage = {
+  id: string
+  file: File
+  previewUrl: string
+  width: number | null
+  height: number | null
 }
 
 const LONG_PRESS_MS = 450
@@ -83,6 +90,12 @@ let activeVoiceMessageAudio: HTMLAudioElement | null = null
 
 function createChatPerfTraceId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function revokeObjectUrlIfNeeded(url: string | null | undefined) {
+  if (url && url.startsWith('blob:')) {
+    URL.revokeObjectURL(url)
+  }
 }
 
 function ChatPerfDebugOverlay() {
@@ -1567,6 +1580,12 @@ function ChatMessageBody({
   const isImageOnlyMessage = Boolean(hasImageAttachments && !message.text && !message.replyTo && !hasVoiceAttachment)
   const isPendingMessage = message.isOptimistic && message.optimisticStatus === 'sending'
   const isFailedMessage = message.isOptimistic && message.optimisticStatus === 'failed'
+  const isUploadingImageMessage = Boolean(
+    message.isOptimistic &&
+    hasImageAttachments &&
+    message.optimisticAttachmentUploadState === 'uploading'
+  )
+  const pendingStatusLabel = isUploadingImageMessage ? 'Загрузка фото...' : 'Отправка...'
 
   return (
     <>
@@ -1687,12 +1706,12 @@ function ChatMessageBody({
         <p className={`${isFailedMessage ? 'text-red-600' : 'app-text-secondary'} ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
           {message.createdAtLabel}
           {message.editedAt ? ' • изменено' : ''}
-          {isPendingMessage ? ' • Отправка...' : ''}
+          {isPendingMessage ? ` • ${pendingStatusLabel}` : ''}
           {isFailedMessage ? ' • Не отправлено' : ''}
         </p>
       ) : isPendingMessage || isFailedMessage ? (
         <p className={`mt-1 text-[11px] ${isOwnMessage ? 'text-right' : ''} ${isFailedMessage ? 'text-red-600' : 'app-text-secondary opacity-70'}`}>
-          {isPendingMessage ? 'Отправка...' : 'Не отправлено'}
+          {isPendingMessage ? pendingStatusLabel : 'Не отправлено'}
         </p>
       ) : null}
       {isFailedMessage && onRetryFailedMessage ? (
@@ -1983,8 +2002,8 @@ export default function ChatSection({
   const [deleteConfirmationMessage, setDeleteConfirmationMessage] = useState<ChatMessageItem | null>(null)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
-  const [pendingImages, setPendingImages] = useState<ChatComposerImageUpload[]>([])
-  const pendingImagesRef = useRef<ChatComposerImageUpload[]>([])
+  const [pendingImages, setPendingImages] = useState<PendingComposerImage[]>([])
+  const pendingImagesRef = useRef<PendingComposerImage[]>([])
   const [selectedViewerState, setSelectedViewerState] = useState<{
     attachments: ChatMessageAttachment[]
     initialIndex: number
@@ -2604,6 +2623,12 @@ export default function ChatSection({
       nextPendingInitialScroll: Boolean(cachedRecentMessages?.messages.length),
     })
     deactivateInitialBottomLock('thread-reset')
+    pendingImagesRef.current.forEach((image) => {
+      revokeObjectUrlIfNeeded(image.previewUrl)
+    })
+    messagesRef.current.forEach((message) => {
+      releaseOptimisticClientMedia(message)
+    })
     pendingDeletedMessageIdsRef.current.clear()
     pendingSendPerfByOptimisticIdRef.current = {}
     pendingSendPerfByServerMessageIdRef.current = {}
@@ -2622,7 +2647,7 @@ export default function ChatSection({
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
     setLoading(!cachedRecentMessages)
-  }, [currentUserId, deactivateInitialBottomLock, logChatOpenDebug, threadId])
+  }, [currentUserId, deactivateInitialBottomLock, logChatOpenDebug, releaseOptimisticClientMedia, threadId])
 
   useEffect(() => {
     if (!threadId || loading) {
@@ -2655,6 +2680,12 @@ export default function ChatSection({
   useEffect(() => {
     return () => {
       deactivateInitialBottomLock('component-unmount')
+      pendingImagesRef.current.forEach((image) => {
+        revokeObjectUrlIfNeeded(image.previewUrl)
+      })
+      messagesRef.current.forEach((message) => {
+        releaseOptimisticClientMedia(message)
+      })
       if (longPressTimeoutRef.current !== null) {
         window.clearTimeout(longPressTimeoutRef.current)
       }
@@ -2670,7 +2701,7 @@ export default function ChatSection({
 
       mediaRecorderRef.current = null
     }
-  }, [deactivateInitialBottomLock])
+  }, [deactivateInitialBottomLock, releaseOptimisticClientMedia])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -3670,7 +3701,7 @@ export default function ChatSection({
         }
 
         setDraftMessage('')
-        clearSelectedImages({ deleteFiles: false })
+        clearSelectedImages({ revokePreviews: false })
         setReplyingToMessage(null)
         setEditingMessageId(null)
         window.requestAnimationFrame(() => {
@@ -3901,29 +3932,27 @@ export default function ChatSection({
     }
   }
 
-  function clearSelectedImages(options?: { deleteFiles?: boolean }) {
-    const shouldDeleteFiles = options?.deleteFiles ?? true
+  function clearSelectedImages(options?: { revokePreviews?: boolean }) {
+    const shouldRevokePreviews = options?.revokePreviews ?? true
     const imagesToClear = pendingImagesRef.current
 
     setPendingImages([])
     resetImageInput()
 
-    if (!shouldDeleteFiles || imagesToClear.length === 0) {
+    if (!shouldRevokePreviews || imagesToClear.length === 0) {
       return
     }
 
-    void Promise.allSettled(
-      imagesToClear.map(async (image) => {
-        await deleteUploadedChatImage(image.storagePath)
-      })
-    )
+    imagesToClear.forEach((image) => {
+      revokeObjectUrlIfNeeded(image.previewUrl)
+    })
   }
 
-  function handleRemovePendingImage(storagePath: string) {
-    const imageToRemove = pendingImagesRef.current.find((image) => image.storagePath === storagePath) ?? null
+  function handleRemovePendingImage(imageId: string) {
+    const imageToRemove = pendingImagesRef.current.find((image) => image.id === imageId) ?? null
 
     setPendingImages((currentImages) =>
-      currentImages.filter((image) => image.storagePath !== storagePath)
+      currentImages.filter((image) => image.id !== imageId)
     )
     resetImageInput()
 
@@ -3931,9 +3960,7 @@ export default function ChatSection({
       return
     }
 
-    void deleteUploadedChatImage(imageToRemove.storagePath).catch((error) => {
-      console.error('Failed to delete removed chat image before send', error)
-    })
+    revokeObjectUrlIfNeeded(imageToRemove.previewUrl)
   }
 
   async function handleImageInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -3964,52 +3991,40 @@ export default function ChatSection({
       return
     }
 
-    setUploadingImage(true)
     setSubmitError('')
-    const uploadTraceId = createChatPerfTraceId('image-upload')
-    const uploadStart = performance.now()
-    logChatPerfDebug('image-upload-start', {
-      traceId: uploadTraceId,
-      messageType: 'image',
-      attachmentCount: filesToUpload.length,
-      source: 'composer-picker',
-    })
+    setUploadingImage(true)
 
     try {
-      const uploadResults = await Promise.allSettled(
-        filesToUpload.map((file) => uploadChatImage(currentUserId, file, threadId))
-      )
-      const uploadedImages = uploadResults
-        .filter((result): result is PromiseFulfilledResult<ChatComposerImageUpload> => result.status === 'fulfilled')
-        .map((result) => result.value)
+      const pendingSelections = await Promise.all(filesToUpload.map(async (file, index) => {
+        const previewUrl = URL.createObjectURL(file)
+        const dimensions = await new Promise<{ width: number | null; height: number | null }>((resolve) => {
+          const image = new window.Image()
+          image.onload = () => {
+            resolve({
+              width: Number.isFinite(image.naturalWidth) && image.naturalWidth > 0 ? image.naturalWidth : null,
+              height: Number.isFinite(image.naturalHeight) && image.naturalHeight > 0 ? image.naturalHeight : null,
+            })
+          }
+          image.onerror = () => {
+            resolve({ width: null, height: null })
+          }
+          image.src = previewUrl
+        })
 
-      if (uploadedImages.length > 0) {
-        setPendingImages((currentImages) => [...currentImages, ...uploadedImages])
-      }
+        return {
+          id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+          file,
+          previewUrl,
+          width: dimensions.width,
+          height: dimensions.height,
+        } satisfies PendingComposerImage
+      }))
+
+      setPendingImages((currentImages) => [...currentImages, ...pendingSelections])
 
       if (filesToUpload.length < nextFiles.length) {
         setSubmitError(`Можно прикрепить не больше ${CHAT_MESSAGE_MAX_ATTACHMENTS} фото`)
-      } else if (uploadedImages.length !== filesToUpload.length) {
-        setSubmitError('Не удалось загрузить все выбранные фото')
       }
-      logChatPerfDebug('image-upload-end', {
-        traceId: uploadTraceId,
-        messageType: 'image',
-        attachmentCount: uploadedImages.length,
-        source: 'composer-picker',
-        durationMs: Math.round(performance.now() - uploadStart),
-      })
-    } catch (error) {
-      console.error('Failed to upload images in chat composer', error)
-      setSubmitError('Не удалось загрузить фото')
-      logChatPerfDebug('image-upload-end', {
-        traceId: uploadTraceId,
-        messageType: 'image',
-        attachmentCount: 0,
-        source: 'composer-picker',
-        durationMs: Math.round(performance.now() - uploadStart),
-        status: 'error',
-      })
     } finally {
       setUploadingImage(false)
     }
@@ -4042,6 +4057,21 @@ export default function ChatSection({
     URL.revokeObjectURL(message.optimisticLocalObjectUrl)
   }
 
+  function revokeOptimisticImageObjectUrls(message: Pick<ChatMessageItem, 'isOptimistic' | 'attachments'>) {
+    if (!message.isOptimistic) {
+      return
+    }
+
+    message.attachments.forEach((attachment) => {
+      revokeObjectUrlIfNeeded(attachment.publicUrl)
+    })
+  }
+
+  function releaseOptimisticClientMedia(message: ChatMessageItem) {
+    revokeOptimisticVoiceObjectUrl(message)
+    revokeOptimisticImageObjectUrls(message)
+  }
+
   function createOptimisticTextOrImageMessage({
     userId,
     text,
@@ -4049,14 +4079,14 @@ export default function ChatSection({
   }: {
     userId: string
     text: string
-    attachments: ChatComposerImageUpload[]
+    attachments: PendingComposerImage[]
   }): ChatMessageItem {
     const createdAt = new Date().toISOString()
     const normalizedAttachments = attachments.map((attachment, index) => ({
-      id: `temp-attachment-${index}-${attachment.storagePath}`,
+      id: `temp-attachment-${index}-${attachment.id}`,
       type: 'image' as const,
-      storagePath: attachment.storagePath,
-      publicUrl: attachment.publicUrl,
+      storagePath: null,
+      publicUrl: attachment.previewUrl,
       width: attachment.width ?? null,
       height: attachment.height ?? null,
       sortOrder: index,
@@ -4087,6 +4117,8 @@ export default function ChatSection({
       optimisticStatus: 'sending',
       optimisticServerMessageId: null,
       optimisticLocalObjectUrl: null,
+      optimisticImageFiles: attachments.map((attachment) => attachment.file),
+      optimisticAttachmentUploadState: normalizedAttachments.length > 0 ? 'uploading' : null,
     }
   }
 
@@ -4115,6 +4147,8 @@ export default function ChatSection({
         })
       }
 
+      revokeOptimisticImageObjectUrls(optimisticMessage)
+      delete pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
       setMessages((currentMessages) =>
         keepLatestRenderedMessages(
           replaceMessageById(currentMessages, optimisticMessage.id, nextMessage),
@@ -4144,6 +4178,16 @@ export default function ChatSection({
 
   async function sendOptimisticTextOrImageMessage(optimisticMessage: ChatMessageItem) {
     const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id] ?? null
+    let workingMessage = optimisticMessage
+    const hasPendingAttachmentUploads = optimisticMessage.attachments.some(
+      (attachment, index) => !attachment.storagePath && Boolean(optimisticMessage.optimisticImageFiles?.[index])
+    )
+    if (hasPendingAttachmentUploads) {
+      workingMessage = {
+        ...optimisticMessage,
+        optimisticAttachmentUploadState: 'uploading',
+      }
+    }
     const shouldAutoScroll = isNearBottom()
 
     if (shouldAutoScroll) {
@@ -4157,13 +4201,13 @@ export default function ChatSection({
           ? currentMessages.map((message) =>
               message.id === optimisticMessage.id
                 ? {
-                    ...optimisticMessage,
+                    ...workingMessage,
                     optimisticStatus: 'sending',
                     optimisticServerMessageId: null,
                   }
                 : message
             )
-          : insertMessageChronologically(currentMessages, optimisticMessage),
+          : insertMessageChronologically(currentMessages, workingMessage),
         {
           preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
         }
@@ -4179,6 +4223,95 @@ export default function ChatSection({
       })
     }
 
+    const attachmentsToUpload = workingMessage.attachments
+      .map((attachment, index) => ({
+        attachment,
+        index,
+        file: workingMessage.optimisticImageFiles?.[index] ?? null,
+      }))
+      .filter(({ attachment, file }) => !attachment.storagePath && file)
+
+    if (attachmentsToUpload.length > 0) {
+      const uploadStart = performance.now()
+      if (perfEntry) {
+        logChatPerfDebug('image-upload-start', {
+          traceId: perfEntry.traceId,
+          messageType: 'image',
+          attachmentCount: attachmentsToUpload.length,
+          source: 'background-send',
+        })
+      }
+
+      const uploadResults = await Promise.allSettled(
+        attachmentsToUpload.map(async ({ file }) => uploadChatImage(workingMessage.userId, file!, threadId))
+      )
+
+      let hasUploadFailure = false
+      const nextAttachments = workingMessage.attachments.map((attachment) => ({ ...attachment }))
+
+      uploadResults.forEach((result, uploadIndex) => {
+        const uploadTarget = attachmentsToUpload[uploadIndex]
+
+        if (!uploadTarget) {
+          return
+        }
+
+        if (result.status === 'fulfilled') {
+          const previousUrl = nextAttachments[uploadTarget.index]?.publicUrl ?? null
+          nextAttachments[uploadTarget.index] = {
+            ...nextAttachments[uploadTarget.index]!,
+            storagePath: result.value.storagePath,
+            publicUrl: result.value.publicUrl,
+            width: result.value.width ?? nextAttachments[uploadTarget.index]!.width,
+            height: result.value.height ?? nextAttachments[uploadTarget.index]!.height,
+          }
+          revokeObjectUrlIfNeeded(previousUrl)
+          return
+        }
+
+        hasUploadFailure = true
+      })
+
+      workingMessage = {
+        ...workingMessage,
+        imageUrl: nextAttachments[0]?.publicUrl ?? null,
+        attachments: nextAttachments,
+        optimisticImageFiles: hasUploadFailure ? workingMessage.optimisticImageFiles : null,
+        optimisticAttachmentUploadState: hasUploadFailure ? 'failed' : 'uploaded',
+      }
+
+      setMessages((currentMessages) =>
+        keepLatestRenderedMessages(
+          currentMessages.map((message) =>
+            message.id === workingMessage.id
+              ? {
+                  ...workingMessage,
+                  optimisticStatus: hasUploadFailure ? 'failed' : 'sending',
+                }
+              : message
+          ),
+          {
+            preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+          }
+        )
+      )
+
+      if (perfEntry) {
+        logChatPerfDebug('image-upload-end', {
+          traceId: perfEntry.traceId,
+          messageType: 'image',
+          attachmentCount: workingMessage.attachments.filter((attachment) => Boolean(attachment.storagePath)).length,
+          source: 'background-send',
+          durationMs: Math.round(performance.now() - uploadStart),
+          status: hasUploadFailure ? 'error' : 'ok',
+        })
+      }
+
+      if (hasUploadFailure) {
+        throw new Error('chat_image_upload_failed')
+      }
+    }
+
     if (perfEntry) {
       perfEntry.apiStartAt = performance.now()
       logChatPerfDebug('api-request-start', {
@@ -4188,11 +4321,11 @@ export default function ChatSection({
       })
     }
     const { error: insertError, messageId } = await createChatMessage(
-      optimisticMessage.userId,
-      optimisticMessage.text,
-      optimisticMessage.replyToId ?? null,
+      workingMessage.userId,
+      workingMessage.text,
+      workingMessage.replyToId ?? null,
       threadId,
-      optimisticMessage.attachments
+      workingMessage.attachments
         .filter((attachment): attachment is ChatMessageAttachment & { storagePath: string } => Boolean(attachment.storagePath))
         .map((attachment) => ({
           storagePath: attachment.storagePath,
@@ -4200,7 +4333,7 @@ export default function ChatSection({
           width: attachment.width,
           height: attachment.height,
         })),
-      optimisticMessage.imageUrl,
+      workingMessage.imageUrl,
       perfEntry?.traceId ?? null
     )
     if (perfEntry) {
@@ -4208,15 +4341,15 @@ export default function ChatSection({
       logChatPerfDebug('api-request-end', {
         traceId: perfEntry.traceId,
         messageId: messageId ?? null,
-        messageType: optimisticMessage.messageType,
-        attachmentCount: optimisticMessage.attachments.length,
+        messageType: workingMessage.messageType,
+        attachmentCount: workingMessage.attachments.length,
         durationMs: Math.round(perfEntry.apiEndAt - (perfEntry.apiStartAt ?? perfEntry.startedAt)),
       })
       logChatPerfDebug('api-response-received', {
         traceId: perfEntry.traceId,
         messageId: messageId ?? null,
-        messageType: optimisticMessage.messageType,
-        attachmentCount: optimisticMessage.attachments.length,
+        messageType: workingMessage.messageType,
+        attachmentCount: workingMessage.attachments.length,
       })
     }
 
@@ -4224,10 +4357,13 @@ export default function ChatSection({
       setMessages((currentMessages) =>
         keepLatestRenderedMessages(
           currentMessages.map((message) =>
-            message.id === optimisticMessage.id
+            message.id === workingMessage.id
               ? {
                   ...message,
                   optimisticStatus: 'failed',
+                  optimisticAttachmentUploadState: message.messageType === 'image'
+                    ? (message.optimisticAttachmentUploadState ?? 'failed')
+                    : message.optimisticAttachmentUploadState,
                 }
               : message
           ),
@@ -4246,7 +4382,7 @@ export default function ChatSection({
       if (perfEntry) {
         pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
       }
-      await reconcileOptimisticMessageWithServerMessage(optimisticMessage, messageId)
+      await reconcileOptimisticMessageWithServerMessage(workingMessage, messageId)
     }
   }
 
@@ -4282,6 +4418,8 @@ export default function ChatSection({
       optimisticStatus: 'sending',
       optimisticServerMessageId: null,
       optimisticLocalObjectUrl: localObjectUrl,
+      optimisticImageFiles: null,
+      optimisticAttachmentUploadState: null,
     }
   }
 
@@ -4880,17 +5018,17 @@ export default function ChatSection({
                   <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
                     {pendingImages.map((image, index) => (
                       <div
-                        key={image.storagePath}
+                        key={image.id}
                         className="relative aspect-square overflow-hidden rounded-2xl bg-black/[0.04] dark:bg-white/[0.06]"
                       >
                         <img
-                          src={image.publicUrl}
+                          src={image.previewUrl}
                           alt={`Предпросмотр ${index + 1}`}
                           className="h-full w-full object-cover"
                         />
                         <button
                           type="button"
-                          onClick={() => handleRemovePendingImage(image.storagePath)}
+                          onClick={() => handleRemovePendingImage(image.id)}
                           className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
                           aria-label={`Убрать фото ${index + 1}`}
                         >

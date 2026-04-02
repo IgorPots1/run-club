@@ -117,6 +117,8 @@ export type ChatMessageItem = {
   optimisticStatus?: 'sending' | 'failed'
   optimisticServerMessageId?: string | null
   optimisticLocalObjectUrl?: string | null
+  optimisticImageFiles?: File[] | null
+  optimisticAttachmentUploadState?: 'uploading' | 'uploaded' | 'failed' | null
 }
 
 const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 15000
