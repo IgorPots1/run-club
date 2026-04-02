@@ -174,7 +174,10 @@ function parseDateValue(dateValue: string) {
   return parsedDate
 }
 
-function buildManualRunCreatedAt(dateValue: string) {
+function buildManualRunCreatedAt(
+  dateValue: string,
+  existingRuns: Array<Pick<Run, 'created_at'>>
+) {
   const [yearString, monthString, dayString] = dateValue.split('-')
   const year = Number(yearString)
   const month = Number(monthString)
@@ -184,16 +187,39 @@ function buildManualRunCreatedAt(dateValue: string) {
     return null
   }
 
+  const selectedDateValue = `${yearString}-${monthString}-${dayString}`
   const now = new Date()
-  const createdAt = new Date(
-    year,
-    month - 1,
-    day,
-    now.getHours(),
-    now.getMinutes(),
-    now.getSeconds(),
-    now.getMilliseconds()
-  )
+  const createdAt = new Date(year, month - 1, day)
+
+  if (selectedDateValue === getTodayDateValue()) {
+    createdAt.setHours(
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds()
+    )
+  } else {
+    const earliestMinute = 6 * 60
+    const latestMinute = (21 * 60) + 55
+    const minuteOfDay = earliestMinute + Math.floor(Math.random() * ((latestMinute - earliestMinute) + 1))
+    createdAt.setHours(
+      Math.floor(minuteOfDay / 60),
+      minuteOfDay % 60,
+      0,
+      0
+    )
+
+    const hasTimestampCollision = (candidate: Date) =>
+      existingRuns.some((run) => new Date(run.created_at).getTime() === candidate.getTime())
+
+    while (
+      hasTimestampCollision(createdAt) &&
+      createdAt.getHours() < 22 &&
+      !(createdAt.getHours() === 22 && createdAt.getMinutes() === 0)
+    ) {
+      createdAt.setMinutes(createdAt.getMinutes() + 5)
+    }
+  }
 
   if (Number.isNaN(createdAt.getTime())) {
     return null
@@ -836,7 +862,7 @@ export default function RunsPage() {
       return
     }
 
-    const createdAtDate = buildManualRunCreatedAt(selectedDate)
+    const createdAtDate = buildManualRunCreatedAt(selectedDate, runs)
     if (!createdAtDate || Number.isNaN(createdAtDate.getTime())) {
       setError('Укажите корректную дату тренировки')
       return
