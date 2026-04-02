@@ -7,8 +7,8 @@ import InnerPageHeader from '@/components/InnerPageHeader'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
 import { CHAT_OPEN_DEBUG, pushChatOpenDebug } from '@/lib/chatOpenDebug'
+import { CHAT_PERF_DEBUG, pushChatPerfDebug } from '@/lib/chatPerfDebug'
 import {
-  CHAT_UNREAD_UPDATED_EVENT,
   dispatchChatUnreadUpdated,
   markThreadAsRead,
 } from '@/lib/chat/reads'
@@ -65,6 +65,22 @@ export default function MessageThreadPage() {
     threadMuted,
     threadMuteError,
   }
+  const logRoutePerf = useCallback((event: string, extra?: Record<string, unknown>) => {
+    if (!CHAT_PERF_DEBUG) {
+      return
+    }
+
+    const snapshotState = routeDebugStateRef.current
+
+    pushChatPerfDebug({
+      now: Math.round(performance.now()),
+      scope: 'thread-route',
+      event,
+      threadId: snapshotState.threadId,
+      messageCount: null,
+      ...extra,
+    })
+  }, [])
 
   const logRouteDebug = useCallback((event: string, extra?: Record<string, unknown>) => {
     if (!CHAT_OPEN_DEBUG) {
@@ -98,6 +114,7 @@ export default function MessageThreadPage() {
 
   useEffect(() => {
     logRouteDebug('mount')
+    logRoutePerf('route-mount-start')
 
     return () => {
       logRouteDebug('unmount')
@@ -105,14 +122,18 @@ export default function MessageThreadPage() {
         window.clearTimeout(markReadTimeoutRef.current)
       }
     }
-  }, [logRouteDebug])
+  }, [logRouteDebug, logRoutePerf])
 
   useEffect(() => {
     let isMounted = true
 
     async function loadThreadPage() {
       try {
+        logRoutePerf('current-user-load-start')
         const user = await getBootstrapUser()
+        logRoutePerf('current-user-load-end', {
+          currentUserId: user?.id ?? null,
+        })
 
         if (!isMounted) {
           return
@@ -124,7 +145,15 @@ export default function MessageThreadPage() {
         }
 
         setCurrentUserId(user.id)
+        logRoutePerf('current-user-set', {
+          currentUserId: user.id,
+        })
+        logRoutePerf('thread-fetch-start')
         const thread = await getChatThreadById(threadId)
+        logRoutePerf('thread-fetch-end', {
+          threadType: thread?.type ?? null,
+          ownerUserId: thread?.owner_user_id ?? null,
+        })
 
         if (!isMounted) {
           return
@@ -136,23 +165,35 @@ export default function MessageThreadPage() {
         }
 
         if (thread.type === 'club') {
+          logRoutePerf('thread-title-set', {
+            source: 'club-thread',
+          })
           setThreadTitle('Общий чат')
           setError('')
           return
         }
 
         if (user.id !== COACH_USER_ID) {
+          logRoutePerf('thread-title-set', {
+            source: 'direct-coach-static',
+          })
           setThreadTitle('Связь с тренером')
           setError('')
           return
         }
 
         if (!thread.owner_user_id) {
+          logRoutePerf('thread-title-set', {
+            source: 'direct-generic',
+          })
           setThreadTitle('Личный чат')
           setError('')
           return
         }
 
+        logRoutePerf('thread-title-profile-fetch-start', {
+          ownerUserId: thread.owner_user_id,
+        })
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('id, name, nickname, email')
@@ -162,11 +203,17 @@ export default function MessageThreadPage() {
         if (profileError) {
           throw profileError
         }
+        logRoutePerf('thread-title-profile-fetch-end', {
+          ownerUserId: thread.owner_user_id,
+        })
 
         if (!isMounted) {
           return
         }
 
+        logRoutePerf('thread-title-set', {
+          source: 'profile-load',
+        })
         setThreadTitle(getProfileDisplayName((profile as ProfileRow | null) ?? null, 'Ученик'))
         setError('')
       } catch {
@@ -175,6 +222,9 @@ export default function MessageThreadPage() {
         }
       } finally {
         if (isMounted) {
+          logRoutePerf('thread-open-route-ready', {
+            loading: false,
+          })
           setLoading(false)
         }
       }
@@ -191,7 +241,7 @@ export default function MessageThreadPage() {
     return () => {
       isMounted = false
     }
-  }, [router, threadId])
+  }, [logRoutePerf, router, threadId])
 
   useEffect(() => {
     if (!currentUserId) {
@@ -199,7 +249,8 @@ export default function MessageThreadPage() {
     }
 
     logRouteDebug('current-user-set')
-  }, [currentUserId, logRouteDebug])
+    logRoutePerf('current-user-state-committed')
+  }, [currentUserId, logRouteDebug, logRoutePerf])
 
   useEffect(() => {
     if (!threadTitle) {
@@ -207,7 +258,8 @@ export default function MessageThreadPage() {
     }
 
     logRouteDebug('thread-title-set')
-  }, [logRouteDebug, threadTitle])
+    logRoutePerf('thread-title-state-committed')
+  }, [logRouteDebug, logRoutePerf, threadTitle])
 
   useEffect(() => {
     if (loading) {
@@ -215,7 +267,8 @@ export default function MessageThreadPage() {
     }
 
     logRouteDebug('loading-false')
-  }, [loading, logRouteDebug])
+    logRoutePerf('loading-false')
+  }, [loading, logRouteDebug, logRoutePerf])
 
   useEffect(() => {
     if (!threadId || !currentUserId) {

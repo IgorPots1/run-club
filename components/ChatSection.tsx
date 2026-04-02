@@ -12,6 +12,13 @@ import {
   pushChatOpenDebug,
   type ChatOpenDebugOverlayEntry,
 } from '@/lib/chatOpenDebug'
+import {
+  CHAT_PERF_DEBUG,
+  CHAT_PERF_DEBUG_EVENT,
+  getChatPerfDebugEntries,
+  pushChatPerfDebug,
+  type ChatPerfDebugOverlayEntry,
+} from '@/lib/chatPerfDebug'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
@@ -73,6 +80,51 @@ const REPLY_TARGET_HIGHLIGHT_CLASSES = [
 ]
 
 let activeVoiceMessageAudio: HTMLAudioElement | null = null
+
+function createChatPerfTraceId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function ChatPerfDebugOverlay() {
+  const [entries, setEntries] = useState<ChatPerfDebugOverlayEntry[]>(() => {
+    if (!CHAT_PERF_DEBUG || typeof window === 'undefined') {
+      return []
+    }
+
+    return getChatPerfDebugEntries()
+  })
+
+  useEffect(() => {
+    if (!CHAT_PERF_DEBUG || typeof window === 'undefined') {
+      return
+    }
+
+    function handleDebugEvent(event: Event) {
+      const detail = (event as CustomEvent<ChatPerfDebugOverlayEntry[]>).detail
+      setEntries(detail ?? [])
+    }
+
+    window.addEventListener(CHAT_PERF_DEBUG_EVENT, handleDebugEvent as EventListener)
+
+    return () => {
+      window.removeEventListener(CHAT_PERF_DEBUG_EVENT, handleDebugEvent as EventListener)
+    }
+  }, [])
+
+  if (!CHAT_PERF_DEBUG || entries.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="pointer-events-none fixed inset-x-2 top-2 z-[91] rounded-xl bg-black/70 px-2 py-1.5 text-[10px] leading-4 text-white shadow-lg backdrop-blur-sm">
+      {entries.map((entry) => (
+        <div key={entry.id} className="truncate">
+          {entry.now} {entry.label}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function ChatOpenDebugOverlay() {
   const [entries, setEntries] = useState<ChatOpenDebugOverlayEntry[]>(() => {
@@ -1862,6 +1914,18 @@ export default function ChatSection({
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
+  const pendingSendPerfByOptimisticIdRef = useRef<Record<string, {
+    traceId: string
+    startedAt: number
+    messageType: ChatMessageItem['messageType']
+    attachmentCount: number
+    apiStartAt?: number
+    apiEndAt?: number
+    optimisticInsertedAt?: number
+    reconciledAt?: number
+  }>>({})
+  const pendingSendPerfByServerMessageIdRef = useRef<Record<string, string>>({})
+  const confirmedRenderedServerMessageIdsRef = useRef<Set<string>>(new Set())
   const longPressTimeoutRef = useRef<number | null>(null)
   const pendingReplyJumpTargetIdRef = useRef<string | null>(null)
   const swipeGestureMessageIdRef = useRef<string | null>(null)
@@ -1980,6 +2044,21 @@ export default function ChatSection({
     messageCount: messages.length,
   }
 
+  const logChatPerfDebug = useCallback((event: string, extra?: Record<string, unknown>) => {
+    if (!CHAT_PERF_DEBUG || typeof window === 'undefined') {
+      return
+    }
+
+    pushChatPerfDebug({
+      now: Math.round(performance.now()),
+      scope: 'chat-section',
+      event,
+      threadId: threadId || null,
+      messageCount: messagesRef.current.length,
+      ...extra,
+    })
+  }, [threadId])
+
   const logChatOpenDebug = useCallback((event: string, extra?: Record<string, unknown>) => {
     if (!CHAT_OPEN_DEBUG || typeof window === 'undefined') {
       return
@@ -2057,8 +2136,12 @@ export default function ChatSection({
       reason,
       preserveUserCancelled,
     })
+    logChatPerfDebug('bottom-lock-deactivate', {
+      reason,
+      preserveUserCancelled,
+    })
     setIsInitialBottomLockActive(false)
-  }, [clearInitialBottomLockFrames, clearInitialBottomLockSafetyTimeout, logChatOpenDebug])
+  }, [clearInitialBottomLockFrames, clearInitialBottomLockSafetyTimeout, logChatOpenDebug, logChatPerfDebug])
 
   const keepLatestRenderedMessages = useCallback((
     nextMessages: ChatMessageItem[],
@@ -2132,11 +2215,12 @@ export default function ChatSection({
     }
 
     logChatOpenDebug('scroll-to-bottom', { source, behavior })
+    logChatPerfDebug('scroll-to-bottom', { source, behavior })
     scrollContainer.scrollTo({
       top: scrollContainer.scrollHeight,
       behavior,
     })
-  }, [logChatOpenDebug])
+  }, [logChatOpenDebug, logChatPerfDebug])
 
   const getInitialBottomLockGeometry = useCallback(() => {
     const scrollContainer = scrollContainerRef.current
@@ -2271,6 +2355,9 @@ export default function ChatSection({
 
   const handleMessageImageLoad = useCallback(() => {
     logChatOpenDebug('image-load')
+    logChatPerfDebug('image-load', {
+      source: isInitialBottomLockActive ? 'initial-open' : 'runtime',
+    })
 
     if (!isThreadLayoutReady && hasDeferredInitialSettle) {
       logChatOpenDebug('image-load-deferred-for-thread-layout')
@@ -2297,6 +2384,7 @@ export default function ChatSection({
     isNearBottom,
     isThreadLayoutReady,
     logChatOpenDebug,
+    logChatPerfDebug,
     keepInitialBottomLockAnchored,
     scrollPageToBottom,
     showScrollToBottomButton,
@@ -2472,6 +2560,28 @@ export default function ChatSection({
   }, [messages])
 
   useEffect(() => {
+    messages.forEach((message) => {
+      if (message.isOptimistic || confirmedRenderedServerMessageIdsRef.current.has(message.id)) {
+        return
+      }
+
+      const traceId = pendingSendPerfByServerMessageIdRef.current[message.id]
+
+      if (!traceId) {
+        return
+      }
+
+      confirmedRenderedServerMessageIdsRef.current.add(message.id)
+      logChatPerfDebug('final-rendered-message-confirmed', {
+        traceId,
+        messageId: message.id,
+        messageType: message.messageType,
+        attachmentCount: message.attachments.length,
+      })
+    })
+  }, [logChatPerfDebug, messages])
+
+  useEffect(() => {
     if (!selectedReactionDetails) {
       return
     }
@@ -2495,6 +2605,9 @@ export default function ChatSection({
     })
     deactivateInitialBottomLock('thread-reset')
     pendingDeletedMessageIdsRef.current.clear()
+    pendingSendPerfByOptimisticIdRef.current = {}
+    pendingSendPerfByServerMessageIdRef.current = {}
+    confirmedRenderedServerMessageIdsRef.current.clear()
     messagesRef.current = []
     setMessages(cachedRecentMessages?.messages ?? [])
     setPendingInitialScroll(false)
@@ -2710,11 +2823,38 @@ export default function ChatSection({
       try {
         const cachedRecentMessages = getCachedRecentChatMessages(threadId)
         const hasCachedMessages = Boolean(cachedRecentMessages?.messages.length)
+        logChatPerfDebug('message-cache-check', {
+          cacheStatus: hasCachedMessages ? 'hit' : 'miss',
+          messageCount: cachedRecentMessages?.messages.length ?? 0,
+        })
 
-        const initialMessages =
-          cachedRecentMessages?.messages ??
-          (await getPrefetchedRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)) ??
-          await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
+        let initialMessages = cachedRecentMessages?.messages ?? null
+
+        if (!initialMessages) {
+          logChatPerfDebug('prefetch-messages-start', {
+            source: 'thread-open',
+          })
+          const prefetchStart = performance.now()
+          const prefetchedMessages = await getPrefetchedRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
+          logChatPerfDebug('prefetch-messages-end', {
+            source: 'thread-open',
+            cacheStatus: prefetchedMessages ? 'prefetch-hit' : 'prefetch-miss',
+            durationMs: Math.round(performance.now() - prefetchStart),
+            messageCount: prefetchedMessages?.length ?? 0,
+          })
+          initialMessages = prefetchedMessages
+        }
+
+        if (!initialMessages) {
+          logChatPerfDebug('db-messages-request-start', {
+            source: 'thread-open',
+          })
+          initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
+          logChatPerfDebug('db-messages-request-end', {
+            source: 'thread-open',
+            messageCount: initialMessages.length,
+          })
+        }
 
         if (!isMounted) {
           return
@@ -2724,12 +2864,19 @@ export default function ChatSection({
           initialMessageCount: initialMessages.length,
           hasCachedMessages,
         })
+        logChatPerfDebug('initial-messages-ready', {
+          messageCount: initialMessages.length,
+          cacheStatus: hasCachedMessages ? 'hit' : 'miss',
+        })
         setMessages(keepLatestRenderedMessages(initialMessages))
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         if (!hasCachedMessages) {
           logChatOpenDebug('initial-settle-requested', {
             nextHasDeferredInitialSettle: initialMessages.length > 0,
+          })
+          logChatPerfDebug('initial-settle-requested', {
+            messageCount: initialMessages.length,
           })
           setPendingInitialScroll(false)
           setHasDeferredInitialSettle(initialMessages.length > 0)
@@ -2750,7 +2897,7 @@ export default function ChatSection({
     return () => {
       isMounted = false
     }
-  }, [currentUserId, keepLatestRenderedMessages, logChatOpenDebug, threadId])
+  }, [currentUserId, keepLatestRenderedMessages, logChatOpenDebug, logChatPerfDebug, threadId])
 
   useEffect(() => {
     if (loading || !isThreadLayoutReady || !hasDeferredInitialSettle) {
@@ -2764,6 +2911,10 @@ export default function ChatSection({
     logChatOpenDebug('pending-initial-scroll-set', {
       source: 'thread-layout-ready',
     })
+    logChatPerfDebug('pending-initial-scroll-set', {
+      source: 'thread-layout-ready',
+      messageCount: messages.length,
+    })
     setPendingInitialScroll(true)
     setHasDeferredInitialSettle(false)
   }, [
@@ -2771,6 +2922,7 @@ export default function ChatSection({
     isThreadLayoutReady,
     loading,
     logChatOpenDebug,
+    logChatPerfDebug,
     messages.length,
   ])
 
@@ -2793,6 +2945,7 @@ export default function ChatSection({
     initialBottomLockLastGeometryRef.current = getInitialBottomLockGeometry()
     initialBottomLockStableSampleCountRef.current = 0
     logChatOpenDebug('bottom-lock-activate', { source: 'initial-open' })
+    logChatPerfDebug('bottom-lock-activate', { source: 'initial-open', messageCount: messages.length })
     setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
   }, [
@@ -2800,6 +2953,7 @@ export default function ChatSection({
     isThreadLayoutReady,
     loading,
     logChatOpenDebug,
+    logChatPerfDebug,
     messages.length,
     pendingInitialScroll,
   ])
@@ -3243,6 +3397,22 @@ export default function ChatSection({
             )
 
             if (optimisticVoiceMatch) {
+              const traceId = pendingSendPerfByServerMessageIdRef.current[nextMessage.id] ?? null
+              if (traceId) {
+                logChatPerfDebug('realtime-insert-received', {
+                  traceId,
+                  messageId: nextMessage.id,
+                  messageType: nextMessage.messageType,
+                  attachmentCount: nextMessage.attachments.length,
+                })
+                logChatPerfDebug('optimistic-reconciliation-complete', {
+                  traceId,
+                  messageId: nextMessage.id,
+                  messageType: nextMessage.messageType,
+                  attachmentCount: nextMessage.attachments.length,
+                  source: 'realtime-voice-match',
+                })
+              }
               revokeOptimisticVoiceObjectUrl(optimisticVoiceMatch)
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
@@ -3260,6 +3430,22 @@ export default function ChatSection({
               findMatchingOptimisticTextOrImageMessage(messagesRef.current, nextMessage)
 
             if (optimisticTextOrImageMatch) {
+              const traceId = pendingSendPerfByServerMessageIdRef.current[nextMessage.id] ?? null
+              if (traceId) {
+                logChatPerfDebug('realtime-insert-received', {
+                  traceId,
+                  messageId: nextMessage.id,
+                  messageType: nextMessage.messageType,
+                  attachmentCount: nextMessage.attachments.length,
+                })
+                logChatPerfDebug('optimistic-reconciliation-complete', {
+                  traceId,
+                  messageId: nextMessage.id,
+                  messageType: nextMessage.messageType,
+                  attachmentCount: nextMessage.attachments.length,
+                  source: 'realtime-text-image-match',
+                })
+              }
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
                   replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, nextMessage),
@@ -3283,6 +3469,15 @@ export default function ChatSection({
                 preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
               })
             )
+            if (pendingSendPerfByServerMessageIdRef.current[nextMessage.id]) {
+              logChatPerfDebug('realtime-insert-received', {
+                traceId: pendingSendPerfByServerMessageIdRef.current[nextMessage.id],
+                messageId: nextMessage.id,
+                messageType: nextMessage.messageType,
+                attachmentCount: nextMessage.attachments.length,
+                source: 'non-optimistic-path',
+              })
+            }
           } catch {
             void refreshMessages()
           }
@@ -3329,7 +3524,7 @@ export default function ChatSection({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [currentUserId, isNearBottom, keepLatestRenderedMessages, loading, refreshMessages, threadId])
+  }, [currentUserId, isNearBottom, keepLatestRenderedMessages, loading, logChatPerfDebug, refreshMessages, threadId])
 
   useEffect(() => {
     if (loading || !currentUserId) {
@@ -3409,6 +3604,15 @@ export default function ChatSection({
     setSubmitting(true)
     setSubmitError('')
 
+    const sendTraceId = createChatPerfTraceId(editingMessageId ? 'edit-send' : 'send')
+    logChatPerfDebug('send-tap', {
+      traceId: sendTraceId,
+      messageType: pendingImages.length > 0 ? 'image' : 'text',
+      attachmentCount: pendingImages.length,
+      hasReply: Boolean(replyingToMessage),
+      textLength: trimmedDraftMessage.length,
+    })
+
     try {
       const editingMessageSnapshot = editingMessage
       const nextEditedAt = new Date().toISOString()
@@ -3458,6 +3662,12 @@ export default function ChatSection({
           text: trimmedDraftMessage,
           attachments: pendingImages,
         })
+        pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id] = {
+          traceId: sendTraceId,
+          startedAt: performance.now(),
+          messageType: optimisticMessage.messageType,
+          attachmentCount: optimisticMessage.attachments.length,
+        }
 
         setDraftMessage('')
         clearSelectedImages({ deleteFiles: false })
@@ -3756,6 +3966,14 @@ export default function ChatSection({
 
     setUploadingImage(true)
     setSubmitError('')
+    const uploadTraceId = createChatPerfTraceId('image-upload')
+    const uploadStart = performance.now()
+    logChatPerfDebug('image-upload-start', {
+      traceId: uploadTraceId,
+      messageType: 'image',
+      attachmentCount: filesToUpload.length,
+      source: 'composer-picker',
+    })
 
     try {
       const uploadResults = await Promise.allSettled(
@@ -3774,9 +3992,24 @@ export default function ChatSection({
       } else if (uploadedImages.length !== filesToUpload.length) {
         setSubmitError('Не удалось загрузить все выбранные фото')
       }
+      logChatPerfDebug('image-upload-end', {
+        traceId: uploadTraceId,
+        messageType: 'image',
+        attachmentCount: uploadedImages.length,
+        source: 'composer-picker',
+        durationMs: Math.round(performance.now() - uploadStart),
+      })
     } catch (error) {
       console.error('Failed to upload images in chat composer', error)
       setSubmitError('Не удалось загрузить фото')
+      logChatPerfDebug('image-upload-end', {
+        traceId: uploadTraceId,
+        messageType: 'image',
+        attachmentCount: 0,
+        source: 'composer-picker',
+        durationMs: Math.round(performance.now() - uploadStart),
+        status: 'error',
+      })
     } finally {
       setUploadingImage(false)
     }
@@ -3868,6 +4101,20 @@ export default function ChatSection({
         throw new Error('chat_message_item_missing')
       }
 
+      const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
+      if (perfEntry) {
+        perfEntry.reconciledAt = performance.now()
+        pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
+        logChatPerfDebug('optimistic-reconciliation-complete', {
+          traceId: perfEntry.traceId,
+          messageId,
+          messageType: nextMessage.messageType,
+          attachmentCount: nextMessage.attachments.length,
+          durationMs: Math.round(perfEntry.reconciledAt - perfEntry.startedAt),
+          source: 'load-message-by-id',
+        })
+      }
+
       setMessages((currentMessages) =>
         keepLatestRenderedMessages(
           replaceMessageById(currentMessages, optimisticMessage.id, nextMessage),
@@ -3896,6 +4143,7 @@ export default function ChatSection({
   }
 
   async function sendOptimisticTextOrImageMessage(optimisticMessage: ChatMessageItem) {
+    const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id] ?? null
     const shouldAutoScroll = isNearBottom()
 
     if (shouldAutoScroll) {
@@ -3921,7 +4169,24 @@ export default function ChatSection({
         }
       )
     )
+    if (perfEntry) {
+      perfEntry.optimisticInsertedAt = performance.now()
+      logChatPerfDebug('optimistic-bubble-inserted', {
+        traceId: perfEntry.traceId,
+        messageType: optimisticMessage.messageType,
+        attachmentCount: optimisticMessage.attachments.length,
+        durationMs: Math.round(perfEntry.optimisticInsertedAt - perfEntry.startedAt),
+      })
+    }
 
+    if (perfEntry) {
+      perfEntry.apiStartAt = performance.now()
+      logChatPerfDebug('api-request-start', {
+        traceId: perfEntry.traceId,
+        messageType: optimisticMessage.messageType,
+        attachmentCount: optimisticMessage.attachments.length,
+      })
+    }
     const { error: insertError, messageId } = await createChatMessage(
       optimisticMessage.userId,
       optimisticMessage.text,
@@ -3935,8 +4200,25 @@ export default function ChatSection({
           width: attachment.width,
           height: attachment.height,
         })),
-      optimisticMessage.imageUrl
+      optimisticMessage.imageUrl,
+      perfEntry?.traceId ?? null
     )
+    if (perfEntry) {
+      perfEntry.apiEndAt = performance.now()
+      logChatPerfDebug('api-request-end', {
+        traceId: perfEntry.traceId,
+        messageId: messageId ?? null,
+        messageType: optimisticMessage.messageType,
+        attachmentCount: optimisticMessage.attachments.length,
+        durationMs: Math.round(perfEntry.apiEndAt - (perfEntry.apiStartAt ?? perfEntry.startedAt)),
+      })
+      logChatPerfDebug('api-response-received', {
+        traceId: perfEntry.traceId,
+        messageId: messageId ?? null,
+        messageType: optimisticMessage.messageType,
+        attachmentCount: optimisticMessage.attachments.length,
+      })
+    }
 
     if (insertError) {
       setMessages((currentMessages) =>
@@ -3954,10 +4236,16 @@ export default function ChatSection({
           }
         )
       )
+      if (perfEntry) {
+        delete pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
+      }
       throw insertError
     }
 
     if (messageId) {
+      if (perfEntry) {
+        pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
+      }
       await reconcileOptimisticMessageWithServerMessage(optimisticMessage, messageId)
     }
   }
@@ -4091,12 +4379,25 @@ export default function ChatSection({
       return
     }
 
+    const sendTraceId = createChatPerfTraceId('voice-send')
     isSendingVoiceMessageRef.current = true
     setUploadingVoice(true)
     setSubmitError('')
+    logChatPerfDebug('send-tap', {
+      traceId: sendTraceId,
+      messageType: 'voice',
+      attachmentCount: 0,
+      hasReply: Boolean(replyingToMessage),
+    })
 
     const durationSeconds = await getVoiceFileDurationSeconds(file)
     const optimisticMessage = createOptimisticVoiceMessage(file, currentUserId, durationSeconds)
+    pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id] = {
+      traceId: sendTraceId,
+      startedAt: performance.now(),
+      messageType: 'voice',
+      attachmentCount: 0,
+    }
     const shouldAutoScroll = isNearBottom()
 
     if (shouldAutoScroll) {
@@ -4109,6 +4410,11 @@ export default function ChatSection({
         preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
       })
     )
+    logChatPerfDebug('optimistic-bubble-inserted', {
+      traceId: sendTraceId,
+      messageType: 'voice',
+      attachmentCount: 0,
+    })
 
     try {
       const uploadResult = await uploadVoiceMessage({
@@ -4133,16 +4439,44 @@ export default function ChatSection({
         )
       )
 
-      const { error: insertError } = await createVoiceChatMessage(
+      const perfEntry = pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
+      if (perfEntry) {
+        perfEntry.apiStartAt = performance.now()
+        logChatPerfDebug('api-request-start', {
+          traceId: perfEntry.traceId,
+          messageType: 'voice',
+          attachmentCount: 0,
+        })
+      }
+      const { error: insertError, messageId } = await createVoiceChatMessage(
         currentUserId,
         path,
         durationSeconds,
         replyingToMessage?.id ?? null,
-        threadId
+        threadId,
+        sendTraceId
       )
+      if (perfEntry) {
+        perfEntry.apiEndAt = performance.now()
+        logChatPerfDebug('api-request-end', {
+          traceId: perfEntry.traceId,
+          messageType: 'voice',
+          attachmentCount: 0,
+          durationMs: Math.round(perfEntry.apiEndAt - (perfEntry.apiStartAt ?? perfEntry.startedAt)),
+        })
+        logChatPerfDebug('api-response-received', {
+          traceId: perfEntry.traceId,
+          messageType: 'voice',
+          attachmentCount: 0,
+        })
+      }
 
       if (insertError) {
         throw new Error(`voice_insert_failed:${insertError.message}`)
+      }
+
+      if (messageId && perfEntry) {
+        pendingSendPerfByServerMessageIdRef.current[messageId] = perfEntry.traceId
       }
 
       setPendingNewMessagesCount(0)
@@ -4160,6 +4494,7 @@ export default function ChatSection({
       })
       const errorDetails = getErrorDetails(error)
       console.error('Failed to send voice message', errorDetails)
+      delete pendingSendPerfByOptimisticIdRef.current[optimisticMessage.id]
       setSubmitError('Не удалось отправить голосовое сообщение')
       cleanupVoiceRecordingResources()
     } finally {
@@ -4846,6 +5181,7 @@ export default function ChatSection({
           onClose={() => setSelectedViewerState(null)}
         />
       ) : null}
+      <ChatPerfDebugOverlay />
       <ChatOpenDebugOverlay />
       {selectedReactionMessage && selectedReaction ? (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/20 p-3 sm:items-center">

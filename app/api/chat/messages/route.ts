@@ -1,6 +1,7 @@
 import { after, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAppEvents } from '@/lib/events/createAppEvent'
+import { CHAT_PERF_DEBUG_PREFIX } from '@/lib/chatPerfDebug'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -18,6 +19,7 @@ type TextChatMessageRequestBody = {
     width?: number | null
     height?: number | null
   }[]
+  debugTraceId?: string | null
 }
 
 type VoiceChatMessageRequestBody = {
@@ -26,6 +28,7 @@ type VoiceChatMessageRequestBody = {
   mediaDurationSeconds?: number | null
   replyToId?: string | null
   threadId?: string | null
+  debugTraceId?: string | null
 }
 
 type CreateChatMessageRequestBody = TextChatMessageRequestBody | VoiceChatMessageRequestBody
@@ -75,6 +78,15 @@ type ValidatedImageAttachment = {
   width: number | null
   height: number | null
   sortOrder: number
+}
+
+function logChatPerfServer(event: string, extra?: Record<string, unknown>) {
+  console.log(CHAT_PERF_DEBUG_PREFIX, {
+    now: Date.now(),
+    scope: 'chat-api',
+    event,
+    ...extra,
+  })
 }
 
 type ChatNotificationContent = {
@@ -704,6 +716,11 @@ async function sendChatMessagePushNotifications(
 
 async function runChatMessageFanout(message: InsertedChatMessageRow) {
   try {
+    logChatPerfServer('fanout-start', {
+      threadId: message.thread_id,
+      messageId: message.id,
+      messageType: message.message_type ?? null,
+    })
     const supabaseAdmin = createSupabaseAdminClient()
     const chatDeliveryContext = await loadChatDeliveryContext(supabaseAdmin, message)
 
@@ -727,6 +744,11 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
       emitChatMessageCreatedEvent(message, chatDeliveryContext),
       sendChatMessagePushNotifications(supabaseAdmin, chatDeliveryContext),
     ])
+    logChatPerfServer('fanout-end', {
+      threadId: message.thread_id,
+      messageId: message.id,
+      messageType: message.message_type ?? null,
+    })
   } catch (error) {
     console.error('Failed to fan out chat message side effects', {
       messageId: message.id,
@@ -738,6 +760,7 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
 }
 
 export async function POST(request: Request) {
+  logChatPerfServer('route-entry')
   const { user, error: userError, supabase } = await getAuthenticatedUser()
 
   if (userError || !user) {
@@ -756,9 +779,26 @@ export async function POST(request: Request) {
   const replyToId = body?.replyToId?.trim() || null
   const voiceBody = kind === 'voice' ? (body as VoiceChatMessageRequestBody | null) : null
   const textBody = kind === 'text' ? (body as TextChatMessageRequestBody | null) : null
+  const debugTraceId = body?.debugTraceId?.trim() || null
+  const attachmentCount = kind === 'voice' ? 0 : Array.isArray(textBody?.attachments) ? textBody.attachments.length : (textBody?.imageUrl ? 1 : 0)
+
+  logChatPerfServer('auth-user-resolved', {
+    threadId,
+    traceId: debugTraceId,
+    messageType: kind,
+    attachmentCount,
+    userId: user?.id ?? null,
+  })
 
   try {
     const safeReplyToId = await resolveSafeReplyToId(supabase, replyToId, threadId)
+    logChatPerfServer('reply-validation-done', {
+      threadId,
+      traceId: debugTraceId,
+      messageType: kind,
+      attachmentCount,
+      hasReply: Boolean(safeReplyToId),
+    })
     let validatedTextAttachments: ValidatedImageAttachment[] = []
 
     const insertPayload =
@@ -812,6 +852,19 @@ export async function POST(request: Request) {
             }
           })()
 
+    logChatPerfServer('payload-validation-done', {
+      threadId,
+      traceId: debugTraceId,
+      messageType: kind,
+      attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (insertPayload.image_url ? 1 : 0),
+    })
+
+    logChatPerfServer('db-insert-start', {
+      threadId,
+      traceId: debugTraceId,
+      messageType: kind,
+      attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (insertPayload.image_url ? 1 : 0),
+    })
     const { data, error } = await supabase
       .from('chat_messages')
       .insert(insertPayload)
@@ -821,10 +874,24 @@ export async function POST(request: Request) {
     if (error) {
       throw error
     }
+    logChatPerfServer('db-insert-end', {
+      threadId,
+      traceId: debugTraceId,
+      messageType: kind,
+      attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || ((data as InsertedChatMessageRow | null)?.image_url ? 1 : 0),
+      messageId: (data as InsertedChatMessageRow | null)?.id ?? null,
+    })
 
     const message = data as InsertedChatMessageRow
 
     if (kind === 'text' && validatedTextAttachments.length > 0) {
+      logChatPerfServer('attachments-insert-start', {
+        threadId,
+        traceId: debugTraceId,
+        messageType: kind,
+        attachmentCount: validatedTextAttachments.length,
+        messageId: message.id,
+      })
       const { error: attachmentsInsertError } = await supabase
         .from('chat_message_attachments')
         .insert(
@@ -848,6 +915,13 @@ export async function POST(request: Request) {
 
         throw attachmentsInsertError
       }
+      logChatPerfServer('attachments-insert-end', {
+        threadId,
+        traceId: debugTraceId,
+        messageType: kind,
+        attachmentCount: validatedTextAttachments.length,
+        messageId: message.id,
+      })
 
       const { error: touchMessageError } = await supabase
         .from('chat_messages')
@@ -867,6 +941,14 @@ export async function POST(request: Request) {
 
     after(async () => {
       await runChatMessageFanout(message)
+    })
+
+    logChatPerfServer('response-sent', {
+      threadId,
+      traceId: debugTraceId,
+      messageType: kind,
+      attachmentCount: kind === 'voice' ? 0 : validatedTextAttachments.length || (message.image_url ? 1 : 0),
+      messageId: message.id,
     })
 
     return NextResponse.json({
