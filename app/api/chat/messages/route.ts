@@ -76,6 +76,125 @@ type UserNotificationSettingRow = {
 }
 
 const PUSH_DELIVERY_THROTTLE_WINDOW_MS = 15_000
+const CHAT_MEDIA_BUCKET = 'chat-media'
+const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
+const SAFE_STORAGE_FILE_NAME_REGEX = /^[A-Za-z0-9._-]+$/
+
+function sanitizeStoragePathSegment(value: string) {
+  const trimmedValue = value.trim()
+
+  if (!trimmedValue || !SAFE_STORAGE_PATH_SEGMENT_REGEX.test(trimmedValue)) {
+    throw new Error('invalid_media_path_segment')
+  }
+
+  return trimmedValue
+}
+
+function sanitizeStorageFileName(value: string) {
+  const trimmedValue = value.trim()
+
+  if (!trimmedValue || !SAFE_STORAGE_FILE_NAME_REGEX.test(trimmedValue)) {
+    throw new Error('invalid_media_file_name')
+  }
+
+  return trimmedValue
+}
+
+function getSupabaseOrigin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+
+  if (!supabaseUrl) {
+    throw new Error('chat_media_validation_unavailable')
+  }
+
+  return new URL(supabaseUrl).origin
+}
+
+function validateChatImageUrl(imageUrl: string, userId: string, threadId?: string | null) {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(imageUrl)
+  } catch {
+    throw new Error('invalid_chat_image_url')
+  }
+
+  if (parsedUrl.origin !== getSupabaseOrigin()) {
+    throw new Error('invalid_chat_image_url')
+  }
+
+  if (parsedUrl.search || parsedUrl.hash) {
+    throw new Error('invalid_chat_image_url')
+  }
+
+  const publicBucketPathPrefix = `/storage/v1/object/public/${CHAT_MEDIA_BUCKET}/`
+
+  if (!parsedUrl.pathname.startsWith(publicBucketPathPrefix)) {
+    throw new Error('invalid_chat_image_url')
+  }
+
+  let objectPath = ''
+
+  try {
+    objectPath = decodeURIComponent(parsedUrl.pathname.slice(publicBucketPathPrefix.length))
+  } catch {
+    throw new Error('invalid_chat_image_url')
+  }
+
+  const pathSegments = objectPath.split('/').filter(Boolean)
+
+  if (pathSegments.length !== 3) {
+    throw new Error('invalid_chat_image_url')
+  }
+
+  const [pathUserId, pathThreadId, fileName] = pathSegments
+  const expectedThreadSegment = threadId ? sanitizeStoragePathSegment(threadId) : 'club'
+
+  if (
+    sanitizeStoragePathSegment(pathUserId ?? '') !== sanitizeStoragePathSegment(userId) ||
+    sanitizeStoragePathSegment(pathThreadId ?? '') !== expectedThreadSegment
+  ) {
+    throw new Error('chat_image_not_owned_by_user')
+  }
+
+  sanitizeStorageFileName(fileName ?? '')
+
+  return imageUrl
+}
+
+function validateVoiceMediaPath(mediaPath: string, userId: string) {
+  const trimmedPath = mediaPath.trim()
+
+  if (!trimmedPath || trimmedPath.includes('://') || trimmedPath.startsWith('/')) {
+    throw new Error('invalid_voice_media_path')
+  }
+
+  const pathSegments = trimmedPath.split('/').filter(Boolean)
+  const safeUserId = sanitizeStoragePathSegment(userId)
+  const isLegacyVoicePath = pathSegments[0] === 'voice'
+  const expectedLength = isLegacyVoicePath ? 3 : 2
+
+  if (pathSegments.length !== expectedLength) {
+    throw new Error('invalid_voice_media_path')
+  }
+
+  const ownerSegment = sanitizeStoragePathSegment(
+    isLegacyVoicePath ? pathSegments[1] ?? '' : pathSegments[0] ?? ''
+  )
+  const fileName = sanitizeStorageFileName(
+    isLegacyVoicePath ? pathSegments[2] ?? '' : pathSegments[1] ?? ''
+  )
+
+  if (ownerSegment !== safeUserId) {
+    throw new Error('voice_media_not_owned_by_user')
+  }
+
+  if (!fileName.toLowerCase().endsWith('.webm')) {
+    throw new Error('invalid_voice_media_path')
+  }
+
+  return trimmedPath
+}
 
 async function resolveSafeReplyToId(
   supabase: SupabaseClient,
@@ -545,11 +664,13 @@ export async function POST(request: Request) {
               throw new Error('empty_voice_message')
             }
 
+            const validatedMediaPath = validateVoiceMediaPath(mediaPath, user.id)
+
             return {
               user_id: user.id,
               text: '',
               message_type: 'voice',
-              media_url: mediaPath,
+              media_url: validatedMediaPath,
               media_duration_seconds: voiceBody?.mediaDurationSeconds ?? null,
               image_url: null,
               reply_to_id: safeReplyToId,
@@ -568,10 +689,14 @@ export async function POST(request: Request) {
               throw new Error('message_too_long')
             }
 
+            const validatedImageUrl = imageUrl
+              ? validateChatImageUrl(imageUrl, user.id, threadId)
+              : null
+
             return {
               user_id: user.id,
               text,
-              image_url: imageUrl,
+              image_url: validatedImageUrl,
               reply_to_id: safeReplyToId,
               thread_id: threadId,
             }
