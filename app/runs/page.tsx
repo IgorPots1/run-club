@@ -174,10 +174,17 @@ function parseDateValue(dateValue: string) {
   return parsedDate
 }
 
-function buildManualRunCreatedAt(
-  dateValue: string,
-  existingRuns: Array<Pick<Run, 'created_at'>>
-) {
+function hashStringToInt(value: string) {
+  let hash = 0
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) >>> 0
+  }
+
+  return hash
+}
+
+function buildManualRunCreatedAt(dateValue: string, userId: string) {
   const [yearString, monthString, dayString] = dateValue.split('-')
   const year = Number(yearString)
   const month = Number(monthString)
@@ -199,26 +206,16 @@ function buildManualRunCreatedAt(
       now.getMilliseconds()
     )
   } else {
-    const earliestMinute = 6 * 60
-    const latestMinute = (21 * 60) + 55
-    const minuteOfDay = earliestMinute + Math.floor(Math.random() * ((latestMinute - earliestMinute) + 1))
+    const seed = hashStringToInt(`${userId}:${selectedDateValue}`)
+    const secondsInWindow = 16 * 60 * 60
+    const offsetSeconds = seed % (secondsInWindow + 1)
+    const totalSeconds = (6 * 60 * 60) + offsetSeconds
     createdAt.setHours(
-      Math.floor(minuteOfDay / 60),
-      minuteOfDay % 60,
-      0,
+      Math.floor(totalSeconds / 3600),
+      Math.floor((totalSeconds % 3600) / 60),
+      totalSeconds % 60,
       0
     )
-
-    const hasTimestampCollision = (candidate: Date) =>
-      existingRuns.some((run) => new Date(run.created_at).getTime() === candidate.getTime())
-
-    while (
-      hasTimestampCollision(createdAt) &&
-      createdAt.getHours() < 22 &&
-      !(createdAt.getHours() === 22 && createdAt.getMinutes() === 0)
-    ) {
-      createdAt.setMinutes(createdAt.getMinutes() + 5)
-    }
   }
 
   if (Number.isNaN(createdAt.getTime())) {
@@ -862,7 +859,7 @@ export default function RunsPage() {
       return
     }
 
-    const createdAtDate = buildManualRunCreatedAt(selectedDate, runs)
+    const createdAtDate = buildManualRunCreatedAt(selectedDate, user.id)
     if (!createdAtDate || Number.isNaN(createdAtDate.getTime())) {
       setError('Укажите корректную дату тренировки')
       return
