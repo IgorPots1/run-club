@@ -994,15 +994,14 @@ export default function MessagesPage() {
                   <button
                     type="button"
                     onClick={() => setIsActiveOpen((current) => !current)}
-                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+                    className="-mx-1 flex w-[calc(100%+0.5rem)] cursor-pointer items-center rounded-xl px-2 py-2 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                     aria-expanded={isActiveOpen}
                   >
-                    <span className="app-text-primary text-base font-medium">Активные диалоги</span>
-                    <span className="app-text-secondary text-sm">{isActiveOpen ? '▼' : '▶'}</span>
+                    <span className="app-text-primary text-base font-semibold">Активные диалоги</span>
                   </button>
 
                   {isActiveOpen ? (
-                    <div className="mt-3">
+                    <div className="mt-4">
                       {activeDialogItems.length > 0 ? (
                         <div className="space-y-3">
                           {activeDialogItems.map((item) => (
@@ -1029,15 +1028,14 @@ export default function MessagesPage() {
                   <button
                     type="button"
                     onClick={() => setIsAllStudentsOpen((current) => !current)}
-                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+                    className="-mx-1 flex w-[calc(100%+0.5rem)] cursor-pointer items-center rounded-xl px-2 py-2 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                     aria-expanded={isAllStudentsOpen}
                   >
-                    <span className="app-text-primary text-base font-medium">Все ученики</span>
-                    <span className="app-text-secondary text-sm">{isAllStudentsOpen ? '▼' : '▶'}</span>
+                    <span className="app-text-primary text-base font-semibold">Все ученики</span>
                   </button>
 
                   {isAllStudentsOpen ? (
-                    <div className="mt-3">
+                    <div className="mt-4">
                       {students.length === 0 ? (
                         <p className="app-text-secondary text-sm">Пока нет зарегистрированных учеников.</p>
                       ) : (
