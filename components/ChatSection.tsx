@@ -147,6 +147,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'attachment_img_load_success',
   'attachment_img_load_error',
   'attachment_layout_shift',
+  'fallback_skipped_due_to_existing_state',
   'thread_open_image_load_anchor_skipped',
   'thread_open_start',
   'thread_open_initial_messages_loaded',
@@ -3486,6 +3487,16 @@ export default function ChatSection({
     threadId: null,
     expiresAt: 0,
   })
+  const threadOpenLoadStateRef = useRef<{
+    threadId: string | null
+    didSetMessages: boolean
+    initialLoadFailed: boolean
+  }>({
+    threadId: null,
+    didSetMessages: false,
+    initialLoadFailed: false,
+  })
+  const renderedMessagesThreadIdRef = useRef<string | null>(threadId)
   const [chatSendDebugEvents, setChatSendDebugEvents] = useState<ChatSendDebugEvent[]>(() =>
     CHAT_SEND_DEBUG
       ? getRecentChatSendDebugEvents().filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
@@ -4170,6 +4181,7 @@ export default function ChatSection({
 
   useEffect(() => {
     messagesRef.current = messages
+    renderedMessagesThreadIdRef.current = threadOpenLoadStateRef.current.threadId
   }, [messages])
 
   useEffect(() => {
@@ -4217,8 +4229,16 @@ export default function ChatSection({
 
     const cachedRecentMessages = getCachedRecentChatMessages(threadId)
     const previousMessages = messagesRef.current
+    const threadOpenLoadState = threadOpenLoadStateRef.current
     const hasBootstrapFallbackMessages = Boolean(cachedRecentMessages?.messages.length)
-    const shouldApplyBootstrapFallback = hasBootstrapFallbackMessages || previousMessages.length > 0
+    const hasValidPreviousMessages =
+      previousMessages.length > 0 && renderedMessagesThreadIdRef.current === threadId
+
+    if (threadOpenLoadState.threadId !== threadId) {
+      threadOpenLoadState.threadId = threadId
+      threadOpenLoadState.didSetMessages = false
+      threadOpenLoadState.initialLoadFailed = false
+    }
 
     threadOpenDebugWindowRef.current = {
       threadId: threadId ?? null,
@@ -4245,23 +4265,59 @@ export default function ChatSection({
     })
     pendingDeletedMessageIdsRef.current.clear()
 
-    if (shouldApplyBootstrapFallback) {
-      const nextMessages = applyPendingMediaTasksToMessages(
-        hasBootstrapFallbackMessages ? cachedRecentMessages?.messages ?? [] : []
-      )
-      messagesRef.current = nextMessages
-      logThreadOpenMessageMutation(previousMessages, nextMessages, {
+    let didApplyBootstrapFallback = false
+
+    if (hasBootstrapFallbackMessages) {
+      if (threadOpenLoadState.didSetMessages || hasValidPreviousMessages) {
+        logChatSendDebug('fallback_skipped_due_to_existing_state', {
+          threadId,
+          source: 'fallback',
+          reason: threadOpenLoadState.didSetMessages
+            ? 'messages_already_set_for_thread_open'
+            : 'existing_thread_state_available',
+          ...summarizeThreadOpenMessages(previousMessages),
+        })
+      } else if (previousMessages.length === 0 || threadOpenLoadState.initialLoadFailed) {
+        const nextMessages = applyPendingMediaTasksToMessages(cachedRecentMessages?.messages ?? [])
+        threadOpenLoadState.didSetMessages = true
+        messagesRef.current = nextMessages
+        logThreadOpenMessageMutation(previousMessages, nextMessages, {
+          source: 'fallback',
+          replacedWholeList: true,
+          mergedIntoCurrentList: false,
+        })
+        setMessages(nextMessages)
+        didApplyBootstrapFallback = true
+      } else {
+        logChatSendDebug('fallback_skipped_due_to_existing_state', {
+          threadId,
+          source: 'fallback',
+          reason: 'previous_messages_not_empty',
+          ...summarizeThreadOpenMessages(previousMessages),
+        })
+      }
+    } else if (threadOpenLoadState.didSetMessages || hasValidPreviousMessages) {
+      logChatSendDebug('fallback_skipped_due_to_existing_state', {
+        threadId,
         source: 'fallback',
-        replacedWholeList: true,
-        mergedIntoCurrentList: false,
+        reason: 'no_cached_fallback_needed',
+        ...summarizeThreadOpenMessages(previousMessages),
       })
-      setMessages(nextMessages)
+    }
+
+    if (didApplyBootstrapFallback) {
+      const nextMessages = applyPendingMediaTasksToMessages(
+        cachedRecentMessages?.messages ?? []
+      )
+      setHasDeferredInitialSettle(nextMessages.length > 0)
+      setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
+    } else {
+      setHasDeferredInitialSettle(false)
+      setHasMoreOlderMessages(true)
     }
 
     setPendingInitialScroll(false)
-    setHasDeferredInitialSettle(hasBootstrapFallbackMessages)
     setPendingNewMessagesCount(0)
-    setHasMoreOlderMessages(hasBootstrapFallbackMessages ? cachedRecentMessages?.hasMoreOlderMessages ?? true : true)
     setError('')
     setDraftMessage('')
     setSubmitError('')
@@ -4269,7 +4325,7 @@ export default function ChatSection({
     setEditingMessageId(null)
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
-    setLoading(!hasBootstrapFallbackMessages)
+    setLoading(!didApplyBootstrapFallback)
   }, [applyPendingMediaTasksToMessages, currentUserId, deactivateInitialBottomLock, logThreadOpenMessageMutation, releaseOptimisticClientMedia, threadId])
 
   useEffect(() => {
@@ -4493,6 +4549,7 @@ export default function ChatSection({
           return
         }
 
+        const threadOpenLoadState = threadOpenLoadStateRef.current
         const nextMessages = applyPendingMediaTasksToMessages(keepLatestRenderedMessages(initialMessages))
         const shouldSkipEquivalentInitialReplace =
           messagesRef.current.length > 0 &&
@@ -4525,8 +4582,12 @@ export default function ChatSection({
         }
 
         if (!shouldSkipEquivalentInitialReplace) {
+          threadOpenLoadState.didSetMessages = true
           setMessages(nextMessages)
+        } else {
+          threadOpenLoadState.didSetMessages = true
         }
+        threadOpenLoadState.initialLoadFailed = false
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         if (!hasCachedMessages) {
@@ -4535,6 +4596,10 @@ export default function ChatSection({
         }
       } catch {
         if (isMounted) {
+          const threadOpenLoadState = threadOpenLoadStateRef.current
+          if (threadOpenLoadState.threadId === threadId) {
+            threadOpenLoadState.initialLoadFailed = true
+          }
           setError('Не удалось загрузить чат')
         }
       } finally {
