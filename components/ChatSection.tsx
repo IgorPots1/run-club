@@ -138,6 +138,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'ui_error_path_trigger',
   'attachment_render_mount',
   'attachment_render_unmount',
+  'attachment_cached_load_reused',
   'attachment_source_changed',
   'attachment_key_changed',
   'attachment_visual_state_changed',
@@ -776,6 +777,48 @@ function getAttachmentDebugIds(message: ChatMessageItem) {
   }
 }
 
+const loadedRemoteAttachmentSourcesByKey = new Map<string, string>()
+
+function getRemoteAttachmentLoadedCacheKey(
+  message: ChatMessageItem,
+  attachment: ChatMessageAttachment,
+  sourceUrl: string | null
+) {
+  if (!sourceUrl) {
+    return null
+  }
+
+  if (attachment.id) {
+    return `attachment:${attachment.id}`
+  }
+
+  const { serverMessageId } = getAttachmentDebugIds(message)
+  return `message:${serverMessageId ?? message.id}:${attachment.sortOrder}:${sourceUrl}`
+}
+
+function hasLoadedRemoteAttachmentSourceInSession(
+  message: ChatMessageItem,
+  attachment: ChatMessageAttachment,
+  sourceUrl: string | null
+) {
+  const cacheKey = getRemoteAttachmentLoadedCacheKey(message, attachment, sourceUrl)
+  return Boolean(cacheKey && loadedRemoteAttachmentSourcesByKey.get(cacheKey) === sourceUrl)
+}
+
+function markRemoteAttachmentSourceLoadedInSession(
+  message: ChatMessageItem,
+  attachment: ChatMessageAttachment,
+  sourceUrl: string | null
+) {
+  const cacheKey = getRemoteAttachmentLoadedCacheKey(message, attachment, sourceUrl)
+
+  if (!cacheKey || !sourceUrl) {
+    return
+  }
+
+  loadedRemoteAttachmentSourcesByKey.set(cacheKey, sourceUrl)
+}
+
 function buildAttachmentDebugPayload({
   message,
   attachment,
@@ -851,15 +894,25 @@ function ChatImageAttachmentTile({
   const loadStartedSourceUrlRef = useRef<string | null>(null)
   const loadSucceededSourceUrlRef = useRef<string | null>(null)
   const notifiedImageLoadSourceUrlRef = useRef<string | null>(null)
+  const loggedCachedLoadReuseKeyRef = useRef<string | null>(null)
   const preservedPreviewUrlRef = useRef<string | null>(null)
   const backgroundRemoteLoadUrlRef = useRef<string | null>(null)
   const incomingSourceUrl = attachment.publicUrl?.trim() ? attachment.publicUrl : null
   const incomingSourceType = getAttachmentDebugSourceType(incomingSourceUrl)
+  const remoteAttachmentLoadedCacheKey =
+    incomingSourceType === 'remote_public_url'
+      ? getRemoteAttachmentLoadedCacheKey(message, attachment, incomingSourceUrl)
+      : null
+  const isRemoteAttachmentAlreadyLoadedInSession =
+    Boolean(remoteAttachmentLoadedCacheKey) &&
+    hasLoadedRemoteAttachmentSourceInSession(message, attachment, incomingSourceUrl)
   const renderKey = getAttachmentStableRenderKey(attachment, tileIndex)
   const [displayedSourceUrl, setDisplayedSourceUrl] = useState<string | null>(incomingSourceUrl)
   const [displayedSourceType, setDisplayedSourceType] = useState<AttachmentDebugSourceType>(incomingSourceType)
   const [loadedDisplayedSourceUrl, setLoadedDisplayedSourceUrl] = useState<string | null>(
-    incomingSourceType === 'local_preview' ? incomingSourceUrl : null
+    incomingSourceType === 'local_preview' || isRemoteAttachmentAlreadyLoadedInSession
+      ? incomingSourceUrl
+      : null
   )
   const [softPreviewLoadErrorSourceUrl, setSoftPreviewLoadErrorSourceUrl] = useState<string | null>(null)
   const supportsViewportDeferredRemoteImages =
@@ -919,6 +972,7 @@ function ChatImageAttachmentTile({
   useEffect(() => {
     if (
       !shouldGateRemoteImageLoad ||
+      hasLoadedCurrentSource ||
       isRemoteImageLoadAllowed ||
       shouldKeepPreviewVisibleWhileRemoteLoads
     ) {
@@ -977,10 +1031,22 @@ function ChatImageAttachmentTile({
       return
     }
 
+    if (
+      isRemoteAttachmentAlreadyLoadedInSession &&
+      loggedCachedLoadReuseKeyRef.current !== remoteAttachmentLoadedCacheKey
+    ) {
+      loggedCachedLoadReuseKeyRef.current = remoteAttachmentLoadedCacheKey
+      logChatSendDebug('attachment_cached_load_reused', {
+        ...debugPayload,
+        sourceType: 'remote_public_url',
+        visualState: 'final',
+      })
+    }
+
     if (displayedSourceUrl !== incomingSourceUrl || displayedSourceType !== 'remote_public_url') {
       setDisplayedSourceUrl(incomingSourceUrl)
       setDisplayedSourceType('remote_public_url')
-      setLoadedDisplayedSourceUrl(null)
+      setLoadedDisplayedSourceUrl(isRemoteAttachmentAlreadyLoadedInSession ? incomingSourceUrl : null)
       notifiedImageLoadSourceUrlRef.current = null
       setSoftPreviewLoadErrorSourceUrl(null)
     }
@@ -989,7 +1055,10 @@ function ChatImageAttachmentTile({
     displayedSourceUrl,
     incomingSourceType,
     incomingSourceUrl,
+    remoteAttachmentLoadedCacheKey,
+    isRemoteAttachmentAlreadyLoadedInSession,
     shouldKeepPreviewVisibleWhileRemoteLoads,
+    debugPayload,
   ])
 
   useEffect(() => {
@@ -1026,6 +1095,10 @@ function ChatImageAttachmentTile({
       return
     }
 
+    if (hasLoadedCurrentSource) {
+      return
+    }
+
     if (!canBeginCurrentImageLoad) {
       return
     }
@@ -1049,6 +1122,7 @@ function ChatImageAttachmentTile({
       loadSucceededSourceUrlRef.current !== displayedSourceUrl
     ) {
       loadSucceededSourceUrlRef.current = displayedSourceUrl
+      markRemoteAttachmentSourceLoadedInSession(message, attachment, displayedSourceUrl)
       setLoadedDisplayedSourceUrl(displayedSourceUrl)
       logChatSendDebug('attachment_img_load_success', {
         ...(latestPayloadRef.current ?? debugPayload),
@@ -1076,6 +1150,7 @@ function ChatImageAttachmentTile({
     debugPayload,
     displayedSourceType,
     displayedSourceUrl,
+    hasLoadedCurrentSource,
     message,
     onImageLoad,
     previewFailedToLoad,
@@ -1113,6 +1188,7 @@ function ChatImageAttachmentTile({
       }
 
       loadSucceededSourceUrlRef.current = incomingSourceUrl
+      markRemoteAttachmentSourceLoadedInSession(message, attachment, incomingSourceUrl)
       backgroundRemoteLoadUrlRef.current = null
       notifiedImageLoadSourceUrlRef.current = incomingSourceUrl
       setDisplayedSourceUrl(incomingSourceUrl)
@@ -1235,6 +1311,7 @@ function ChatImageAttachmentTile({
 
             if (loadSucceededSourceUrlRef.current !== displayedSourceUrl) {
               loadSucceededSourceUrlRef.current = displayedSourceUrl
+              markRemoteAttachmentSourceLoadedInSession(message, attachment, displayedSourceUrl)
               logChatSendDebug('attachment_img_load_success', {
                 ...(latestPayloadRef.current ?? debugPayload),
                 visualState: getAttachmentDebugVisualState({
