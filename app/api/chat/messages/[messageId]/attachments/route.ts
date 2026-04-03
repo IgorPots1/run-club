@@ -12,10 +12,46 @@ type ChatMessageAttachmentRequestBody = {
   sortOrder?: number | null
 }
 
+type ChatMessageManagePermissionRow = boolean
+
 const CHAT_MEDIA_BUCKET = 'chat-media'
 const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
 const SAFE_STORAGE_FILE_NAME_REGEX = /^[A-Za-z0-9._-]+$/
+const CHAT_ATTACHMENT_API_ERROR_MESSAGE_BY_CODE: Record<string, string> = {
+  auth_required: 'Authentication is required.',
+  invalid_message_id: 'Message id is invalid.',
+  thread_access_denied: 'You do not have access to this chat thread.',
+  chat_message_not_found: 'Chat message not found.',
+  message_manage_not_allowed: 'You cannot manage attachments for this message.',
+}
+
+function getChatAttachmentApiErrorStatus(errorCode: string) {
+  switch (errorCode) {
+    case 'auth_required':
+      return 401
+    case 'chat_message_not_found':
+      return 404
+    case 'thread_access_denied':
+    case 'message_manage_not_allowed':
+      return 403
+    default:
+      return 400
+  }
+}
+
+function createChatAttachmentApiErrorResponse(errorCode: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: errorCode,
+      message: CHAT_ATTACHMENT_API_ERROR_MESSAGE_BY_CODE[errorCode] ?? 'Chat attachment request failed.',
+    },
+    {
+      status: getChatAttachmentApiErrorStatus(errorCode),
+    }
+  )
+}
 
 function sanitizeStoragePathSegment(value: string) {
   const trimmedValue = value.trim()
@@ -129,13 +165,7 @@ export async function POST(
       ...routeMeta,
       authenticated: false,
     })
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'auth_required',
-      },
-      { status: 401 }
-    )
+    return createChatAttachmentApiErrorResponse('auth_required')
   }
 
   if (!messageId) {
@@ -143,13 +173,7 @@ export async function POST(
       ...routeMeta,
       error: 'invalid_message_id',
     })
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'invalid_message_id',
-      },
-      { status: 400 }
-    )
+    return createChatAttachmentApiErrorResponse('invalid_message_id')
   }
 
   try {
@@ -201,6 +225,20 @@ export async function POST(
 
     if ((ownedMessage.thread_id ?? null) !== threadId) {
       throw new Error('thread_access_denied')
+    }
+
+    const { data: canManageMessage, error: canManageMessageError } = await supabaseAdmin
+      .rpc('can_manage_chat_message', {
+        p_message_id: messageId,
+        p_user_id: userId,
+      })
+
+    if (canManageMessageError) {
+      throw canManageMessageError
+    }
+
+    if (!(canManageMessage as ChatMessageManagePermissionRow | null)) {
+      throw new Error('message_manage_not_allowed')
     }
 
     logChatSendDebug('attachment_message_lookup_success', {
@@ -261,18 +299,12 @@ export async function POST(
       sortOrder,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'chat_message_attachment_failed'
+    const errorCode = error instanceof Error ? error.message : 'chat_message_attachment_failed'
     logChatSendDebugError('attachment_catch_error', {
       ...routeMeta,
-      error: message,
+      error: errorCode,
       elapsedMs: Date.now() - routeStartedAt,
     })
-    return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
-      { status: 400 }
-    )
+    return createChatAttachmentApiErrorResponse(errorCode)
   }
 }

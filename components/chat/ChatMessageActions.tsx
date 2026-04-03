@@ -8,6 +8,8 @@ type ChatMessageActionsProps = {
   message: ChatMessageItem
   anchorRect: DOMRect | null
   currentUserId: string | null
+  isAnnouncementChannel?: boolean
+  isReadOnlyAnnouncement?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   onDelete: (message: ChatMessageItem) => Promise<void> | void
@@ -54,6 +56,8 @@ export default function ChatMessageActions({
   message,
   anchorRect,
   currentUserId,
+  isAnnouncementChannel = false,
+  isReadOnlyAnnouncement = false,
   open,
   onOpenChange,
   onDelete,
@@ -64,8 +68,21 @@ export default function ChatMessageActions({
   const router = useRouter()
 
   const isOwnMessage = currentUserId === message.userId
-  const canEditMessage = isOwnMessage && message.messageType === 'text'
-  const actionCount = canEditMessage ? 5 : 4
+  const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
+  const canManageMessage = canModerateAnnouncementChannel || (!isReadOnlyAnnouncement && isOwnMessage)
+  const canReact = !isReadOnlyAnnouncement
+  const canReply = !isReadOnlyAnnouncement
+  const canEditMessage = message.messageType === 'text' && canManageMessage
+  const canDeleteMessage = canManageMessage
+  const canOpenProfile = !canDeleteMessage && !isOwnMessage
+  const actionCount = [
+    canEditMessage,
+    true,
+    canReply,
+    canDeleteMessage || canOpenProfile,
+    true,
+  ].filter(Boolean).length
+  const reactionBarHeight = canReact ? REACTION_BAR_HEIGHT : 0
 
   if (!open || !anchorRect) {
     return null
@@ -75,7 +92,9 @@ export default function ChatMessageActions({
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 844
   const previewText = message.previewText || message.text || 'Сообщение'
   const estimatedCardHeight = PREVIEW_HEIGHT + actionCount * ACTION_ROW_HEIGHT + 12
-  const totalFloatingGroupHeight = REACTION_BAR_HEIGHT + FLOATING_GROUP_GAP + estimatedCardHeight
+  const totalFloatingGroupHeight = reactionBarHeight > 0
+    ? reactionBarHeight + FLOATING_GROUP_GAP + estimatedCardHeight
+    : estimatedCardHeight
   const hasSpaceAbove = anchorRect.top >= totalFloatingGroupHeight + VIEWPORT_PADDING + FLOATING_GROUP_OFFSET
   const preferredGroupTop = hasSpaceAbove
     ? anchorRect.top - totalFloatingGroupHeight - FLOATING_GROUP_OFFSET
@@ -86,7 +105,7 @@ export default function ChatMessageActions({
     viewportHeight - totalFloatingGroupHeight - VIEWPORT_PADDING
   )
   const reactionBarTop = groupTop
-  const actionCardTop = groupTop + REACTION_BAR_HEIGHT + FLOATING_GROUP_GAP
+  const actionCardTop = groupTop + (reactionBarHeight > 0 ? REACTION_BAR_HEIGHT + FLOATING_GROUP_GAP : 0)
   const reactionBarLeft = clamp(
     anchorRect.left + anchorRect.width / 2 - REACTION_BAR_WIDTH / 2,
     VIEWPORT_PADDING,
@@ -142,28 +161,30 @@ export default function ChatMessageActions({
         onClick={() => onOpenChange(false)}
       />
       <div className="pointer-events-none absolute inset-0">
-        <div
-          className="pointer-events-auto absolute"
-          style={{
-            top: `${reactionBarTop}px`,
-            left: `${reactionBarLeft}px`,
-            width: `${REACTION_BAR_WIDTH}px`,
-          }}
-        >
-          <div className="app-card flex items-center gap-1 rounded-full border border-black/[0.05] px-2 py-1.5 shadow-sm dark:border-white/10">
-            {QUICK_REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => handleQuickReaction(emoji)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-[18px] transition-transform duration-150 active:scale-90"
-                aria-label={`Реакция ${emoji}`}
-              >
-                {emoji}
-              </button>
-            ))}
+        {canReact ? (
+          <div
+            className="pointer-events-auto absolute"
+            style={{
+              top: `${reactionBarTop}px`,
+              left: `${reactionBarLeft}px`,
+              width: `${REACTION_BAR_WIDTH}px`,
+            }}
+          >
+            <div className="app-card flex items-center gap-1 rounded-full border border-black/[0.05] px-2 py-1.5 shadow-sm dark:border-white/10">
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => handleQuickReaction(emoji)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[18px] transition-transform duration-150 active:scale-90"
+                  aria-label={`Реакция ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
         <div
           className="pointer-events-auto absolute"
           style={{
@@ -222,14 +243,16 @@ export default function ChatMessageActions({
               >
                 Копировать
               </button>
-              <button
-                type="button"
-                onClick={handleReply}
-                className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
-              >
-                Ответить
-              </button>
-              {isOwnMessage ? (
+              {canReply ? (
+                <button
+                  type="button"
+                  onClick={handleReply}
+                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+                >
+                  Ответить
+                </button>
+              ) : null}
+              {canDeleteMessage ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -239,7 +262,7 @@ export default function ChatMessageActions({
                 >
                   Удалить
                 </button>
-              ) : (
+              ) : canOpenProfile ? (
                 <button
                   type="button"
                   onClick={handleOpenProfile}
@@ -247,7 +270,7 @@ export default function ChatMessageActions({
                 >
                   Открыть профиль
                 </button>
-              )}
+              ) : null}
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}

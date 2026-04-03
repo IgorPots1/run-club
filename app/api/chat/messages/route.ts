@@ -96,6 +96,8 @@ type ChatMessageValidationRow = {
   thread_exists: boolean
   can_access: boolean
   safe_reply_to_id: string | null
+  can_post: boolean
+  thread_channel_key: CommonChannelKey | null
 }
 
 type ChatNotificationContent = {
@@ -116,6 +118,42 @@ const CHAT_MEDIA_BUCKET = 'chat-media'
 const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
 const SAFE_STORAGE_FILE_NAME_REGEX = /^[A-Za-z0-9._-]+$/
+const CHAT_API_ERROR_MESSAGE_BY_CODE: Record<string, string> = {
+  auth_required: 'Authentication is required.',
+  thread_not_found: 'Chat thread not found.',
+  thread_access_denied: 'You do not have access to this chat thread.',
+  posting_not_allowed: 'Posting is not allowed in this chat thread.',
+  empty_message: 'Message cannot be empty.',
+  empty_voice_message: 'Voice message cannot be empty.',
+  message_too_long: 'Message is too long.',
+}
+
+function getChatApiErrorStatus(errorCode: string) {
+  switch (errorCode) {
+    case 'auth_required':
+      return 401
+    case 'thread_not_found':
+      return 404
+    case 'thread_access_denied':
+    case 'posting_not_allowed':
+      return 403
+    default:
+      return 400
+  }
+}
+
+function createChatApiErrorResponse(errorCode: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: errorCode,
+      message: CHAT_API_ERROR_MESSAGE_BY_CODE[errorCode] ?? 'Chat message request failed.',
+    },
+    {
+      status: getChatApiErrorStatus(errorCode),
+    }
+  )
+}
 
 function getChatThreadTargetUrl(threadId: string) {
   return `/messages/${threadId}`
@@ -331,6 +369,8 @@ async function validateChatMessageRequest(
   if (!threadId) {
     return {
       safeReplyToId: null,
+      canPost: true,
+      threadChannelKey: null,
     }
   }
 
@@ -356,8 +396,14 @@ async function validateChatMessageRequest(
     throw new Error('thread_access_denied')
   }
 
+  if (!validation.can_post) {
+    throw new Error('posting_not_allowed')
+  }
+
   return {
     safeReplyToId: validation.safe_reply_to_id ?? null,
+    canPost: validation.can_post,
+    threadChannelKey: validation.thread_channel_key ?? null,
   }
 }
 
@@ -856,13 +902,7 @@ export async function POST(request: Request) {
     logPhase('auth_resolved', {
       authenticated: false,
     })
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'auth_required',
-      },
-      { status: 401 }
-    )
+    return createChatApiErrorResponse('auth_required')
   }
 
   try {
@@ -870,7 +910,12 @@ export async function POST(request: Request) {
     logPhase('auth_resolved', {
       authenticated: true,
     })
-    const { safeReplyToId } = await validateChatMessageRequest(supabaseAdmin, userId, threadId, replyToId)
+    const { safeReplyToId, canPost, threadChannelKey } = await validateChatMessageRequest(
+      supabaseAdmin,
+      userId,
+      threadId,
+      replyToId
+    )
     let validatedTextAttachments: ValidatedImageAttachment[] = []
 
     const insertPayload: ChatMessageInsertPayload =
@@ -946,6 +991,8 @@ export async function POST(request: Request) {
     })
     logPhase('thread_access_checked', {
       safeReplyToId,
+      canPost,
+      threadChannelKey,
     })
 
     logPhase('message_insert_start', {
@@ -1051,16 +1098,10 @@ export async function POST(request: Request) {
       messageId: message.id,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'chat_message_create_failed'
+    const errorCode = error instanceof Error ? error.message : 'chat_message_create_failed'
     logPhaseError('catch_error', {
-      error: message,
+      error: errorCode,
     })
-    return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
-      { status: 400 }
-    )
+    return createChatApiErrorResponse(errorCode)
   }
 }

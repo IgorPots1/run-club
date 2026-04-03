@@ -1,6 +1,7 @@
 export const COMMON_CHANNEL_KEYS = ['reports', 'social', 'important_info'] as const
 
 export type CommonChannelKey = (typeof COMMON_CHANNEL_KEYS)[number]
+export const IMPORTANT_INFO_CHANNEL_KEY = 'important_info' as const
 
 export const COMMON_CHANNEL_TITLE_BY_KEY: Record<CommonChannelKey, string> = {
   reports: 'Отчеты',

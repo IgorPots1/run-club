@@ -62,8 +62,40 @@ type ChatSectionProps = {
   currentUserId?: string | null
   isKeyboardOpen?: boolean
   isThreadLayoutReady?: boolean
+  isAnnouncementChannel?: boolean
+  isReadOnlyAnnouncement?: boolean
+  readOnlyAnnouncementMessage?: string
   title?: string
   description?: string
+}
+
+function getChatRestrictionErrorMessage(error: unknown, fallbackMessage: string) {
+  if (!(error instanceof Error)) {
+    return fallbackMessage
+  }
+
+  if (error.message.includes('posting_not_allowed')) {
+    return 'В этом канале публиковать сообщения может только тренер'
+  }
+
+  if (error.message.includes('message_manage_not_allowed')) {
+    return 'В этом канале этим сообщением может управлять только тренер'
+  }
+
+  return fallbackMessage
+}
+
+function isChatRestrictionError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return [
+    'posting_not_allowed',
+    'message_manage_not_allowed',
+    'thread_access_denied',
+    'thread_not_found',
+  ].some((errorCode) => error.message.includes(errorCode))
 }
 
 type PendingComposerImage = {
@@ -3353,7 +3385,7 @@ const ChatMessageList = memo(function ChatMessageList({
   onImageClick: (attachments: ChatMessageAttachment[], index: number) => void
   onImageLoad: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
   onRetryFailedMessage: (message: ChatMessageItem) => void
-  onReactionToggle: (messageId: string, emoji: string) => void
+  onReactionToggle?: (messageId: string, emoji: string) => void
   onReactionDetailsOpen: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
   onMessageTouchStart: (message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => void
   onMessageTouchEnd: (message: ChatMessageItem) => void
@@ -3484,6 +3516,9 @@ export default function ChatSection({
   currentUserId = null,
   isKeyboardOpen = false,
   isThreadLayoutReady = false,
+  isAnnouncementChannel = false,
+  isReadOnlyAnnouncement = false,
+  readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.',
   title,
   description,
 }: ChatSectionProps) {
@@ -3586,6 +3621,7 @@ export default function ChatSection({
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
+  const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
   const filteredChatSendDebugEvents = useMemo(
     () => chatSendDebugEvents
       .filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase)),
@@ -3694,6 +3730,21 @@ export default function ChatSection({
   const isMessageTooLong = trimmedDraftMessage.length > CHAT_MESSAGE_MAX_LENGTH
   const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImages.length > 0)
   const shouldShowVoiceRecorderButton = !editingMessage && !trimmedDraftMessage && !hasPendingImage
+  const announcementReadOnlyMessage = readOnlyAnnouncementMessage.trim() || 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
+  const canManageMessage = useCallback((message: ChatMessageItem) => {
+    if (isAnnouncementChannel && isReadOnlyAnnouncement) {
+      return false
+    }
+
+    if (canModerateAnnouncementChannel) {
+      return true
+    }
+
+    return currentUserId === message.userId
+  }, [canModerateAnnouncementChannel, currentUserId, isAnnouncementChannel, isReadOnlyAnnouncement])
+  const canEditMessage = useCallback((message: ChatMessageItem) => {
+    return message.messageType === 'text' && canManageMessage(message)
+  }, [canManageMessage])
   const latestLoadedMessageCreatedAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null
   const oldestLoadedMessageCreatedAt = messages.length > 0 ? messages[0]?.createdAt ?? null : null
   const oldestLoadedMessageId = messages.length > 0 ? messages[0]?.id ?? null : null
@@ -3708,6 +3759,21 @@ export default function ChatSection({
   )
   const initialBottomLockRequiredStableSamples = 3
   const initialBottomLockSafetyTimeoutMs = 4000
+
+  useEffect(() => {
+    if (!isReadOnlyAnnouncement) {
+      return
+    }
+
+    setReplyingToMessage(null)
+    setEditingMessageId(null)
+    setDraftMessage('')
+    setSubmitError('')
+    setSelectedMessage(null)
+    setIsActionSheetOpen(false)
+    setSelectedReactionDetails(null)
+    clearSelectedImages()
+  }, [isReadOnlyAnnouncement])
 
   useEffect(() => {
     if (!CHAT_SEND_DEBUG) {
@@ -5437,6 +5503,11 @@ export default function ChatSection({
       return
     }
 
+    if (isReadOnlyAnnouncement) {
+      setSubmitError(announcementReadOnlyMessage)
+      return
+    }
+
     if (!trimmedDraftMessage && pendingImages.length === 0) {
       setSubmitError('Введите сообщение или выберите фото')
       return
@@ -5471,7 +5542,10 @@ export default function ChatSection({
           editingMessageId,
           currentUserId,
           trimmedDraftMessage,
-          threadId
+          threadId,
+          {
+            allowManagedThreadMessage: canModerateAnnouncementChannel,
+          }
         )
 
         if (updateError) {
@@ -5557,14 +5631,14 @@ export default function ChatSection({
         category: getChatSendDebugErrorCategory(error),
         error: getChatSendDebugErrorDetails(error),
       })
-      setSubmitError('Не удалось отправить сообщение')
+      setSubmitError(getChatRestrictionErrorMessage(error, 'Не удалось отправить сообщение'))
     } finally {
       setSubmitting(false)
     }
   }
 
   function handleDeleteMessage(message: ChatMessageItem) {
-    if (!currentUserId || deletingMessageId || message.userId !== currentUserId || message.isDeleted) {
+    if (!currentUserId || deletingMessageId || !canManageMessage(message) || message.isDeleted) {
       return
     }
 
@@ -5574,7 +5648,7 @@ export default function ChatSection({
   async function confirmDeleteMessage() {
     const message = deleteConfirmationMessage
 
-    if (!currentUserId || !message || deletingMessageId || message.userId !== currentUserId || message.isDeleted) {
+    if (!currentUserId || !message || deletingMessageId || !canManageMessage(message) || message.isDeleted) {
       return
     }
 
@@ -5584,7 +5658,9 @@ export default function ChatSection({
     setMessages((currentMessages) => removeMessageById(currentMessages, message.id))
 
     try {
-      const { error: deleteError } = await softDeleteChatMessage(message.id, currentUserId, threadId)
+      const { error: deleteError } = await softDeleteChatMessage(message.id, currentUserId, threadId, {
+        allowManagedThreadMessage: canModerateAnnouncementChannel,
+      })
 
       if (deleteError) {
         throw deleteError
@@ -5622,14 +5698,14 @@ export default function ChatSection({
         }
       }
 
-    } catch {
+    } catch (error) {
       pendingDeletedMessageIdsRef.current.delete(message.id)
       setMessages((currentMessages) =>
         keepLatestRenderedMessages(insertMessageChronologically(currentMessages, message), {
           preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
         })
       )
-      setError('Не удалось удалить сообщение')
+      setError(getChatRestrictionErrorMessage(error, 'Не удалось удалить сообщение'))
     } finally {
       setDeletingMessageId(null)
     }
@@ -5670,6 +5746,13 @@ export default function ChatSection({
   }
 
   function handleReplyToMessage(message: ChatMessageItem) {
+    if (isReadOnlyAnnouncement) {
+      setSubmitError(announcementReadOnlyMessage)
+      setSelectedMessage(null)
+      setIsActionSheetOpen(false)
+      return
+    }
+
     if (!messagesRef.current.some((currentMessage) => currentMessage.id === message.id)) {
       setReplyingToMessage(null)
       return
@@ -5690,6 +5773,11 @@ export default function ChatSection({
 
   const handleToggleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!currentUserId) {
+      return
+    }
+
+    if (isReadOnlyAnnouncement) {
+      setSubmitError(announcementReadOnlyMessage)
       return
     }
 
@@ -5732,8 +5820,9 @@ export default function ChatSection({
       setMessages((currentMessages) =>
         updateMessageReaction(currentMessages, messageId, currentUserId, emoji, currentUserReactionProfile, hasReacted)
       )
+      setSubmitError(getChatRestrictionErrorMessage(error, 'Не удалось обновить реакцию'))
     }
-  }, [currentUserId, getReactionProfileForUser])
+  }, [announcementReadOnlyMessage, currentUserId, getReactionProfileForUser, isReadOnlyAnnouncement])
 
   function clearEditingMessage() {
     setEditingMessageId(null)
@@ -5745,6 +5834,17 @@ export default function ChatSection({
   }
 
   function handleEditMessage(message: ChatMessageItem) {
+    if (!canEditMessage(message)) {
+      setSubmitError(
+        isReadOnlyAnnouncement
+          ? announcementReadOnlyMessage
+          : 'Нельзя редактировать это сообщение'
+      )
+      setSelectedMessage(null)
+      setIsActionSheetOpen(false)
+      return
+    }
+
     if (message.messageType !== 'text') {
       setSubmitError('Нельзя редактировать нетекстовое сообщение')
       setSelectedMessage(null)
@@ -5813,6 +5913,11 @@ export default function ChatSection({
     if (!currentUserId) {
       clearSelectedImages()
       setSubmitError('Нужно войти, чтобы отправлять фото')
+      return
+    }
+
+    if (isReadOnlyAnnouncement) {
+      setSubmitError(announcementReadOnlyMessage)
       return
     }
 
@@ -6197,31 +6302,37 @@ export default function ChatSection({
       )
 
       if (insertError || !messageId) {
+        const nextError = insertError ?? new Error('chat_message_create_failed')
         logChatSendDebugError('request_failed', {
           threadId,
           optimisticMessageId: workingMessage.id,
           error: insertError ? getChatSendDebugErrorDetails(insertError) : null,
           messageId,
         })
-        setMessages((currentMessages) =>
-          keepLatestRenderedMessages(
-            currentMessages.map((message) =>
-              message.id === workingMessage.id
-                ? {
-                    ...message,
-                    optimisticStatus: 'failed',
-                    optimisticAttachmentUploadState: message.messageType === 'image'
-                      ? (message.optimisticAttachmentUploadState ?? 'failed')
-                      : message.optimisticAttachmentUploadState,
-                  }
-                : message
-            ),
-            {
-              preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-            }
+        if (isChatRestrictionError(nextError)) {
+          revokeOptimisticImageObjectUrls(workingMessage)
+          setMessages((currentMessages) => removeMessageById(currentMessages, workingMessage.id))
+        } else {
+          setMessages((currentMessages) =>
+            keepLatestRenderedMessages(
+              currentMessages.map((message) =>
+                message.id === workingMessage.id
+                  ? {
+                      ...message,
+                      optimisticStatus: 'failed',
+                      optimisticAttachmentUploadState: message.messageType === 'image'
+                        ? (message.optimisticAttachmentUploadState ?? 'failed')
+                        : message.optimisticAttachmentUploadState,
+                    }
+                  : message
+              ),
+              {
+                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+              }
+            )
           )
-        )
-        throw insertError ?? new Error('chat_message_create_failed')
+        }
+        throw nextError
       }
 
       serverMessageId = messageId
@@ -6445,6 +6556,12 @@ export default function ChatSection({
       return
     }
 
+    if (isReadOnlyAnnouncement) {
+      setSubmitError(announcementReadOnlyMessage)
+      cleanupVoiceRecordingResources()
+      return
+    }
+
     isSendingVoiceMessageRef.current = true
     setUploadingVoice(true)
     setSubmitError('')
@@ -6515,7 +6632,7 @@ export default function ChatSection({
       )
 
       if (insertError) {
-        throw new Error(`voice_insert_failed:${insertError.message}`)
+        throw insertError
       }
 
       updateChatSendErrorGuardState(optimisticMessage.id, {
@@ -6568,7 +6685,7 @@ export default function ChatSection({
         error: getChatSendDebugErrorDetails(error),
         contentKind: 'voice',
       })
-      setSubmitError('Не удалось отправить голосовое сообщение')
+      setSubmitError(getChatRestrictionErrorMessage(error, 'Не удалось отправить голосовое сообщение'))
       cleanupVoiceRecordingResources()
     } finally {
       isSendingVoiceMessageRef.current = false
@@ -6587,6 +6704,7 @@ export default function ChatSection({
       submitting ||
       isRecordingVoice ||
       isStartingVoiceRecording ||
+      isReadOnlyAnnouncement ||
       !shouldShowVoiceRecorderButton
     ) {
       return
@@ -6955,6 +7073,17 @@ export default function ChatSection({
   }, [filteredChatSendDebugEvents])
 
   function renderComposer() {
+    if (isReadOnlyAnnouncement) {
+      return (
+        <div>
+          <section className="rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+            <p className="app-text-primary text-sm font-medium">Канал с важной информацией</p>
+            <p className="app-text-secondary mt-1 text-sm">{announcementReadOnlyMessage}</p>
+          </section>
+        </div>
+      )
+    }
+
     return (
       <div>
         <section className="rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-3 py-2 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
@@ -7306,7 +7435,7 @@ export default function ChatSection({
                   }}
                   onImageLoad={handleMessageImageLoad}
                   onRetryFailedMessage={handleRetryFailedMessage}
-                  onReactionToggle={handleToggleReaction}
+                  onReactionToggle={isReadOnlyAnnouncement ? undefined : handleToggleReaction}
                   onReactionDetailsOpen={handleReactionDetailsOpen}
                   onMessageTouchStart={handleMessageTouchStart}
                   onMessageTouchEnd={handleMessageTouchEnd}
@@ -7380,7 +7509,7 @@ export default function ChatSection({
                 </div>
               ))}
             </div>
-            {currentUserId ? (
+            {currentUserId && !isReadOnlyAnnouncement ? (
               <div className="border-t border-black/[0.05] p-2 dark:border-white/10">
                 <button
                   type="button"
@@ -7402,6 +7531,8 @@ export default function ChatSection({
           message={selectedMessage}
           anchorRect={selectedMessageAnchorRect}
           currentUserId={currentUserId}
+          isAnnouncementChannel={isAnnouncementChannel}
+          isReadOnlyAnnouncement={isReadOnlyAnnouncement}
           open={isActionSheetOpen}
           onOpenChange={handleActionSheetOpenChange}
           onDelete={handleDeleteMessage}

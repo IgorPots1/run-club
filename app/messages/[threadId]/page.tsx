@@ -6,7 +6,7 @@ import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
-import { getCommonChannelTitle } from '@/lib/chat/commonChannels'
+import { getCommonChannelTitle, IMPORTANT_INFO_CHANNEL_KEY } from '@/lib/chat/commonChannels'
 import {
   dispatchChatUnreadUpdated,
   markThreadAsRead,
@@ -40,12 +40,15 @@ export default function MessageThreadPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('')
   const [error, setError] = useState('')
+  const [isAnnouncementChannel, setIsAnnouncementChannel] = useState(false)
+  const [isReadOnlyAnnouncement, setIsReadOnlyAnnouncement] = useState(false)
   const [threadMuted, setThreadMuted] = useState(false)
   const [isLoadingThreadMuteState, setIsLoadingThreadMuteState] = useState(false)
   const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
   const isThreadLayoutReady = !loading
+  const readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
 
   useEffect(() => {
     return () => {
@@ -79,15 +82,23 @@ export default function MessageThreadPage() {
         }
 
         if (!thread) {
+          setIsAnnouncementChannel(false)
+          setIsReadOnlyAnnouncement(false)
           setError('Чат недоступен')
           return
         }
 
         if (thread.type === 'club') {
+          const isImportantInfoThread = thread.channel_key === IMPORTANT_INFO_CHANNEL_KEY
+          setIsAnnouncementChannel(isImportantInfoThread)
+          setIsReadOnlyAnnouncement(isImportantInfoThread && user.id !== COACH_USER_ID)
           setThreadTitle(getCommonChannelTitle(thread.channel_key) ?? thread.title ?? 'Общий чат')
           setError('')
           return
         }
+
+        setIsAnnouncementChannel(false)
+        setIsReadOnlyAnnouncement(false)
 
         if (user.id !== COACH_USER_ID) {
           setThreadTitle('Связь с тренером')
@@ -119,6 +130,8 @@ export default function MessageThreadPage() {
         setError('')
       } catch {
         if (isMounted) {
+          setIsAnnouncementChannel(false)
+          setIsReadOnlyAnnouncement(false)
           setError('Не удалось открыть чат')
         }
       } finally {
@@ -402,6 +415,9 @@ export default function MessageThreadPage() {
             currentUserId={currentUserId}
             isKeyboardOpen={isKeyboardOpen}
             isThreadLayoutReady={isThreadLayoutReady}
+            isAnnouncementChannel={isAnnouncementChannel}
+            isReadOnlyAnnouncement={isReadOnlyAnnouncement}
+            readOnlyAnnouncementMessage={readOnlyAnnouncementMessage}
           />
         </div>
       </div>

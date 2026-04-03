@@ -937,7 +937,10 @@ export async function updateChatMessage(
   messageId: string,
   userId: string,
   text: string,
-  threadId?: string | null
+  threadId?: string | null,
+  options?: {
+    allowManagedThreadMessage?: boolean
+  }
 ) {
   const trimmedText = text.trim()
 
@@ -952,10 +955,13 @@ export async function updateChatMessage(
       edited_at: new Date().toISOString(),
     })
     .eq('id', messageId)
-    .eq('user_id', userId)
 
   if (threadId) {
     updateQuery.eq('thread_id', threadId)
+  }
+
+  if (!options?.allowManagedThreadMessage) {
+    updateQuery.eq('user_id', userId)
   }
 
   return updateQuery
@@ -1114,17 +1120,27 @@ export async function deleteUploadedChatImage(storagePath: string) {
   }
 }
 
-export async function softDeleteChatMessage(messageId: string, userId: string, threadId?: string | null) {
+export async function softDeleteChatMessage(
+  messageId: string,
+  userId: string,
+  threadId?: string | null,
+  options?: {
+    allowManagedThreadMessage?: boolean
+  }
+) {
   const deleteQuery = supabase
     .from('chat_messages')
     .update({
       is_deleted: true,
     })
     .eq('id', messageId)
-    .eq('user_id', userId)
 
   if (threadId) {
     deleteQuery.eq('thread_id', threadId)
+  }
+
+  if (!options?.allowManagedThreadMessage) {
+    deleteQuery.eq('user_id', userId)
   }
 
   return deleteQuery
