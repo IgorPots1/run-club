@@ -587,15 +587,99 @@ function hasPendingOptimisticImageAttachments(message: ChatMessageItem) {
   )
 }
 
+function isLocalOrTransientImageUrl(url: string | null | undefined): boolean {
+  if (!url) {
+    return false
+  }
+
+  const trimmedUrl = url.trim()
+
+  return trimmedUrl.startsWith('blob:') || trimmedUrl.startsWith('data:')
+}
+
+function serverImageMessageMissingReliableAttachmentUrls(serverMessage: ChatMessageItem): boolean {
+  if (serverMessage.messageType !== 'image') {
+    return false
+  }
+
+  if (serverMessage.attachments.length === 0) {
+    return true
+  }
+
+  return !serverMessage.attachments.some(
+    (attachment) =>
+      Boolean(attachment.publicUrl?.trim()) && !isLocalOrTransientImageUrl(attachment.publicUrl)
+  )
+}
+
+function hasBlobOrDataPreviewAttachments(message: ChatMessageItem): boolean {
+  return message.attachments.some((attachment) => isLocalOrTransientImageUrl(attachment.publicUrl))
+}
+
+function shouldMergeIncompleteSenderImageHydration(
+  prevMessage: ChatMessageItem,
+  serverMessage: ChatMessageItem,
+  currentUserId: string | null
+): boolean {
+  if (!currentUserId || serverMessage.userId !== currentUserId || prevMessage.userId !== currentUserId) {
+    return false
+  }
+
+  if (serverMessage.messageType !== 'image' || prevMessage.messageType !== 'image') {
+    return false
+  }
+
+  if (!serverImageMessageMissingReliableAttachmentUrls(serverMessage)) {
+    return false
+  }
+
+  if (hasPendingOptimisticImageAttachments(prevMessage)) {
+    return true
+  }
+
+  const taskMessageId = prevMessage.optimisticServerMessageId ?? prevMessage.id
+
+  if (taskMessageId && hasPendingChatMediaTask(taskMessageId)) {
+    return true
+  }
+
+  return hasBlobOrDataPreviewAttachments(prevMessage)
+}
+
+function getAttachmentStatesForImageMerge(
+  optimisticMessage: ChatMessageItem,
+  serverMessage: ChatMessageItem,
+  currentUserId: string | null
+): Array<'pending' | 'uploading' | 'uploaded' | 'attached' | 'failed'> | null {
+  if (hasPendingOptimisticImageAttachments(optimisticMessage)) {
+    return getOptimisticAttachmentStates(optimisticMessage)
+  }
+
+  if (
+    shouldMergeIncompleteSenderImageHydration(optimisticMessage, serverMessage, currentUserId) &&
+    optimisticMessage.attachments.length > 0
+  ) {
+    return optimisticMessage.attachments.map(() => 'uploaded' as const)
+  }
+
+  return null
+}
+
 function mergeServerMessageWithOptimisticImageState(
   optimisticMessage: ChatMessageItem,
-  serverMessage: ChatMessageItem
+  serverMessage: ChatMessageItem,
+  currentUserId: string | null
 ): ChatMessageItem {
-  if (!hasPendingOptimisticImageAttachments(optimisticMessage)) {
+  if (optimisticMessage.id !== serverMessage.id) {
     return serverMessage
   }
 
-  const nextStates = getOptimisticAttachmentStates(optimisticMessage)
+  const nextStates = getAttachmentStatesForImageMerge(optimisticMessage, serverMessage, currentUserId)
+
+  if (!nextStates) {
+    return serverMessage
+  }
+
   const optimisticAttachmentsBySortOrder = new Map(
     optimisticMessage.attachments.map((attachment) => [attachment.sortOrder, attachment])
   )
@@ -612,8 +696,11 @@ function mergeServerMessageWithOptimisticImageState(
   for (let sortOrder = 0; sortOrder < maxAttachmentCount; sortOrder += 1) {
     const serverAttachment = serverAttachmentsBySortOrder.get(sortOrder) ?? null
     const optimisticAttachment = optimisticAttachmentsBySortOrder.get(sortOrder) ?? null
+    const serverHasReliablePublicUrl =
+      Boolean(serverAttachment?.publicUrl?.trim()) &&
+      !isLocalOrTransientImageUrl(serverAttachment?.publicUrl)
 
-    if (serverAttachment) {
+    if (serverAttachment && serverHasReliablePublicUrl) {
       mergedAttachments.push(serverAttachment)
       nextStates[sortOrder] = 'attached'
       continue
@@ -3905,12 +3992,15 @@ export default function ChatSection({
 
             if (optimisticTextOrImageMatch) {
               const finalizedMessage = finalizeOptimisticMessageFromRealtimeRow(optimisticTextOrImageMatch, realtimeRow)
-              const mergedMessage = mergeServerMessageWithOptimisticImageState(
-                {
-                  ...optimisticTextOrImageMatch,
-                  optimisticServerMessageId: optimisticTextOrImageMatch.optimisticServerMessageId ?? finalizedMessage.id,
-                },
-                finalizedMessage
+              const mergedMessage = mergeMessageWithPendingMediaTaskState(
+                mergeServerMessageWithOptimisticImageState(
+                  {
+                    ...optimisticTextOrImageMatch,
+                    optimisticServerMessageId: optimisticTextOrImageMatch.optimisticServerMessageId ?? finalizedMessage.id,
+                  },
+                  finalizedMessage,
+                  currentUserId
+                )
               )
               clearOptimisticRealtimeFallbackTimeout(nextMessageId)
               updateChatSendErrorGuardState(optimisticTextOrImageMatch.id, {
@@ -4003,10 +4093,9 @@ export default function ChatSection({
 
             const currentRenderedMessage =
               messagesRef.current.find((message) => message.id === nextMessage.id) ?? null
-            const mergedMessage =
-              currentRenderedMessage && hasPendingOptimisticImageAttachments(currentRenderedMessage)
-                ? mergeServerMessageWithOptimisticImageState(currentRenderedMessage, nextMessage)
-                : nextMessage
+            const mergedMessage = currentRenderedMessage
+              ? mergeServerMessageWithOptimisticImageState(currentRenderedMessage, nextMessage, currentUserId)
+              : nextMessage
 
             setMessages((currentMessages) =>
               keepLatestRenderedMessages(
@@ -4655,7 +4744,7 @@ export default function ChatSection({
           }
 
           const mergedMessage = mergeMessageWithPendingMediaTaskState(
-            mergeServerMessageWithOptimisticImageState(currentOptimisticMessage, nextMessage)
+            mergeServerMessageWithOptimisticImageState(currentOptimisticMessage, nextMessage, currentUserId)
           )
           updateChatSendErrorGuardState(optimisticMessageId, {
             hasReconciliationSuccess: true,
