@@ -56,6 +56,7 @@ type QueuePendingChatMediaTaskInput = {
 
 const tasksByMessageId = new Map<string, MutablePendingChatMediaTask>()
 const listeners = new Set<() => void>()
+const MAX_PENDING_CHAT_ATTACHMENT_CONCURRENCY = 3
 
 function emitPendingChatMediaTasksChanged() {
   listeners.forEach((listener) => {
@@ -116,6 +117,173 @@ function scheduleTaskCleanup(messageId: string) {
   }, 30000)
 }
 
+async function runWithConcurrencyLimit<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+) {
+  const normalizedConcurrency = Math.max(1, Math.min(concurrency, items.length || 1))
+  let nextIndex = 0
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex]
+      nextIndex += 1
+
+      if (!item) {
+        continue
+      }
+
+      await worker(item)
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: normalizedConcurrency }, () => runWorker())
+  )
+}
+
+async function processPendingChatMediaAttachment(
+  task: MutablePendingChatMediaTask,
+  attachment: PendingChatMediaTaskAttachment
+) {
+  if (attachment.state === 'attached') {
+    return
+  }
+
+  try {
+    if (!attachment.storagePath) {
+      if (!attachment.file) {
+        attachment.state = 'failed'
+        attachment.error = 'chat_image_upload_missing_file'
+        logChatSendDebugError('attachment_upload_failed', {
+          messageId: task.messageId,
+          threadId: task.threadId,
+          sortOrder: attachment.sortOrder,
+          reason: attachment.error,
+        })
+        markChatSendTimingAttachmentPhase('attachment_upload_failed', {
+          serverMessageId: task.messageId,
+          sortOrder: attachment.sortOrder,
+        })
+        emitPendingChatMediaTasksChanged()
+        return
+      }
+
+      attachment.state = 'uploading'
+      attachment.error = null
+      logChatSendDebug('attachment_upload_start', {
+        messageId: task.messageId,
+        threadId: task.threadId,
+        sortOrder: attachment.sortOrder,
+        fileName: attachment.file.name,
+        fileSize: attachment.file.size,
+        fileType: attachment.file.type,
+      })
+      markChatSendTimingAttachmentPhase('attachment_upload_start', {
+        serverMessageId: task.messageId,
+        sortOrder: attachment.sortOrder,
+      })
+      emitPendingChatMediaTasksChanged()
+
+      const uploadedImage = await uploadChatImage(task.userId, attachment.file, task.threadId)
+      attachment.storagePath = uploadedImage.storagePath
+      attachment.publicUrl = uploadedImage.publicUrl
+      attachment.width = uploadedImage.width ?? attachment.width
+      attachment.height = uploadedImage.height ?? attachment.height
+      attachment.state = 'uploaded'
+      attachment.error = null
+      logChatSendDebug('attachment_upload_success', {
+        messageId: task.messageId,
+        threadId: task.threadId,
+        sortOrder: attachment.sortOrder,
+        storagePath: uploadedImage.storagePath,
+        publicUrl: uploadedImage.publicUrl,
+        width: attachment.width,
+        height: attachment.height,
+      })
+      markChatSendTimingAttachmentPhase('attachment_upload_success', {
+        serverMessageId: task.messageId,
+        sortOrder: attachment.sortOrder,
+      })
+      emitPendingChatMediaTasksChanged()
+    } else {
+      attachment.state = 'uploaded'
+      attachment.error = null
+      emitPendingChatMediaTasksChanged()
+    }
+
+    logChatSendDebug('attachment_payload_ready', {
+      messageId: task.messageId,
+      threadId: task.threadId,
+      sortOrder: attachment.sortOrder,
+      payload: {
+        type: 'image',
+        threadId: task.threadId,
+        storagePath: attachment.storagePath,
+        width: attachment.width,
+        height: attachment.height,
+        sortOrder: attachment.sortOrder,
+      },
+    })
+
+    const { error: attachError } = await attachImageToChatMessage(task.messageId, {
+      type: 'image',
+      threadId: task.threadId,
+      storagePath: attachment.storagePath!,
+      width: attachment.width,
+      height: attachment.height,
+      sortOrder: attachment.sortOrder,
+    })
+
+    if (attachError) {
+      throw attachError
+    }
+
+    attachment.state = 'attached'
+    attachment.error = null
+    logChatSendDebug('attachment_attach_success', {
+      messageId: task.messageId,
+      threadId: task.threadId,
+      sortOrder: attachment.sortOrder,
+      storagePath: attachment.storagePath,
+      publicUrl: attachment.publicUrl,
+    })
+    markChatSendTimingAttachmentPhase('attachment_attach_success', {
+      serverMessageId: task.messageId,
+      sortOrder: attachment.sortOrder,
+    })
+    revokeTaskAttachmentPreviewUrl(attachment)
+    attachment.previewUrl = null
+    attachment.file = null
+    emitPendingChatMediaTasksChanged()
+  } catch (error) {
+    attachment.state = 'failed'
+    const normalizedError = error instanceof Error
+      ? error
+      : createChatSendDebugError('attachment_upload_error', 'chat_media_upload_failed', {
+          messageId: task.messageId,
+          threadId: task.threadId,
+          sortOrder: attachment.sortOrder,
+          rawError: error,
+        })
+    attachment.error = normalizedError.message
+    logChatSendDebugError('attachment_attach_failed', {
+      messageId: task.messageId,
+      threadId: task.threadId,
+      sortOrder: attachment.sortOrder,
+      storagePath: attachment.storagePath,
+      publicUrl: attachment.publicUrl,
+      error: normalizedError,
+    })
+    markChatSendTimingAttachmentPhase('attachment_attach_failed', {
+      serverMessageId: task.messageId,
+      sortOrder: attachment.sortOrder,
+    })
+    emitPendingChatMediaTasksChanged()
+  }
+}
+
 async function processPendingChatMediaTask(messageId: string) {
   const task = tasksByMessageId.get(messageId)
 
@@ -126,143 +294,18 @@ async function processPendingChatMediaTask(messageId: string) {
   task.isProcessing = true
 
   try {
-    for (const attachment of task.attachments.slice().sort((left, right) => left.sortOrder - right.sortOrder)) {
-      if (attachment.state === 'attached') {
-        continue
+    const attachmentsToProcess = task.attachments
+      .slice()
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .filter((attachment) => attachment.state !== 'attached')
+
+    await runWithConcurrencyLimit(
+      attachmentsToProcess,
+      MAX_PENDING_CHAT_ATTACHMENT_CONCURRENCY,
+      async (attachment) => {
+        await processPendingChatMediaAttachment(task, attachment)
       }
-
-      try {
-        if (!attachment.storagePath) {
-          if (!attachment.file) {
-            attachment.state = 'failed'
-            attachment.error = 'chat_image_upload_missing_file'
-            logChatSendDebugError('attachment_upload_failed', {
-              messageId: task.messageId,
-              threadId: task.threadId,
-              sortOrder: attachment.sortOrder,
-              reason: attachment.error,
-            })
-            markChatSendTimingAttachmentPhase('attachment_upload_failed', {
-              serverMessageId: task.messageId,
-              sortOrder: attachment.sortOrder,
-            })
-            emitPendingChatMediaTasksChanged()
-            continue
-          }
-
-          attachment.state = 'uploading'
-          attachment.error = null
-          logChatSendDebug('attachment_upload_start', {
-            messageId: task.messageId,
-            threadId: task.threadId,
-            sortOrder: attachment.sortOrder,
-            fileName: attachment.file.name,
-            fileSize: attachment.file.size,
-            fileType: attachment.file.type,
-          })
-          markChatSendTimingAttachmentPhase('attachment_upload_start', {
-            serverMessageId: task.messageId,
-            sortOrder: attachment.sortOrder,
-          })
-          emitPendingChatMediaTasksChanged()
-
-          const uploadedImage = await uploadChatImage(task.userId, attachment.file, task.threadId)
-          attachment.storagePath = uploadedImage.storagePath
-          attachment.publicUrl = uploadedImage.publicUrl
-          attachment.width = uploadedImage.width ?? attachment.width
-          attachment.height = uploadedImage.height ?? attachment.height
-          attachment.state = 'uploaded'
-          attachment.error = null
-          logChatSendDebug('attachment_upload_success', {
-            messageId: task.messageId,
-            threadId: task.threadId,
-            sortOrder: attachment.sortOrder,
-            storagePath: uploadedImage.storagePath,
-            publicUrl: uploadedImage.publicUrl,
-            width: attachment.width,
-            height: attachment.height,
-          })
-          markChatSendTimingAttachmentPhase('attachment_upload_success', {
-            serverMessageId: task.messageId,
-            sortOrder: attachment.sortOrder,
-          })
-          emitPendingChatMediaTasksChanged()
-        } else {
-          attachment.state = 'uploaded'
-          attachment.error = null
-          emitPendingChatMediaTasksChanged()
-        }
-
-        logChatSendDebug('attachment_payload_ready', {
-          messageId: task.messageId,
-          threadId: task.threadId,
-          sortOrder: attachment.sortOrder,
-          payload: {
-            type: 'image',
-            threadId: task.threadId,
-            storagePath: attachment.storagePath,
-            width: attachment.width,
-            height: attachment.height,
-            sortOrder: attachment.sortOrder,
-          },
-        })
-
-        const { error: attachError } = await attachImageToChatMessage(task.messageId, {
-          type: 'image',
-          threadId: task.threadId,
-          storagePath: attachment.storagePath!,
-          width: attachment.width,
-          height: attachment.height,
-          sortOrder: attachment.sortOrder,
-        })
-
-        if (attachError) {
-          throw attachError
-        }
-
-        attachment.state = 'attached'
-        attachment.error = null
-        logChatSendDebug('attachment_attach_success', {
-          messageId: task.messageId,
-          threadId: task.threadId,
-          sortOrder: attachment.sortOrder,
-          storagePath: attachment.storagePath,
-          publicUrl: attachment.publicUrl,
-        })
-        markChatSendTimingAttachmentPhase('attachment_attach_success', {
-          serverMessageId: task.messageId,
-          sortOrder: attachment.sortOrder,
-        })
-        revokeTaskAttachmentPreviewUrl(attachment)
-        attachment.previewUrl = null
-        attachment.file = null
-        emitPendingChatMediaTasksChanged()
-      } catch (error) {
-        attachment.state = 'failed'
-        const normalizedError = error instanceof Error
-          ? error
-          : createChatSendDebugError('attachment_upload_error', 'chat_media_upload_failed', {
-              messageId: task.messageId,
-              threadId: task.threadId,
-              sortOrder: attachment.sortOrder,
-              rawError: error,
-            })
-        attachment.error = normalizedError.message
-        logChatSendDebugError('attachment_attach_failed', {
-          messageId: task.messageId,
-          threadId: task.threadId,
-          sortOrder: attachment.sortOrder,
-          storagePath: attachment.storagePath,
-          publicUrl: attachment.publicUrl,
-          error: normalizedError,
-        })
-        markChatSendTimingAttachmentPhase('attachment_attach_failed', {
-          serverMessageId: task.messageId,
-          sortOrder: attachment.sortOrder,
-        })
-        emitPendingChatMediaTasksChanged()
-      }
-    }
+    )
   } finally {
     const currentTask = tasksByMessageId.get(messageId)
 
