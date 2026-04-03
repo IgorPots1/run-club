@@ -941,7 +941,19 @@ function ChatImageAttachmentTile({
     displayedSourceUrl &&
     displayedSourceUrl !== incomingSourceUrl
   )
-  const hasLoadedCurrentSource = loadedDisplayedSourceUrl === displayedSourceUrl && Boolean(displayedSourceUrl)
+  const isRemoteAttachmentCachedReady = Boolean(
+    isRemoteAttachmentAlreadyLoadedInSession &&
+    displayedSourceType === 'remote_public_url' &&
+    displayedSourceUrl &&
+    displayedSourceUrl === incomingSourceUrl
+  )
+  const hasLoadedCurrentSource = Boolean(
+    displayedSourceUrl &&
+    (
+      loadedDisplayedSourceUrl === displayedSourceUrl ||
+      isRemoteAttachmentCachedReady
+    )
+  )
   const visualState = getAttachmentDebugVisualState({
     sourceType: effectiveSourceType,
     attachmentState,
@@ -1103,6 +1115,10 @@ function ChatImageAttachmentTile({
       return
     }
 
+    if (isRemoteAttachmentCachedReady) {
+      return
+    }
+
     if (displayedSourceType === 'remote_public_url' && shouldKeepPreviewVisibleWhileRemoteLoads) {
       return
     }
@@ -1151,6 +1167,7 @@ function ChatImageAttachmentTile({
     displayedSourceType,
     displayedSourceUrl,
     hasLoadedCurrentSource,
+    isRemoteAttachmentCachedReady,
     message,
     onImageLoad,
     previewFailedToLoad,
