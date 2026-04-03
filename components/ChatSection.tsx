@@ -711,6 +711,13 @@ function buildAttachmentDebugPayload({
   }
 }
 
+function getAttachmentStableRenderKey(
+  attachment: Pick<ChatMessageAttachment, 'sortOrder'>,
+  tileIndex: number
+) {
+  return `attachment-tile-${attachment.sortOrder ?? tileIndex}`
+}
+
 function ChatImageAttachmentTile({
   message,
   attachment,
@@ -747,30 +754,81 @@ function ChatImageAttachmentTile({
   const previousVisualStateRef = useRef<AttachmentDebugVisualState | null>(null)
   const loadStartedSourceUrlRef = useRef<string | null>(null)
   const loadSucceededSourceUrlRef = useRef<string | null>(null)
-  const [loadedSourceUrl, setLoadedSourceUrl] = useState<string | null>(null)
-  const renderKey = attachment.id
-  const sourceUrl = attachment.publicUrl?.trim() ? attachment.publicUrl : null
-  const sourceType = getAttachmentDebugSourceType(sourceUrl)
-  const canShowImage = Boolean(sourceUrl) && !previewFailedToLoad
+  const notifiedImageLoadSourceUrlRef = useRef<string | null>(null)
+  const preservedPreviewUrlRef = useRef<string | null>(null)
+  const backgroundRemoteLoadUrlRef = useRef<string | null>(null)
+  const incomingSourceUrl = attachment.publicUrl?.trim() ? attachment.publicUrl : null
+  const incomingSourceType = getAttachmentDebugSourceType(incomingSourceUrl)
+  const renderKey = getAttachmentStableRenderKey(attachment, tileIndex)
+  const [displayedSourceUrl, setDisplayedSourceUrl] = useState<string | null>(incomingSourceUrl)
+  const [displayedSourceType, setDisplayedSourceType] = useState<AttachmentDebugSourceType>(incomingSourceType)
+  const [loadedDisplayedSourceUrl, setLoadedDisplayedSourceUrl] = useState<string | null>(
+    incomingSourceType === 'local_preview' ? incomingSourceUrl : null
+  )
+  const canShowImage = Boolean(displayedSourceUrl) && !previewFailedToLoad
   const isFailedAttachment = attachmentState === 'failed'
   const canOpenAttachment = Boolean(onImageClick && canShowImage && !isFailedAttachment)
+  const shouldKeepPreviewVisibleWhileRemoteLoads = Boolean(
+    incomingSourceType === 'remote_public_url' &&
+    incomingSourceUrl &&
+    displayedSourceType === 'local_preview' &&
+    displayedSourceUrl &&
+    displayedSourceUrl !== incomingSourceUrl
+  )
   const visualState = getAttachmentDebugVisualState({
-    sourceType,
+    sourceType: displayedSourceType,
     attachmentState,
     previewFailedToLoad,
-    hasLoadedCurrentSource: loadedSourceUrl === sourceUrl && Boolean(sourceUrl),
+    hasLoadedCurrentSource: loadedDisplayedSourceUrl === displayedSourceUrl && Boolean(displayedSourceUrl),
   })
   const debugPayload = buildAttachmentDebugPayload({
     message,
     attachment,
     tileIndex,
     renderKey,
-    sourceType,
-    sourceUrlChanged: previousSourceUrlRef.current !== null && previousSourceUrlRef.current !== sourceUrl,
+    sourceType: displayedSourceType,
+    sourceUrlChanged: previousSourceUrlRef.current !== null && previousSourceUrlRef.current !== displayedSourceUrl,
     visualState,
   })
 
   latestPayloadRef.current = debugPayload
+
+  useEffect(() => {
+    if (incomingSourceType === 'local_preview' && incomingSourceUrl) {
+      preservedPreviewUrlRef.current = incomingSourceUrl
+      backgroundRemoteLoadUrlRef.current = null
+      notifiedImageLoadSourceUrlRef.current = null
+
+      if (displayedSourceUrl !== incomingSourceUrl || displayedSourceType !== 'local_preview') {
+        setDisplayedSourceUrl(incomingSourceUrl)
+        setDisplayedSourceType('local_preview')
+        setLoadedDisplayedSourceUrl(null)
+      }
+    }
+  }, [displayedSourceType, displayedSourceUrl, incomingSourceType, incomingSourceUrl])
+
+  useEffect(() => {
+    if (incomingSourceType !== 'remote_public_url' || !incomingSourceUrl) {
+      return
+    }
+
+    if (shouldKeepPreviewVisibleWhileRemoteLoads) {
+      return
+    }
+
+    if (displayedSourceUrl !== incomingSourceUrl || displayedSourceType !== 'remote_public_url') {
+      setDisplayedSourceUrl(incomingSourceUrl)
+      setDisplayedSourceType('remote_public_url')
+      setLoadedDisplayedSourceUrl(null)
+      notifiedImageLoadSourceUrlRef.current = null
+    }
+  }, [
+    displayedSourceType,
+    displayedSourceUrl,
+    incomingSourceType,
+    incomingSourceUrl,
+    shouldKeepPreviewVisibleWhileRemoteLoads,
+  ])
 
   useEffect(() => {
     logChatSendDebug('attachment_render_mount', debugPayload)
@@ -783,8 +841,8 @@ function ChatImageAttachmentTile({
   }, [])
 
   useEffect(() => {
-    previousSourceUrlRef.current = sourceUrl
-  }, [sourceUrl])
+    previousSourceUrlRef.current = displayedSourceUrl
+  }, [displayedSourceUrl])
 
   useEffect(() => {
     if (previousVisualStateRef.current !== null && previousVisualStateRef.current !== visualState) {
@@ -795,40 +853,156 @@ function ChatImageAttachmentTile({
   }, [debugPayload, visualState])
 
   useEffect(() => {
-    if (!sourceUrl || !canShowImage) {
+    if (!displayedSourceUrl || !canShowImage) {
       loadStartedSourceUrlRef.current = null
       loadSucceededSourceUrlRef.current = null
-      setLoadedSourceUrl(null)
+      setLoadedDisplayedSourceUrl(null)
       return
     }
 
-    if (loadStartedSourceUrlRef.current === sourceUrl) {
+    if (displayedSourceType === 'remote_public_url' && shouldKeepPreviewVisibleWhileRemoteLoads) {
       return
     }
 
-    loadStartedSourceUrlRef.current = sourceUrl
+    if (loadStartedSourceUrlRef.current === displayedSourceUrl) {
+      return
+    }
+
+    loadStartedSourceUrlRef.current = displayedSourceUrl
     loadSucceededSourceUrlRef.current = null
-    setLoadedSourceUrl(null)
+    setLoadedDisplayedSourceUrl(null)
     logChatSendDebug('attachment_img_load_start', latestPayloadRef.current ?? debugPayload)
 
     if (
       imgRef.current?.complete &&
       imgRef.current.naturalWidth > 0 &&
-      loadSucceededSourceUrlRef.current !== sourceUrl
+      loadSucceededSourceUrlRef.current !== displayedSourceUrl
     ) {
-      loadSucceededSourceUrlRef.current = sourceUrl
-      setLoadedSourceUrl(sourceUrl)
+      loadSucceededSourceUrlRef.current = displayedSourceUrl
+      setLoadedDisplayedSourceUrl(displayedSourceUrl)
       logChatSendDebug('attachment_img_load_success', {
         ...(latestPayloadRef.current ?? debugPayload),
         visualState: getAttachmentDebugVisualState({
-          sourceType,
+          sourceType: displayedSourceType,
           attachmentState,
           previewFailedToLoad,
           hasLoadedCurrentSource: true,
         }),
       })
+
+      if (
+        displayedSourceType === 'remote_public_url' &&
+        notifiedImageLoadSourceUrlRef.current !== displayedSourceUrl
+      ) {
+        notifiedImageLoadSourceUrlRef.current = displayedSourceUrl
+        onImageLoad?.(message, attachment.sortOrder, displayedSourceUrl)
+      }
     }
-  }, [attachmentState, canShowImage, previewFailedToLoad, sourceType, sourceUrl, debugPayload])
+  }, [
+    attachment,
+    attachmentState,
+    canShowImage,
+    debugPayload,
+    displayedSourceType,
+    displayedSourceUrl,
+    message,
+    onImageLoad,
+    previewFailedToLoad,
+    shouldKeepPreviewVisibleWhileRemoteLoads,
+  ])
+
+  useEffect(() => {
+    if (
+      incomingSourceType !== 'remote_public_url' ||
+      !incomingSourceUrl ||
+      !shouldKeepPreviewVisibleWhileRemoteLoads ||
+      typeof window === 'undefined'
+    ) {
+      return
+    }
+
+    if (backgroundRemoteLoadUrlRef.current === incomingSourceUrl) {
+      return
+    }
+
+    backgroundRemoteLoadUrlRef.current = incomingSourceUrl
+    loadStartedSourceUrlRef.current = incomingSourceUrl
+    logChatSendDebug('attachment_img_load_start', {
+      ...debugPayload,
+      sourceType: 'remote_public_url',
+      visualState: 'loading_remote',
+    })
+
+    let isCancelled = false
+    const preloadImage = new window.Image()
+
+    preloadImage.onload = () => {
+      if (isCancelled) {
+        return
+      }
+
+      loadSucceededSourceUrlRef.current = incomingSourceUrl
+      backgroundRemoteLoadUrlRef.current = null
+      notifiedImageLoadSourceUrlRef.current = incomingSourceUrl
+      setDisplayedSourceUrl(incomingSourceUrl)
+      setDisplayedSourceType('remote_public_url')
+      setLoadedDisplayedSourceUrl(incomingSourceUrl)
+      logChatSendDebug('attachment_img_load_success', {
+        ...buildAttachmentDebugPayload({
+          message,
+          attachment,
+          tileIndex,
+          renderKey,
+          sourceType: 'remote_public_url',
+          visualState: getAttachmentDebugVisualState({
+            sourceType: 'remote_public_url',
+            attachmentState,
+            previewFailedToLoad,
+            hasLoadedCurrentSource: true,
+          }),
+        }),
+        sourceUrlChanged: true,
+      })
+      onImageLoad?.(message, attachment.sortOrder, incomingSourceUrl)
+    }
+
+    preloadImage.onerror = () => {
+      if (isCancelled) {
+        return
+      }
+
+      backgroundRemoteLoadUrlRef.current = null
+      logChatSendDebug('attachment_img_load_error', {
+        ...buildAttachmentDebugPayload({
+          message,
+          attachment,
+          tileIndex,
+          renderKey,
+          sourceType: 'remote_public_url',
+          visualState: 'error',
+        }),
+        sourceUrlChanged: true,
+      })
+    }
+
+    preloadImage.src = incomingSourceUrl
+
+    return () => {
+      isCancelled = true
+    }
+  }, [
+    attachment,
+    attachmentState,
+    debugPayload,
+    incomingSourceType,
+    incomingSourceUrl,
+    message,
+    onImageLoad,
+    previewFailedToLoad,
+    renderKey,
+    shouldKeepPreviewVisibleWhileRemoteLoads,
+    tileIndex,
+  ])
 
   useEffect(() => {
     const node = tileRef.current
@@ -846,7 +1020,7 @@ function ChatImageAttachmentTile({
           ...(latestPayloadRef.current ?? debugPayload),
           previousHeight,
           nextHeight,
-          sourceType,
+          sourceType: displayedSourceType,
           visualState,
         })
       }
@@ -859,12 +1033,11 @@ function ChatImageAttachmentTile({
     return () => {
       observer.disconnect()
     }
-  }, [sourceType, visualState])
+  }, [debugPayload, displayedSourceType, visualState])
 
   return (
     <button
       ref={tileRef}
-      key={attachment.id}
       type="button"
       onClick={canOpenAttachment ? () => onImageClick?.(attachments, tileIndex) : undefined}
       disabled={!canOpenAttachment}
@@ -879,32 +1052,53 @@ function ChatImageAttachmentTile({
       {canShowImage ? (
         <img
           ref={imgRef}
-          src={attachment.publicUrl}
+          src={displayedSourceUrl ?? undefined}
           alt={`Вложение ${tileIndex + 1}`}
           onLoad={() => {
-            if (loadSucceededSourceUrlRef.current === sourceUrl) {
-              onImageLoad?.(message, attachment.sortOrder, attachment.publicUrl ?? '')
+            if (!displayedSourceUrl) {
               return
             }
 
-            loadSucceededSourceUrlRef.current = sourceUrl
-            setLoadedSourceUrl(sourceUrl)
-            logChatSendDebug('attachment_img_load_success', {
-              ...(latestPayloadRef.current ?? debugPayload),
-              visualState: getAttachmentDebugVisualState({
-                sourceType,
-                attachmentState,
-                previewFailedToLoad,
-                hasLoadedCurrentSource: true,
-              }),
-            })
-            onImageLoad?.(message, attachment.sortOrder, attachment.publicUrl ?? '')
+            if (loadSucceededSourceUrlRef.current !== displayedSourceUrl) {
+              loadSucceededSourceUrlRef.current = displayedSourceUrl
+              logChatSendDebug('attachment_img_load_success', {
+                ...(latestPayloadRef.current ?? debugPayload),
+                visualState: getAttachmentDebugVisualState({
+                  sourceType: displayedSourceType,
+                  attachmentState,
+                  previewFailedToLoad,
+                  hasLoadedCurrentSource: true,
+                }),
+              })
+            }
+
+            setLoadedDisplayedSourceUrl(displayedSourceUrl)
+
+            if (
+              displayedSourceType === 'remote_public_url' &&
+              notifiedImageLoadSourceUrlRef.current !== displayedSourceUrl
+            ) {
+              notifiedImageLoadSourceUrlRef.current = displayedSourceUrl
+              onImageLoad?.(message, attachment.sortOrder, displayedSourceUrl)
+            }
           }}
           onError={() => {
             logChatSendDebug('attachment_img_load_error', {
               ...(latestPayloadRef.current ?? debugPayload),
               visualState: 'error',
             })
+
+            if (
+              displayedSourceType === 'remote_public_url' &&
+              preservedPreviewUrlRef.current &&
+              preservedPreviewUrlRef.current !== displayedSourceUrl
+            ) {
+              setDisplayedSourceUrl(preservedPreviewUrlRef.current)
+              setDisplayedSourceType('local_preview')
+              setLoadedDisplayedSourceUrl(preservedPreviewUrlRef.current)
+              return
+            }
+
             onPreviewError(attachment.id)
           }}
           className={`h-full w-full object-cover transition duration-300 ${
@@ -2379,7 +2573,7 @@ function ChatImageAttachments({
         message,
         attachment,
         tileIndex: index,
-        renderKey: attachment.id,
+        renderKey: getAttachmentStableRenderKey(attachment, index),
         sourceType,
         sourceUrlChanged: Boolean(previousSnapshot && previousSnapshot.sourceUrl !== sourceUrl),
         visualState: getAttachmentDebugVisualState({
@@ -2454,7 +2648,7 @@ function ChatImageAttachments({
 
     return (
       <ChatImageAttachmentTile
-        key={attachment.id}
+        key={getAttachmentStableRenderKey(attachment, index)}
         message={message}
         attachment={attachment}
         attachmentState={attachmentState}
