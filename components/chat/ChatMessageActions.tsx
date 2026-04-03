@@ -15,6 +15,7 @@ type ChatMessageActionsProps = {
   onDelete: (message: ChatMessageItem) => Promise<void> | void
   onEdit: (message: ChatMessageItem) => void
   onReply: (message: ChatMessageItem) => void
+  onViewReaders: (message: ChatMessageItem) => void
   onToggleReaction: (messageId: string, emoji: string) => Promise<void> | void
 }
 
@@ -63,6 +64,7 @@ export default function ChatMessageActions({
   onDelete,
   onEdit,
   onReply,
+  onViewReaders,
   onToggleReaction,
 }: ChatMessageActionsProps) {
   const router = useRouter()
@@ -75,10 +77,12 @@ export default function ChatMessageActions({
   const canEditMessage = message.messageType === 'text' && canManageMessage
   const canDeleteMessage = canManageMessage
   const canOpenProfile = !canDeleteMessage && !isOwnMessage
+  const canViewReaders = !message.isDeleted
   const actionCount = [
     canEditMessage,
     true,
     canReply,
+    canViewReaders,
     canDeleteMessage || canOpenProfile,
     true,
   ].filter(Boolean).length
@@ -135,6 +139,11 @@ export default function ChatMessageActions({
   function handleReply() {
     onOpenChange(false)
     onReply(message)
+  }
+
+  function handleViewReaders() {
+    onOpenChange(false)
+    onViewReaders(message)
   }
 
   function handleEdit() {
@@ -250,6 +259,15 @@ export default function ChatMessageActions({
                   className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
                 >
                   Ответить
+                </button>
+              ) : null}
+              {canViewReaders ? (
+                <button
+                  type="button"
+                  onClick={handleViewReaders}
+                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-[14px] font-medium"
+                >
+                  Просмотрели
                 </button>
               ) : null}
               {canDeleteMessage ? (

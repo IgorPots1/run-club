@@ -18,6 +18,26 @@ export type ChatUnreadUpdatedDetail = {
   refreshRequested?: boolean
 }
 
+export type ChatMessageReader = {
+  userId: string
+  name: string | null
+  nickname: string | null
+  avatarUrl: string | null
+  lastReadAt: string | null
+}
+
+type ChatMessageReadersApiResponse = {
+  ok?: boolean
+  error?: string
+  readers?: Array<{
+    user_id: string
+    name: string | null
+    nickname: string | null
+    avatar_url: string | null
+    last_read_at: string | null
+  }>
+}
+
 export function dispatchChatUnreadUpdated(detail: ChatUnreadUpdatedDetail) {
   if (typeof window === 'undefined') {
     return
@@ -28,6 +48,32 @@ export function dispatchChatUnreadUpdated(detail: ChatUnreadUpdatedDetail) {
       detail,
     })
   )
+}
+
+export async function getMessageReaders(messageId: string): Promise<ChatMessageReader[]> {
+  const response = await fetch('/api/chat/readers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messageId,
+    }),
+  })
+
+  const payload = await response.json().catch(() => null) as ChatMessageReadersApiResponse | null
+
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error ?? 'message_readers_request_failed')
+  }
+
+  return (payload.readers ?? []).map((reader) => ({
+    userId: reader.user_id,
+    name: reader.name ?? null,
+    nickname: reader.nickname ?? null,
+    avatarUrl: reader.avatar_url ?? null,
+    lastReadAt: reader.last_read_at ?? null,
+  }))
 }
 
 async function requireCurrentUserId() {

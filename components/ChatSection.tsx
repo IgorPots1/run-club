@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
+import { getMessageReaders, type ChatMessageReader } from '@/lib/chat/reads'
 import {
   CHAT_SEND_DEBUG,
   type ChatSendDebugEvent,
@@ -326,6 +327,21 @@ function formatChatSendDebugTimestamp(timestamp: string) {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
+    })
+  } catch {
+    return timestamp
+  }
+}
+
+function formatMessageReaderLastReadAt(timestamp: string | null) {
+  if (!timestamp) {
+    return ''
+  }
+
+  try {
+    return new Date(timestamp).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
     })
   } catch {
     return timestamp
@@ -3600,6 +3616,11 @@ export default function ChatSection({
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [selectedMessageAnchorRect, setSelectedMessageAnchorRect] = useState<DOMRect | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
+  const [selectedMessageForReaders, setSelectedMessageForReaders] = useState<ChatMessageItem | null>(null)
+  const [isReadersSheetOpen, setIsReadersSheetOpen] = useState(false)
+  const [messageReaders, setMessageReaders] = useState<ChatMessageReader[]>([])
+  const [isLoadingMessageReaders, setIsLoadingMessageReaders] = useState(false)
+  const [messageReadersError, setMessageReadersError] = useState('')
   const [deleteConfirmationMessage, setDeleteConfirmationMessage] = useState<ChatMessageItem | null>(null)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -4575,6 +4596,27 @@ export default function ChatSection({
     }
   }, [messages, selectedMessage])
 
+  useEffect(() => {
+    if (!selectedMessageForReaders) {
+      return
+    }
+
+    const nextSelectedMessageForReaders =
+      messages.find((message) => message.id === selectedMessageForReaders.id) ?? null
+
+    if (!nextSelectedMessageForReaders) {
+      setSelectedMessageForReaders(null)
+      setIsReadersSheetOpen(false)
+      setMessageReaders([])
+      setMessageReadersError('')
+      return
+    }
+
+    if (nextSelectedMessageForReaders !== selectedMessageForReaders) {
+      setSelectedMessageForReaders(nextSelectedMessageForReaders)
+    }
+  }, [messages, selectedMessageForReaders])
+
   useLayoutEffect(() => {
     if (!selectedMessage || !isActionSheetOpen) {
       setSelectedMessageAnchorRect(null)
@@ -4606,6 +4648,43 @@ export default function ChatSection({
       window.visualViewport?.removeEventListener('scroll', updateSelectedMessageAnchorRect)
     }
   }, [isActionSheetOpen, selectedMessage])
+
+  useEffect(() => {
+    if (!isReadersSheetOpen || !selectedMessageForReaders) {
+      return
+    }
+
+    let isCancelled = false
+
+    setIsLoadingMessageReaders(true)
+    setMessageReadersError('')
+
+    void getMessageReaders(selectedMessageForReaders.id)
+      .then((nextReaders) => {
+        if (isCancelled) {
+          return
+        }
+
+        setMessageReaders(nextReaders)
+      })
+      .catch(() => {
+        if (isCancelled) {
+          return
+        }
+
+        setMessageReaders([])
+        setMessageReadersError('Не удалось загрузить список просмотров')
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoadingMessageReaders(false)
+        }
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [isReadersSheetOpen, selectedMessageForReaders])
 
   useEffect(() => {
     if (!editingMessageId) {
@@ -5760,6 +5839,25 @@ export default function ChatSection({
 
     setReplyingToMessage(message)
     setEditingMessageId(null)
+  }
+
+  function closeReadersSheet() {
+    setIsReadersSheetOpen(false)
+    setSelectedMessageForReaders(null)
+    setMessageReaders([])
+    setMessageReadersError('')
+    setIsLoadingMessageReaders(false)
+  }
+
+  function handleViewMessageReaders(message: ChatMessageItem) {
+    if (!messagesRef.current.some((currentMessage) => currentMessage.id === message.id)) {
+      return
+    }
+
+    setSelectedMessageForReaders(message)
+    setMessageReaders([])
+    setMessageReadersError('')
+    setIsReadersSheetOpen(true)
   }
 
   const getReactionProfileForUser = useCallback((userId: string) => {
@@ -7541,8 +7639,76 @@ export default function ChatSection({
           onDelete={handleDeleteMessage}
           onEdit={handleEditMessage}
           onReply={handleReplyToMessage}
+          onViewReaders={handleViewMessageReaders}
           onToggleReaction={handleToggleReaction}
         />
+      ) : null}
+      {selectedMessageForReaders && isReadersSheetOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4">
+          <button
+            type="button"
+            aria-label="Закрыть список просмотров"
+            className="absolute inset-0"
+            onClick={closeReadersSheet}
+          />
+          <div className="app-card relative w-full rounded-t-3xl border border-black/[0.05] shadow-xl dark:border-white/10 md:max-w-md md:rounded-3xl">
+            <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
+            <div className="flex items-center justify-between border-b border-black/[0.05] px-4 py-3 dark:border-white/10">
+              <div className="min-w-0">
+                <p className="app-text-primary text-base font-semibold">Просмотрели</p>
+                <p className="app-text-secondary truncate text-xs">{selectedMessageForReaders.displayName}</p>
+              </div>
+              <button
+                type="button"
+                className="app-text-secondary rounded-full px-2 py-1 text-xs"
+                onClick={closeReadersSheet}
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="max-h-[min(60svh,420px)] overflow-y-auto px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 md:pb-3">
+              {isLoadingMessageReaders ? (
+                <div className="px-2 py-4">
+                  <p className="app-text-secondary text-sm">Загружаем просмотры...</p>
+                </div>
+              ) : messageReadersError ? (
+                <div className="px-2 py-4">
+                  <p className="text-sm text-red-600">{messageReadersError}</p>
+                </div>
+              ) : messageReaders.length === 0 ? (
+                <div className="px-2 py-4">
+                  <p className="app-text-secondary text-sm">Никто ещё не посмотрел</p>
+                </div>
+              ) : (
+                messageReaders.map((reader) => {
+                  const displayName = reader.userId === currentUserId
+                    ? 'Вы'
+                    : reader.nickname?.trim() || reader.name?.trim() || 'Бегун'
+                  const lastReadAtLabel = formatMessageReaderLastReadAt(reader.lastReadAt)
+
+                  return (
+                    <div
+                      key={`${selectedMessageForReaders.id}:${reader.userId}`}
+                      className="flex items-center gap-3 rounded-xl px-2 py-2"
+                    >
+                      <TinyUserAvatar
+                        avatarUrl={reader.avatarUrl}
+                        displayName={displayName}
+                        className="h-8 w-8"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="app-text-primary truncate text-sm font-medium">{displayName}</p>
+                      </div>
+                      {lastReadAtLabel ? (
+                        <span className="app-text-secondary shrink-0 text-xs">{lastReadAtLabel}</span>
+                      ) : null}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
       ) : null}
       <ConfirmActionSheet
         open={Boolean(deleteConfirmationMessage)}
