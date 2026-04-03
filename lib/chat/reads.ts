@@ -26,16 +26,12 @@ export type ChatMessageReader = {
   lastReadAt: string | null
 }
 
-type ChatMessageReadersApiResponse = {
-  ok?: boolean
-  error?: string
-  readers?: Array<{
-    user_id: string
-    name: string | null
-    nickname: string | null
-    avatar_url: string | null
-    last_read_at: string | null
-  }>
+type ChatMessageReaderRpcRow = {
+  user_id: string
+  name: string | null
+  nickname: string | null
+  avatar_url: string | null
+  last_read_at: string | null
 }
 
 export function dispatchChatUnreadUpdated(detail: ChatUnreadUpdatedDetail) {
@@ -51,23 +47,15 @@ export function dispatchChatUnreadUpdated(detail: ChatUnreadUpdatedDetail) {
 }
 
 export async function getMessageReaders(messageId: string): Promise<ChatMessageReader[]> {
-  const response = await fetch('/api/chat/readers', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messageId,
-    }),
+  const { data, error } = await supabase.rpc('get_message_readers', {
+    p_message_id: messageId,
   })
 
-  const payload = await response.json().catch(() => null) as ChatMessageReadersApiResponse | null
-
-  if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.error ?? 'message_readers_request_failed')
+  if (error) {
+    throw error
   }
 
-  return (payload.readers ?? []).map((reader) => ({
+  return ((data as ChatMessageReaderRpcRow[] | null) ?? []).map((reader) => ({
     userId: reader.user_id,
     name: reader.name ?? null,
     nickname: reader.nickname ?? null,

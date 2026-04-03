@@ -151,6 +151,7 @@ type ThreadOpenDebugSource =
 const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
 const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 320
 const CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO = '1 / 1'
+const MESSAGE_READERS_CACHE_TTL_MS = 25000
 
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'panel_mounted',
@@ -3621,6 +3622,12 @@ export default function ChatSection({
   const [messageReaders, setMessageReaders] = useState<ChatMessageReader[]>([])
   const [isLoadingMessageReaders, setIsLoadingMessageReaders] = useState(false)
   const [messageReadersError, setMessageReadersError] = useState('')
+  const messageReadersCacheRef = useRef(new Map<string, {
+    readers: ChatMessageReader[]
+    loadedAt: number
+  }>())
+  const inflightMessageReadersRequestsRef = useRef(new Map<string, Promise<ChatMessageReader[]>>())
+  const activeReadersMessageIdRef = useRef<string | null>(null)
   const [deleteConfirmationMessage, setDeleteConfirmationMessage] = useState<ChatMessageItem | null>(null)
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessageItem | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -4617,6 +4624,12 @@ export default function ChatSection({
     }
   }, [messages, selectedMessageForReaders])
 
+  useEffect(() => {
+    activeReadersMessageIdRef.current = isReadersSheetOpen
+      ? selectedMessageForReaders?.id ?? null
+      : null
+  }, [isReadersSheetOpen, selectedMessageForReaders])
+
   useLayoutEffect(() => {
     if (!selectedMessage || !isActionSheetOpen) {
       setSelectedMessageAnchorRect(null)
@@ -4648,43 +4661,6 @@ export default function ChatSection({
       window.visualViewport?.removeEventListener('scroll', updateSelectedMessageAnchorRect)
     }
   }, [isActionSheetOpen, selectedMessage])
-
-  useEffect(() => {
-    if (!isReadersSheetOpen || !selectedMessageForReaders) {
-      return
-    }
-
-    let isCancelled = false
-
-    setIsLoadingMessageReaders(true)
-    setMessageReadersError('')
-
-    void getMessageReaders(selectedMessageForReaders.id)
-      .then((nextReaders) => {
-        if (isCancelled) {
-          return
-        }
-
-        setMessageReaders(nextReaders)
-      })
-      .catch(() => {
-        if (isCancelled) {
-          return
-        }
-
-        setMessageReaders([])
-        setMessageReadersError('Не удалось загрузить список просмотров')
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          setIsLoadingMessageReaders(false)
-        }
-      })
-
-    return () => {
-      isCancelled = true
-    }
-  }, [isReadersSheetOpen, selectedMessageForReaders])
 
   useEffect(() => {
     if (!editingMessageId) {
@@ -5842,22 +5818,98 @@ export default function ChatSection({
   }
 
   function closeReadersSheet() {
+    activeReadersMessageIdRef.current = null
     setIsReadersSheetOpen(false)
     setSelectedMessageForReaders(null)
-    setMessageReaders([])
     setMessageReadersError('')
     setIsLoadingMessageReaders(false)
   }
 
-  function handleViewMessageReaders(message: ChatMessageItem) {
+  const getCachedMessageReaders = useCallback((messageId: string) => {
+    const cachedEntry = messageReadersCacheRef.current.get(messageId)
+
+    if (!cachedEntry) {
+      return null
+    }
+
+    if (Date.now() - cachedEntry.loadedAt > MESSAGE_READERS_CACHE_TTL_MS) {
+      messageReadersCacheRef.current.delete(messageId)
+      return null
+    }
+
+    return cachedEntry.readers
+  }, [])
+
+  const loadMessageReadersForMessage = useCallback(async (messageId: string) => {
+    const cachedReaders = getCachedMessageReaders(messageId)
+
+    if (cachedReaders) {
+      return cachedReaders
+    }
+
+    const inflightRequest = inflightMessageReadersRequestsRef.current.get(messageId)
+
+    if (inflightRequest) {
+      return inflightRequest
+    }
+
+    const nextRequest = getMessageReaders(messageId)
+      .then((readers) => {
+        messageReadersCacheRef.current.set(messageId, {
+          readers,
+          loadedAt: Date.now(),
+        })
+        return readers
+      })
+      .finally(() => {
+        inflightMessageReadersRequestsRef.current.delete(messageId)
+      })
+
+    inflightMessageReadersRequestsRef.current.set(messageId, nextRequest)
+
+    return nextRequest
+  }, [getCachedMessageReaders])
+
+  const openMessageReaders = useCallback((message: ChatMessageItem) => {
     if (!messagesRef.current.some((currentMessage) => currentMessage.id === message.id)) {
       return
     }
 
+    const cachedReaders = getCachedMessageReaders(message.id)
+
+    activeReadersMessageIdRef.current = message.id
     setSelectedMessageForReaders(message)
-    setMessageReaders([])
+    setMessageReaders(cachedReaders ?? [])
     setMessageReadersError('')
+    setIsLoadingMessageReaders(!cachedReaders)
     setIsReadersSheetOpen(true)
+
+    void loadMessageReadersForMessage(message.id)
+      .then((nextReaders) => {
+        if (activeReadersMessageIdRef.current !== message.id) {
+          return
+        }
+
+        setMessageReaders(nextReaders)
+        setMessageReadersError('')
+      })
+      .catch(() => {
+        if (activeReadersMessageIdRef.current !== message.id) {
+          return
+        }
+
+        setMessageReaders([])
+        setMessageReadersError('Не удалось загрузить список просмотров')
+      })
+      .finally(() => {
+        if (activeReadersMessageIdRef.current === message.id) {
+          setIsLoadingMessageReaders(false)
+        }
+      })
+  }, [getCachedMessageReaders, loadMessageReadersForMessage])
+
+  function handleViewMessageReaders(message: ChatMessageItem) {
+    openMessageReaders(message)
   }
 
   const getReactionProfileForUser = useCallback((userId: string) => {
@@ -7668,8 +7720,19 @@ export default function ChatSection({
             </div>
             <div className="max-h-[min(60svh,420px)] overflow-y-auto px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 md:pb-3">
               {isLoadingMessageReaders ? (
-                <div className="px-2 py-4">
-                  <p className="app-text-secondary text-sm">Загружаем просмотры...</p>
+                <div className="space-y-2 px-2 py-2">
+                  {[0, 1, 2].map((index) => (
+                    <div
+                      key={`message-readers-skeleton-${index}`}
+                      className="flex items-center gap-3 rounded-xl px-2 py-2"
+                    >
+                      <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-black/[0.06] dark:bg-white/[0.08]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="h-4 w-28 animate-pulse rounded bg-black/[0.06] dark:bg-white/[0.08]" />
+                      </div>
+                      <div className="h-3 w-10 shrink-0 animate-pulse rounded bg-black/[0.06] dark:bg-white/[0.08]" />
+                    </div>
+                  ))}
                 </div>
               ) : messageReadersError ? (
                 <div className="px-2 py-4">
