@@ -116,7 +116,7 @@ type ThreadOpenDebugSource =
   | 'unknown'
 
 const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
-const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 480
+const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 320
 
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'panel_mounted',
@@ -862,10 +862,14 @@ function ChatImageAttachmentTile({
     incomingSourceType === 'local_preview' ? incomingSourceUrl : null
   )
   const [softPreviewLoadErrorSourceUrl, setSoftPreviewLoadErrorSourceUrl] = useState<string | null>(null)
+  const supportsViewportDeferredRemoteImages =
+    typeof window !== 'undefined' &&
+    typeof IntersectionObserver !== 'undefined'
   const shouldGateRemoteImageLoad = Boolean(
     incomingSourceType === 'remote_public_url' &&
     attachmentState === 'attached' &&
-    !message.isOptimistic
+    !message.isOptimistic &&
+    supportsViewportDeferredRemoteImages
   )
   const [isRemoteImageLoadAllowed, setIsRemoteImageLoadAllowed] = useState(() => !shouldGateRemoteImageLoad)
   const hasSoftPreviewLoadError = Boolean(
@@ -908,20 +912,9 @@ function ChatImageAttachmentTile({
     tileIndex,
     renderKey,
     sourceType: effectiveSourceType,
-    sourceUrlChanged: previousSourceUrlRef.current !== null && previousSourceUrlRef.current !== displayedSourceUrl,
+    sourceUrlChanged: false,
     visualState,
   })
-
-  latestPayloadRef.current = debugPayload
-
-  useEffect(() => {
-    if (!shouldGateRemoteImageLoad || shouldKeepPreviewVisibleWhileRemoteLoads) {
-      setIsRemoteImageLoadAllowed(true)
-      return
-    }
-
-    setIsRemoteImageLoadAllowed(false)
-  }, [incomingSourceUrl, shouldGateRemoteImageLoad, shouldKeepPreviewVisibleWhileRemoteLoads])
 
   useEffect(() => {
     if (
@@ -934,8 +927,7 @@ function ChatImageAttachmentTile({
 
     const node = tileRef.current
 
-    if (!node || typeof IntersectionObserver === 'undefined') {
-      setIsRemoteImageLoadAllowed(true)
+    if (!node) {
       return
     }
 
@@ -1013,6 +1005,10 @@ function ChatImageAttachmentTile({
   useEffect(() => {
     previousSourceUrlRef.current = displayedSourceUrl
   }, [displayedSourceUrl])
+
+  useEffect(() => {
+    latestPayloadRef.current = debugPayload
+  }, [debugPayload])
 
   useEffect(() => {
     if (previousVisualStateRef.current !== null && previousVisualStateRef.current !== visualState) {
@@ -1230,6 +1226,8 @@ function ChatImageAttachmentTile({
           ref={imgRef}
           src={displayedSourceUrl ?? undefined}
           alt={`Вложение ${tileIndex + 1}`}
+          loading={shouldGateRemoteImageLoad ? 'lazy' : 'eager'}
+          decoding="async"
           onLoad={() => {
             if (!displayedSourceUrl) {
               return
@@ -2765,10 +2763,6 @@ function ChatImageAttachments({
   onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
   onImageLoad?: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
 }) {
-  if (attachments.length === 0) {
-    return null
-  }
-
   const normalizedAttachmentStates = attachments.map((attachment, index) => (
     attachmentStates?.[index] ?? 'attached'
   ))
@@ -2837,6 +2831,10 @@ function ChatImageAttachments({
 
     previousAttachmentDebugSnapshotRef.current = nextSnapshot
   }, [attachments, failedPreviewIds, message, normalizedAttachmentStates])
+
+  if (attachments.length === 0) {
+    return null
+  }
 
   const wrapperClassName = `relative mt-1 block overflow-hidden rounded-2xl ${
     compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
