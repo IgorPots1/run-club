@@ -1,15 +1,10 @@
 import { after, NextResponse } from 'next/server'
 import { createAppEvents } from '@/lib/events/createAppEvent'
-import { buildChatMessageCreatedAppEvent, buildChatPushPreview } from '@/lib/events/chatAppEvents'
+import { buildChatMessageCreatedAppEvent } from '@/lib/events/chatAppEvents'
 import type { CommonChannelKey } from '@/lib/chat/commonChannels'
-import {
-  isThreadPushMuted,
-  normalizeChatMessagePushPriority,
-  type PushPriority,
-  type ThreadPushLevelRow,
-} from '@/lib/notifications/push'
+import { normalizeChatMessagePushPriority, type PushPriority } from '@/lib/notifications/push'
 import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
-import { sendWebPush } from '@/lib/push/sendWebPush'
+import { processAppEventPushDeliveries } from '@/lib/push/appEventPush'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { decodeRequestUserId } from '@/lib/server/chatRequestAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -64,13 +59,6 @@ type SenderProfileRow = {
   email: string | null
 }
 
-type PushSubscriptionRow = {
-  user_id: string
-  endpoint: string
-  p256dh: string
-  auth: string
-}
-
 type ChatDeliveryContext = {
   threadType: 'club' | 'direct_coach'
   threadChannelKey: CommonChannelKey | null
@@ -109,20 +97,6 @@ type ChatMessageValidationRow = {
   thread_channel_key: CommonChannelKey | null
 }
 
-type ChatNotificationContent = {
-  title: string
-  body: string
-}
-
-type PushDeliveryLogRow = {
-  user_id: string
-}
-
-type UserNotificationSettingRow = {
-  user_id: string
-} & ThreadPushLevelRow
-
-const PUSH_DELIVERY_THROTTLE_WINDOW_MS = 15_000
 const CHAT_MEDIA_BUCKET = 'chat-media'
 const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
@@ -162,10 +136,6 @@ function createChatApiErrorResponse(errorCode: string) {
       status: getChatApiErrorStatus(errorCode),
     }
   )
-}
-
-function getChatThreadTargetUrl(threadId: string) {
-  return `/messages/${threadId}`
 }
 
 function sanitizeStoragePathSegment(value: string) {
@@ -450,23 +420,6 @@ function getMessagePreview(message: Pick<InsertedChatMessageRow, 'text' | 'messa
   return ''
 }
 
-function getChatNotificationContent(
-  context: Pick<
-    ChatDeliveryContext,
-    'threadType' | 'threadChannelKey' | 'senderName' | 'senderIsCoach' | 'messagePreview'
-  >,
-  priority: PushPriority
-): ChatNotificationContent {
-  return buildChatPushPreview({
-    threadType: context.threadType,
-    threadChannelKey: context.threadChannelKey,
-    senderName: context.senderName,
-    senderIsCoach: context.senderIsCoach,
-    messagePreview: context.messagePreview,
-    priority,
-  })
-}
-
 async function loadChatDeliveryContext(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   message: InsertedChatMessageRow
@@ -536,283 +489,22 @@ async function emitChatMessageCreatedEvent(
   message: InsertedChatMessageRow,
   context: ChatDeliveryContext
 ) {
-  try {
-    await createAppEvents(
-      context.recipientUserIds.map((recipientUserId) => ({
-        ...buildChatMessageCreatedAppEvent({
-          actorUserId: message.user_id,
-          recipientUserId,
-          messageId: message.id,
-          threadId: context.threadId,
-          senderName: context.senderName,
-          senderIsCoach: context.senderIsCoach,
-          messagePreview: context.messagePreview,
-          priority: message.push_priority,
-          threadType: context.threadType,
-          threadChannelKey: context.threadChannelKey,
-        }),
-      }))
-    )
-  } catch (error) {
-    console.error('Failed to create chat message app event', {
-      messageId: message.id,
-      threadId: context.threadId,
-      actorUserId: message.user_id,
-      error: error instanceof Error ? error.message : 'unknown_error',
-    })
-  }
-}
-
-async function loadMutedRecipientUserIds(
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
-  recipientUserIds: string[],
-  threadId: string
-) {
-  if (recipientUserIds.length === 0) {
-    return new Set<string>()
-  }
-
-  const mutedRecipientsQuery = supabaseAdmin
-    .from('user_notification_settings')
-    .select('user_id, muted, push_level')
-    .eq('thread_id', threadId)
-    .or('muted.eq.true,push_level.eq.mute')
-
-  if (recipientUserIds.length === 1) {
-    mutedRecipientsQuery.eq('user_id', recipientUserIds[0]!)
-  } else {
-    mutedRecipientsQuery.in('user_id', recipientUserIds)
-  }
-
-  const { data, error } = await mutedRecipientsQuery
-
-  if (error) {
-    throw error
-  }
-
-  return new Set(
-    ((data as UserNotificationSettingRow[] | null) ?? [])
-      .filter((row) => isThreadPushMuted(row))
-      .map((row) => row.user_id)
-  )
-}
-
-async function sendChatMessagePushNotifications(
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
-  message: InsertedChatMessageRow,
-  context: ChatDeliveryContext
-) {
-  try {
-    const mutedRecipientUserIds = await loadMutedRecipientUserIds(
-      supabaseAdmin,
-      context.recipientUserIds,
-      context.threadId
-    )
-    const unmutedRecipientUserIds = context.recipientUserIds
-      .filter((recipientUserId) => {
-        if (mutedRecipientUserIds.has(recipientUserId)) {
-          console.log('[push] skipped_muted_thread', {
-            recipientId: recipientUserId,
-            threadId: context.threadId,
-          })
-        }
-
-        return !mutedRecipientUserIds.has(recipientUserId)
-      })
-
-    if (unmutedRecipientUserIds.length === 0) {
-      return
-    }
-
-    const recentDeliveryThreshold = new Date(Date.now() - PUSH_DELIVERY_THROTTLE_WINDOW_MS).toISOString()
-    const recentDeliveriesQuery = supabaseAdmin
-      .from('push_delivery_log')
-      .select('user_id')
-      .eq('thread_id', context.threadId)
-      .gte('sent_at', recentDeliveryThreshold)
-
-    if (unmutedRecipientUserIds.length === 1) {
-      recentDeliveriesQuery.eq('user_id', unmutedRecipientUserIds[0]!)
-    } else {
-      recentDeliveriesQuery.in('user_id', unmutedRecipientUserIds)
-    }
-
-    const { data: recentDeliveries, error: recentDeliveriesError } = await recentDeliveriesQuery
-
-    if (recentDeliveriesError) {
-      throw recentDeliveriesError
-    }
-
-    const recentlyDeliveredUserIds = new Set(
-      ((recentDeliveries as PushDeliveryLogRow[] | null) ?? []).map((delivery) => delivery.user_id)
-    )
-    const allowedRecipientUserIds = unmutedRecipientUserIds.filter((recipientUserId) => {
-      if (recentlyDeliveredUserIds.has(recipientUserId)) {
-        console.log('[push] skipped_recent_delivery', {
-          recipientId: recipientUserId,
-          threadId: context.threadId,
-        })
-        return false
-      }
-
-      console.log('[push] push_allowed', {
-        recipientId: recipientUserId,
+  return createAppEvents(
+    context.recipientUserIds.map((recipientUserId) => ({
+      ...buildChatMessageCreatedAppEvent({
+        actorUserId: message.user_id,
+        recipientUserId,
+        messageId: message.id,
         threadId: context.threadId,
-      })
-      return true
-    })
-
-    if (allowedRecipientUserIds.length === 0) {
-      return
-    }
-
-    console.log('[push] recipients_resolved', {
-      threadType: context.threadType,
-      recipientUserCount: allowedRecipientUserIds.length,
-    })
-
-    const subscriptionsQuery = supabaseAdmin
-      .from('push_subscriptions')
-      .select('user_id, endpoint, p256dh, auth')
-
-    if (allowedRecipientUserIds.length === 1) {
-      subscriptionsQuery.eq('user_id', allowedRecipientUserIds[0]!)
-    } else {
-      subscriptionsQuery.in('user_id', allowedRecipientUserIds)
-    }
-
-    const { data: subscriptions, error: subscriptionsError } = await subscriptionsQuery
-
-    if (subscriptionsError) {
-      throw subscriptionsError
-    }
-
-    const subscriptionRows = (subscriptions as PushSubscriptionRow[] | null) ?? []
-    console.log('[push] subscriptions_loaded', {
-      threadType: context.threadType,
-      count: subscriptionRows.length,
-    })
-
-    if (subscriptionRows.length === 0) {
-      return
-    }
-
-    const uniqueSubscriptions = Array.from(
-      new Map(subscriptionRows.map((subscription) => [subscription.endpoint, subscription])).values()
-    )
-    const notificationContent = getChatNotificationContent(context, message.push_priority)
-
-    const results = await Promise.all(
-      uniqueSubscriptions.map(async (subscription) => ({
-        userId: subscription.user_id,
-        endpoint: subscription.endpoint,
-        result: await (async () => {
-          const endpointShort = subscription.endpoint.slice(0, 50)
-          console.log('[push] sending', {
-            endpointShort,
-          })
-
-          const result = await sendWebPush({
-            endpoint: subscription.endpoint,
-            p256dh: subscription.p256dh,
-            auth: subscription.auth,
-            payload: {
-              title: notificationContent.title,
-              body: notificationContent.body,
-              targetUrl: getChatThreadTargetUrl(context.threadId),
-              threadId: context.threadId,
-              threadType: context.threadType,
-            },
-          })
-
-          if (result.ok) {
-            console.log('[push] success', {
-              endpointShort,
-            })
-          } else {
-            console.error('[push] error', {
-              statusCode: result.statusCode,
-              message: 'send_failed',
-            })
-          }
-
-          return result
-        })(),
-      }))
-    )
-
-    const successfulRecipientUserIds = Array.from(
-      new Set(
-        results
-          .filter(({ result }) => result.ok)
-          .map(({ userId }) => userId)
-      )
-    )
-
-    if (successfulRecipientUserIds.length > 0) {
-      const { error: deliveryLogInsertError } = await supabaseAdmin
-        .from('push_delivery_log')
-        .insert(
-          successfulRecipientUserIds.map((recipientUserId) => ({
-            user_id: recipientUserId,
-            thread_id: context.threadId,
-          }))
-        )
-
-      if (deliveryLogInsertError) {
-        console.error('Failed to record push delivery log', {
-          threadId: context.threadId,
-          recipientUserIds: successfulRecipientUserIds,
-          error: deliveryLogInsertError.message,
-        })
-      }
-    }
-
-    const deadEndpoints = results
-      .filter(({ result }) => result.statusCode === 404 || result.statusCode === 410)
-      .map(({ endpoint }) => endpoint)
-
-    if (deadEndpoints.length === 0) {
-      console.log('[push] send_summary', {
+        senderName: context.senderName,
+        senderIsCoach: context.senderIsCoach,
+        messagePreview: context.messagePreview,
+        priority: message.push_priority,
         threadType: context.threadType,
-        recipientUserCount: allowedRecipientUserIds.length,
-        subscriptionCount: uniqueSubscriptions.length,
-        deadSubscriptionCount: 0,
-      })
-      return
-    }
-
-    deadEndpoints.forEach((endpoint) => {
-      console.log('[push] deleting_dead_subscription', {
-        endpointShort: endpoint.slice(0, 50),
-      })
-    })
-
-    const { error: deleteError } = await supabaseAdmin
-      .from('push_subscriptions')
-      .delete()
-      .in('endpoint', deadEndpoints)
-
-    if (deleteError) {
-      console.error('Failed to delete dead push subscriptions', {
-        endpoints: deadEndpoints,
-        error: deleteError.message,
-      })
-    }
-
-    console.log('[push] send_summary', {
-      threadType: context.threadType,
-      recipientUserCount: allowedRecipientUserIds.length,
-      subscriptionCount: uniqueSubscriptions.length,
-      deadSubscriptionCount: deadEndpoints.length,
-    })
-  } catch (error) {
-    console.error('Failed to send chat message push notifications', {
-      recipientUserIds: context.recipientUserIds,
-      threadId: context.threadId,
-      error: error instanceof Error ? error.message : 'unknown_error',
-    })
-  }
+        threadChannelKey: context.threadChannelKey,
+      }),
+    }))
+  )
 }
 
 async function runChatMessageFanout(message: InsertedChatMessageRow) {
@@ -835,11 +527,15 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
       recipientCount: chatDeliveryContext.recipientUserIds.length,
       threadType: chatDeliveryContext.threadType,
     })
+    const createdEvents = await emitChatMessageCreatedEvent(message, chatDeliveryContext)
 
-    await Promise.allSettled([
-      emitChatMessageCreatedEvent(message, chatDeliveryContext),
-      sendChatMessagePushNotifications(supabaseAdmin, message, chatDeliveryContext),
-    ])
+    if (createdEvents.length === 0) {
+      return
+    }
+
+    await processAppEventPushDeliveries({
+      appEventIds: createdEvents.map((event) => event.id),
+    })
   } catch (error) {
     console.error('Failed to fan out chat message side effects', {
       messageId: message.id,
@@ -1020,7 +716,10 @@ export async function POST(request: Request) {
       throw error
     }
 
-    const message = toInsertedMessageRow(data as { id: string; thread_id?: string | null }, insertPayload)
+    const message = toInsertedMessageRow(
+      data as { id: string; thread_id?: string | null; push_priority?: string | null },
+      insertPayload
+    )
     logPhase('message_insert_success', {
       messageId: message.id,
     })

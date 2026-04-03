@@ -123,19 +123,24 @@ export async function createAppEvent(input: CreateAppEventInput): Promise<AppEve
   return toAppEvent(data as AppEventRow)
 }
 
-export async function createAppEvents(inputs: CreateAppEventInput[]): Promise<void> {
+export async function createAppEvents(inputs: CreateAppEventInput[]): Promise<AppEvent[]> {
   if (inputs.length === 0) {
-    return
+    return []
   }
 
   const supabase = createSupabaseAdminClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('app_events')
     .insert(inputs.map(toInsertableAppEvent))
+    .select(
+      'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
+    )
 
   if (error) {
     throw error
   }
+
+  return ((data as AppEventRow[] | null) ?? []).map(toAppEvent)
 }
 
 // Example future usage for chat notifications fan-out:

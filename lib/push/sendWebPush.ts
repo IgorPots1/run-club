@@ -18,6 +18,7 @@ type SendWebPushInput = {
 export type SendWebPushResult = {
   ok: boolean
   statusCode?: number
+  errorBody?: string
 }
 
 let isWebPushConfigured = false
@@ -109,6 +110,7 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
 
     return {
       ok: false,
+      errorBody: body,
       statusCode,
     }
   }
