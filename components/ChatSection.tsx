@@ -117,6 +117,7 @@ type ThreadOpenDebugSource =
 
 const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
 const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 320
+const CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO = '1 / 1'
 
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'panel_mounted',
@@ -685,7 +686,7 @@ function getOptimisticAttachmentProgress(
 
 function getImageAttachmentCardStyle(
   attachment: Pick<ChatMessageAttachment, 'width' | 'height'>,
-  compactPreview: boolean
+  _compactPreview: boolean
 ) {
   if (attachment.width && attachment.height) {
     return {
@@ -694,7 +695,7 @@ function getImageAttachmentCardStyle(
   }
 
   return {
-    minHeight: compactPreview ? '10rem' : '14rem',
+    aspectRatio: CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO,
   }
 }
 
