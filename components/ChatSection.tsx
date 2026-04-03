@@ -7072,16 +7072,18 @@ export default function ChatSection({
     }, 3000)
   }, [filteredChatSendDebugEvents])
 
+  function renderReadOnlyAnnouncementBanner() {
+    return (
+      <section className="mb-3 rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+        <p className="app-text-primary text-sm font-medium">Канал с важной информацией</p>
+        <p className="app-text-secondary mt-1 text-sm">{announcementReadOnlyMessage}</p>
+      </section>
+    )
+  }
+
   function renderComposer() {
     if (isReadOnlyAnnouncement) {
-      return (
-        <div>
-          <section className="rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
-            <p className="app-text-primary text-sm font-medium">Канал с важной информацией</p>
-            <p className="app-text-secondary mt-1 text-sm">{announcementReadOnlyMessage}</p>
-          </section>
-        </div>
-      )
+      return null
     }
 
     return (
@@ -7398,6 +7400,7 @@ export default function ChatSection({
               }}
             />
           ) : null}
+          {isReadOnlyAnnouncement ? renderReadOnlyAnnouncementBanner() : null}
           <div
             ref={scrollContainerRef}
             data-chat-scroll-container="true"
@@ -7455,7 +7458,7 @@ export default function ChatSection({
               isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
             }`}
           >
-            {renderComposer()}
+            {!isReadOnlyAnnouncement ? renderComposer() : null}
           </div>
         </>
       </div>
