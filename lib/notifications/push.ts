@@ -15,7 +15,7 @@ export type ChatMessagePushPriorityRow = {
   push_priority?: string | null
 }
 
-function isPushLevel(value: string | null | undefined): value is PushLevel {
+export function isPushLevel(value: string | null | undefined): value is PushLevel {
   return value === 'all' || value === 'important_only' || value === 'mute'
 }
 
