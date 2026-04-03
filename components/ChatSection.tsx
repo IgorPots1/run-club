@@ -858,6 +858,16 @@ function markRemoteAttachmentSourceLoadedInSession(
   loadedRemoteAttachmentSourcesByKey.add(cacheKey)
 }
 
+function isRemoteAttachmentSourceImmediatelyRenderable(sourceUrl: string | null) {
+  if (!sourceUrl || typeof window === 'undefined') {
+    return false
+  }
+
+  const image = new window.Image()
+  image.src = sourceUrl
+  return image.complete
+}
+
 function buildAttachmentDebugPayload({
   message,
   attachment,
@@ -946,11 +956,20 @@ function ChatImageAttachmentTile({
     () => Boolean(remoteAttachmentLoadedCacheKey && loadedRemoteAttachmentSourcesByKey.has(remoteAttachmentLoadedCacheKey)),
     [remoteAttachmentLoadedCacheKey]
   )
+  const isRemoteAttachmentImmediatelyRenderableAtSourceActivation = useMemo(
+    () => (
+      incomingSourceType === 'remote_public_url' &&
+      isRemoteAttachmentSourceImmediatelyRenderable(incomingSourceUrl)
+    ),
+    [incomingSourceType, incomingSourceUrl]
+  )
   const renderKey = getAttachmentStableRenderKey(attachment, tileIndex)
   const [displayedSourceUrl, setDisplayedSourceUrl] = useState<string | null>(incomingSourceUrl)
   const [displayedSourceType, setDisplayedSourceType] = useState<AttachmentDebugSourceType>(incomingSourceType)
   const [loadedDisplayedSourceUrl, setLoadedDisplayedSourceUrl] = useState<string | null>(
-    incomingSourceType === 'local_preview' || isRemoteAttachmentLoadedAtSourceActivation
+    incomingSourceType === 'local_preview' ||
+      isRemoteAttachmentLoadedAtSourceActivation ||
+      isRemoteAttachmentImmediatelyRenderableAtSourceActivation
       ? incomingSourceUrl
       : null
   )
@@ -982,7 +1001,10 @@ function ChatImageAttachmentTile({
     displayedSourceUrl !== incomingSourceUrl
   )
   const isRemoteAttachmentCachedReady = Boolean(
-    isRemoteAttachmentLoadedAtSourceActivation &&
+    (
+      isRemoteAttachmentLoadedAtSourceActivation ||
+      isRemoteAttachmentImmediatelyRenderableAtSourceActivation
+    ) &&
     displayedSourceType === 'remote_public_url' &&
     displayedSourceUrl &&
     displayedSourceUrl === incomingSourceUrl
@@ -1098,7 +1120,11 @@ function ChatImageAttachmentTile({
     if (displayedSourceUrl !== incomingSourceUrl || displayedSourceType !== 'remote_public_url') {
       setDisplayedSourceUrl(incomingSourceUrl)
       setDisplayedSourceType('remote_public_url')
-      setLoadedDisplayedSourceUrl(isRemoteAttachmentLoadedAtSourceActivation ? incomingSourceUrl : null)
+      setLoadedDisplayedSourceUrl(
+        isRemoteAttachmentLoadedAtSourceActivation || isRemoteAttachmentImmediatelyRenderableAtSourceActivation
+          ? incomingSourceUrl
+          : null
+      )
       notifiedImageLoadSourceUrlRef.current = null
       setSoftPreviewLoadErrorSourceUrl(null)
     }
@@ -1109,6 +1135,7 @@ function ChatImageAttachmentTile({
     incomingSourceUrl,
     remoteAttachmentLoadedCacheKey,
     isRemoteAttachmentLoadedAtSourceActivation,
+    isRemoteAttachmentImmediatelyRenderableAtSourceActivation,
     shouldKeepPreviewVisibleWhileRemoteLoads,
     debugPayload,
   ])
