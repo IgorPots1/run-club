@@ -1,7 +1,13 @@
 import { after, NextResponse } from 'next/server'
 import { createAppEvents } from '@/lib/events/createAppEvent'
-import { getCommonChannelTitle, type CommonChannelKey } from '@/lib/chat/commonChannels'
-import { isThreadPushMuted, type ThreadPushLevelRow } from '@/lib/notifications/push'
+import { buildChatMessageCreatedAppEvent, buildChatPushPreview } from '@/lib/events/chatAppEvents'
+import type { CommonChannelKey } from '@/lib/chat/commonChannels'
+import {
+  isThreadPushMuted,
+  normalizeChatMessagePushPriority,
+  type PushPriority,
+  type ThreadPushLevelRow,
+} from '@/lib/notifications/push'
 import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -41,6 +47,7 @@ type InsertedChatMessageRow = {
   image_url: string | null
   media_url: string | null
   thread_id: string | null
+  push_priority: PushPriority
 }
 
 type ChatThreadRow = {
@@ -69,6 +76,7 @@ type ChatDeliveryContext = {
   threadChannelKey: CommonChannelKey | null
   recipientUserIds: string[]
   senderName: string
+  senderIsCoach: boolean
   messagePreview: string
   threadId: string
 }
@@ -409,7 +417,7 @@ async function validateChatMessageRequest(
 }
 
 function toInsertedMessageRow(
-  insertedRow: { id: string; thread_id?: string | null },
+  insertedRow: { id: string; thread_id?: string | null; push_priority?: string | null },
   payload: ChatMessageInsertPayload
 ): InsertedChatMessageRow {
   return {
@@ -420,6 +428,7 @@ function toInsertedMessageRow(
     image_url: payload.image_url,
     media_url: payload.media_url ?? null,
     thread_id: insertedRow.thread_id ?? payload.thread_id,
+    push_priority: normalizeChatMessagePushPriority(insertedRow),
   }
 }
 
@@ -442,24 +451,20 @@ function getMessagePreview(message: Pick<InsertedChatMessageRow, 'text' | 'messa
 }
 
 function getChatNotificationContent(
-  context: Pick<ChatDeliveryContext, 'threadType' | 'threadChannelKey' | 'senderName' | 'messagePreview'>
+  context: Pick<
+    ChatDeliveryContext,
+    'threadType' | 'threadChannelKey' | 'senderName' | 'senderIsCoach' | 'messagePreview'
+  >,
+  priority: PushPriority
 ): ChatNotificationContent {
-  const senderName = context.senderName || 'Run Club'
-  const messagePreview = context.messagePreview.trim()
-
-  if (context.threadType === 'club') {
-    const channelTitle = getCommonChannelTitle(context.threadChannelKey) ?? 'Клуб'
-
-    return {
-      title: channelTitle,
-      body: messagePreview ? `${senderName}: ${messagePreview}` : 'Новое сообщение в клубе',
-    }
-  }
-
-  return {
-    title: senderName,
-    body: messagePreview || 'Новое сообщение',
-  }
+  return buildChatPushPreview({
+    threadType: context.threadType,
+    threadChannelKey: context.threadChannelKey,
+    senderName: context.senderName,
+    senderIsCoach: context.senderIsCoach,
+    messagePreview: context.messagePreview,
+    priority,
+  })
 }
 
 async function loadChatDeliveryContext(
@@ -521,6 +526,7 @@ async function loadChatDeliveryContext(
     threadChannelKey: chatThread.channel_key,
     recipientUserIds: uniqueRecipientUserIds,
     senderName: getProfileDisplayName((senderProfile as SenderProfileRow | null) ?? null, 'Run Club'),
+    senderIsCoach: chatThread.coach_user_id === message.user_id,
     messagePreview: getMessagePreview(message),
     threadId: message.thread_id,
   }
@@ -533,16 +539,18 @@ async function emitChatMessageCreatedEvent(
   try {
     await createAppEvents(
       context.recipientUserIds.map((recipientUserId) => ({
-        type: 'chat_message.created',
-        actorUserId: message.user_id,
-        targetUserId: recipientUserId,
-        entityType: 'chat_message',
-        entityId: message.id,
-        payload: {
+        ...buildChatMessageCreatedAppEvent({
+          actorUserId: message.user_id,
+          recipientUserId,
+          messageId: message.id,
           threadId: context.threadId,
-          messagePreview: context.messagePreview,
           senderName: context.senderName,
-        },
+          senderIsCoach: context.senderIsCoach,
+          messagePreview: context.messagePreview,
+          priority: message.push_priority,
+          threadType: context.threadType,
+          threadChannelKey: context.threadChannelKey,
+        }),
       }))
     )
   } catch (error) {
@@ -591,6 +599,7 @@ async function loadMutedRecipientUserIds(
 
 async function sendChatMessagePushNotifications(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  message: InsertedChatMessageRow,
   context: ChatDeliveryContext
 ) {
   try {
@@ -691,7 +700,7 @@ async function sendChatMessagePushNotifications(
     const uniqueSubscriptions = Array.from(
       new Map(subscriptionRows.map((subscription) => [subscription.endpoint, subscription])).values()
     )
-    const notificationContent = getChatNotificationContent(context)
+    const notificationContent = getChatNotificationContent(context, message.push_priority)
 
     const results = await Promise.all(
       uniqueSubscriptions.map(async (subscription) => ({
@@ -829,7 +838,7 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
 
     await Promise.allSettled([
       emitChatMessageCreatedEvent(message, chatDeliveryContext),
-      sendChatMessagePushNotifications(supabaseAdmin, chatDeliveryContext),
+      sendChatMessagePushNotifications(supabaseAdmin, message, chatDeliveryContext),
     ])
   } catch (error) {
     console.error('Failed to fan out chat message side effects', {
@@ -1004,7 +1013,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin
       .from('chat_messages')
       .insert(insertPayload)
-      .select('id')
+      .select('id, push_priority')
       .single()
 
     if (error) {

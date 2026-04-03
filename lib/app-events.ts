@@ -9,6 +9,7 @@ type AppEventRow = {
   actor_user_id: string | null
   entity_type: string | null
   entity_id: string | null
+  target_path: string | null
   payload: Record<string, unknown> | null
   created_at: string
 }
@@ -57,13 +58,12 @@ function getPayloadPreview(value: unknown): EventPayloadPreview {
 
 function getPayload(value: unknown): EventPayload {
   const payload = asRecord(value)
-  const targetPath =
-    typeof payload?.targetPath === 'string' && payload.targetPath.startsWith('/')
-      ? payload.targetPath
-      : null
 
   return {
-    targetPath,
+    targetPath:
+      typeof payload?.targetPath === 'string' && payload.targetPath.startsWith('/')
+        ? payload.targetPath
+        : null,
     preview: getPayloadPreview(payload),
   }
 }
@@ -111,7 +111,7 @@ function buildInboxEventItem(
     id: event.id,
     type: event.type,
     createdAt: event.created_at,
-    targetPath: payload.targetPath,
+    targetPath: event.target_path ?? payload.targetPath,
     actorName,
     actorAvatarUrl: actorProfile?.avatar_url ?? null,
     title: payload.preview.title ?? fallback.title,
@@ -123,7 +123,7 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
   const supabaseAdmin = createSupabaseAdminClient()
   const { data, error } = await supabaseAdmin
     .from('app_events')
-    .select('id, type, actor_user_id, entity_type, entity_id, payload, created_at')
+    .select('id, type, actor_user_id, entity_type, entity_id, target_path, payload, created_at')
     .eq('target_user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit)

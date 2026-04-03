@@ -41,6 +41,10 @@ export function buildRunLikeCreatedEvent(input: {
     targetUserId: input.targetUserId,
     entityType: 'run',
     entityId: input.runId,
+    category: 'run',
+    channel: 'inbox',
+    priority: 'normal',
+    targetPath: `/runs/${input.runId}`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath: `/runs/${input.runId}`,
@@ -70,6 +74,10 @@ export function buildRunCommentCreatedEvent(input: {
     targetUserId: input.targetUserId,
     entityType: 'run_comment',
     entityId: input.commentId,
+    category: 'run',
+    channel: 'inbox',
+    priority: 'normal',
+    targetPath: `/runs/${input.runId}/discussion`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath: `/runs/${input.runId}/discussion`,
@@ -99,6 +107,10 @@ export function buildRunCommentReplyCreatedEvent(input: {
     targetUserId: input.targetUserId,
     entityType: 'run_comment',
     entityId: input.commentId,
+    category: 'run',
+    channel: 'inbox',
+    priority: 'normal',
+    targetPath: `/runs/${input.runId}/discussion`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath: `/runs/${input.runId}/discussion`,
