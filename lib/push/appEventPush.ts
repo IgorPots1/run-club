@@ -35,6 +35,34 @@ type UserNotificationSettingRow = {
 }
 
 type AppEventPushDeliveryStatus = 'processing' | 'sent' | 'failed' | 'skipped' | 'expired'
+type HandledAppEventPushDeliveryStatus = Extract<AppEventPushDeliveryStatus, 'sent' | 'skipped' | 'expired'>
+type ChatPushEnvelope = NonNullable<ReturnType<typeof getChatPushEnvelopeFromAppEvent>>
+type AppEventPushDeliveryRow = {
+  app_event_id: string
+  status: AppEventPushDeliveryStatus
+  status_code: number | null
+  error_body: string | null
+  attempted_at: string
+}
+type ChatPushCoalescingDescriptor = {
+  key: string
+  targetUserId: string
+  threadId: string
+  bucketStartMs: number
+  bucketEndMs: number
+  envelope: ChatPushEnvelope
+}
+type ChatPushCoalescedGroup = {
+  key: string
+  targetUserId: string
+  threadId: string
+  bucketStartMs: number
+  bucketEndMs: number
+  events: AppEvent[]
+  envelopes: Map<string, ChatPushEnvelope>
+  leaderEvent: AppEvent
+  latestEvent: AppEvent
+}
 
 type ProcessAppEventPushDeliveriesOptions = {
   appEventIds?: string[]
@@ -44,6 +72,7 @@ type ProcessAppEventPushDeliveriesOptions = {
 const EVENT_MARKER_PREFIX = '__event__'
 const DEFAULT_PROCESS_LIMIT = 50
 const DELIVERY_CLAIM_STALE_AFTER_MS = 15 * 60 * 1000
+const CHAT_PUSH_COALESCE_WINDOW_MS = 15 * 1000
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>
 
 function toAppEvent(row: PushCapableAppEventRow): AppEvent {
@@ -66,6 +95,100 @@ function toAppEvent(row: PushCapableAppEventRow): AppEvent {
 
 function getEventMarkerEndpoint(eventId: string, userId: string) {
   return `${EVENT_MARKER_PREFIX}:${eventId}:${userId}`
+}
+
+function sleep(ms: number) {
+  if (ms <= 0) {
+    return Promise.resolve()
+  }
+
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+function compareAppEventsByCreatedAt(left: AppEvent, right: AppEvent) {
+  const leftMs = Date.parse(left.createdAt)
+  const rightMs = Date.parse(right.createdAt)
+
+  if (Number.isNaN(leftMs) || Number.isNaN(rightMs)) {
+    return left.id.localeCompare(right.id)
+  }
+
+  if (leftMs !== rightMs) {
+    return leftMs - rightMs
+  }
+
+  return left.id.localeCompare(right.id)
+}
+
+function isHandledDeliveryStatus(status: AppEventPushDeliveryStatus): status is HandledAppEventPushDeliveryStatus {
+  return status === 'sent' || status === 'skipped' || status === 'expired'
+}
+
+function getChatPushCoalescingDescriptor(event: AppEvent): ChatPushCoalescingDescriptor | null {
+  if (
+    event.type !== 'chat_message.created' ||
+    event.category !== 'chat' ||
+    event.priority !== 'normal' ||
+    !event.targetUserId
+  ) {
+    return null
+  }
+
+  const envelope = getChatPushEnvelopeFromAppEvent({
+    payload: event.payload,
+    targetPath: event.targetPath,
+    priority: event.priority,
+  })
+
+  if (!envelope) {
+    return null
+  }
+
+  const createdAtMs = Date.parse(event.createdAt)
+
+  if (Number.isNaN(createdAtMs)) {
+    return null
+  }
+
+  const bucketStartMs =
+    Math.floor(createdAtMs / CHAT_PUSH_COALESCE_WINDOW_MS) * CHAT_PUSH_COALESCE_WINDOW_MS
+
+  return {
+    key: `${event.targetUserId}:${envelope.threadId}:${bucketStartMs}`,
+    targetUserId: event.targetUserId,
+    threadId: envelope.threadId,
+    bucketStartMs,
+    bucketEndMs: bucketStartMs + CHAT_PUSH_COALESCE_WINDOW_MS,
+    envelope,
+  }
+}
+
+function buildGroupedChatPushPayload(group: ChatPushCoalescedGroup) {
+  const latestEnvelope = group.envelopes.get(group.latestEvent.id)
+
+  if (!latestEnvelope) {
+    return null
+  }
+
+  if (group.events.length === 1) {
+    return {
+      title: latestEnvelope.title,
+      body: latestEnvelope.body,
+      targetUrl: latestEnvelope.targetPath,
+      threadId: latestEnvelope.threadId,
+      threadType: latestEnvelope.threadType,
+    }
+  }
+
+  return {
+    title: latestEnvelope.title,
+    body: `${group.events.length} новых сообщений`,
+    targetUrl: latestEnvelope.targetPath,
+    threadId: latestEnvelope.threadId,
+    threadType: latestEnvelope.threadType,
+  }
 }
 
 async function loadPushEligibleAppEvents(
@@ -138,6 +261,96 @@ async function loadUserSubscriptions(
       ((data as PushSubscriptionRow[] | null) ?? []).map((subscription) => [subscription.endpoint, subscription])
     ).values()
   )
+}
+
+async function loadCoalescedChatPushGroup(
+  supabaseAdmin: SupabaseAdminClient,
+  descriptor: ChatPushCoalescingDescriptor
+): Promise<ChatPushCoalescedGroup | null> {
+  const { data, error } = await supabaseAdmin
+    .from('app_events')
+    .select(
+      'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
+    )
+    .eq('category', 'chat')
+    .eq('type', 'chat_message.created')
+    .eq('target_user_id', descriptor.targetUserId)
+    .eq('priority', 'normal')
+    .in('channel', ['push', 'both'])
+    .gte('created_at', new Date(descriptor.bucketStartMs).toISOString())
+    .lt('created_at', new Date(descriptor.bucketEndMs).toISOString())
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  const groupedEvents: AppEvent[] = []
+  const envelopes = new Map<string, ChatPushEnvelope>()
+
+  for (const event of ((data as PushCapableAppEventRow[] | null) ?? []).map(toAppEvent)) {
+    const envelope = getChatPushEnvelopeFromAppEvent({
+      payload: event.payload,
+      targetPath: event.targetPath,
+      priority: event.priority,
+    })
+
+    if (!envelope || envelope.threadId !== descriptor.threadId) {
+      continue
+    }
+
+    groupedEvents.push(event)
+    envelopes.set(event.id, envelope)
+  }
+
+  if (groupedEvents.length === 0) {
+    return null
+  }
+
+  groupedEvents.sort(compareAppEventsByCreatedAt)
+
+  return {
+    key: descriptor.key,
+    targetUserId: descriptor.targetUserId,
+    threadId: descriptor.threadId,
+    bucketStartMs: descriptor.bucketStartMs,
+    bucketEndMs: descriptor.bucketEndMs,
+    events: groupedEvents,
+    envelopes,
+    leaderEvent: groupedEvents[0],
+    latestEvent: groupedEvents[groupedEvents.length - 1],
+  }
+}
+
+async function loadLatestDeliveryStatesForEndpoint(input: {
+  supabaseAdmin: SupabaseAdminClient
+  appEventIds: string[]
+  subscriptionEndpoint: string
+}) {
+  if (input.appEventIds.length === 0) {
+    return new Map<string, AppEventPushDeliveryRow>()
+  }
+
+  const { data, error } = await input.supabaseAdmin
+    .from('app_event_push_deliveries')
+    .select('app_event_id, status, status_code, error_body, attempted_at')
+    .eq('subscription_endpoint', input.subscriptionEndpoint)
+    .in('app_event_id', input.appEventIds)
+    .order('attempted_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  const latestStates = new Map<string, AppEventPushDeliveryRow>()
+
+  for (const row of (data as AppEventPushDeliveryRow[] | null) ?? []) {
+    if (!latestStates.has(row.app_event_id)) {
+      latestStates.set(row.app_event_id, row)
+    }
+  }
+
+  return latestStates
 }
 
 async function claimDeliveryAttempt(input: {
@@ -247,6 +460,62 @@ async function recordEventLevelOutcome(input: {
   return true
 }
 
+async function recordGroupedEventLevelOutcome(input: {
+  supabaseAdmin: SupabaseAdminClient
+  events: AppEvent[]
+  userId: string
+  status: 'skipped' | 'failed'
+  errorBody?: string | null
+}) {
+  for (const event of input.events) {
+    await recordEventLevelOutcome({
+      supabaseAdmin: input.supabaseAdmin,
+      appEventId: event.id,
+      userId: input.userId,
+      status: input.status,
+      errorBody: input.errorBody ?? null,
+    })
+  }
+}
+
+async function backfillGroupedEndpointOutcome(input: {
+  supabaseAdmin: SupabaseAdminClient
+  events: AppEvent[]
+  userId: string
+  subscriptionEndpoint: string
+  status: HandledAppEventPushDeliveryStatus
+  statusCode?: number | null
+  errorBody?: string | null
+  skipAppEventIds?: string[]
+}) {
+  const skipEventIds = new Set(input.skipAppEventIds ?? [])
+
+  for (const event of input.events) {
+    if (skipEventIds.has(event.id)) {
+      continue
+    }
+
+    const claim = await claimDeliveryAttempt({
+      supabaseAdmin: input.supabaseAdmin,
+      appEventId: event.id,
+      userId: input.userId,
+      subscriptionEndpoint: input.subscriptionEndpoint,
+    })
+
+    if (!claim.claimed || !claim.deliveryId) {
+      continue
+    }
+
+    await finalizeDeliveryAttempt({
+      supabaseAdmin: input.supabaseAdmin,
+      deliveryId: claim.deliveryId,
+      status: input.status,
+      statusCode: input.statusCode ?? null,
+      errorBody: input.errorBody ?? null,
+    })
+  }
+}
+
 async function deleteDeadSubscription(supabaseAdmin: SupabaseAdminClient, endpoint: string) {
   const { error } = await supabaseAdmin
     .from('push_subscriptions')
@@ -258,7 +527,7 @@ async function deleteDeadSubscription(supabaseAdmin: SupabaseAdminClient, endpoi
   }
 }
 
-async function processChatAppEventPush(supabaseAdmin: SupabaseAdminClient, event: AppEvent) {
+async function processSingleChatAppEventPush(supabaseAdmin: SupabaseAdminClient, event: AppEvent) {
   const targetUserId = event.targetUserId
 
   if (!targetUserId) {
@@ -417,13 +686,232 @@ async function processChatAppEventPush(supabaseAdmin: SupabaseAdminClient, event
   }
 }
 
+async function processCoalescedChatAppEventPush(
+  supabaseAdmin: SupabaseAdminClient,
+  event: AppEvent,
+  descriptor: ChatPushCoalescingDescriptor
+) {
+  const waitMs = descriptor.bucketEndMs - Date.now()
+
+  if (waitMs > 0) {
+    await sleep(waitMs)
+  }
+
+  const group = await loadCoalescedChatPushGroup(supabaseAdmin, descriptor)
+
+  if (!group) {
+    await recordEventLevelOutcome({
+      supabaseAdmin,
+      appEventId: event.id,
+      userId: descriptor.targetUserId,
+      status: 'failed',
+      errorBody: 'chat_push_group_missing',
+    })
+    return
+  }
+
+  const pushPayload = buildGroupedChatPushPayload(group)
+
+  if (!pushPayload) {
+    await recordGroupedEventLevelOutcome({
+      supabaseAdmin,
+      events: group.events,
+      userId: descriptor.targetUserId,
+      status: 'failed',
+      errorBody: 'invalid_chat_push_event_payload',
+    })
+    return
+  }
+
+  const userPreferences = await getUserPushPreferencesForUser(supabaseAdmin, descriptor.targetUserId)
+
+  if (!userPreferences.push_enabled) {
+    await recordGroupedEventLevelOutcome({
+      supabaseAdmin,
+      events: group.events,
+      userId: descriptor.targetUserId,
+      status: 'skipped',
+      errorBody: 'push_disabled',
+    })
+    return
+  }
+
+  if (!userPreferences.chat_enabled) {
+    await recordGroupedEventLevelOutcome({
+      supabaseAdmin,
+      events: group.events,
+      userId: descriptor.targetUserId,
+      status: 'skipped',
+      errorBody: 'chat_disabled',
+    })
+    return
+  }
+
+  const threadPushLevel = await loadThreadPushLevel(supabaseAdmin, descriptor.targetUserId, descriptor.threadId)
+
+  if (threadPushLevel === 'mute') {
+    await recordGroupedEventLevelOutcome({
+      supabaseAdmin,
+      events: group.events,
+      userId: descriptor.targetUserId,
+      status: 'skipped',
+      errorBody: 'thread_muted',
+    })
+    return
+  }
+
+  if (threadPushLevel === 'important_only') {
+    await recordGroupedEventLevelOutcome({
+      supabaseAdmin,
+      events: group.events,
+      userId: descriptor.targetUserId,
+      status: 'skipped',
+      errorBody: 'thread_important_only',
+    })
+    return
+  }
+
+  const subscriptions = await loadUserSubscriptions(supabaseAdmin, descriptor.targetUserId)
+
+  if (subscriptions.length === 0) {
+    await recordGroupedEventLevelOutcome({
+      supabaseAdmin,
+      events: group.events,
+      userId: descriptor.targetUserId,
+      status: 'skipped',
+      errorBody: 'no_push_subscriptions',
+    })
+    return
+  }
+
+  for (const subscription of subscriptions) {
+    const latestStates = await loadLatestDeliveryStatesForEndpoint({
+      supabaseAdmin,
+      appEventIds: group.events.map((groupEvent) => groupEvent.id),
+      subscriptionEndpoint: subscription.endpoint,
+    })
+    const leaderState = latestStates.get(group.leaderEvent.id)
+
+    if (leaderState?.status === 'processing') {
+      continue
+    }
+
+    if (leaderState && isHandledDeliveryStatus(leaderState.status)) {
+      await backfillGroupedEndpointOutcome({
+        supabaseAdmin,
+        events: group.events,
+        userId: descriptor.targetUserId,
+        subscriptionEndpoint: subscription.endpoint,
+        status: leaderState.status,
+        statusCode: leaderState.status_code,
+        errorBody: leaderState.error_body,
+        skipAppEventIds: [group.leaderEvent.id],
+      })
+      continue
+    }
+
+    const claim = await claimDeliveryAttempt({
+      supabaseAdmin,
+      appEventId: group.leaderEvent.id,
+      userId: descriptor.targetUserId,
+      subscriptionEndpoint: subscription.endpoint,
+    })
+
+    if (!claim.claimed || !claim.deliveryId) {
+      continue
+    }
+
+    const result = await sendWebPush({
+      endpoint: subscription.endpoint,
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+      payload: pushPayload,
+    })
+
+    if (result.ok) {
+      await finalizeDeliveryAttempt({
+        supabaseAdmin,
+        deliveryId: claim.deliveryId,
+        status: 'sent',
+      })
+      await backfillGroupedEndpointOutcome({
+        supabaseAdmin,
+        events: group.events,
+        userId: descriptor.targetUserId,
+        subscriptionEndpoint: subscription.endpoint,
+        status: 'sent',
+        skipAppEventIds: [group.leaderEvent.id],
+      })
+      continue
+    }
+
+    const isExpiredEndpoint = result.statusCode === 404 || result.statusCode === 410
+
+    if (isExpiredEndpoint) {
+      try {
+        await deleteDeadSubscription(supabaseAdmin, subscription.endpoint)
+      } catch (error) {
+        console.error('Failed to delete expired push subscription', {
+          appEventId: group.leaderEvent.id,
+          userId: descriptor.targetUserId,
+          endpoint: subscription.endpoint,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      }
+    }
+
+    await finalizeDeliveryAttempt({
+      supabaseAdmin,
+      deliveryId: claim.deliveryId,
+      status: isExpiredEndpoint ? 'expired' : 'failed',
+      statusCode: result.statusCode ?? null,
+      errorBody: result.errorBody ?? null,
+    })
+
+    if (isExpiredEndpoint) {
+      await backfillGroupedEndpointOutcome({
+        supabaseAdmin,
+        events: group.events,
+        userId: descriptor.targetUserId,
+        subscriptionEndpoint: subscription.endpoint,
+        status: 'expired',
+        statusCode: result.statusCode ?? null,
+        errorBody: result.errorBody ?? null,
+        skipAppEventIds: [group.leaderEvent.id],
+      })
+    }
+  }
+}
+
+async function processChatAppEventPush(supabaseAdmin: SupabaseAdminClient, event: AppEvent) {
+  const descriptor = getChatPushCoalescingDescriptor(event)
+
+  if (!descriptor) {
+    await processSingleChatAppEventPush(supabaseAdmin, event)
+    return
+  }
+
+  await processCoalescedChatAppEventPush(supabaseAdmin, event, descriptor)
+}
+
 export async function processAppEventPushDeliveries(
   options: ProcessAppEventPushDeliveriesOptions = {}
 ): Promise<void> {
   const supabaseAdmin = createSupabaseAdminClient()
   const events = await loadPushEligibleAppEvents(supabaseAdmin, options)
+  const processedCoalescedGroups = new Set<string>()
 
   for (const event of events) {
+    const descriptor = getChatPushCoalescingDescriptor(event)
+
+    if (descriptor && processedCoalescedGroups.has(descriptor.key)) {
+      continue
+    }
+
+    if (descriptor) {
+      processedCoalescedGroups.add(descriptor.key)
+    }
+
     try {
       await processChatAppEventPush(supabaseAdmin, event)
     } catch (error) {
