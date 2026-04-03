@@ -2198,7 +2198,13 @@ function ChatMessageBody({
   const hasVoiceAttachment = message.messageType === 'voice'
   const hasImageAttachments = message.attachments.length > 0
   const isImageOnlyMessage = Boolean(hasImageAttachments && !message.text && !message.replyTo && !hasVoiceAttachment)
-  const isPendingMessage = message.isOptimistic && message.optimisticStatus === 'sending'
+  // Guard matches text_pending_label_cleared: once the server has accepted the message
+  // (optimisticServerMessageId set) the pending label must not render even if a deferred
+  // React render snapshot still carries optimisticStatus 'sending'.
+  // Image upload overlays are driven by attachment states and are unaffected.
+  const isPendingMessage = message.isOptimistic &&
+    message.optimisticStatus === 'sending' &&
+    !message.optimisticServerMessageId
   const isFailedMessage = message.isOptimistic && message.optimisticStatus === 'failed'
   const attachmentProgress = hasImageAttachments
     ? getOptimisticAttachmentProgress(message)
