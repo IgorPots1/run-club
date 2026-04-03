@@ -17,6 +17,7 @@ import {
   subscribeChatSendDebugEvents,
 } from '@/lib/chatSendDebug'
 import {
+  markChatSendTimingImageRenderable,
   markChatSendTimingOptimisticInsert,
   markChatSendTimingPhase,
   markChatSendTimingReconciliationSuccess,
@@ -1976,6 +1977,7 @@ function getGalleryTileClass(attachmentCount: number, index: number) {
 }
 
 function ChatImageAttachments({
+  message,
   attachments,
   attachmentStates,
   createdAtLabel,
@@ -1985,6 +1987,7 @@ function ChatImageAttachments({
   onImageClick,
   onImageLoad,
 }: {
+  message: ChatMessageItem
   attachments: ChatMessageAttachment[]
   attachmentStates?: ChatMessageItem['optimisticAttachmentStates']
   createdAtLabel: string
@@ -1992,7 +1995,7 @@ function ChatImageAttachments({
   isImageOnlyMessage: boolean
   compactPreview: boolean
   onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
-  onImageLoad?: () => void
+  onImageLoad?: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
 }) {
   if (attachments.length === 0) {
     return null
@@ -2065,7 +2068,7 @@ function ChatImageAttachments({
           <img
             src={attachment.publicUrl}
             alt={`Вложение ${index + 1}`}
-            onLoad={onImageLoad}
+            onLoad={() => onImageLoad?.(message, attachment.sortOrder, attachment.publicUrl ?? '')}
             onError={() => handleAttachmentPreviewError(attachment.id)}
             className={`h-full w-full object-cover transition duration-300 ${
               isPendingAttachment ? 'scale-[1.01] opacity-85 blur-[1px]' : 'opacity-100'
@@ -2184,7 +2187,7 @@ function ChatMessageBody({
   showSenderName?: boolean
   onReplyPreviewClick?: () => void
   onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
-  onImageLoad?: () => void
+  onImageLoad?: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
   onRetryFailedMessage?: (message: ChatMessageItem) => void
   currentUserId?: string | null
   onReactionToggle?: (messageId: string, emoji: string) => void
@@ -2286,6 +2289,7 @@ function ChatMessageBody({
       ) : null}
       {hasImageAttachments ? (
         <ChatImageAttachments
+          message={message}
           attachments={message.attachments}
           attachmentStates={message.optimisticAttachmentStates}
           createdAtLabel={message.createdAtLabel}
@@ -2445,7 +2449,7 @@ const ChatMessageList = memo(function ChatMessageList({
   messageRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
   onReplyPreviewClick: (replyToMessageId: string) => void
   onImageClick: (attachments: ChatMessageAttachment[], index: number) => void
-  onImageLoad: () => void
+  onImageLoad: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
   onRetryFailedMessage: (message: ChatMessageItem) => void
   onReactionToggle: (messageId: string, emoji: string) => void
   onReactionDetailsOpen: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
@@ -3000,7 +3004,15 @@ export default function ChatSection({
     scrollPageToBottom,
   ])
 
-  const handleMessageImageLoad = useCallback(() => {
+  const handleMessageImageLoad = useCallback((message: ChatMessageItem, sortOrder: number, publicUrl: string) => {
+    markChatSendTimingImageRenderable({
+      optimisticMessageId: message.id.startsWith('temp-') ? message.id : undefined,
+      serverMessageId: message.optimisticServerMessageId ?? (!message.id.startsWith('temp-') ? message.id : null),
+      sortOrder,
+      publicUrl,
+    })
+    scanChatSendTimingVisualComplete(messagesRef.current)
+
     if (!isThreadLayoutReady && hasDeferredInitialSettle) {
       return
     }

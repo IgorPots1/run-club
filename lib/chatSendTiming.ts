@@ -11,13 +11,17 @@ export type ChatSendTimingMessageScan = {
   isOptimistic?: boolean
   optimisticStatus?: 'sending' | 'failed'
   messageType: 'text' | 'image' | 'voice'
-  attachments: unknown[]
+  attachments: Array<{
+    publicUrl?: string | null
+    sortOrder?: number | null
+  }>
   optimisticAttachmentUploadState?: 'uploading' | 'uploaded' | 'failed' | null
   optimisticAttachmentStates?: Array<'pending' | 'uploading' | 'uploaded' | 'attached' | 'failed'> | null
   optimisticServerMessageId?: string | null
 }
 
 const MAX_RECORDS = 40
+const renderableImageLoadsByRecordKey = new Map<string, Map<number, string>>()
 
 export type ChatSendTimingCompletionSource = 'realtime' | 'fallback_fetch' | 'pending_task_only' | 'unknown'
 
@@ -54,6 +58,7 @@ function pruneRecords() {
     }
 
     recordsByOptimistic.delete(key)
+    renderableImageLoadsByRecordKey.delete(key)
   }
 }
 
@@ -216,27 +221,130 @@ export function markChatSendTimingAttachmentPhase(
   })
 }
 
-/** Same rules as ChatMessageBody pending UI (sending / upload overlays). */
-export function isMessageVisuallyPendingForTiming(message: ChatSendTimingMessageScan): boolean {
-  if (message.isOptimistic && message.optimisticStatus === 'sending') {
-    return true
-  }
-
-  if (message.messageType !== 'image' || message.attachments.length === 0) {
+function isRenderableImageUrl(url: string | null | undefined): boolean {
+  if (!url) {
     return false
   }
 
+  const trimmedUrl = url.trim()
+
+  return Boolean(trimmedUrl) && !trimmedUrl.startsWith('blob:') && !trimmedUrl.startsWith('data:')
+}
+
+export function markChatSendTimingImageRenderable(payload: {
+  optimisticMessageId?: string | null
+  serverMessageId?: string | null
+  sortOrder: number
+  publicUrl: string
+}) {
+  if (typeof window === 'undefined' || !isRenderableImageUrl(payload.publicUrl)) {
+    return
+  }
+
+  const optimisticKey = resolveOptimisticKey(payload)
+
+  if (!optimisticKey) {
+    return
+  }
+
+  const record = getRecordByOptimistic(optimisticKey)
+
+  if (!record || record.visualCompleteEmitted) {
+    return
+  }
+
+  const currentLoads = renderableImageLoadsByRecordKey.get(optimisticKey) ?? new Map<number, string>()
+  currentLoads.set(payload.sortOrder, payload.publicUrl)
+  renderableImageLoadsByRecordKey.set(optimisticKey, currentLoads)
+}
+
+type VisualCompletionState = {
+  pending: boolean
+  reason: 'final_image_renderable' | 'still_uploading' | 'waiting_for_attach' | 'placeholder_only' | 'settled_non_image'
+}
+
+function getImageVisualCompletionState(
+  message: ChatSendTimingMessageScan,
+  recordKey: string
+): VisualCompletionState {
+  if (message.isOptimistic && message.optimisticStatus === 'sending') {
+    return {
+      pending: true,
+      reason: 'still_uploading',
+    }
+  }
+
+  if (message.attachments.length === 0) {
+    return {
+      pending: true,
+      reason: 'placeholder_only',
+    }
+  }
+
   if (message.optimisticAttachmentUploadState === 'uploading') {
-    return true
+    return {
+      pending: true,
+      reason: 'still_uploading',
+    }
   }
 
   const states = message.optimisticAttachmentStates
+  const loadedRenderableImages = renderableImageLoadsByRecordKey.get(recordKey)
 
   if (states && states.length > 0) {
-    return states.some((state) => state === 'pending' || state === 'uploading' || state === 'uploaded')
+    if (states.some((state) => state === 'pending' || state === 'uploading')) {
+      return {
+        pending: true,
+        reason: 'still_uploading',
+      }
+    }
+
+    if (states.some((state) => state === 'uploaded')) {
+      return {
+        pending: true,
+        reason: 'waiting_for_attach',
+      }
+    }
   }
 
-  return false
+  for (let index = 0; index < message.attachments.length; index += 1) {
+    const sortOrder = message.attachments[index]?.sortOrder ?? index
+    const publicUrl = message.attachments[index]?.publicUrl ?? null
+
+    if (!isRenderableImageUrl(publicUrl)) {
+      return {
+        pending: true,
+        reason: 'placeholder_only',
+      }
+    }
+
+    if (loadedRenderableImages?.get(sortOrder) !== publicUrl) {
+      return {
+        pending: true,
+        reason: 'placeholder_only',
+      }
+    }
+  }
+
+  return {
+    pending: false,
+    reason: 'final_image_renderable',
+  }
+}
+
+/** Same rules as ChatMessageBody pending UI for text, plus final image renderability/load for images. */
+export function isMessageVisuallyPendingForTiming(message: ChatSendTimingMessageScan): boolean {
+  if (message.messageType !== 'image') {
+    return Boolean(message.isOptimistic && message.optimisticStatus === 'sending')
+  }
+
+  const recordKey = resolveChatSendTimingRecordKey(message)
+
+  if (!recordKey) {
+    return true
+  }
+
+  return getImageVisualCompletionState(message, recordKey).pending
 }
 
 export function resolveChatSendTimingRecordKey(message: ChatSendTimingMessageScan): string | null {
@@ -266,7 +374,13 @@ function delta(a: number | undefined, b: number | undefined): number | null {
     return null
   }
 
-  return Math.round((a - b) * 100) / 100
+  const nextDelta = a - b
+
+  if (nextDelta < 0) {
+    return null
+  }
+
+  return Math.round(nextDelta * 100) / 100
 }
 
 function collectSortOrders(marks: Record<string, number>, prefix: string): number[] {
@@ -296,10 +410,10 @@ function buildSummaryDurations(record: TimingRecord) {
   const requestSuccess = marks.request_success
   const reconcile = marks.reconciliation_success
   const visual = marks.visual_complete
-
-  let uploadTotalMs = 0
-  let uploadToAttachTotalMs = 0
   const uploadOrders = collectSortOrders(marks, 'attachment_upload_start')
+
+  let uploadTotalMs: number | null = uploadOrders.length > 0 ? 0 : null
+  let uploadToAttachTotalMs: number | null = uploadOrders.length > 0 ? 0 : null
 
   for (const sortOrder of uploadOrders) {
     const uploadStart = marks[markKey('attachment_upload_start', sortOrder)]
@@ -311,11 +425,15 @@ function buildSummaryDurations(record: TimingRecord) {
     const uploadDuration = delta(uploadEnd, uploadStart)
     const uploadToAttach = delta(attachEnd, uploadEnd)
 
-    if (uploadDuration !== null) {
+    if (uploadDuration === null) {
+      uploadTotalMs = null
+    } else if (uploadTotalMs !== null) {
       uploadTotalMs += uploadDuration
     }
 
-    if (uploadToAttach !== null) {
+    if (uploadToAttach === null) {
+      uploadToAttachTotalMs = null
+    } else if (uploadToAttachTotalMs !== null) {
       uploadToAttachTotalMs += uploadToAttach
     }
   }
@@ -326,8 +444,8 @@ function buildSummaryDurations(record: TimingRecord) {
     request_to_response_ms: delta(responseStatus, requestStart),
     response_to_request_success_ms: delta(requestSuccess, responseStatus),
     request_success_to_reconcile_ms: delta(reconcile, requestSuccess),
-    upload_duration_ms: uploadOrders.length > 0 ? Math.round(uploadTotalMs * 100) / 100 : null,
-    upload_to_attach_ms: uploadOrders.length > 0 ? Math.round(uploadToAttachTotalMs * 100) / 100 : null,
+    upload_duration_ms: uploadTotalMs !== null ? Math.round(uploadTotalMs * 100) / 100 : null,
+    upload_to_attach_ms: uploadToAttachTotalMs !== null ? Math.round(uploadToAttachTotalMs * 100) / 100 : null,
     reconcile_to_visual_complete_ms: delta(visual, reconcile),
     total_to_visual_complete_ms: delta(visual, tap),
   }
@@ -349,7 +467,7 @@ function resolveCompletionSourceForSummary(record: TimingRecord): ChatSendTiming
   return 'unknown'
 }
 
-function emitSummary(record: TimingRecord) {
+function emitSummary(record: TimingRecord, visualCompletionReason?: VisualCompletionState['reason']) {
   if (record.summaryEmitted) {
     return
   }
@@ -365,6 +483,7 @@ function emitSummary(record: TimingRecord) {
     contentKind: record.contentKind,
     total_ms: totalMs,
     completionSource,
+    ...(visualCompletionReason ? { visualCompletionReason } : {}),
     ...durations,
   }
 
@@ -383,6 +502,7 @@ export function scanChatSendTimingVisualComplete(messages: ChatSendTimingMessage
 
   const prevPending = visualPendingByRecordKey
   const nextPending = new Map<string, boolean>()
+  const nextReason = new Map<string, VisualCompletionState['reason']>()
 
   for (const message of messages) {
     const recordKey = resolveChatSendTimingRecordKey(message)
@@ -391,7 +511,16 @@ export function scanChatSendTimingVisualComplete(messages: ChatSendTimingMessage
       continue
     }
 
-    nextPending.set(recordKey, isMessageVisuallyPendingForTiming(message))
+    const visualState =
+      message.messageType === 'image'
+        ? getImageVisualCompletionState(message, recordKey)
+        : {
+            pending: Boolean(message.isOptimistic && message.optimisticStatus === 'sending'),
+            reason: 'settled_non_image' as const,
+          }
+
+    nextPending.set(recordKey, visualState.pending)
+    nextReason.set(recordKey, visualState.reason)
   }
 
   for (const [recordKey, pending] of nextPending) {
@@ -404,6 +533,7 @@ export function scanChatSendTimingVisualComplete(messages: ChatSendTimingMessage
     const wasPending = prevPending.get(recordKey)
 
     if (wasPending === true && pending === false) {
+      const visualCompletionReason = nextReason.get(recordKey)
       record.marks.visual_complete = perfNow()
       record.visualCompleteEmitted = true
 
@@ -411,9 +541,10 @@ export function scanChatSendTimingVisualComplete(messages: ChatSendTimingMessage
         optimisticMessageId: record.optimisticMessageId,
         serverMessageId: record.serverMessageId,
         contentKind: record.contentKind,
+        ...(visualCompletionReason ? { visualCompletionReason } : {}),
       })
 
-      emitSummary(record)
+      emitSummary(record, visualCompletionReason)
     }
   }
 
