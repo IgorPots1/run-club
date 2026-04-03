@@ -125,6 +125,15 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'reconciliation_success',
   'reconciliation_failure',
   'ui_error_path_trigger',
+  'attachment_render_mount',
+  'attachment_render_unmount',
+  'attachment_source_changed',
+  'attachment_key_changed',
+  'attachment_visual_state_changed',
+  'attachment_img_load_start',
+  'attachment_img_load_success',
+  'attachment_img_load_error',
+  'attachment_layout_shift',
   'visual_complete',
   'send_timing_summary',
   'attachment_timing_summary',
@@ -608,6 +617,343 @@ function isLocalOrTransientImageUrl(url: string | null | undefined): boolean {
   const trimmedUrl = url.trim()
 
   return trimmedUrl.startsWith('blob:') || trimmedUrl.startsWith('data:')
+}
+
+type AttachmentDebugSourceType = 'local_preview' | 'remote_public_url' | 'placeholder' | 'unknown'
+type AttachmentDebugVisualState = 'preview' | 'pending' | 'loading_remote' | 'final' | 'error' | 'blank'
+
+function getAttachmentDebugSourceType(url: string | null | undefined): AttachmentDebugSourceType {
+  if (!url?.trim()) {
+    return 'placeholder'
+  }
+
+  if (isLocalOrTransientImageUrl(url)) {
+    return 'local_preview'
+  }
+
+  return 'remote_public_url'
+}
+
+function getAttachmentDebugVisualState({
+  sourceType,
+  attachmentState,
+  previewFailedToLoad,
+  hasLoadedCurrentSource,
+}: {
+  sourceType: AttachmentDebugSourceType
+  attachmentState: ChatMessageItem['optimisticAttachmentStates'] extends Array<infer T> ? T : never
+  previewFailedToLoad: boolean
+  hasLoadedCurrentSource: boolean
+}): AttachmentDebugVisualState {
+  if (previewFailedToLoad || attachmentState === 'failed') {
+    return 'error'
+  }
+
+  if (sourceType === 'local_preview') {
+    return 'preview'
+  }
+
+  if (sourceType === 'placeholder') {
+    return 'blank'
+  }
+
+  if (sourceType === 'remote_public_url') {
+    if (!hasLoadedCurrentSource) {
+      return 'loading_remote'
+    }
+
+    if (attachmentState === 'pending' || attachmentState === 'uploading' || attachmentState === 'uploaded') {
+      return 'pending'
+    }
+
+    return 'final'
+  }
+
+  return 'blank'
+}
+
+function getAttachmentDebugIds(message: ChatMessageItem) {
+  return {
+    optimisticMessageId: message.id.startsWith('temp-') ? message.id : null,
+    serverMessageId: message.optimisticServerMessageId ?? (!message.id.startsWith('temp-') ? message.id : null),
+  }
+}
+
+function buildAttachmentDebugPayload({
+  message,
+  attachment,
+  tileIndex,
+  renderKey,
+  sourceType,
+  sourceUrlChanged = false,
+  visualState,
+}: {
+  message: ChatMessageItem
+  attachment: ChatMessageAttachment
+  tileIndex: number
+  renderKey: string
+  sourceType: AttachmentDebugSourceType
+  sourceUrlChanged?: boolean
+  visualState: AttachmentDebugVisualState
+}) {
+  return {
+    ...getAttachmentDebugIds(message),
+    attachmentId: attachment.id ?? null,
+    tileIndex,
+    sortOrder: attachment.sortOrder,
+    renderKey,
+    sourceType,
+    sourceUrlChanged,
+    visualState,
+    width: attachment.width ?? null,
+    height: attachment.height ?? null,
+  }
+}
+
+function ChatImageAttachmentTile({
+  message,
+  attachment,
+  attachmentState,
+  tileIndex,
+  className,
+  style,
+  previewFailedToLoad,
+  onPreviewError,
+  onImageClick,
+  onImageLoad,
+  attachments,
+}: {
+  message: ChatMessageItem
+  attachment: ChatMessageAttachment
+  attachmentState: NonNullable<ChatMessageItem['optimisticAttachmentStates']>[number]
+  tileIndex: number
+  className: string
+  style?: {
+    aspectRatio?: string
+    minHeight?: string
+  }
+  previewFailedToLoad: boolean
+  onPreviewError: (attachmentId: string) => void
+  onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
+  onImageLoad?: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
+  attachments: ChatMessageAttachment[]
+}) {
+  const tileRef = useRef<HTMLButtonElement | null>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const previousHeightRef = useRef<number | null>(null)
+  const latestPayloadRef = useRef<ReturnType<typeof buildAttachmentDebugPayload> | null>(null)
+  const previousSourceUrlRef = useRef<string | null>(null)
+  const previousVisualStateRef = useRef<AttachmentDebugVisualState | null>(null)
+  const loadStartedSourceUrlRef = useRef<string | null>(null)
+  const loadSucceededSourceUrlRef = useRef<string | null>(null)
+  const [loadedSourceUrl, setLoadedSourceUrl] = useState<string | null>(null)
+  const renderKey = attachment.id
+  const sourceUrl = attachment.publicUrl?.trim() ? attachment.publicUrl : null
+  const sourceType = getAttachmentDebugSourceType(sourceUrl)
+  const canShowImage = Boolean(sourceUrl) && !previewFailedToLoad
+  const isFailedAttachment = attachmentState === 'failed'
+  const canOpenAttachment = Boolean(onImageClick && canShowImage && !isFailedAttachment)
+  const visualState = getAttachmentDebugVisualState({
+    sourceType,
+    attachmentState,
+    previewFailedToLoad,
+    hasLoadedCurrentSource: loadedSourceUrl === sourceUrl && Boolean(sourceUrl),
+  })
+  const debugPayload = buildAttachmentDebugPayload({
+    message,
+    attachment,
+    tileIndex,
+    renderKey,
+    sourceType,
+    sourceUrlChanged: previousSourceUrlRef.current !== null && previousSourceUrlRef.current !== sourceUrl,
+    visualState,
+  })
+
+  latestPayloadRef.current = debugPayload
+
+  useEffect(() => {
+    logChatSendDebug('attachment_render_mount', debugPayload)
+
+    return () => {
+      if (latestPayloadRef.current) {
+        logChatSendDebug('attachment_render_unmount', latestPayloadRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    previousSourceUrlRef.current = sourceUrl
+  }, [sourceUrl])
+
+  useEffect(() => {
+    if (previousVisualStateRef.current !== null && previousVisualStateRef.current !== visualState) {
+      logChatSendDebug('attachment_visual_state_changed', debugPayload)
+    }
+
+    previousVisualStateRef.current = visualState
+  }, [debugPayload, visualState])
+
+  useEffect(() => {
+    if (!sourceUrl || !canShowImage) {
+      loadStartedSourceUrlRef.current = null
+      loadSucceededSourceUrlRef.current = null
+      setLoadedSourceUrl(null)
+      return
+    }
+
+    if (loadStartedSourceUrlRef.current === sourceUrl) {
+      return
+    }
+
+    loadStartedSourceUrlRef.current = sourceUrl
+    loadSucceededSourceUrlRef.current = null
+    setLoadedSourceUrl(null)
+    logChatSendDebug('attachment_img_load_start', latestPayloadRef.current ?? debugPayload)
+
+    if (
+      imgRef.current?.complete &&
+      imgRef.current.naturalWidth > 0 &&
+      loadSucceededSourceUrlRef.current !== sourceUrl
+    ) {
+      loadSucceededSourceUrlRef.current = sourceUrl
+      setLoadedSourceUrl(sourceUrl)
+      logChatSendDebug('attachment_img_load_success', {
+        ...(latestPayloadRef.current ?? debugPayload),
+        visualState: getAttachmentDebugVisualState({
+          sourceType,
+          attachmentState,
+          previewFailedToLoad,
+          hasLoadedCurrentSource: true,
+        }),
+      })
+    }
+  }, [attachmentState, canShowImage, previewFailedToLoad, sourceType, sourceUrl, debugPayload])
+
+  useEffect(() => {
+    const node = tileRef.current
+
+    if (!node || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const nextHeight = Math.round(entries[0]?.contentRect.height ?? node.getBoundingClientRect().height)
+      const previousHeight = previousHeightRef.current
+
+      if (previousHeight !== null && previousHeight !== nextHeight) {
+        logChatSendDebug('attachment_layout_shift', {
+          ...(latestPayloadRef.current ?? debugPayload),
+          previousHeight,
+          nextHeight,
+          sourceType,
+          visualState,
+        })
+      }
+
+      previousHeightRef.current = nextHeight
+    })
+
+    observer.observe(node)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [sourceType, visualState])
+
+  return (
+    <button
+      ref={tileRef}
+      key={attachment.id}
+      type="button"
+      onClick={canOpenAttachment ? () => onImageClick?.(attachments, tileIndex) : undefined}
+      disabled={!canOpenAttachment}
+      className={className}
+      style={style}
+      aria-label={
+        isFailedAttachment
+          ? `Не удалось загрузить изображение ${tileIndex + 1}`
+          : `Открыть изображение ${tileIndex + 1}`
+      }
+    >
+      {canShowImage ? (
+        <img
+          ref={imgRef}
+          src={attachment.publicUrl}
+          alt={`Вложение ${tileIndex + 1}`}
+          onLoad={() => {
+            if (loadSucceededSourceUrlRef.current === sourceUrl) {
+              onImageLoad?.(message, attachment.sortOrder, attachment.publicUrl ?? '')
+              return
+            }
+
+            loadSucceededSourceUrlRef.current = sourceUrl
+            setLoadedSourceUrl(sourceUrl)
+            logChatSendDebug('attachment_img_load_success', {
+              ...(latestPayloadRef.current ?? debugPayload),
+              visualState: getAttachmentDebugVisualState({
+                sourceType,
+                attachmentState,
+                previewFailedToLoad,
+                hasLoadedCurrentSource: true,
+              }),
+            })
+            onImageLoad?.(message, attachment.sortOrder, attachment.publicUrl ?? '')
+          }}
+          onError={() => {
+            logChatSendDebug('attachment_img_load_error', {
+              ...(latestPayloadRef.current ?? debugPayload),
+              visualState: 'error',
+            })
+            onPreviewError(attachment.id)
+          }}
+          className={`h-full w-full object-cover transition duration-300 ${
+            attachmentState === 'uploading' || attachmentState === 'uploaded' ? 'scale-[1.01] opacity-85 blur-[1px]' : 'opacity-100'
+          }`}
+        />
+      ) : null}
+
+      {!canShowImage ? (
+        <span
+          aria-hidden="true"
+          className={`absolute inset-0 block ${
+            isFailedAttachment
+              ? 'bg-red-100/90 dark:bg-red-950/50'
+              : 'bg-black/[0.04] dark:bg-white/[0.07]'
+          }`}
+        />
+      ) : null}
+
+      {attachmentState === 'uploading' || attachmentState === 'uploaded' ? (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 opacity-80 animate-pulse dark:via-white/15"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-black/10 dark:bg-black/20"
+          />
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 top-auto h-12 bg-gradient-to-t from-black/30 to-transparent" />
+          <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/38 px-2 py-1 text-[10px] font-medium leading-none text-white backdrop-blur-[2px]">
+            <span className="h-1.5 w-1.5 rounded-full bg-white/90 animate-pulse" />
+            {attachmentState === 'uploaded' ? 'Обработка' : 'Загрузка'}
+          </span>
+        </>
+      ) : null}
+
+      {isFailedAttachment ? (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-red-950/12 dark:bg-red-950/35"
+          />
+          <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded-xl bg-red-600/90 px-2 py-1 text-center text-[10px] font-medium leading-tight text-white shadow-sm dark:bg-red-500/90">
+            Не удалось загрузить
+          </span>
+        </>
+      ) : null}
+    </button>
+  )
 }
 
 function serverImageMessageMissingReliableAttachmentUrls(serverMessage: ChatMessageItem): boolean {
@@ -2006,10 +2352,69 @@ function ChatImageAttachments({
   ))
   const [failedPreviewIds, setFailedPreviewIds] = useState<Record<string, true>>({})
   const attachmentRenderKey = attachments.map((attachment) => `${attachment.id}:${attachment.publicUrl}`).join('|')
+  const previousAttachmentDebugSnapshotRef = useRef<Record<string, {
+    attachmentId: string | null
+    sourceUrl: string | null
+    sourceType: AttachmentDebugSourceType
+  }>>({})
 
   useEffect(() => {
     setFailedPreviewIds({})
   }, [attachmentRenderKey])
+
+  useEffect(() => {
+    const nextSnapshot: Record<string, {
+      attachmentId: string | null
+      sourceUrl: string | null
+      sourceType: AttachmentDebugSourceType
+    }> = {}
+
+    attachments.forEach((attachment, index) => {
+      const slotKey = String(attachment.sortOrder ?? index)
+      const sourceUrl = attachment.publicUrl?.trim() ? attachment.publicUrl : null
+      const sourceType = getAttachmentDebugSourceType(sourceUrl)
+      const previousSnapshot = previousAttachmentDebugSnapshotRef.current[slotKey]
+      const nextPayload = buildAttachmentDebugPayload({
+        message,
+        attachment,
+        tileIndex: index,
+        renderKey: attachment.id,
+        sourceType,
+        sourceUrlChanged: Boolean(previousSnapshot && previousSnapshot.sourceUrl !== sourceUrl),
+        visualState: getAttachmentDebugVisualState({
+          sourceType,
+          attachmentState: normalizedAttachmentStates[index] ?? 'attached',
+          previewFailedToLoad: Boolean(failedPreviewIds[attachment.id]),
+          hasLoadedCurrentSource: sourceType === 'local_preview',
+        }),
+      })
+
+      if (previousSnapshot && previousSnapshot.attachmentId !== attachment.id) {
+        logChatSendDebug('attachment_key_changed', nextPayload)
+      }
+
+      if (
+        previousSnapshot &&
+        (
+          previousSnapshot.sourceUrl !== sourceUrl ||
+          previousSnapshot.sourceType !== sourceType
+        )
+      ) {
+        logChatSendDebug('attachment_source_changed', {
+          ...nextPayload,
+          sourceUrlChanged: previousSnapshot.sourceUrl !== sourceUrl,
+        })
+      }
+
+      nextSnapshot[slotKey] = {
+        attachmentId: attachment.id,
+        sourceUrl,
+        sourceType,
+      }
+    })
+
+    previousAttachmentDebugSnapshotRef.current = nextSnapshot
+  }, [attachments, failedPreviewIds, message, normalizedAttachmentStates])
 
   const wrapperClassName = `relative mt-1 block overflow-hidden rounded-2xl ${
     compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
@@ -2045,78 +2450,22 @@ function ChatImageAttachments({
   ) {
     const attachmentState = normalizedAttachmentStates[index] ?? 'attached'
     const previewFailedToLoad = Boolean(failedPreviewIds[attachment.id])
-    const canShowImage = Boolean(attachment.publicUrl) && !previewFailedToLoad
-    const isPendingAttachment = attachmentState === 'uploading' || attachmentState === 'uploaded'
-    const isFailedAttachment = attachmentState === 'failed'
-    const canOpenAttachment = Boolean(onImageClick && canShowImage && !isFailedAttachment)
 
     return (
-      <button
+      <ChatImageAttachmentTile
         key={attachment.id}
-        type="button"
-        onClick={canOpenAttachment ? () => onImageClick?.(attachments, index) : undefined}
-        disabled={!canOpenAttachment}
+        message={message}
+        attachment={attachment}
+        attachmentState={attachmentState}
+        tileIndex={index}
         className={className}
         style={style}
-        aria-label={
-          isFailedAttachment
-            ? `Не удалось загрузить изображение ${index + 1}`
-            : `Открыть изображение ${index + 1}`
-        }
-      >
-        {canShowImage ? (
-          <img
-            src={attachment.publicUrl}
-            alt={`Вложение ${index + 1}`}
-            onLoad={() => onImageLoad?.(message, attachment.sortOrder, attachment.publicUrl ?? '')}
-            onError={() => handleAttachmentPreviewError(attachment.id)}
-            className={`h-full w-full object-cover transition duration-300 ${
-              isPendingAttachment ? 'scale-[1.01] opacity-85 blur-[1px]' : 'opacity-100'
-            }`}
-          />
-        ) : null}
-
-        {!canShowImage ? (
-          <span
-            aria-hidden="true"
-            className={`absolute inset-0 block ${
-              isFailedAttachment
-                ? 'bg-red-100/90 dark:bg-red-950/50'
-                : 'bg-black/[0.04] dark:bg-white/[0.07]'
-            }`}
-          />
-        ) : null}
-
-        {isPendingAttachment ? (
-          <>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 opacity-80 animate-pulse dark:via-white/15"
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-black/10 dark:bg-black/20"
-            />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 top-auto h-12 bg-gradient-to-t from-black/30 to-transparent" />
-            <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/38 px-2 py-1 text-[10px] font-medium leading-none text-white backdrop-blur-[2px]">
-              <span className="h-1.5 w-1.5 rounded-full bg-white/90 animate-pulse" />
-              {attachmentState === 'uploaded' ? 'Обработка' : 'Загрузка'}
-            </span>
-          </>
-        ) : null}
-
-        {isFailedAttachment ? (
-          <>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-red-950/12 dark:bg-red-950/35"
-            />
-            <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded-xl bg-red-600/90 px-2 py-1 text-center text-[10px] font-medium leading-tight text-white shadow-sm dark:bg-red-500/90">
-              Не удалось загрузить
-            </span>
-          </>
-        ) : null}
-      </button>
+        previewFailedToLoad={previewFailedToLoad}
+        onPreviewError={handleAttachmentPreviewError}
+        onImageClick={onImageClick}
+        onImageLoad={onImageLoad}
+        attachments={attachments}
+      />
     )
   }
 
