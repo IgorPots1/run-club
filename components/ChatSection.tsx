@@ -201,6 +201,38 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
 ])
 const CHAT_SEND_DEBUG_VISIBLE_EVENT_LIMIT = 100
 
+type SavedChatThreadScrollState = {
+  anchorMessageId: string | null
+  anchorOffsetTop: number | null
+  scrollTop: number | null
+}
+
+const savedChatThreadScrollStateByThreadId = new Map<string, SavedChatThreadScrollState>()
+
+function getSavedChatThreadScrollState(threadId?: string | null) {
+  if (!threadId) {
+    return null
+  }
+
+  return savedChatThreadScrollStateByThreadId.get(threadId) ?? null
+}
+
+function setSavedChatThreadScrollState(
+  threadId: string | null | undefined,
+  scrollState: SavedChatThreadScrollState | null
+) {
+  if (!threadId) {
+    return
+  }
+
+  if (!scrollState) {
+    savedChatThreadScrollStateByThreadId.delete(threadId)
+    return
+  }
+
+  savedChatThreadScrollStateByThreadId.set(threadId, scrollState)
+}
+
 function summarizeThreadOpenMessages(messages: ChatMessageItem[]) {
   return {
     messageCount: messages.length,
@@ -3575,6 +3607,11 @@ export default function ChatSection({
     scrollTop: number | null
     previousOverflowAnchor: string
   } | null>(null)
+  const initialSavedScrollRestoreCleanupFrameRef = useRef<number | null>(null)
+  const initialSavedScrollRestoreRef = useRef<SavedChatThreadScrollState | null>(null)
+  const initialSavedScrollRestorePreviousOverflowAnchorRef = useRef('')
+  const initialSavedScrollRestoreActiveRef = useRef(false)
+  const threadScrollStateSaveFrameRef = useRef<number | null>(null)
   const isLoadingOlderMessagesRef = useRef(false)
   const focusedGestureStartScrollTopRef = useRef<number | null>(null)
   const focusedGestureStartClientYRef = useRef<number | null>(null)
@@ -3600,6 +3637,7 @@ export default function ChatSection({
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
+  const [pendingInitialSavedScrollRestore, setPendingInitialSavedScrollRestore] = useState(false)
   const [hasDeferredInitialSettle, setHasDeferredInitialSettle] = useState(false)
   const [isInitialBottomLockActive, setIsInitialBottomLockActive] = useState(false)
   const [pendingNewMessagesCount, setPendingNewMessagesCount] = useState(0)
@@ -4048,7 +4086,24 @@ export default function ChatSection({
     prependScrollRestoreRef.current = null
   }, [])
 
-  const capturePrependAnchorSnapshot = useCallback((scrollContainer: HTMLDivElement) => {
+  const clearInitialSavedScrollRestore = useCallback(() => {
+    if (initialSavedScrollRestoreCleanupFrameRef.current !== null) {
+      window.cancelAnimationFrame(initialSavedScrollRestoreCleanupFrameRef.current)
+      initialSavedScrollRestoreCleanupFrameRef.current = null
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (scrollContainer) {
+      scrollContainer.style.overflowAnchor = initialSavedScrollRestorePreviousOverflowAnchorRef.current
+    }
+
+    initialSavedScrollRestorePreviousOverflowAnchorRef.current = ''
+    initialSavedScrollRestoreActiveRef.current = false
+    initialSavedScrollRestoreRef.current = null
+  }, [])
+
+  const captureVisibleAnchorSnapshot = useCallback((scrollContainer: HTMLDivElement) => {
     const scrollContainerRect = scrollContainer.getBoundingClientRect()
 
     for (const message of messagesRef.current) {
@@ -4075,6 +4130,46 @@ export default function ChatSection({
       anchorOffsetTop: null,
     }
   }, [])
+
+  const saveThreadScrollState = useCallback(() => {
+    if (
+      !threadId ||
+      loading ||
+      hasDeferredInitialSettle ||
+      pendingInitialScroll ||
+      pendingInitialSavedScrollRestore ||
+      Boolean(initialSavedScrollRestoreRef.current) ||
+      initialSavedScrollRestoreActiveRef.current
+    ) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    if (isNearBottom()) {
+      setSavedChatThreadScrollState(threadId, null)
+      return
+    }
+
+    const anchorSnapshot = captureVisibleAnchorSnapshot(scrollContainer)
+    setSavedChatThreadScrollState(threadId, {
+      anchorMessageId: anchorSnapshot.anchorMessageId,
+      anchorOffsetTop: anchorSnapshot.anchorOffsetTop,
+      scrollTop: scrollContainer.scrollTop,
+    })
+  }, [
+    captureVisibleAnchorSnapshot,
+    hasDeferredInitialSettle,
+    isNearBottom,
+    loading,
+    pendingInitialSavedScrollRestore,
+    pendingInitialScroll,
+    threadId,
+  ])
 
   const getInitialBottomLockGeometry = useCallback(() => {
     const scrollContainer = scrollContainerRef.current
@@ -4197,6 +4292,8 @@ export default function ChatSection({
 
     if (
       prependScrollRestoreRef.current ||
+      pendingInitialSavedScrollRestore ||
+      initialSavedScrollRestoreActiveRef.current ||
       isLoadingOlderMessagesRef.current ||
       (!isThreadLayoutReady && hasDeferredInitialSettle)
     ) {
@@ -4349,7 +4446,7 @@ export default function ChatSection({
 
     isLoadingOlderMessagesRef.current = true
     setIsLoadingOlderMessages(true)
-    const prependAnchorSnapshot = capturePrependAnchorSnapshot(scrollContainer)
+    const prependAnchorSnapshot = captureVisibleAnchorSnapshot(scrollContainer)
     clearPendingPrependRestore()
     const previousOverflowAnchor = scrollContainer.style.overflowAnchor
     scrollContainer.style.overflowAnchor = 'none'
@@ -4396,7 +4493,7 @@ export default function ChatSection({
       setIsLoadingOlderMessages(false)
     }
   }, [
-    capturePrependAnchorSnapshot,
+    captureVisibleAnchorSnapshot,
     clearPendingPrependRestore,
     currentUserId,
     oldestLoadedMessageCreatedAt,
@@ -4530,6 +4627,10 @@ export default function ChatSection({
     }
 
     deactivateInitialBottomLock('thread-reset')
+    clearInitialSavedScrollRestore()
+    initialSavedScrollRestoreRef.current = targetMessageId
+      ? null
+      : getSavedChatThreadScrollState(threadId)
     pendingImagesRef.current.forEach((image) => {
       revokeObjectUrlIfNeeded(image.previewUrl)
     })
@@ -4563,7 +4664,9 @@ export default function ChatSection({
     }
 
     setPendingInitialScroll(false)
+    setPendingInitialSavedScrollRestore(false)
     setHasDeferredInitialSettle(shouldApplyBootstrapFallback)
+    pendingAutoScrollToBottomRef.current = false
     setPendingNewMessagesCount(0)
     setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
     setError('')
@@ -4578,9 +4681,11 @@ export default function ChatSection({
     applyPendingMediaTasksToMessages,
     currentUserId,
     deactivateInitialBottomLock,
+    clearInitialSavedScrollRestore,
     isThreadOpenDebugActive,
     logThreadOpenMessageMutation,
     releaseOptimisticClientMedia,
+    targetMessageId,
     threadId,
   ])
 
@@ -4613,8 +4718,47 @@ export default function ChatSection({
   }, [draftMessage, resizeComposerTextarea])
 
   useEffect(() => {
+    if (!threadId) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    function scheduleThreadScrollStateSave() {
+      if (threadScrollStateSaveFrameRef.current !== null) {
+        return
+      }
+
+      threadScrollStateSaveFrameRef.current = window.requestAnimationFrame(() => {
+        threadScrollStateSaveFrameRef.current = null
+        saveThreadScrollState()
+      })
+    }
+
+    scheduleThreadScrollStateSave()
+    scrollContainer.addEventListener('scroll', scheduleThreadScrollStateSave, { passive: true })
+    window.addEventListener('resize', scheduleThreadScrollStateSave)
+
+    return () => {
+      if (threadScrollStateSaveFrameRef.current !== null) {
+        window.cancelAnimationFrame(threadScrollStateSaveFrameRef.current)
+        threadScrollStateSaveFrameRef.current = null
+      }
+
+      saveThreadScrollState()
+      scrollContainer.removeEventListener('scroll', scheduleThreadScrollStateSave)
+      window.removeEventListener('resize', scheduleThreadScrollStateSave)
+    }
+  }, [saveThreadScrollState, threadId])
+
+  useEffect(() => {
     return () => {
       clearPendingPrependRestore()
+      clearInitialSavedScrollRestore()
       deactivateInitialBottomLock('component-unmount')
       pendingImagesRef.current.forEach((image) => {
         revokeObjectUrlIfNeeded(image.previewUrl)
@@ -4641,7 +4785,7 @@ export default function ChatSection({
 
       mediaRecorderRef.current = null
     }
-  }, [deactivateInitialBottomLock, releaseOptimisticClientMedia])
+  }, [clearInitialSavedScrollRestore, deactivateInitialBottomLock, releaseOptimisticClientMedia])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -4938,13 +5082,94 @@ export default function ChatSection({
       return
     }
 
-    setPendingInitialScroll(true)
+    if (!targetMessageId && initialSavedScrollRestoreRef.current) {
+      setPendingInitialSavedScrollRestore(true)
+    } else {
+      setPendingInitialScroll(true)
+    }
     setHasDeferredInitialSettle(false)
   }, [
     hasDeferredInitialSettle,
     isThreadLayoutReady,
     loading,
     messages.length,
+    targetMessageId,
+  ])
+
+  useLayoutEffect(() => {
+    if (loading || !pendingInitialSavedScrollRestore) {
+      return
+    }
+
+    if (messages.length === 0) {
+      return
+    }
+
+    if (!isThreadLayoutReady) {
+      return
+    }
+
+    const savedScrollRestore = initialSavedScrollRestoreRef.current
+    const scrollContainer = scrollContainerRef.current
+
+    if (!savedScrollRestore || !scrollContainer) {
+      setPendingInitialSavedScrollRestore(false)
+      initialSavedScrollRestoreRef.current = null
+      return
+    }
+
+    initialSavedScrollRestoreActiveRef.current = true
+    const previousOverflowAnchor = scrollContainer.style.overflowAnchor
+    initialSavedScrollRestorePreviousOverflowAnchorRef.current = previousOverflowAnchor
+    scrollContainer.style.overflowAnchor = 'none'
+
+    let didRestoreFromAnchor = false
+
+    if (savedScrollRestore.anchorMessageId && savedScrollRestore.anchorOffsetTop !== null) {
+      const anchorNode = messageRefs.current[savedScrollRestore.anchorMessageId]
+
+      if (anchorNode) {
+        const scrollContainerRect = scrollContainer.getBoundingClientRect()
+        const currentAnchorOffsetTop = anchorNode.getBoundingClientRect().top - scrollContainerRect.top
+        const anchorOffsetDelta = currentAnchorOffsetTop - savedScrollRestore.anchorOffsetTop
+
+        if (anchorOffsetDelta !== 0) {
+          scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollTop + anchorOffsetDelta)
+        }
+
+        didRestoreFromAnchor = true
+      }
+    }
+
+    if (!didRestoreFromAnchor && savedScrollRestore.scrollTop !== null) {
+      const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight)
+      scrollContainer.scrollTop = Math.max(0, Math.min(savedScrollRestore.scrollTop, maxScrollTop))
+    }
+
+    setShowScrollToBottomButton(!isNearBottom())
+    setPendingInitialSavedScrollRestore(false)
+    initialSavedScrollRestoreRef.current = null
+
+    initialSavedScrollRestoreCleanupFrameRef.current = window.requestAnimationFrame(() => {
+      initialSavedScrollRestoreCleanupFrameRef.current = window.requestAnimationFrame(() => {
+        initialSavedScrollRestoreCleanupFrameRef.current = null
+
+        if (scrollContainerRef.current === scrollContainer) {
+          scrollContainer.style.overflowAnchor = previousOverflowAnchor
+        }
+
+        initialSavedScrollRestorePreviousOverflowAnchorRef.current = ''
+        initialSavedScrollRestoreActiveRef.current = false
+        saveThreadScrollState()
+      })
+    })
+  }, [
+    isNearBottom,
+    isThreadLayoutReady,
+    loading,
+    messages.length,
+    pendingInitialSavedScrollRestore,
+    saveThreadScrollState,
   ])
 
   useLayoutEffect(() => {
