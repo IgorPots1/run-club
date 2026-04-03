@@ -19,6 +19,7 @@ import {
   updateThreadPushSettings,
 } from '@/lib/notifications/settingsClient'
 import type { PushLevel } from '@/lib/notifications/push'
+import { setActiveThreadId } from '@/lib/push/clientPresence'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
@@ -162,6 +163,19 @@ export default function MessageThreadPage() {
       isMounted = false
     }
   }, [router, threadId])
+
+  useEffect(() => {
+    if (!threadId || loading || error || !currentUserId) {
+      setActiveThreadId(null)
+      return
+    }
+
+    setActiveThreadId(threadId)
+
+    return () => {
+      setActiveThreadId(null)
+    }
+  }, [currentUserId, error, loading, threadId])
 
   useEffect(() => {
     if (!threadId || !currentUserId) {

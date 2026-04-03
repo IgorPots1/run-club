@@ -2,9 +2,11 @@
 
 import { useEffect, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { setAppVisibilityState } from '@/lib/push/clientPresence'
 import { ensurePushServiceWorkerRegistration } from '@/lib/push/subscribeToPush'
 
 const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
+const CHAT_NOTIFICATION_SUPPRESSED_EVENT = 'run-club:chat-notification-suppressed'
 
 function normalizeNavigationHref(url: string) {
   const nextUrl = new URL(url, window.location.origin)
@@ -25,6 +27,23 @@ export default function PwaRegister() {
   }, [])
 
   useEffect(() => {
+    const syncVisibilityState = () => {
+      setAppVisibilityState(document.visibilityState === 'visible')
+    }
+
+    syncVisibilityState()
+    document.addEventListener('visibilitychange', syncVisibilityState)
+    window.addEventListener('focus', syncVisibilityState)
+    window.addEventListener('blur', syncVisibilityState)
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncVisibilityState)
+      window.removeEventListener('focus', syncVisibilityState)
+      window.removeEventListener('blur', syncVisibilityState)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!('serviceWorker' in navigator)) return
 
     const handler = (event: MessageEvent<{
@@ -32,9 +51,23 @@ export default function PwaRegister() {
       url?: string
       threadId?: string
       threadType?: string
+      priority?: string
       navigationKey?: string
       source?: string
     }>) => {
+      if (event.data?.type === 'PUSH_SUPPRESSED') {
+        window.dispatchEvent(
+          new CustomEvent(CHAT_NOTIFICATION_SUPPRESSED_EVENT, {
+            detail: {
+              threadId: event.data.threadId ?? null,
+              priority: event.data.priority ?? null,
+              source: 'service-worker',
+            },
+          })
+        )
+        return
+      }
+
       if (event.data?.type !== 'NAVIGATE' || !event.data.url) {
         return
       }

@@ -54,6 +54,73 @@ function postNavigateMessage(client, payload) {
   }
 }
 
+function normalizeThreadId(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function normalizePriority(value) {
+  return value === 'important' ? 'important' : 'normal'
+}
+
+function getThreadIdFromUrl(url) {
+  try {
+    const nextUrl = new URL(url, self.location.origin)
+
+    if (nextUrl.origin !== self.location.origin) {
+      return ''
+    }
+
+    const match = nextUrl.pathname.match(/^\/messages\/([^/]+)$/)
+    return match && match[1] ? decodeURIComponent(match[1]) : ''
+  } catch {
+    return ''
+  }
+}
+
+function isVisibleWindowClient(client) {
+  return client.visibilityState === 'visible' || client.focused === true
+}
+
+async function resolveSuppressionState(threadId, priority) {
+  const clientsArr = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  })
+  const normalizedThreadId = normalizeThreadId(threadId)
+  const hasVisibleClient = clientsArr.some((client) => isVisibleWindowClient(client))
+  const hasVisibleSameThreadClient = normalizedThreadId
+    ? clientsArr.some((client) => {
+        if (!isVisibleWindowClient(client)) {
+          return false
+        }
+
+        return getThreadIdFromUrl(client.url) === normalizedThreadId
+      })
+    : false
+
+  if (hasVisibleSameThreadClient) {
+    return {
+      shouldShowNotification: false,
+      suppressionReason: 'active_thread',
+      visibleClients: clientsArr.filter((client) => isVisibleWindowClient(client)),
+    }
+  }
+
+  if (hasVisibleClient && normalizePriority(priority) !== 'important') {
+    return {
+      shouldShowNotification: false,
+      suppressionReason: 'foreground',
+      visibleClients: clientsArr.filter((client) => isVisibleWindowClient(client)),
+    }
+  }
+
+  return {
+    shouldShowNotification: true,
+    suppressionReason: null,
+    visibleClients: clientsArr.filter((client) => isVisibleWindowClient(client)),
+  }
+}
+
 self.addEventListener('push', (event) => {
   console.log('[sw] push_received')
 
@@ -74,12 +141,37 @@ self.addEventListener('push', (event) => {
     ? payload.title.trim()
     : 'Run Club'
   const body = typeof payload.body === 'string' ? payload.body : ''
-  const threadId = typeof payload.threadId === 'string' ? payload.threadId.trim() : ''
+  const threadId = normalizeThreadId(payload.threadId)
   const threadType = typeof payload.threadType === 'string' ? payload.threadType : undefined
+  const priority = normalizePriority(payload.priority)
   const targetUrl = resolveNotificationTargetUrl(payload.targetUrl, threadId)
 
   event.waitUntil(
     (async () => {
+      const suppressionState = await resolveSuppressionState(threadId, priority)
+
+      if (!suppressionState.shouldShowNotification) {
+        console.log('[sw] suppress_notification', {
+          threadId,
+          priority,
+          reason: suppressionState.suppressionReason,
+        })
+
+        suppressionState.visibleClients.forEach((client) => {
+          postNavigateMessage(client, {
+            type: 'PUSH_SUPPRESSED',
+            threadId,
+            threadType,
+            priority,
+            targetUrl,
+            reason: suppressionState.suppressionReason,
+            source: 'push',
+          })
+        })
+
+        return
+      }
+
       console.log('[sw] show_notification', {
         title,
         body,
@@ -91,6 +183,7 @@ self.addEventListener('push', (event) => {
           targetUrl,
           threadId,
           threadType,
+          priority,
         },
       })
 
