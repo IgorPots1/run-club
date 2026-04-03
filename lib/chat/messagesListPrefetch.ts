@@ -7,7 +7,7 @@ import {
   type ChatThreadLastMessage,
   type ClubThread,
   type DirectCoachThreadItem,
-  getClubThread,
+  getCommonChannels,
   getCoachDirectThreads,
   getDirectCoachThread,
   getStudents,
@@ -26,7 +26,7 @@ const MESSAGES_LIST_BACKGROUND_REVALIDATE_AFTER_MS = 45 * 1000
 
 export type MessagesListPrefetchData = {
   currentUserId: string
-  clubThread: ClubThread | null
+  commonThreads: ClubThread[]
   coachThread: DirectCoachThreadItem | null
   directThreads: CoachDirectThreadItem[]
   students: StudentProfile[]
@@ -84,8 +84,8 @@ async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData
     return null
   }
 
-  const [clubThread, unreadCountsByThread] = await Promise.all([
-    getClubThread(),
+  const [commonThreads, unreadCountsByThread] = await Promise.all([
+    getCommonChannels(),
     getUnreadCountsByThread(),
   ])
 
@@ -97,7 +97,7 @@ async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData
 
     return {
       currentUserId: user.id,
-      clubThread,
+      commonThreads,
       coachThread: null,
       directThreads,
       students,
@@ -109,7 +109,7 @@ async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData
 
   return {
     currentUserId: user.id,
-    clubThread,
+    commonThreads,
     coachThread,
     directThreads: [],
     students: [],
@@ -278,13 +278,14 @@ export function updatePrefetchedMessagesListThreadLastMessage(
 ) {
   updateMessagesListPrefetchEntry((data) => ({
     ...data,
-    clubThread:
-      data.clubThread?.id === threadId
+    commonThreads: data.commonThreads.map((thread) =>
+      thread.id === threadId
         ? {
-            ...data.clubThread,
+            ...thread,
             lastMessage,
           }
-        : data.clubThread,
+        : thread
+    ),
     coachThread:
       data.coachThread?.id === threadId
         ? {

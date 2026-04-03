@@ -24,10 +24,11 @@ import {
 } from '@/lib/chat/messagesListPrefetch'
 import { COACH_USER_ID } from '@/lib/constants'
 import { formatChatThreadActivityLabel } from '@/lib/format'
+import { COMMON_CHANNEL_KEYS, COMMON_CHANNEL_TITLE_BY_KEY } from '@/lib/chat/commonChannels'
 import {
   type ChatThreadLastMessage,
   type ClubThread,
-  getClubThread,
+  getCommonChannels,
   type DirectCoachThreadItem,
   getCoachDirectThreads,
   getDirectCoachThread,
@@ -225,7 +226,7 @@ export default function MessagesPage() {
   const initialCacheSnapshot = readInitialMessagesListState()
   const [loading, setLoading] = useState(() => initialCacheSnapshot === null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => initialCacheSnapshot?.currentUserId ?? null)
-  const [clubThread, setClubThread] = useState<ClubThread | null>(() => initialCacheSnapshot?.clubThread ?? null)
+  const [commonThreads, setCommonThreads] = useState<ClubThread[]>(() => initialCacheSnapshot?.commonThreads ?? [])
   const [coachThread, setCoachThread] = useState<DirectCoachThreadItem | null>(
     () => initialCacheSnapshot?.coachThread ?? null
   )
@@ -272,13 +273,15 @@ export default function MessagesPage() {
     (threadId: string, lastMessage: ChatThreadLastMessage | null) => {
       updatePrefetchedMessagesListThreadLastMessage(threadId, lastMessage)
 
-      setClubThread((currentThread) =>
-        currentThread?.id === threadId
-          ? {
-              ...currentThread,
-              lastMessage,
-            }
-          : currentThread
+      setCommonThreads((currentThreads) =>
+        currentThreads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                lastMessage,
+              }
+            : thread
+        )
       )
 
       setCoachThread((currentThread) =>
@@ -378,62 +381,37 @@ export default function MessagesPage() {
   )
 
   const commonChatItems = useMemo(() => {
-    if (!clubThread) {
-      return []
-    }
+    const commonThreadByKey = Object.fromEntries(
+      commonThreads.map((thread) => [thread.channel_key, thread])
+    ) as Record<ClubThread['channel_key'], ClubThread>
 
-    const sharedPreview = getLastMessagePreview(
-      clubThread.lastMessage,
-      'Пока нет сообщений',
-      {
-        currentUserId,
-        prefixSender: true,
-      }
-    )
-    const sharedTimeLabel = clubThread.lastMessage?.createdAt
-      ? formatChatThreadActivityLabel(clubThread.lastMessage.createdAt)
-      : ''
-    const sharedUnreadCount = unreadCountsByThread[clubThread.id] ?? 0
-    const sharedLastActivityAt = new Date(
-      clubThread.lastMessage?.createdAt ?? clubThread.created_at
-    ).getTime()
+    return COMMON_CHANNEL_KEYS
+      .map((channelKey) => {
+        const thread = commonThreadByKey[channelKey]
 
-    return [
-      {
-        listKey: `common-reports:${clubThread.id}`,
-        id: clubThread.id,
-        href: `/messages/${clubThread.id}`,
-        title: 'Отчеты',
-        preview: sharedPreview,
-        timeLabel: sharedTimeLabel,
-        unreadCount: sharedUnreadCount,
-        lastActivityAt: sharedLastActivityAt,
-        avatar: <ThreadAvatar>O</ThreadAvatar>,
-      },
-      {
-        listKey: `common-social:${clubThread.id}`,
-        id: clubThread.id,
-        href: `/messages/${clubThread.id}`,
-        title: 'Общение',
-        preview: sharedPreview,
-        timeLabel: sharedTimeLabel,
-        unreadCount: sharedUnreadCount,
-        lastActivityAt: sharedLastActivityAt,
-        avatar: <ThreadAvatar>O</ThreadAvatar>,
-      },
-      {
-        listKey: `common-important:${clubThread.id}`,
-        id: clubThread.id,
-        href: `/messages/${clubThread.id}`,
-        title: 'Важная информация',
-        preview: sharedPreview,
-        timeLabel: sharedTimeLabel,
-        unreadCount: sharedUnreadCount,
-        lastActivityAt: sharedLastActivityAt,
-        avatar: <ThreadAvatar>!</ThreadAvatar>,
-      },
-    ] satisfies MessageThreadListItem[]
-  }, [clubThread, currentUserId, unreadCountsByThread])
+        if (!thread) {
+          return null
+        }
+
+        return {
+          listKey: `common:${channelKey}:${thread.id}`,
+          id: thread.id,
+          href: `/messages/${thread.id}`,
+          title: COMMON_CHANNEL_TITLE_BY_KEY[channelKey],
+          preview: getLastMessagePreview(thread.lastMessage, 'Пока нет сообщений', {
+            currentUserId,
+            prefixSender: true,
+          }),
+          timeLabel: thread.lastMessage?.createdAt
+            ? formatChatThreadActivityLabel(thread.lastMessage.createdAt)
+            : '',
+          unreadCount: unreadCountsByThread[thread.id] ?? 0,
+          lastActivityAt: new Date(thread.lastMessage?.createdAt ?? thread.created_at).getTime(),
+          avatar: <ThreadAvatar>{channelKey === 'important_info' ? '!' : 'O'}</ThreadAvatar>,
+        } satisfies MessageThreadListItem
+      })
+      .filter((item): item is MessageThreadListItem => item !== null)
+  }, [commonThreads, currentUserId, unreadCountsByThread])
 
   const coachChatItem = useMemo(() => {
     if (!coachThread) {
@@ -496,22 +474,24 @@ export default function MessagesPage() {
   const knownThreadIdsSignature = useMemo(
     () =>
       [
-        ...(clubThread ? [clubThread.id] : []),
+        ...commonThreads.map((thread) => thread.id),
         ...(coachThread ? [coachThread.id] : []),
         ...directThreads.map((thread) => thread.id),
       ].join(','),
-    [clubThread?.id, coachThread?.id, directThreads]
+    [commonThreads, coachThread, directThreads]
   )
 
   useEffect(() => {
     currentThreadLastMessageIdByThreadIdRef.current = {
-      ...(clubThread ? { [clubThread.id]: clubThread.lastMessage?.id ?? null } : {}),
+      ...Object.fromEntries(
+        commonThreads.map((thread) => [thread.id, thread.lastMessage?.id ?? null] as const)
+      ),
       ...(coachThread ? { [coachThread.id]: coachThread.lastMessage?.id ?? null } : {}),
       ...Object.fromEntries(
         directThreads.map((thread) => [thread.id, thread.lastMessage?.id ?? null] as const)
       ),
     }
-  }, [clubThread, coachThread, directThreads])
+  }, [commonThreads, coachThread, directThreads])
 
   useEffect(() => {
     return () => {
@@ -539,7 +519,7 @@ export default function MessagesPage() {
           logMessagesListLoad('stale_rendered_immediately', { cacheAgeMs })
 
           setCurrentUserId(peek.data.currentUserId)
-          setClubThread(peek.data.clubThread)
+          setCommonThreads(peek.data.commonThreads)
           setCoachThread(peek.data.coachThread)
           setDirectThreads(peek.data.directThreads)
           setStudents(peek.data.students)
@@ -556,7 +536,7 @@ export default function MessagesPage() {
             }
 
             setCurrentUserId(fresh.currentUserId)
-            setClubThread(fresh.clubThread)
+            setCommonThreads(fresh.commonThreads)
             setCoachThread(fresh.coachThread)
             setDirectThreads(fresh.directThreads)
             setStudents(fresh.students)
@@ -580,7 +560,7 @@ export default function MessagesPage() {
 
         if (prefetchedData) {
           setCurrentUserId(prefetchedData.currentUserId)
-          setClubThread(prefetchedData.clubThread)
+          setCommonThreads(prefetchedData.commonThreads)
           setCoachThread(prefetchedData.coachThread)
           setDirectThreads(prefetchedData.directThreads)
           setStudents(prefetchedData.students)
@@ -602,8 +582,8 @@ export default function MessagesPage() {
 
         setCurrentUserId(user.id)
 
-        const [clubThread, unreadCounts] = await Promise.all([
-          getClubThread(),
+        const [nextCommonThreads, unreadCounts] = await Promise.all([
+          getCommonChannels(),
           getUnreadCountsByThread(),
         ])
 
@@ -611,7 +591,7 @@ export default function MessagesPage() {
           return
         }
 
-        setClubThread(clubThread)
+        setCommonThreads(nextCommonThreads)
         applyUnreadCountsByThread(unreadCounts)
 
         let seededCoachThread: DirectCoachThreadItem | null = null
@@ -645,7 +625,7 @@ export default function MessagesPage() {
 
         seedMessagesListCache({
           currentUserId: user.id,
-          clubThread,
+          commonThreads: nextCommonThreads,
           coachThread: seededCoachThread,
           directThreads: seededDirectThreads,
           students: seededStudents,
@@ -933,7 +913,7 @@ export default function MessagesPage() {
         <div className="space-y-3">
           <MessagesSection
             title="Общие чаты"
-            description="Новый разделенный вход в текущий общий чат клуба."
+            description="Отдельные общие каналы клуба для отчетов, общения и важной информации."
           >
             {commonChatItems.length > 0 ? (
               <div className="space-y-3">
@@ -947,7 +927,7 @@ export default function MessagesPage() {
               </div>
             ) : (
               <section className="app-card rounded-2xl border p-4 shadow-sm">
-                <p className="app-text-secondary text-sm">Общий чат пока недоступен.</p>
+                <p className="app-text-secondary text-sm">Общие каналы пока недоступны.</p>
               </section>
             )}
           </MessagesSection>

@@ -6,6 +6,7 @@ import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
+import { getCommonChannelTitle } from '@/lib/chat/commonChannels'
 import {
   dispatchChatUnreadUpdated,
   markThreadAsRead,
@@ -83,7 +84,7 @@ export default function MessageThreadPage() {
         }
 
         if (thread.type === 'club') {
-          setThreadTitle('Общий чат')
+          setThreadTitle(getCommonChannelTitle(thread.channel_key) ?? thread.title ?? 'Общий чат')
           setError('')
           return
         }

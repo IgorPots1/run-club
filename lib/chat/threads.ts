@@ -1,3 +1,4 @@
+import { COMMON_CHANNEL_KEYS, type CommonChannelKey } from './commonChannels'
 import { COACH_USER_ID } from '../constants'
 import { getProfileDisplayName } from '../profiles'
 import { supabase } from '../supabase'
@@ -5,6 +6,7 @@ import { supabase } from '../supabase'
 type ChatThreadRow = {
   id: string
   type: 'club' | 'direct_coach'
+  channel_key: CommonChannelKey | null
   title: string | null
   owner_user_id: string | null
   coach_user_id: string | null
@@ -45,6 +47,8 @@ export type ChatThreadLastMessage = {
 }
 
 export type ClubThread = ChatThreadRow & {
+  type: 'club'
+  channel_key: CommonChannelKey
   lastMessage: ChatThreadLastMessage | null
 }
 
@@ -88,7 +92,7 @@ async function getOrCreateDirectCoachThreadViaApi(studentUserId: string): Promis
 async function findDirectCoachThread(ownerUserId: string) {
   const { data, error } = await supabase
     .from('chat_threads')
-    .select('id, type, title, owner_user_id, coach_user_id, created_at')
+    .select('id, type, channel_key, title, owner_user_id, coach_user_id, created_at')
     .eq('type', 'direct_coach')
     .eq('owner_user_id', ownerUserId)
     .eq('coach_user_id', COACH_USER_ID)
@@ -267,26 +271,32 @@ export async function getDirectCoachThread(ownerUserId: string): Promise<DirectC
   return threadWithLastMessage ?? null
 }
 
-export async function getClubThread(): Promise<ClubThread> {
+export async function getCommonChannels(): Promise<ClubThread[]> {
   const { data, error } = await supabase
     .from('chat_threads')
-    .select('id, type, title, owner_user_id, coach_user_id, created_at')
+    .select('id, type, channel_key, title, owner_user_id, coach_user_id, created_at')
     .eq('type', 'club')
-    .single()
+    .in('channel_key', [...COMMON_CHANNEL_KEYS])
 
   if (error) {
     throw error
   }
 
-  const [threadWithLastMessage] = await withLastMessages([data as ChatThreadRow])
+  const threadRows = ((data as ChatThreadRow[] | null) ?? []).filter(
+    (thread): thread is ClubThread => thread.type === 'club' && thread.channel_key !== null
+  )
+  const threadRowsWithLastMessages = await withLastMessages(threadRows)
 
-  return threadWithLastMessage as ClubThread
+  return threadRowsWithLastMessages.sort(
+    (left, right) =>
+      COMMON_CHANNEL_KEYS.indexOf(left.channel_key) - COMMON_CHANNEL_KEYS.indexOf(right.channel_key)
+  )
 }
 
 export async function getChatThreadById(threadId: string): Promise<ChatThreadRow | null> {
   const { data, error } = await supabase
     .from('chat_threads')
-    .select('id, type, title, owner_user_id, coach_user_id, created_at')
+    .select('id, type, channel_key, title, owner_user_id, coach_user_id, created_at')
     .eq('id', threadId)
     .maybeSingle()
 
@@ -329,7 +339,7 @@ export async function getOrCreateCoachDirectThreadForStudent(studentUserId: stri
 export async function getCoachDirectThreads(): Promise<CoachDirectThreadItem[]> {
   const { data: threads, error: threadsError } = await supabase
     .from('chat_threads')
-    .select('id, type, title, owner_user_id, coach_user_id, created_at')
+    .select('id, type, channel_key, title, owner_user_id, coach_user_id, created_at')
     .eq('type', 'direct_coach')
     .eq('coach_user_id', COACH_USER_ID)
 

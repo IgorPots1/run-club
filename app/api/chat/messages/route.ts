@@ -1,5 +1,6 @@
 import { after, NextResponse } from 'next/server'
 import { createAppEvents } from '@/lib/events/createAppEvent'
+import { getCommonChannelTitle, type CommonChannelKey } from '@/lib/chat/commonChannels'
 import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -44,6 +45,7 @@ type InsertedChatMessageRow = {
 type ChatThreadRow = {
   id: string
   type: 'club' | 'direct_coach'
+  channel_key: CommonChannelKey | null
   owner_user_id: string | null
   coach_user_id: string | null
 }
@@ -63,6 +65,7 @@ type PushSubscriptionRow = {
 
 type ChatDeliveryContext = {
   threadType: 'club' | 'direct_coach'
+  threadChannelKey: CommonChannelKey | null
   recipientUserIds: string[]
   senderName: string
   messagePreview: string
@@ -391,13 +394,17 @@ function getMessagePreview(message: Pick<InsertedChatMessageRow, 'text' | 'messa
   return ''
 }
 
-function getChatNotificationContent(context: Pick<ChatDeliveryContext, 'threadType' | 'senderName' | 'messagePreview'>): ChatNotificationContent {
+function getChatNotificationContent(
+  context: Pick<ChatDeliveryContext, 'threadType' | 'threadChannelKey' | 'senderName' | 'messagePreview'>
+): ChatNotificationContent {
   const senderName = context.senderName || 'Run Club'
   const messagePreview = context.messagePreview.trim()
 
   if (context.threadType === 'club') {
+    const channelTitle = getCommonChannelTitle(context.threadChannelKey) ?? 'Клуб'
+
     return {
-      title: 'Клуб',
+      title: channelTitle,
       body: messagePreview ? `${senderName}: ${messagePreview}` : 'Новое сообщение в клубе',
     }
   }
@@ -418,7 +425,7 @@ async function loadChatDeliveryContext(
 
   const { data: thread, error: threadError } = await supabaseAdmin
     .from('chat_threads')
-    .select('id, type, owner_user_id, coach_user_id')
+    .select('id, type, channel_key, owner_user_id, coach_user_id')
     .eq('id', message.thread_id)
     .maybeSingle()
 
@@ -464,6 +471,7 @@ async function loadChatDeliveryContext(
 
   return {
     threadType: chatThread.type,
+    threadChannelKey: chatThread.channel_key,
     recipientUserIds: uniqueRecipientUserIds,
     senderName: getProfileDisplayName((senderProfile as SenderProfileRow | null) ?? null, 'Run Club'),
     messagePreview: getMessagePreview(message),
