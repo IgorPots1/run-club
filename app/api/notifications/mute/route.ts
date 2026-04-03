@@ -38,6 +38,7 @@ export async function POST(request: Request) {
         user_id: user.id,
         thread_id: threadId,
         muted: true,
+        push_level: 'mute',
       },
       {
         onConflict: 'user_id,thread_id',

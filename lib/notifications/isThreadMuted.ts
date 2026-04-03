@@ -1,16 +1,13 @@
 import 'server-only'
 
+import { isThreadPushMuted, type ThreadPushLevelRow } from '@/lib/notifications/push'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-
-type UserNotificationSettingRow = {
-  muted: boolean
-}
 
 export async function isThreadMuted(userId: string, threadId: string): Promise<boolean> {
   const supabaseAdmin = createSupabaseAdminClient()
   const { data, error } = await supabaseAdmin
     .from('user_notification_settings')
-    .select('muted')
+    .select('muted, push_level')
     .eq('user_id', userId)
     .eq('thread_id', threadId)
     .maybeSingle()
@@ -19,5 +16,5 @@ export async function isThreadMuted(userId: string, threadId: string): Promise<b
     throw error
   }
 
-  return ((data as UserNotificationSettingRow | null) ?? null)?.muted ?? false
+  return isThreadPushMuted((data as ThreadPushLevelRow | null) ?? null)
 }

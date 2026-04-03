@@ -1,6 +1,7 @@
 import { after, NextResponse } from 'next/server'
 import { createAppEvents } from '@/lib/events/createAppEvent'
 import { getCommonChannelTitle, type CommonChannelKey } from '@/lib/chat/commonChannels'
+import { isThreadPushMuted, type ThreadPushLevelRow } from '@/lib/notifications/push'
 import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 import { sendWebPush } from '@/lib/push/sendWebPush'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -111,7 +112,7 @@ type PushDeliveryLogRow = {
 
 type UserNotificationSettingRow = {
   user_id: string
-}
+} & ThreadPushLevelRow
 
 const PUSH_DELIVERY_THROTTLE_WINDOW_MS = 15_000
 const CHAT_MEDIA_BUCKET = 'chat-media'
@@ -565,9 +566,9 @@ async function loadMutedRecipientUserIds(
 
   const mutedRecipientsQuery = supabaseAdmin
     .from('user_notification_settings')
-    .select('user_id')
+    .select('user_id, muted, push_level')
     .eq('thread_id', threadId)
-    .eq('muted', true)
+    .or('muted.eq.true,push_level.eq.mute')
 
   if (recipientUserIds.length === 1) {
     mutedRecipientsQuery.eq('user_id', recipientUserIds[0]!)
@@ -582,7 +583,9 @@ async function loadMutedRecipientUserIds(
   }
 
   return new Set(
-    ((data as UserNotificationSettingRow[] | null) ?? []).map((row) => row.user_id)
+    ((data as UserNotificationSettingRow[] | null) ?? [])
+      .filter((row) => isThreadPushMuted(row))
+      .map((row) => row.user_id)
   )
 }
 
