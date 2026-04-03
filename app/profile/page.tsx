@@ -11,6 +11,12 @@ import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import XpGainToast from '@/components/XpGainToast'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { formatDistanceKm } from '@/lib/format'
+import {
+  DEFAULT_PUSH_PREFERENCES,
+  type PushPreferenceKey,
+  type PushPreferences,
+} from '@/lib/notifications/preferences'
+import { loadPushPreferences, updatePushPreferences } from '@/lib/notifications/settingsClient'
 import { getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import {
@@ -124,6 +130,49 @@ function Switch({ checked, onCheckedChange, disabled = false, ariaLabel, ariaDes
   )
 }
 
+type SettingsRowProps = {
+  title: string
+  description?: string
+  checked: boolean
+  disabled?: boolean
+  isBusy?: boolean
+  ariaLabel: string
+  ariaDescribedBy?: string
+  onCheckedChange: (checked: boolean) => void
+}
+
+function SettingsRow({
+  title,
+  description,
+  checked,
+  disabled = false,
+  isBusy = false,
+  ariaLabel,
+  ariaDescribedBy,
+  onCheckedChange,
+}: SettingsRowProps) {
+  return (
+    <div className={`flex items-start justify-between gap-4 rounded-2xl py-1 ${disabled ? 'opacity-70' : ''}`}>
+      <div className="min-w-0">
+        <p className="app-text-primary text-sm font-medium">{title}</p>
+        {description ? (
+          <p id={ariaDescribedBy} className="app-text-secondary mt-1 text-xs">
+            {description}
+          </p>
+        ) : null}
+        {isBusy ? <p className="app-text-secondary mt-1 text-xs">Сохраняем...</p> : null}
+      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+        ariaLabel={ariaLabel}
+        ariaDescribedBy={ariaDescribedBy}
+      />
+    </div>
+  )
+}
+
 export default function ProfilePage() {
   return (
     <Suspense fallback={null}>
@@ -172,6 +221,10 @@ function ProfilePageContent() {
   const [notificationsSupported, setNotificationsSupported] = useState(false)
   const [isNotificationsEnabled, setNotificationsEnabled] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
+  const [loadingPushPreferences, setLoadingPushPreferences] = useState(true)
+  const [pushPreferences, setPushPreferences] = useState<PushPreferences>(DEFAULT_PUSH_PREFERENCES)
+  const [pushPreferencesError, setPushPreferencesError] = useState('')
+  const [updatingPushPreferenceKey, setUpdatingPushPreferenceKey] = useState<PushPreferenceKey | null>(null)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const hasShownStravaConnectedToastRef = useRef(false)
 
@@ -304,6 +357,28 @@ function ProfilePageContent() {
     }
   }, [])
 
+  const loadDeliveryPreferences = useCallback(async (isMounted = true) => {
+    setLoadingPushPreferences(true)
+
+    try {
+      const nextPreferences = await loadPushPreferences()
+
+      if (!isMounted) return
+
+      setPushPreferences(nextPreferences)
+      setPushPreferencesError('')
+    } catch {
+      if (!isMounted) return
+
+      setPushPreferences(DEFAULT_PUSH_PREFERENCES)
+      setPushPreferencesError('Не удалось загрузить настройки уведомлений')
+    } finally {
+      if (isMounted) {
+        setLoadingPushPreferences(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     let isMounted = true
 
@@ -367,6 +442,18 @@ function ProfilePageContent() {
       isMounted = false
     }
   }, [loadPushStatus, user])
+
+  useEffect(() => {
+    if (!user) return
+
+    let isMounted = true
+
+    void loadDeliveryPreferences(isMounted)
+
+    return () => {
+      isMounted = false
+    }
+  }, [loadDeliveryPreferences, user])
 
   useEffect(() => {
     const stravaStatus = searchParams.get('strava')
@@ -780,6 +867,38 @@ function ProfilePageContent() {
     }
   }
 
+  async function handleUpdatePushPreference(key: PushPreferenceKey, checked: boolean) {
+    if (loadingPushPreferences || updatingPushPreferenceKey) {
+      return
+    }
+
+    const previousPreferences = pushPreferences
+
+    if (previousPreferences[key] === checked) {
+      return
+    }
+
+    setUpdatingPushPreferenceKey(key)
+    setPushPreferencesError('')
+    setPushPreferences((currentPreferences) => ({
+      ...currentPreferences,
+      [key]: checked,
+    }))
+
+    try {
+      const updatedPreferences = await updatePushPreferences({
+        [key]: checked,
+      })
+
+      setPushPreferences(updatedPreferences)
+    } catch {
+      setPushPreferences(previousPreferences)
+      setPushPreferencesError('Не удалось обновить настройки уведомлений')
+    } finally {
+      setUpdatingPushPreferenceKey(null)
+    }
+  }
+
   async function handleLogout() {
     if (loggingOut) return
 
@@ -847,13 +966,65 @@ function ProfilePageContent() {
   const stravaReconnectRequired = stravaConnectionState === 'reconnect_required'
   const isNotificationsUnavailable = !notificationsSupported
   const isNotificationsToggleDisabled = isNotificationsUnavailable || loadingNotificationsStatus || updatingNotifications
-  const notificationsSubtitle = loadingNotificationsStatus
+  const deviceNotificationsSubtitle = loadingNotificationsStatus
     ? 'Проверяем статус уведомлений...'
     : isNotificationsUnavailable
       ? 'Уведомления недоступны на этом устройстве'
       : isNotificationsEnabled
-        ? 'Push-уведомления включены'
-        : 'Push-уведомления выключены'
+        ? 'Это устройство будет получать push-уведомления'
+        : 'Push-уведомления на этом устройстве выключены'
+  const areDeliveryPreferenceChildrenDisabled = !pushPreferences.push_enabled
+  const deliveryPreferenceSections: {
+    title: string
+    items: {
+      key: PushPreferenceKey
+      title: string
+      description?: string
+    }[]
+  }[] = [
+    {
+      title: 'Глобально',
+      items: [
+        {
+          key: 'push_enabled',
+          title: 'Все уведомления',
+          description: 'Полностью включает или выключает push-уведомления.',
+        },
+      ],
+    },
+    {
+      title: 'Чаты',
+      items: [
+        {
+          key: 'chat_enabled',
+          title: 'Сообщения',
+          description: 'Обычные сообщения в чатах Run Club.',
+        },
+        {
+          key: 'chat_important_enabled',
+          title: 'Важные сообщения',
+          description: 'Сообщения с повышенным приоритетом.',
+        },
+      ],
+    },
+    {
+      title: 'Активность',
+      items: [
+        {
+          key: 'run_like_enabled',
+          title: 'Лайки пробежек',
+        },
+        {
+          key: 'run_comment_enabled',
+          title: 'Комментарии к пробежкам',
+        },
+        {
+          key: 'challenge_completed_enabled',
+          title: 'Челленджи',
+        },
+      ],
+    },
+  ]
 
   if (profileDataLoading) {
     return (
@@ -1143,24 +1314,74 @@ function ProfilePageContent() {
             </button>
             {stravaSyncMessage ? <p className="app-text-secondary text-sm">{stravaSyncMessage}</p> : null}
           </div>
-          <div className="app-card mb-8 rounded-2xl border p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h2 className="app-text-primary text-lg font-semibold">Уведомления</h2>
-                <p id="push-notifications-subtitle" className="app-text-secondary mt-1 text-sm">
-                  {notificationsSubtitle}
-                </p>
-                {notificationsError ? <p className="mt-2 text-xs text-red-600">{notificationsError}</p> : null}
-              </div>
-              <Switch
+          <div className="app-card mb-8 space-y-4 rounded-2xl border p-4 shadow-sm">
+            <div>
+              <h2 className="app-text-primary text-lg font-semibold">Уведомления</h2>
+              <p className="app-text-secondary mt-1 text-sm">
+                Отдельно настройте это устройство и то, какие push-уведомления вы хотите получать.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-black/[0.06] p-4 dark:border-white/[0.08]">
+              <SettingsRow
+                title="Push-уведомления на этом устройстве"
+                description={deviceNotificationsSubtitle}
                 checked={isNotificationsEnabled}
+                disabled={isNotificationsToggleDisabled}
+                isBusy={updatingNotifications}
+                ariaLabel="Переключить push-уведомления на этом устройстве"
+                ariaDescribedBy="push-device-subtitle"
                 onCheckedChange={(checked) => {
                   void handleToggleNotifications(checked)
                 }}
-                disabled={isNotificationsToggleDisabled}
-                ariaLabel="Переключить push-уведомления"
-                ariaDescribedBy="push-notifications-subtitle"
               />
+              {notificationsError ? <p className="mt-2 text-xs text-red-600">{notificationsError}</p> : null}
+            </div>
+
+            <div className="rounded-2xl border border-black/[0.06] p-4 dark:border-white/[0.08]">
+              <div className="mb-3">
+                <h3 className="app-text-primary text-base font-semibold">Какие уведомления получать</h3>
+                <p className="app-text-secondary mt-1 text-sm">
+                  Эти настройки управляют реальной доставкой push-уведомлений.
+                </p>
+              </div>
+              {loadingPushPreferences ? (
+                <p className="app-text-secondary text-sm">Загружаем настройки...</p>
+              ) : (
+                <div className="space-y-4">
+                  {deliveryPreferenceSections.map((section) => (
+                    <div key={section.title}>
+                      <p className="app-text-secondary mb-2 text-xs font-medium uppercase tracking-[0.08em]">
+                        {section.title}
+                      </p>
+                      <div className="space-y-2">
+                        {section.items.map((item) => {
+                          const isMasterToggle = item.key === 'push_enabled'
+                          const isDisabled = updatingPushPreferenceKey !== null || (!isMasterToggle && areDeliveryPreferenceChildrenDisabled)
+                          const descriptionId = `push-preference-${item.key}`
+
+                          return (
+                            <SettingsRow
+                              key={item.key}
+                              title={item.title}
+                              description={item.description}
+                              checked={pushPreferences[item.key]}
+                              disabled={isDisabled}
+                              isBusy={updatingPushPreferenceKey === item.key}
+                              ariaLabel={item.title}
+                              ariaDescribedBy={item.description ? descriptionId : undefined}
+                              onCheckedChange={(checked) => {
+                                void handleUpdatePushPreference(item.key, checked)
+                              }}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pushPreferencesError ? <p className="mt-3 text-xs text-red-600">{pushPreferencesError}</p> : null}
             </div>
           </div>
           <div className="app-card mt-6 overflow-hidden rounded-2xl border p-4 shadow-sm">

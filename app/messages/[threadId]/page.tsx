@@ -14,7 +14,11 @@ import {
 import { updatePrefetchedMessagesListThreadUnreadCount } from '@/lib/chat/messagesListPrefetch'
 import { getChatThreadById } from '@/lib/chat/threads'
 import { COACH_USER_ID } from '@/lib/constants'
-import { loadThreadMuteState, toggleThreadMute } from '@/lib/notifications/toggleThreadMute'
+import {
+  loadThreadPushSettings,
+  updateThreadPushSettings,
+} from '@/lib/notifications/settingsClient'
+import type { PushLevel } from '@/lib/notifications/push'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
@@ -42,13 +46,18 @@ export default function MessageThreadPage() {
   const [error, setError] = useState('')
   const [isAnnouncementChannel, setIsAnnouncementChannel] = useState(false)
   const [isReadOnlyAnnouncement, setIsReadOnlyAnnouncement] = useState(false)
-  const [threadMuted, setThreadMuted] = useState(false)
+  const [threadPushLevel, setThreadPushLevel] = useState<PushLevel>('all')
   const [isLoadingThreadMuteState, setIsLoadingThreadMuteState] = useState(false)
   const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
   const isThreadLayoutReady = !loading
   const readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
+  const threadPushOptionLabels: Record<PushLevel, string> = {
+    all: 'Все сообщения',
+    important_only: 'Только важные',
+    mute: 'Без уведомлений',
+  }
 
   useEffect(() => {
     return () => {
@@ -156,7 +165,7 @@ export default function MessageThreadPage() {
 
   useEffect(() => {
     if (!threadId || !currentUserId) {
-      setThreadMuted(false)
+      setThreadPushLevel('all')
       setIsLoadingThreadMuteState(false)
       setThreadMuteError('')
       return
@@ -166,20 +175,20 @@ export default function MessageThreadPage() {
     setIsLoadingThreadMuteState(true)
     setThreadMuteError('')
 
-    void loadThreadMuteState(threadId)
-      .then((muted) => {
+    void loadThreadPushSettings(threadId)
+      .then((settings) => {
         if (!isMounted) {
           return
         }
 
-        setThreadMuted(muted)
+        setThreadPushLevel(settings.push_level)
       })
       .catch(() => {
         if (!isMounted) {
           return
         }
 
-        setThreadMuted(false)
+        setThreadPushLevel('all')
         setThreadMuteError('Не удалось загрузить настройки уведомлений')
       })
       .finally(() => {
@@ -219,29 +228,27 @@ export default function MessageThreadPage() {
     }
   }, [isHeaderMenuOpen])
 
-  const handleToggleThreadMute = useCallback(async () => {
-    if (!threadId || isUpdatingThreadMute) {
+  const handleUpdateThreadPushLevel = useCallback(async (nextPushLevel: PushLevel) => {
+    if (!threadId || isUpdatingThreadMute || nextPushLevel === threadPushLevel) {
       return
     }
 
-    const previousMuted = threadMuted
-    const nextMuted = !threadMuted
-
-    setThreadMuted(nextMuted)
+    const previousPushLevel = threadPushLevel
+    setThreadPushLevel(nextPushLevel)
     setIsUpdatingThreadMute(true)
     setThreadMuteError('')
-    setIsHeaderMenuOpen(false)
 
     try {
-      const confirmedMuted = await toggleThreadMute(threadId, nextMuted)
-      setThreadMuted(confirmedMuted)
+      const updatedSettings = await updateThreadPushSettings(threadId, nextPushLevel)
+      setThreadPushLevel(updatedSettings.push_level)
+      setIsHeaderMenuOpen(false)
     } catch {
-      setThreadMuted(previousMuted)
+      setThreadPushLevel(previousPushLevel)
       setThreadMuteError('Не удалось обновить уведомления')
     } finally {
       setIsUpdatingThreadMute(false)
     }
-  }, [isUpdatingThreadMute, threadId, threadMuted])
+  }, [isUpdatingThreadMute, threadId, threadPushLevel])
 
   useEffect(() => {
     if (loading || error || !currentUserId || !threadId) {
@@ -376,20 +383,37 @@ export default function MessageThreadPage() {
       </button>
       {isHeaderMenuOpen ? (
         <div
-          className="app-card absolute right-0 top-full z-40 mt-1 min-w-[220px] rounded-2xl border p-1 shadow-lg"
+          className="app-card absolute right-0 top-full z-40 mt-1 min-w-[240px] rounded-2xl border p-1 shadow-lg"
           role="menu"
         >
-          <button
-            type="button"
-            onClick={() => {
-              void handleToggleThreadMute()
-            }}
-            disabled={isUpdatingThreadMute}
-            className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60"
-            role="menuitem"
-          >
-            {threadMuted ? 'Включить уведомления' : 'Выключить уведомления'}
-          </button>
+          <div className="px-3 pb-2 pt-2">
+            <p className="app-text-primary text-sm font-medium">Уведомления в чате</p>
+            <p className="app-text-secondary mt-1 text-xs">Сейчас: {threadPushOptionLabels[threadPushLevel]}</p>
+          </div>
+          {(['all', 'important_only', 'mute'] as PushLevel[]).map((pushLevelOption) => {
+            const isSelected = threadPushLevel === pushLevelOption
+
+            return (
+              <button
+                key={pushLevelOption}
+                type="button"
+                onClick={() => {
+                  void handleUpdateThreadPushLevel(pushLevelOption)
+                }}
+                disabled={isUpdatingThreadMute}
+                className={`flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isSelected ? 'bg-black/[0.05] dark:bg-white/[0.08]' : ''
+                }`}
+                role="menuitemradio"
+                aria-checked={isSelected}
+              >
+                <span className={pushLevelOption === 'important_only' ? 'font-medium' : undefined}>
+                  {threadPushOptionLabels[pushLevelOption]}
+                </span>
+                <span className="app-text-secondary text-xs">{isSelected ? 'Выбрано' : ''}</span>
+              </button>
+            )
+          })}
         </div>
       ) : null}
     </div>

@@ -20,6 +20,15 @@ export type PushPreferences = {
 
 export type PushPreferencesUpdate = Partial<PushPreferences>
 
+export const DEFAULT_PUSH_PREFERENCES: PushPreferences = {
+  push_enabled: true,
+  chat_enabled: true,
+  chat_important_enabled: true,
+  run_like_enabled: false,
+  run_comment_enabled: true,
+  challenge_completed_enabled: true,
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
