@@ -107,6 +107,16 @@ function getComposerAttachmentDebugCounts(images: PendingComposerImage[]) {
   }
 }
 
+type ThreadOpenDebugSource =
+  | 'initial_load'
+  | 'realtime_insert'
+  | 'realtime_update'
+  | 'refresh'
+  | 'fallback'
+  | 'unknown'
+
+const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
+
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'panel_mounted',
   'send_start',
@@ -135,10 +145,57 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'attachment_img_load_error',
   'attachment_layout_shift',
   'thread_open_image_load_anchor_skipped',
+  'thread_open_start',
+  'thread_open_initial_messages_loaded',
+  'thread_open_messages_set',
+  'thread_open_messages_replaced',
+  'thread_open_messages_merged',
+  'thread_open_realtime_subscription_ready',
+  'thread_open_realtime_insert_received',
+  'thread_open_realtime_update_received',
+  'thread_open_post_mount_refresh_start',
+  'thread_open_post_mount_refresh_success',
+  'thread_open_image_message_rehydrated',
   'visual_complete',
   'send_timing_summary',
   'attachment_timing_summary',
 ])
+
+function summarizeThreadOpenMessages(messages: ChatMessageItem[]) {
+  return {
+    messageCount: messages.length,
+    imageMessageCount: messages.filter((message) => message.messageType === 'image').length,
+    attachmentCount: messages.reduce((total, message) => total + message.attachments.length, 0),
+  }
+}
+
+function buildThreadOpenMessageChangeStats(previousMessages: ChatMessageItem[], nextMessages: ChatMessageItem[]) {
+  const previousIds = new Set(previousMessages.map((message) => message.id))
+  const nextIds = new Set(nextMessages.map((message) => message.id))
+  const sameIdsCount = [...previousIds].filter((id) => nextIds.has(id)).length
+  const changedIdsCount = [...new Set([...previousIds, ...nextIds])].length - sameIdsCount
+
+  return {
+    previousCount: previousMessages.length,
+    nextCount: nextMessages.length,
+    sameIdsCount,
+    changedIdsCount,
+    idsChangedSignificantly: changedIdsCount > sameIdsCount,
+  }
+}
+
+function hasRemoteImageUrls(message: ChatMessageItem) {
+  return message.attachments.some(
+    (attachment) =>
+      Boolean(attachment.publicUrl?.trim()) && !isLocalOrTransientImageUrl(attachment.publicUrl)
+  )
+}
+
+function getAttachmentMaterialSignature(message: ChatMessageItem) {
+  return message.attachments
+    .map((attachment) => `${attachment.id}:${attachment.sortOrder}:${attachment.publicUrl ?? ''}`)
+    .join('|')
+}
 
 function formatChatSendDebugValue(value: unknown): string | null {
   if (value === null || value === undefined || value === '') {
@@ -3235,6 +3292,10 @@ export default function ChatSection({
   const [recordingTime, setRecordingTime] = useState(0)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const threadOpenDebugWindowRef = useRef<{ threadId: string | null; expiresAt: number }>({
+    threadId: null,
+    expiresAt: 0,
+  })
   const [chatSendDebugEvents, setChatSendDebugEvents] = useState<ChatSendDebugEvent[]>(() =>
     CHAT_SEND_DEBUG
       ? getRecentChatSendDebugEvents().filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
@@ -3273,6 +3334,95 @@ export default function ChatSection({
       .slice(0, 20),
     [chatSendDebugEvents]
   )
+  const isThreadOpenDebugActive = useCallback((nextThreadId: string | null | undefined = threadId) => (
+    Boolean(nextThreadId) &&
+    threadOpenDebugWindowRef.current.threadId === (nextThreadId ?? null) &&
+    Date.now() < threadOpenDebugWindowRef.current.expiresAt
+  ), [threadId])
+  const logThreadOpenImageRehydrations = useCallback((
+    previousMessages: ChatMessageItem[],
+    nextMessages: ChatMessageItem[],
+    source: ThreadOpenDebugSource
+  ) => {
+    if (!threadId || !isThreadOpenDebugActive(threadId)) {
+      return
+    }
+
+    const previousById = new Map(previousMessages.map((message) => [message.id, message]))
+
+    nextMessages.forEach((nextMessage) => {
+      if (nextMessage.messageType !== 'image') {
+        return
+      }
+
+      const previousMessage = previousById.get(nextMessage.id)
+
+      if (!previousMessage || previousMessage.messageType !== 'image') {
+        return
+      }
+
+      const previousAttachmentCount = previousMessage.attachments.length
+      const nextAttachmentCount = nextMessage.attachments.length
+      const previousHasRemoteUrls = hasRemoteImageUrls(previousMessage)
+      const nextHasRemoteUrls = hasRemoteImageUrls(nextMessage)
+      const previousSignature = getAttachmentMaterialSignature(previousMessage)
+      const nextSignature = getAttachmentMaterialSignature(nextMessage)
+
+      if (
+        previousAttachmentCount === nextAttachmentCount &&
+        previousHasRemoteUrls === nextHasRemoteUrls &&
+        previousSignature === nextSignature
+      ) {
+        return
+      }
+
+      logChatSendDebug('thread_open_image_message_rehydrated', {
+        threadId,
+        messageId: nextMessage.id,
+        previousAttachmentCount,
+        nextAttachmentCount,
+        previousHasRemoteUrls,
+        nextHasRemoteUrls,
+        source,
+      })
+    })
+  }, [isThreadOpenDebugActive, threadId])
+  const logThreadOpenMessageMutation = useCallback((
+    previousMessages: ChatMessageItem[],
+    nextMessages: ChatMessageItem[],
+    options: {
+      source: ThreadOpenDebugSource
+      replacedWholeList: boolean
+      mergedIntoCurrentList: boolean
+    }
+  ) => {
+    if (!threadId || !isThreadOpenDebugActive(threadId)) {
+      return
+    }
+
+    const nextSummary = summarizeThreadOpenMessages(nextMessages)
+    const changeStats = buildThreadOpenMessageChangeStats(previousMessages, nextMessages)
+    const basePayload = {
+      threadId,
+      ...nextSummary,
+      source: options.source,
+      replacedWholeList: options.replacedWholeList,
+      mergedIntoCurrentList: options.mergedIntoCurrentList,
+      ...changeStats,
+    }
+
+    logChatSendDebug('thread_open_messages_set', basePayload)
+
+    if (options.replacedWholeList) {
+      logChatSendDebug('thread_open_messages_replaced', basePayload)
+    }
+
+    if (options.mergedIntoCurrentList) {
+      logChatSendDebug('thread_open_messages_merged', basePayload)
+    }
+
+    logThreadOpenImageRehydrations(previousMessages, nextMessages, options.source)
+  }, [isThreadOpenDebugActive, logThreadOpenImageRehydrations, threadId])
 
   const trimmedDraftMessage = draftMessage.trim()
   const editingMessage = editingMessageId
@@ -3412,15 +3562,42 @@ export default function ChatSection({
 
   const refreshMessages = useCallback(async () => {
     try {
+      if (threadId && isThreadOpenDebugActive(threadId)) {
+        logChatSendDebug('thread_open_post_mount_refresh_start', {
+          threadId,
+          ...summarizeThreadOpenMessages(messagesRef.current),
+          source: 'refresh',
+          replacedWholeList: true,
+          mergedIntoCurrentList: false,
+        })
+      }
+
       const recentMessages = await loadRecentChatMessages(50, threadId)
-      setMessages(applyPendingMediaTasksToMessages(keepLatestRenderedMessages(recentMessages)))
+      const nextMessages = applyPendingMediaTasksToMessages(keepLatestRenderedMessages(recentMessages))
+
+      if (threadId && isThreadOpenDebugActive(threadId)) {
+        logChatSendDebug('thread_open_post_mount_refresh_success', {
+          threadId,
+          ...summarizeThreadOpenMessages(nextMessages),
+          source: 'refresh',
+          replacedWholeList: true,
+          mergedIntoCurrentList: false,
+        })
+        logThreadOpenMessageMutation(messagesRef.current, nextMessages, {
+          source: 'refresh',
+          replacedWholeList: true,
+          mergedIntoCurrentList: false,
+        })
+      }
+
+      setMessages(nextMessages)
       setError('')
       return recentMessages
     } catch {
       setError('Не удалось загрузить чат')
       return null
     }
-  }, [applyPendingMediaTasksToMessages, keepLatestRenderedMessages, threadId])
+  }, [applyPendingMediaTasksToMessages, isThreadOpenDebugActive, keepLatestRenderedMessages, logThreadOpenMessageMutation, threadId])
 
   const releaseOptimisticClientMedia = useCallback((message: ChatMessageItem) => {
     revokeOptimisticVoiceObjectUrl(message)
@@ -3810,13 +3987,22 @@ export default function ChatSection({
     function syncPendingMediaTasksIntoMessages() {
       setMessages((currentMessages) => {
         const nextMessages = applyPendingMediaTasksToMessages(currentMessages)
+
+        if (nextMessages !== currentMessages) {
+          logThreadOpenMessageMutation(currentMessages, nextMessages, {
+            source: 'unknown',
+            replacedWholeList: false,
+            mergedIntoCurrentList: true,
+          })
+        }
+
         return nextMessages === currentMessages ? currentMessages : nextMessages
       })
     }
 
     syncPendingMediaTasksIntoMessages()
     return subscribePendingChatMediaTasks(syncPendingMediaTasksIntoMessages)
-  }, [applyPendingMediaTasksToMessages])
+  }, [applyPendingMediaTasksToMessages, logThreadOpenMessageMutation])
 
   useEffect(() => {
     if (!selectedReactionDetails) {
@@ -3836,6 +4022,18 @@ export default function ChatSection({
       ? getCachedRecentChatMessages(threadId)
       : null
 
+    threadOpenDebugWindowRef.current = {
+      threadId: threadId ?? null,
+      expiresAt: Date.now() + THREAD_OPEN_DEBUG_WINDOW_MS,
+    }
+    if (threadId) {
+      logChatSendDebug('thread_open_start', {
+        threadId,
+        source: 'initial_load',
+        ...summarizeThreadOpenMessages(messagesRef.current),
+      })
+    }
+
     deactivateInitialBottomLock('thread-reset')
     pendingImagesRef.current.forEach((image) => {
       revokeObjectUrlIfNeeded(image.previewUrl)
@@ -3848,8 +4046,15 @@ export default function ChatSection({
       releaseOptimisticClientMedia(message)
     })
     pendingDeletedMessageIdsRef.current.clear()
+    const previousMessages = messagesRef.current
     messagesRef.current = []
-    setMessages(applyPendingMediaTasksToMessages(cachedRecentMessages?.messages ?? []))
+    const nextMessages = applyPendingMediaTasksToMessages(cachedRecentMessages?.messages ?? [])
+    logThreadOpenMessageMutation(previousMessages, nextMessages, {
+      source: 'fallback',
+      replacedWholeList: true,
+      mergedIntoCurrentList: false,
+    })
+    setMessages(nextMessages)
     setPendingInitialScroll(false)
     setHasDeferredInitialSettle(Boolean(cachedRecentMessages?.messages.length))
     setPendingNewMessagesCount(0)
@@ -3862,7 +4067,7 @@ export default function ChatSection({
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
     setLoading(!cachedRecentMessages)
-  }, [applyPendingMediaTasksToMessages, currentUserId, deactivateInitialBottomLock, releaseOptimisticClientMedia, threadId])
+  }, [applyPendingMediaTasksToMessages, currentUserId, deactivateInitialBottomLock, logThreadOpenMessageMutation, releaseOptimisticClientMedia, threadId])
 
   useEffect(() => {
     if (!threadId || loading) {
@@ -4085,7 +4290,24 @@ export default function ChatSection({
           return
         }
 
-        setMessages(applyPendingMediaTasksToMessages(keepLatestRenderedMessages(initialMessages)))
+        const nextMessages = applyPendingMediaTasksToMessages(keepLatestRenderedMessages(initialMessages))
+
+        if (threadId && isThreadOpenDebugActive(threadId)) {
+          logChatSendDebug('thread_open_initial_messages_loaded', {
+            threadId,
+            ...summarizeThreadOpenMessages(nextMessages),
+            source: 'initial_load',
+            replacedWholeList: true,
+            mergedIntoCurrentList: false,
+          })
+          logThreadOpenMessageMutation(messagesRef.current, nextMessages, {
+            source: 'initial_load',
+            replacedWholeList: true,
+            mergedIntoCurrentList: false,
+          })
+        }
+
+        setMessages(nextMessages)
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         if (!hasCachedMessages) {
@@ -4108,7 +4330,7 @@ export default function ChatSection({
     return () => {
       isMounted = false
     }
-  }, [applyPendingMediaTasksToMessages, currentUserId, keepLatestRenderedMessages, threadId])
+  }, [applyPendingMediaTasksToMessages, currentUserId, isThreadOpenDebugActive, keepLatestRenderedMessages, logThreadOpenMessageMutation, threadId])
 
   useEffect(() => {
     if (loading || !isThreadLayoutReady || !hasDeferredInitialSettle) {
@@ -4560,6 +4782,16 @@ export default function ChatSection({
             return
           }
 
+          if (threadId && isThreadOpenDebugActive(threadId)) {
+            logChatSendDebug('thread_open_realtime_insert_received', {
+              threadId,
+              ...summarizeThreadOpenMessages(messagesRef.current),
+              source: 'realtime_insert',
+              replacedWholeList: false,
+              mergedIntoCurrentList: true,
+            })
+          }
+
           if (
             messagesRef.current.some((message) => message.id === nextMessageId) &&
             !optimisticServerMatch
@@ -4603,12 +4835,20 @@ export default function ChatSection({
               })
               releaseOptimisticClientMedia(optimisticVoiceMatch)
               setMessages((currentMessages) =>
-                keepLatestRenderedMessages(
-                  replaceMessageById(currentMessages, optimisticVoiceMatch.id, finalizedMessage),
-                  {
-                    preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-                  }
-                )
+                {
+                  const nextMessages = keepLatestRenderedMessages(
+                    replaceMessageById(currentMessages, optimisticVoiceMatch.id, finalizedMessage),
+                    {
+                      preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+                    }
+                  )
+                  logThreadOpenMessageMutation(currentMessages, nextMessages, {
+                    source: 'realtime_insert',
+                    replacedWholeList: false,
+                    mergedIntoCurrentList: true,
+                  })
+                  return nextMessages
+                }
               )
               return
             }
@@ -4655,12 +4895,20 @@ export default function ChatSection({
                 releaseOptimisticClientMedia(optimisticTextOrImageMatch)
               }
               setMessages((currentMessages) =>
-                keepLatestRenderedMessages(
-                  replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, mergedMessage),
-                  {
-                    preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-                  }
-                )
+                {
+                  const nextMessages = keepLatestRenderedMessages(
+                    replaceMessageById(currentMessages, optimisticTextOrImageMatch.id, mergedMessage),
+                    {
+                      preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+                    }
+                  )
+                  logThreadOpenMessageMutation(currentMessages, nextMessages, {
+                    source: 'realtime_insert',
+                    replacedWholeList: false,
+                    mergedIntoCurrentList: true,
+                  })
+                  return nextMessages
+                }
               )
               return
             }
@@ -4679,15 +4927,23 @@ export default function ChatSection({
             }
 
             setMessages((currentMessages) =>
-              keepLatestRenderedMessages(
-                insertMessageChronologically(
-                  currentMessages,
-                  mergeMessageWithPendingMediaTaskState(nextMessage)
-                ),
-                {
-                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-                }
-              )
+              {
+                const nextMessages = keepLatestRenderedMessages(
+                  insertMessageChronologically(
+                    currentMessages,
+                    mergeMessageWithPendingMediaTaskState(nextMessage)
+                  ),
+                  {
+                  preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+                  }
+                )
+                logThreadOpenMessageMutation(currentMessages, nextMessages, {
+                  source: 'realtime_insert',
+                  replacedWholeList: false,
+                  mergedIntoCurrentList: true,
+                })
+                return nextMessages
+              }
             )
           } catch (error) {
             logChatSendDebugError('reconciliation_failure', {
@@ -4714,12 +4970,30 @@ export default function ChatSection({
             return
           }
 
+          if (threadId && isThreadOpenDebugActive(threadId)) {
+            logChatSendDebug('thread_open_realtime_update_received', {
+              threadId,
+              ...summarizeThreadOpenMessages(messagesRef.current),
+              source: 'realtime_update',
+              replacedWholeList: false,
+              mergedIntoCurrentList: true,
+            })
+          }
+
           try {
             const nextMessage = await loadChatMessageItem(nextMessageId, threadId)
 
             if (!nextMessage) {
               pendingDeletedMessageIdsRef.current.delete(nextMessageId)
-              setMessages((currentMessages) => removeMessageById(currentMessages, nextMessageId))
+              setMessages((currentMessages) => {
+                const nextMessages = removeMessageById(currentMessages, nextMessageId)
+                logThreadOpenMessageMutation(currentMessages, nextMessages, {
+                  source: 'realtime_update',
+                  replacedWholeList: false,
+                  mergedIntoCurrentList: true,
+                })
+                return nextMessages
+              })
               return
             }
 
@@ -4734,19 +5008,41 @@ export default function ChatSection({
               : nextMessage
 
             setMessages((currentMessages) =>
-              keepLatestRenderedMessages(
-                upsertMessageById(currentMessages, mergeMessageWithPendingMediaTaskState(mergedMessage)),
-                {
-                preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
-                }
-              )
+              {
+                const nextMessages = keepLatestRenderedMessages(
+                  upsertMessageById(currentMessages, mergeMessageWithPendingMediaTaskState(mergedMessage)),
+                  {
+                  preserveExpandedHistory: currentMessages.length > MAX_RENDERED_CHAT_MESSAGES,
+                  }
+                )
+                logThreadOpenMessageMutation(currentMessages, nextMessages, {
+                  source: 'realtime_update',
+                  replacedWholeList: false,
+                  mergedIntoCurrentList: true,
+                })
+                return nextMessages
+              }
             )
           } catch {
             // Keep realtime additive and non-blocking if enrichment fails.
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (
+          status === 'SUBSCRIBED' &&
+          threadId &&
+          isThreadOpenDebugActive(threadId)
+        ) {
+          logChatSendDebug('thread_open_realtime_subscription_ready', {
+            threadId,
+            ...summarizeThreadOpenMessages(messagesRef.current),
+            source: 'unknown',
+            replacedWholeList: false,
+            mergedIntoCurrentList: false,
+          })
+        }
+      })
 
     return () => {
       void supabase.removeChannel(channel)
@@ -4759,6 +5055,8 @@ export default function ChatSection({
     loading,
     refreshMessages,
     releaseOptimisticClientMedia,
+    logThreadOpenMessageMutation,
+    isThreadOpenDebugActive,
     threadId,
   ])
 
