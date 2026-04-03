@@ -147,7 +147,6 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'attachment_img_load_success',
   'attachment_img_load_error',
   'attachment_layout_shift',
-  'fallback_skipped_due_to_existing_state',
   'thread_open_image_load_anchor_skipped',
   'thread_open_start',
   'thread_open_initial_messages_loaded',
@@ -203,6 +202,23 @@ function getAttachmentMaterialSignature(message: ChatMessageItem) {
     .join('|')
 }
 
+function getThreadOpenMessageEquivalenceSignature(message: ChatMessageItem) {
+  return [
+    message.id,
+    message.messageType,
+    message.createdAt,
+    message.editedAt ?? '',
+    message.isDeleted ? 'deleted' : 'active',
+    message.imageUrl ?? '',
+    message.mediaUrl ?? '',
+    message.replyToId ?? '',
+    getAttachmentMaterialSignature(message),
+    message.reactions
+      .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.userIds.join(',')}`)
+      .join('|'),
+  ].join('::')
+}
+
 function areThreadOpenMessageListsEquivalent(
   currentMessages: ChatMessageItem[],
   nextMessages: ChatMessageItem[]
@@ -212,7 +228,8 @@ function areThreadOpenMessageListsEquivalent(
   }
 
   return currentMessages.every((message, index) => (
-    message.id === nextMessages[index]?.id
+    getThreadOpenMessageEquivalenceSignature(message) ===
+      getThreadOpenMessageEquivalenceSignature(nextMessages[index]!)
   ))
 }
 
@@ -701,7 +718,7 @@ function isLocalOrTransientImageUrl(url: string | null | undefined): boolean {
 }
 
 type AttachmentDebugSourceType = 'local_preview' | 'remote_public_url' | 'placeholder' | 'unknown'
-type AttachmentDebugVisualState = 'preview' | 'pending' | 'idle' | 'loading_remote' | 'final' | 'error' | 'blank'
+type AttachmentDebugVisualState = 'preview' | 'pending' | 'loading_remote' | 'final' | 'error' | 'blank'
 type AttachmentDebugAttachmentState = NonNullable<ChatMessageItem['optimisticAttachmentStates']>[number]
 
 function getAttachmentDebugSourceType(url: string | null | undefined): AttachmentDebugSourceType {
@@ -721,13 +738,11 @@ function getAttachmentDebugVisualState({
   attachmentState,
   previewFailedToLoad,
   hasLoadedCurrentSource,
-  shouldShowRemoteLoadingState = false,
 }: {
   sourceType: AttachmentDebugSourceType
   attachmentState: AttachmentDebugAttachmentState
   previewFailedToLoad: boolean
   hasLoadedCurrentSource: boolean
-  shouldShowRemoteLoadingState?: boolean
 }): AttachmentDebugVisualState {
   if (previewFailedToLoad || attachmentState === 'failed') {
     return 'error'
@@ -743,7 +758,7 @@ function getAttachmentDebugVisualState({
 
   if (sourceType === 'remote_public_url') {
     if (!hasLoadedCurrentSource) {
-      return shouldShowRemoteLoadingState ? 'loading_remote' : 'idle'
+      return 'loading_remote'
     }
 
     if (attachmentState === 'pending' || attachmentState === 'uploading' || attachmentState === 'uploaded') {
@@ -915,6 +930,7 @@ function ChatImageAttachmentTile({
   const latestPayloadRef = useRef<ReturnType<typeof buildAttachmentDebugPayload> | null>(null)
   const previousSourceUrlRef = useRef<string | null>(null)
   const previousVisualStateRef = useRef<AttachmentDebugVisualState | null>(null)
+  const loadStartedSourceUrlRef = useRef<string | null>(null)
   const loadSucceededSourceUrlRef = useRef<string | null>(null)
   const notifiedImageLoadSourceUrlRef = useRef<string | null>(null)
   const loggedCachedLoadReuseKeyRef = useRef<string | null>(null)
@@ -926,29 +942,18 @@ function ChatImageAttachmentTile({
     incomingSourceType === 'remote_public_url'
       ? getRemoteAttachmentLoadedCacheKey(message, attachment, incomingSourceUrl)
       : null
-  const isRemoteAttachmentLoadedAtSourceActivation = useMemo(
-    () => Boolean(remoteAttachmentLoadedCacheKey && loadedRemoteAttachmentSourcesByKey.has(remoteAttachmentLoadedCacheKey)),
-    [remoteAttachmentLoadedCacheKey]
-  )
+  const isRemoteAttachmentAlreadyLoadedInSession =
+    Boolean(remoteAttachmentLoadedCacheKey) &&
+    hasLoadedRemoteAttachmentSourceInSession(message, attachment, incomingSourceUrl)
   const renderKey = getAttachmentStableRenderKey(attachment, tileIndex)
   const [displayedSourceUrl, setDisplayedSourceUrl] = useState<string | null>(incomingSourceUrl)
   const [displayedSourceType, setDisplayedSourceType] = useState<AttachmentDebugSourceType>(incomingSourceType)
-  const isStableRemoteAttachmentInitiallyRenderReady = Boolean(
-    incomingSourceType === 'remote_public_url' &&
-    attachmentState === 'attached' &&
-    !message.isOptimistic &&
-    attachment.width &&
-    attachment.height
-  )
   const [loadedDisplayedSourceUrl, setLoadedDisplayedSourceUrl] = useState<string | null>(
-    incomingSourceType === 'local_preview' ||
-      isRemoteAttachmentLoadedAtSourceActivation ||
-      isStableRemoteAttachmentInitiallyRenderReady
+    incomingSourceType === 'local_preview' || isRemoteAttachmentAlreadyLoadedInSession
       ? incomingSourceUrl
       : null
   )
   const [softPreviewLoadErrorSourceUrl, setSoftPreviewLoadErrorSourceUrl] = useState<string | null>(null)
-  const [remoteLoadingIndicatorSourceUrl, setRemoteLoadingIndicatorSourceUrl] = useState<string | null>(null)
   const supportsViewportDeferredRemoteImages =
     typeof window !== 'undefined' &&
     typeof IntersectionObserver !== 'undefined'
@@ -975,17 +980,8 @@ function ChatImageAttachmentTile({
     displayedSourceUrl &&
     displayedSourceUrl !== incomingSourceUrl
   )
-  const isStableRemoteAttachmentRenderReady = Boolean(
-    incomingSourceType === 'remote_public_url' &&
-    attachmentState === 'attached' &&
-    !message.isOptimistic &&
-    attachment.width &&
-    attachment.height &&
-    displayedSourceType === 'remote_public_url' &&
-    displayedSourceUrl === incomingSourceUrl
-  )
   const isRemoteAttachmentCachedReady = Boolean(
-    isRemoteAttachmentLoadedAtSourceActivation &&
+    isRemoteAttachmentAlreadyLoadedInSession &&
     displayedSourceType === 'remote_public_url' &&
     displayedSourceUrl &&
     displayedSourceUrl === incomingSourceUrl
@@ -994,38 +990,24 @@ function ChatImageAttachmentTile({
     displayedSourceUrl &&
     (
       loadedDisplayedSourceUrl === displayedSourceUrl ||
-      isRemoteAttachmentCachedReady ||
-      isStableRemoteAttachmentRenderReady
+      isRemoteAttachmentCachedReady
     )
-  )
-  const canBeginCurrentImageLoad = Boolean(
-    displayedSourceUrl &&
-    canShowImage &&
-    (!shouldGateRemoteImageLoad || isRemoteImageLoadAllowed || hasLoadedCurrentSource || shouldKeepPreviewVisibleWhileRemoteLoads)
-  )
-  const shouldDelayRemoteLoadingState = Boolean(
-    displayedSourceType === 'remote_public_url' &&
-    displayedSourceUrl &&
-    canShowImage &&
-    canBeginCurrentImageLoad &&
-    !hasLoadedCurrentSource &&
-    !shouldKeepPreviewVisibleWhileRemoteLoads
-  )
-  const shouldShowRemoteLoadingState = Boolean(
-    displayedSourceType === 'remote_public_url' &&
-    displayedSourceUrl &&
-    remoteLoadingIndicatorSourceUrl === displayedSourceUrl &&
-    !hasLoadedCurrentSource
   )
   const visualState = getAttachmentDebugVisualState({
     sourceType: effectiveSourceType,
     attachmentState,
     previewFailedToLoad,
     hasLoadedCurrentSource,
-    shouldShowRemoteLoadingState,
   })
+  const canBeginCurrentImageLoad = Boolean(
+    displayedSourceUrl &&
+    canShowImage &&
+    (!shouldGateRemoteImageLoad || isRemoteImageLoadAllowed || hasLoadedCurrentSource || shouldKeepPreviewVisibleWhileRemoteLoads)
+  )
   const shouldShowRemoteLoadingPlaceholder = Boolean(
-    visualState === 'loading_remote' &&
+    effectiveSourceType === 'remote_public_url' &&
+    displayedSourceUrl &&
+    !hasLoadedCurrentSource &&
     !isFailedAttachment
   )
   const debugPayload = buildAttachmentDebugPayload({
@@ -1077,42 +1059,6 @@ function ChatImageAttachmentTile({
   }, [isRemoteImageLoadAllowed, shouldGateRemoteImageLoad, shouldKeepPreviewVisibleWhileRemoteLoads])
 
   useEffect(() => {
-    if (!shouldDelayRemoteLoadingState || !displayedSourceUrl || typeof window === 'undefined') {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      if (loadSucceededSourceUrlRef.current === displayedSourceUrl) {
-        return
-      }
-
-      setRemoteLoadingIndicatorSourceUrl(displayedSourceUrl)
-      logChatSendDebug('attachment_img_load_start', {
-        ...buildAttachmentDebugPayload({
-          message,
-          attachment,
-          tileIndex,
-          renderKey,
-          sourceType: displayedSourceType,
-          visualState: 'loading_remote',
-        }),
-      })
-    }, 100)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [
-    attachment,
-    displayedSourceType,
-    displayedSourceUrl,
-    message,
-    renderKey,
-    shouldDelayRemoteLoadingState,
-    tileIndex,
-  ])
-
-  useEffect(() => {
     if (incomingSourceType === 'local_preview' && incomingSourceUrl) {
       preservedPreviewUrlRef.current = incomingSourceUrl
       backgroundRemoteLoadUrlRef.current = null
@@ -1137,7 +1083,7 @@ function ChatImageAttachmentTile({
     }
 
     if (
-      isRemoteAttachmentLoadedAtSourceActivation &&
+      isRemoteAttachmentAlreadyLoadedInSession &&
       loggedCachedLoadReuseKeyRef.current !== remoteAttachmentLoadedCacheKey
     ) {
       loggedCachedLoadReuseKeyRef.current = remoteAttachmentLoadedCacheKey
@@ -1151,11 +1097,7 @@ function ChatImageAttachmentTile({
     if (displayedSourceUrl !== incomingSourceUrl || displayedSourceType !== 'remote_public_url') {
       setDisplayedSourceUrl(incomingSourceUrl)
       setDisplayedSourceType('remote_public_url')
-      setLoadedDisplayedSourceUrl(
-        isRemoteAttachmentLoadedAtSourceActivation || isStableRemoteAttachmentInitiallyRenderReady
-          ? incomingSourceUrl
-          : null
-      )
+      setLoadedDisplayedSourceUrl(isRemoteAttachmentAlreadyLoadedInSession ? incomingSourceUrl : null)
       notifiedImageLoadSourceUrlRef.current = null
       setSoftPreviewLoadErrorSourceUrl(null)
     }
@@ -1165,8 +1107,7 @@ function ChatImageAttachmentTile({
     incomingSourceType,
     incomingSourceUrl,
     remoteAttachmentLoadedCacheKey,
-    isRemoteAttachmentLoadedAtSourceActivation,
-    isStableRemoteAttachmentInitiallyRenderReady,
+    isRemoteAttachmentAlreadyLoadedInSession,
     shouldKeepPreviewVisibleWhileRemoteLoads,
     debugPayload,
   ])
@@ -1197,6 +1138,175 @@ function ChatImageAttachmentTile({
     previousVisualStateRef.current = visualState
   }, [debugPayload, visualState])
 
+  useEffect(() => {
+    if (!displayedSourceUrl || !canShowImage) {
+      loadStartedSourceUrlRef.current = null
+      loadSucceededSourceUrlRef.current = null
+      setLoadedDisplayedSourceUrl(null)
+      return
+    }
+
+    if (hasLoadedCurrentSource) {
+      return
+    }
+
+    if (!canBeginCurrentImageLoad) {
+      return
+    }
+
+    if (isRemoteAttachmentCachedReady) {
+      return
+    }
+
+    if (displayedSourceType === 'remote_public_url' && shouldKeepPreviewVisibleWhileRemoteLoads) {
+      return
+    }
+
+    if (loadStartedSourceUrlRef.current === displayedSourceUrl) {
+      return
+    }
+
+    loadStartedSourceUrlRef.current = displayedSourceUrl
+    loadSucceededSourceUrlRef.current = null
+    setLoadedDisplayedSourceUrl(null)
+    logChatSendDebug('attachment_img_load_start', latestPayloadRef.current ?? debugPayload)
+
+    if (
+      imgRef.current?.complete &&
+      imgRef.current.naturalWidth > 0 &&
+      loadSucceededSourceUrlRef.current !== displayedSourceUrl
+    ) {
+      loadSucceededSourceUrlRef.current = displayedSourceUrl
+      markRemoteAttachmentSourceLoadedInSession(message, attachment, displayedSourceUrl)
+      setLoadedDisplayedSourceUrl(displayedSourceUrl)
+      logChatSendDebug('attachment_img_load_success', {
+        ...(latestPayloadRef.current ?? debugPayload),
+        visualState: getAttachmentDebugVisualState({
+          sourceType: displayedSourceType,
+          attachmentState,
+          previewFailedToLoad,
+          hasLoadedCurrentSource: true,
+        }),
+      })
+
+      if (
+        displayedSourceType === 'remote_public_url' &&
+        notifiedImageLoadSourceUrlRef.current !== displayedSourceUrl
+      ) {
+        notifiedImageLoadSourceUrlRef.current = displayedSourceUrl
+        onImageLoad?.(message, attachment.sortOrder, displayedSourceUrl)
+      }
+    }
+  }, [
+    attachment,
+    attachmentState,
+    canBeginCurrentImageLoad,
+    canShowImage,
+    debugPayload,
+    displayedSourceType,
+    displayedSourceUrl,
+    hasLoadedCurrentSource,
+    isRemoteAttachmentCachedReady,
+    message,
+    onImageLoad,
+    previewFailedToLoad,
+    shouldKeepPreviewVisibleWhileRemoteLoads,
+  ])
+
+  useEffect(() => {
+    if (
+      incomingSourceType !== 'remote_public_url' ||
+      !incomingSourceUrl ||
+      !shouldKeepPreviewVisibleWhileRemoteLoads ||
+      typeof window === 'undefined'
+    ) {
+      return
+    }
+
+    if (backgroundRemoteLoadUrlRef.current === incomingSourceUrl) {
+      return
+    }
+
+    backgroundRemoteLoadUrlRef.current = incomingSourceUrl
+    loadStartedSourceUrlRef.current = incomingSourceUrl
+    logChatSendDebug('attachment_img_load_start', {
+      ...debugPayload,
+      sourceType: 'remote_public_url',
+      visualState: 'loading_remote',
+    })
+
+    let isCancelled = false
+    const preloadImage = new window.Image()
+
+    preloadImage.onload = () => {
+      if (isCancelled) {
+        return
+      }
+
+      loadSucceededSourceUrlRef.current = incomingSourceUrl
+      markRemoteAttachmentSourceLoadedInSession(message, attachment, incomingSourceUrl)
+      backgroundRemoteLoadUrlRef.current = null
+      notifiedImageLoadSourceUrlRef.current = incomingSourceUrl
+      setDisplayedSourceUrl(incomingSourceUrl)
+      setDisplayedSourceType('remote_public_url')
+      setLoadedDisplayedSourceUrl(incomingSourceUrl)
+      setSoftPreviewLoadErrorSourceUrl(null)
+      logChatSendDebug('attachment_img_load_success', {
+        ...buildAttachmentDebugPayload({
+          message,
+          attachment,
+          tileIndex,
+          renderKey,
+          sourceType: 'remote_public_url',
+          visualState: getAttachmentDebugVisualState({
+            sourceType: 'remote_public_url',
+            attachmentState,
+            previewFailedToLoad,
+            hasLoadedCurrentSource: true,
+          }),
+        }),
+        sourceUrlChanged: true,
+      })
+      onImageLoad?.(message, attachment.sortOrder, incomingSourceUrl)
+    }
+
+    preloadImage.onerror = () => {
+      if (isCancelled) {
+        return
+      }
+
+      backgroundRemoteLoadUrlRef.current = null
+      logChatSendDebug('attachment_img_load_error', {
+        ...buildAttachmentDebugPayload({
+          message,
+          attachment,
+          tileIndex,
+          renderKey,
+          sourceType: 'remote_public_url',
+          visualState: 'error',
+        }),
+        sourceUrlChanged: true,
+      })
+    }
+
+    preloadImage.src = incomingSourceUrl
+
+    return () => {
+      isCancelled = true
+    }
+  }, [
+    attachment,
+    attachmentState,
+    debugPayload,
+    incomingSourceType,
+    incomingSourceUrl,
+    message,
+    onImageLoad,
+    previewFailedToLoad,
+    renderKey,
+    shouldKeepPreviewVisibleWhileRemoteLoads,
+    tileIndex,
+  ])
 
   useEffect(() => {
     const node = tileRef.current
@@ -1255,7 +1365,6 @@ function ChatImageAttachmentTile({
               return
             }
 
-            backgroundRemoteLoadUrlRef.current = null
             if (loadSucceededSourceUrlRef.current !== displayedSourceUrl) {
               loadSucceededSourceUrlRef.current = displayedSourceUrl
               markRemoteAttachmentSourceLoadedInSession(message, attachment, displayedSourceUrl)
@@ -1270,9 +1379,6 @@ function ChatImageAttachmentTile({
               })
             }
 
-            setRemoteLoadingIndicatorSourceUrl((currentUrl) => (
-              currentUrl === displayedSourceUrl ? null : currentUrl
-            ))
             setLoadedDisplayedSourceUrl(displayedSourceUrl)
 
             if (
@@ -1291,9 +1397,6 @@ function ChatImageAttachmentTile({
               (incomingSourceType === 'remote_public_url' || attachmentState !== 'attached')
             )
 
-            setRemoteLoadingIndicatorSourceUrl((currentUrl) => (
-              currentUrl === displayedSourceUrl ? null : currentUrl
-            ))
             logChatSendDebug('attachment_img_load_error', {
               ...(latestPayloadRef.current ?? debugPayload),
               visualState: isSoftLocalPreviewError
@@ -1331,44 +1434,6 @@ function ChatImageAttachmentTile({
                 ? 'scale-[1.01] opacity-85 blur-[1px]'
                 : 'opacity-100'
           }`}
-        />
-      ) : null}
-
-      {shouldKeepPreviewVisibleWhileRemoteLoads && incomingSourceUrl ? (
-        <img
-          src={incomingSourceUrl}
-          alt=""
-          aria-hidden="true"
-          loading="eager"
-          decoding="async"
-          onLoad={() => {
-            loadSucceededSourceUrlRef.current = incomingSourceUrl
-            markRemoteAttachmentSourceLoadedInSession(message, attachment, incomingSourceUrl)
-            backgroundRemoteLoadUrlRef.current = null
-            notifiedImageLoadSourceUrlRef.current = incomingSourceUrl
-            setRemoteLoadingIndicatorSourceUrl((currentUrl) => (
-              currentUrl === incomingSourceUrl ? null : currentUrl
-            ))
-            setDisplayedSourceUrl(incomingSourceUrl)
-            setDisplayedSourceType('remote_public_url')
-            setLoadedDisplayedSourceUrl(incomingSourceUrl)
-            setSoftPreviewLoadErrorSourceUrl(null)
-          }}
-          onError={() => {
-            backgroundRemoteLoadUrlRef.current = null
-            logChatSendDebug('attachment_img_load_error', {
-              ...buildAttachmentDebugPayload({
-                message,
-                attachment,
-                tileIndex,
-                renderKey,
-                sourceType: 'remote_public_url',
-                visualState: 'error',
-              }),
-              sourceUrlChanged: true,
-            })
-          }}
-          className="pointer-events-none absolute inset-0 h-0 w-0 opacity-0"
         />
       ) : null}
 
@@ -3429,6 +3494,8 @@ export default function ChatSection({
   const composerWrapperRef = useRef<HTMLDivElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const messagesRef = useRef<ChatMessageItem[]>([])
+  const activeThreadIdRef = useRef<string | null>(threadId)
+  const renderedMessagesThreadIdRef = useRef<string | null>(null)
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const optimisticRealtimeFallbackTimeoutsRef = useRef<Record<string, number>>({})
   const chatSendErrorGuardStateRef = useRef<Record<string, ChatSendErrorGuardState>>({})
@@ -3487,16 +3554,6 @@ export default function ChatSection({
     threadId: null,
     expiresAt: 0,
   })
-  const threadOpenLoadStateRef = useRef<{
-    threadId: string | null
-    didSetMessages: boolean
-    initialLoadFailed: boolean
-  }>({
-    threadId: null,
-    didSetMessages: false,
-    initialLoadFailed: false,
-  })
-  const renderedMessagesThreadIdRef = useRef<string | null>(threadId)
   const [chatSendDebugEvents, setChatSendDebugEvents] = useState<ChatSendDebugEvent[]>(() =>
     CHAT_SEND_DEBUG
       ? getRecentChatSendDebugEvents().filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
@@ -4180,8 +4237,12 @@ export default function ChatSection({
   ])
 
   useEffect(() => {
+    activeThreadIdRef.current = threadId
+  }, [threadId])
+
+  useEffect(() => {
     messagesRef.current = messages
-    renderedMessagesThreadIdRef.current = threadOpenLoadStateRef.current.threadId
+    renderedMessagesThreadIdRef.current = activeThreadIdRef.current
   }, [messages])
 
   useEffect(() => {
@@ -4229,16 +4290,13 @@ export default function ChatSection({
 
     const cachedRecentMessages = getCachedRecentChatMessages(threadId)
     const previousMessages = messagesRef.current
-    const threadOpenLoadState = threadOpenLoadStateRef.current
     const hasBootstrapFallbackMessages = Boolean(cachedRecentMessages?.messages.length)
-    const hasValidPreviousMessages =
-      previousMessages.length > 0 && renderedMessagesThreadIdRef.current === threadId
-
-    if (threadOpenLoadState.threadId !== threadId) {
-      threadOpenLoadState.threadId = threadId
-      threadOpenLoadState.didSetMessages = false
-      threadOpenLoadState.initialLoadFailed = false
-    }
+    const hasValidExistingThreadState =
+      previousMessages.length > 0 &&
+      renderedMessagesThreadIdRef.current === threadId
+    const shouldApplyBootstrapFallback =
+      hasBootstrapFallbackMessages &&
+      !hasValidExistingThreadState
 
     threadOpenDebugWindowRef.current = {
       threadId: threadId ?? null,
@@ -4265,59 +4323,30 @@ export default function ChatSection({
     })
     pendingDeletedMessageIdsRef.current.clear()
 
-    let didApplyBootstrapFallback = false
-
-    if (hasBootstrapFallbackMessages) {
-      if (threadOpenLoadState.didSetMessages || hasValidPreviousMessages) {
-        logChatSendDebug('fallback_skipped_due_to_existing_state', {
-          threadId,
-          source: 'fallback',
-          reason: threadOpenLoadState.didSetMessages
-            ? 'messages_already_set_for_thread_open'
-            : 'existing_thread_state_available',
-          ...summarizeThreadOpenMessages(previousMessages),
-        })
-      } else if (previousMessages.length === 0 || threadOpenLoadState.initialLoadFailed) {
-        const nextMessages = applyPendingMediaTasksToMessages(cachedRecentMessages?.messages ?? [])
-        threadOpenLoadState.didSetMessages = true
-        messagesRef.current = nextMessages
-        logThreadOpenMessageMutation(previousMessages, nextMessages, {
-          source: 'fallback',
-          replacedWholeList: true,
-          mergedIntoCurrentList: false,
-        })
-        setMessages(nextMessages)
-        didApplyBootstrapFallback = true
-      } else {
-        logChatSendDebug('fallback_skipped_due_to_existing_state', {
-          threadId,
-          source: 'fallback',
-          reason: 'previous_messages_not_empty',
-          ...summarizeThreadOpenMessages(previousMessages),
-        })
-      }
-    } else if (threadOpenLoadState.didSetMessages || hasValidPreviousMessages) {
-      logChatSendDebug('fallback_skipped_due_to_existing_state', {
+    if (shouldApplyBootstrapFallback) {
+      const nextMessages = applyPendingMediaTasksToMessages(
+        cachedRecentMessages?.messages ?? []
+      )
+      messagesRef.current = nextMessages
+      logThreadOpenMessageMutation(previousMessages, nextMessages, {
+        source: 'fallback',
+        replacedWholeList: true,
+        mergedIntoCurrentList: false,
+      })
+      setMessages(nextMessages)
+    } else if (hasValidExistingThreadState && threadId && isThreadOpenDebugActive(threadId)) {
+      logChatSendDebug('thread_open_messages_replace_skipped', {
         threadId,
         source: 'fallback',
-        reason: 'no_cached_fallback_needed',
+        reason: 'existing_thread_state',
         ...summarizeThreadOpenMessages(previousMessages),
       })
     }
 
-    if (didApplyBootstrapFallback) {
-      const nextMessages = applyPendingMediaTasksToMessages(
-        cachedRecentMessages?.messages ?? []
-      )
-      setHasDeferredInitialSettle(nextMessages.length > 0)
-      setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
-    } else {
-      setHasDeferredInitialSettle(false)
-      setHasMoreOlderMessages(true)
-    }
-
     setPendingInitialScroll(false)
+    setHasDeferredInitialSettle(shouldApplyBootstrapFallback)
     setPendingNewMessagesCount(0)
+    setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
     setError('')
     setDraftMessage('')
     setSubmitError('')
@@ -4325,8 +4354,16 @@ export default function ChatSection({
     setEditingMessageId(null)
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
-    setLoading(!didApplyBootstrapFallback)
-  }, [applyPendingMediaTasksToMessages, currentUserId, deactivateInitialBottomLock, logThreadOpenMessageMutation, releaseOptimisticClientMedia, threadId])
+    setLoading(!(shouldApplyBootstrapFallback || hasValidExistingThreadState))
+  }, [
+    applyPendingMediaTasksToMessages,
+    currentUserId,
+    deactivateInitialBottomLock,
+    isThreadOpenDebugActive,
+    logThreadOpenMessageMutation,
+    releaseOptimisticClientMedia,
+    threadId,
+  ])
 
   useEffect(() => {
     if (!threadId || loading) {
@@ -4549,7 +4586,6 @@ export default function ChatSection({
           return
         }
 
-        const threadOpenLoadState = threadOpenLoadStateRef.current
         const nextMessages = applyPendingMediaTasksToMessages(keepLatestRenderedMessages(initialMessages))
         const shouldSkipEquivalentInitialReplace =
           messagesRef.current.length > 0 &&
@@ -4582,12 +4618,8 @@ export default function ChatSection({
         }
 
         if (!shouldSkipEquivalentInitialReplace) {
-          threadOpenLoadState.didSetMessages = true
           setMessages(nextMessages)
-        } else {
-          threadOpenLoadState.didSetMessages = true
         }
-        threadOpenLoadState.initialLoadFailed = false
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         if (!hasCachedMessages) {
@@ -4596,10 +4628,6 @@ export default function ChatSection({
         }
       } catch {
         if (isMounted) {
-          const threadOpenLoadState = threadOpenLoadStateRef.current
-          if (threadOpenLoadState.threadId === threadId) {
-            threadOpenLoadState.initialLoadFailed = true
-          }
           setError('Не удалось загрузить чат')
         }
       } finally {
