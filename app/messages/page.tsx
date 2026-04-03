@@ -114,6 +114,7 @@ function ThreadAvatar({
 }
 
 type MessageThreadListItem = {
+  listKey: string
   id: string
   href: string
   title: string
@@ -189,6 +190,28 @@ function ThreadListRow({
         </div>
       </div>
     </Link>
+  )
+}
+
+function MessagesSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="px-1">
+        <h2 className="app-text-primary text-base font-semibold">{title}</h2>
+        {description ? (
+          <p className="app-text-secondary mt-1 text-xs">{description}</p>
+        ) : null}
+      </div>
+      {children}
+    </section>
   )
 }
 
@@ -352,71 +375,121 @@ export default function MessagesPage() {
     [directThreads]
   )
 
-  const threadListItems = useMemo(() => {
-    const items: MessageThreadListItem[] = []
+  const commonChatItems = useMemo(() => {
+    if (!clubThread) {
+      return []
+    }
 
-    if (clubThread) {
-      items.push({
+    const sharedPreview = getLastMessagePreview(
+      clubThread.lastMessage,
+      'Пока нет сообщений',
+      {
+        currentUserId,
+        prefixSender: true,
+      }
+    )
+    const sharedTimeLabel = clubThread.lastMessage?.createdAt
+      ? formatChatThreadActivityLabel(clubThread.lastMessage.createdAt)
+      : ''
+    const sharedUnreadCount = unreadCountsByThread[clubThread.id] ?? 0
+    const sharedLastActivityAt = new Date(
+      clubThread.lastMessage?.createdAt ?? clubThread.created_at
+    ).getTime()
+
+    return [
+      {
+        listKey: `common-reports:${clubThread.id}`,
         id: clubThread.id,
         href: `/messages/${clubThread.id}`,
-        title: 'Общий чат',
-        preview: getLastMessagePreview(
-          clubThread.lastMessage,
-          'Пока нет сообщений',
-          {
-            currentUserId,
-            prefixSender: true,
-          }
+        title: 'Отчеты',
+        preview: sharedPreview,
+        timeLabel: sharedTimeLabel,
+        unreadCount: sharedUnreadCount,
+        lastActivityAt: sharedLastActivityAt,
+        avatar: <ThreadAvatar>O</ThreadAvatar>,
+      },
+      {
+        listKey: `common-social:${clubThread.id}`,
+        id: clubThread.id,
+        href: `/messages/${clubThread.id}`,
+        title: 'Общение',
+        preview: sharedPreview,
+        timeLabel: sharedTimeLabel,
+        unreadCount: sharedUnreadCount,
+        lastActivityAt: sharedLastActivityAt,
+        avatar: <ThreadAvatar>O</ThreadAvatar>,
+      },
+      {
+        listKey: `common-important:${clubThread.id}`,
+        id: clubThread.id,
+        href: `/messages/${clubThread.id}`,
+        title: 'Важная информация',
+        preview: sharedPreview,
+        timeLabel: sharedTimeLabel,
+        unreadCount: sharedUnreadCount,
+        lastActivityAt: sharedLastActivityAt,
+        avatar: <ThreadAvatar>!</ThreadAvatar>,
+      },
+    ] satisfies MessageThreadListItem[]
+  }, [clubThread, currentUserId, unreadCountsByThread])
+
+  const coachChatItem = useMemo(() => {
+    if (!coachThread) {
+      return null
+    }
+
+    return {
+      listKey: `coach:${coachThread.id}`,
+      id: coachThread.id,
+      href: `/messages/${coachThread.id}`,
+      title: 'Тренер',
+      preview: getLastMessagePreview(coachThread.lastMessage, 'Личный чат со своим тренером'),
+      timeLabel: coachThread.lastMessage?.createdAt
+        ? formatChatThreadActivityLabel(coachThread.lastMessage.createdAt)
+        : '',
+      unreadCount: unreadCountsByThread[coachThread.id] ?? 0,
+      lastActivityAt: new Date(coachThread.lastMessage?.createdAt ?? coachThread.created_at).getTime(),
+      avatar: <ThreadAvatar>C</ThreadAvatar>,
+    } satisfies MessageThreadListItem
+  }, [coachThread, unreadCountsByThread])
+
+  const activeDialogItems = useMemo(() => {
+    return directThreads
+      .slice()
+      .sort((left, right) => {
+        const leftLastMessageAt = left.lastMessage?.createdAt
+          ? new Date(left.lastMessage.createdAt).getTime()
+          : -1
+        const rightLastMessageAt = right.lastMessage?.createdAt
+          ? new Date(right.lastMessage.createdAt).getTime()
+          : -1
+
+        if (leftLastMessageAt !== rightLastMessageAt) {
+          return rightLastMessageAt - leftLastMessageAt
+        }
+
+        return new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+      })
+      .map((thread) => ({
+        listKey: `direct:${thread.id}`,
+        id: thread.id,
+        href: `/messages/${thread.id}`,
+        title: getProfileDisplayName(thread.student, 'Ученик'),
+        preview: getLastMessagePreview(thread.lastMessage, 'Личный чат'),
+        timeLabel: thread.lastMessage?.createdAt
+          ? formatChatThreadActivityLabel(thread.lastMessage.createdAt)
+          : '',
+        unreadCount: unreadCountsByThread[thread.id] ?? 0,
+        lastActivityAt: new Date(thread.lastMessage?.createdAt ?? thread.created_at).getTime(),
+        avatar: (
+          <StudentAvatar
+            student={{
+              avatar_url: thread.student?.avatar_url ?? null,
+            }}
+          />
         ),
-        timeLabel: clubThread.lastMessage?.createdAt
-          ? formatChatThreadActivityLabel(clubThread.lastMessage.createdAt)
-          : '',
-        unreadCount: unreadCountsByThread[clubThread.id] ?? 0,
-        lastActivityAt: new Date(clubThread.lastMessage?.createdAt ?? clubThread.created_at).getTime(),
-        avatar: <ThreadAvatar>#</ThreadAvatar>,
-      })
-    }
-
-    if (!isCoach && coachThread) {
-      items.push({
-        id: coachThread.id,
-        href: `/messages/${coachThread.id}`,
-        title: 'Связь с тренером',
-        preview: getLastMessagePreview(coachThread.lastMessage, 'Личный чат со своим тренером'),
-        timeLabel: coachThread.lastMessage?.createdAt
-          ? formatChatThreadActivityLabel(coachThread.lastMessage.createdAt)
-          : '',
-        unreadCount: unreadCountsByThread[coachThread.id] ?? 0,
-        lastActivityAt: new Date(coachThread.lastMessage?.createdAt ?? coachThread.created_at).getTime(),
-        avatar: <ThreadAvatar>C</ThreadAvatar>,
-      })
-    }
-
-    if (isCoach) {
-      directThreads.forEach((thread) => {
-        items.push({
-          id: thread.id,
-          href: `/messages/${thread.id}`,
-          title: getProfileDisplayName(thread.student, 'Ученик'),
-          preview: getLastMessagePreview(thread.lastMessage, 'Личный чат'),
-          timeLabel: thread.lastMessage?.createdAt
-            ? formatChatThreadActivityLabel(thread.lastMessage.createdAt)
-            : '',
-          unreadCount: unreadCountsByThread[thread.id] ?? 0,
-          lastActivityAt: new Date(thread.lastMessage?.createdAt ?? thread.created_at).getTime(),
-          avatar: (
-            <StudentAvatar
-              student={{
-                avatar_url: thread.student?.avatar_url ?? null,
-              }}
-            />
-          ),
-        })
-      })
-    }
-
-    return items.sort((left, right) => right.lastActivityAt - left.lastActivityAt)
-  }, [clubThread, coachThread, currentUserId, directThreads, isCoach, unreadCountsByThread])
+      }))
+  }, [directThreads, unreadCountsByThread])
 
   const knownThreadIdsSignature = useMemo(
     () =>
@@ -856,78 +929,131 @@ export default function MessagesPage() {
         ) : null}
 
         <div className="space-y-3">
-          {threadListItems.map((item) => (
-            <ThreadListRow
-              key={item.id}
-              item={item}
-              onPrefetch={handlePrefetchThreadMessages}
-            />
-          ))}
-
-          {!isCoach && !coachThread ? (
-            <button
-              type="button"
-              onClick={() => {
-                void handleOpenCoachChat()
-              }}
-              disabled={openingCoachThread}
-              className="app-card flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm disabled:opacity-60"
-            >
-              <ThreadAvatar>C</ThreadAvatar>
-              <div className="min-w-0 flex-1">
-                <p className="app-text-primary text-sm font-medium">Связь с тренером</p>
-                <p className="app-text-secondary text-xs">
-                  {openingCoachThread ? 'Открываем чат...' : 'Личный чат со своим тренером'}
-                </p>
+          <MessagesSection
+            title="Общие чаты"
+            description="Новый разделенный вход в текущий общий чат клуба."
+          >
+            {commonChatItems.length > 0 ? (
+              <div className="space-y-3">
+                {commonChatItems.map((item) => (
+                  <ThreadListRow
+                    key={item.listKey}
+                    item={item}
+                    onPrefetch={handlePrefetchThreadMessages}
+                  />
+                ))}
               </div>
-            </button>
+            ) : (
+              <section className="app-card rounded-2xl border p-4 shadow-sm">
+                <p className="app-text-secondary text-sm">Общий чат пока недоступен.</p>
+              </section>
+            )}
+          </MessagesSection>
+
+          {!isCoach ? (
+            <MessagesSection
+              title="Тренер"
+              description="Отдельный блок для личного чата с тренером."
+            >
+              <section className="app-card rounded-2xl border p-4 shadow-sm">
+                <div className="space-y-3">
+                  {coachChatItem ? (
+                    <ThreadListRow
+                      key={coachChatItem.listKey}
+                      item={coachChatItem}
+                      onPrefetch={handlePrefetchThreadMessages}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleOpenCoachChat()
+                      }}
+                      disabled={openingCoachThread}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-black/[0.05] p-4 text-left shadow-sm disabled:opacity-60 dark:border-white/[0.08]"
+                    >
+                      <ThreadAvatar>C</ThreadAvatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="app-text-primary text-sm font-medium">Тренер</p>
+                        <p className="app-text-secondary text-xs">
+                          {openingCoachThread ? 'Открываем чат...' : 'Личный чат со своим тренером'}
+                        </p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </section>
+            </MessagesSection>
           ) : null}
 
           {isCoach ? (
-            <section className="app-card rounded-2xl border p-4 shadow-sm">
-              <div className="mb-3">
-                <h2 className="app-text-primary text-base font-semibold">Ученики</h2>
-                <p className="app-text-secondary mt-1 text-xs">Зарегистрированные участники клуба.</p>
-              </div>
+            <>
+              <MessagesSection
+                title="Активные диалоги"
+                description="Существующие личные чаты с учениками."
+              >
+                {activeDialogItems.length > 0 ? (
+                  <div className="space-y-3">
+                    {activeDialogItems.map((item) => (
+                      <ThreadListRow
+                        key={item.listKey}
+                        item={item}
+                        onPrefetch={handlePrefetchThreadMessages}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <section className="app-card rounded-2xl border p-4 shadow-sm">
+                    <p className="app-text-secondary text-sm">Пока нет активных личных диалогов.</p>
+                  </section>
+                )}
+              </MessagesSection>
 
-              {students.length === 0 ? (
-                <p className="app-text-secondary text-sm">Пока нет зарегистрированных учеников.</p>
-              ) : (
-                <div className="space-y-2">
-                  {students.map((student) => {
-                    const existingThread = directThreadByStudentId[student.id]
-                    const isOpeningThisStudent = openingStudentId === student.id
+              <MessagesSection
+                title="Все ученики"
+                description="Открывайте существующий чат или создавайте его только при входе."
+              >
+                <section className="app-card rounded-2xl border p-4 shadow-sm">
+                  {students.length === 0 ? (
+                    <p className="app-text-secondary text-sm">Пока нет зарегистрированных учеников.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {students.map((student) => {
+                        const existingThread = directThreadByStudentId[student.id]
+                        const isOpeningThisStudent = openingStudentId === student.id
 
-                    return (
-                      <div
-                        key={student.id}
-                        className="flex items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 dark:border-white/[0.08]"
-                      >
-                        <StudentAvatar student={student} />
-                        <div className="min-w-0 flex-1">
-                          <p className="app-text-primary truncate text-sm font-medium">
-                            {getProfileDisplayName(student, 'Ученик')}
-                          </p>
-                          <p className="app-text-secondary truncate text-xs">
-                            {student.nickname?.trim() || 'Профиль участника'}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleOpenStudentThread(student.id)
-                          }}
-                          disabled={isOpeningThisStudent}
-                          className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-xs font-medium disabled:opacity-60"
-                        >
-                          {isOpeningThisStudent ? '...' : existingThread ? 'Открыть' : 'Начать'}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
+                        return (
+                          <div
+                            key={student.id}
+                            className="flex items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 dark:border-white/[0.08]"
+                          >
+                            <StudentAvatar student={student} />
+                            <div className="min-w-0 flex-1">
+                              <p className="app-text-primary truncate text-sm font-medium">
+                                {getProfileDisplayName(student, 'Ученик')}
+                              </p>
+                              <p className="app-text-secondary truncate text-xs">
+                                {student.nickname?.trim() || 'Профиль участника'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleOpenStudentThread(student.id)
+                              }}
+                              disabled={isOpeningThisStudent}
+                              className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-xs font-medium disabled:opacity-60"
+                            >
+                              {isOpeningThisStudent ? '...' : existingThread ? 'Открыть' : 'Начать'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+              </MessagesSection>
+            </>
           ) : null}
         </div>
       </div>
