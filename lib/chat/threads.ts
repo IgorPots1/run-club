@@ -1,4 +1,4 @@
-import { COMMON_CHANNEL_KEYS, type CommonChannelKey } from './commonChannels'
+import { COMMON_CHANNEL_KEYS, isCommonChannelKey, type CommonChannelKey } from './commonChannels'
 import { COACH_USER_ID } from '../constants'
 import { getProfileDisplayName } from '../profiles'
 import { supabase } from '../supabase'
@@ -283,7 +283,8 @@ export async function getCommonChannels(): Promise<ClubThread[]> {
   }
 
   const threadRows = ((data as ChatThreadRow[] | null) ?? []).filter(
-    (thread): thread is ClubThread => thread.type === 'club' && thread.channel_key !== null
+    (thread): thread is ClubThread =>
+      thread.type === 'club' && isCommonChannelKey(thread.channel_key)
   )
   const threadRowsWithLastMessages = await withLastMessages(threadRows)
 

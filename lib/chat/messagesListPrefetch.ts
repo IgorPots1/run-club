@@ -1,4 +1,5 @@
 import { getBootstrapUser } from '@/lib/auth'
+import { COMMON_CHANNEL_KEYS, isCommonChannelKey } from '@/lib/chat/commonChannels'
 import { getUnreadCountsByThread, type UnreadCountsByThread } from '@/lib/chat/reads'
 import {
   COACH_USER_ID,
@@ -43,6 +44,46 @@ type MessagesListPrefetchEntry = {
 
 let messagesListPrefetchEntry: MessagesListPrefetchEntry | null = null
 
+type LegacyMessagesListPrefetchData = {
+  currentUserId: string
+  commonThreads?: ClubThread[]
+  clubThread?: ClubThread | null
+  coachThread: DirectCoachThreadItem | null
+  directThreads: CoachDirectThreadItem[]
+  students: StudentProfile[]
+  unreadCountsByThread: UnreadCountsByThread
+}
+
+function normalizeCommonThreads(commonThreads: ClubThread[] | undefined) {
+  if (!Array.isArray(commonThreads)) {
+    return []
+  }
+
+  return commonThreads
+    .filter((thread): thread is ClubThread => thread.type === 'club' && isCommonChannelKey(thread.channel_key))
+    .sort(
+      (left, right) =>
+        COMMON_CHANNEL_KEYS.indexOf(left.channel_key) - COMMON_CHANNEL_KEYS.indexOf(right.channel_key)
+    )
+}
+
+function normalizeMessagesListPrefetchData(
+  data: MessagesListPrefetchData | LegacyMessagesListPrefetchData | null
+): MessagesListPrefetchData | null {
+  if (!data) {
+    return null
+  }
+
+  return {
+    currentUserId: data.currentUserId,
+    commonThreads: normalizeCommonThreads(data.commonThreads),
+    coachThread: data.coachThread ?? null,
+    directThreads: Array.isArray(data.directThreads) ? data.directThreads : [],
+    students: Array.isArray(data.students) ? data.students : [],
+    unreadCountsByThread: data.unreadCountsByThread ?? {},
+  }
+}
+
 function isMessagesListPrefetchExpired(entry: MessagesListPrefetchEntry) {
   return Date.now() >= entry.expiresAt
 }
@@ -84,10 +125,12 @@ async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData
     return null
   }
 
-  const [commonThreads, unreadCountsByThread] = await Promise.all([
+  const [commonThreadsResult, unreadCountsResult] = await Promise.allSettled([
     getCommonChannels(),
     getUnreadCountsByThread(),
   ])
+  const commonThreads = commonThreadsResult.status === 'fulfilled' ? commonThreadsResult.value : []
+  const unreadCountsByThread = unreadCountsResult.status === 'fulfilled' ? unreadCountsResult.value : {}
 
   if (user.id === COACH_USER_ID) {
     const [directThreads, students] = await Promise.all([
@@ -137,7 +180,7 @@ export function getMessagesListCacheSnapshot(): MessagesListPrefetchData | null 
     return null
   }
 
-  return entry.data
+  return normalizeMessagesListPrefetchData(entry.data)
 }
 
 export type MessagesListCachePeek = {
@@ -156,12 +199,18 @@ export function peekMessagesListCache(): MessagesListCachePeek | null {
     return null
   }
 
+  const normalizedData = normalizeMessagesListPrefetchData(entry.data)
+
+  if (!normalizedData) {
+    return null
+  }
+
   const fetchedAt = entry.dataFetchedAt
   const needsBackgroundRevalidate =
     fetchedAt > 0 && Date.now() - fetchedAt >= MESSAGES_LIST_BACKGROUND_REVALIDATE_AFTER_MS
 
   return {
-    data: entry.data,
+    data: normalizedData,
     needsBackgroundRevalidate,
     dataFetchedAt: fetchedAt,
   }
@@ -211,10 +260,10 @@ export function getPrefetchedMessagesListData(): Promise<MessagesListPrefetchDat
   }
 
   if (entry.data) {
-    return Promise.resolve(entry.data)
+    return Promise.resolve(normalizeMessagesListPrefetchData(entry.data))
   }
 
-  return entry.promise
+  return entry.promise.then((data) => normalizeMessagesListPrefetchData(data))
 }
 
 export function prefetchMessagesListData(): Promise<MessagesListPrefetchData | null> {

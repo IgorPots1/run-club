@@ -62,6 +62,18 @@ function readInitialMessagesListState() {
   return getMessagesListCacheSnapshot()
 }
 
+async function loadCommonThreadsAndUnreadCounts() {
+  const [commonThreadsResult, unreadCountsResult] = await Promise.allSettled([
+    getCommonChannels(),
+    getUnreadCountsByThread(),
+  ])
+
+  return {
+    commonThreads: commonThreadsResult.status === 'fulfilled' ? commonThreadsResult.value : [],
+    unreadCountsByThread: unreadCountsResult.status === 'fulfilled' ? unreadCountsResult.value : {},
+  }
+}
+
 function AvatarFallback() {
   return (
     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
@@ -582,10 +594,10 @@ export default function MessagesPage() {
 
         setCurrentUserId(user.id)
 
-        const [nextCommonThreads, unreadCounts] = await Promise.all([
-          getCommonChannels(),
-          getUnreadCountsByThread(),
-        ])
+        const {
+          commonThreads: nextCommonThreads,
+          unreadCountsByThread: unreadCounts,
+        } = await loadCommonThreadsAndUnreadCounts()
 
         if (!isMounted) {
           return
