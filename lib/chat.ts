@@ -105,6 +105,7 @@ export type ChatMessageItem = {
     }[]
   }[]
   previewText: string
+  optimisticRenderKey?: string | null
   isOptimistic?: boolean
   optimisticStatus?: 'sending' | 'failed'
   optimisticServerMessageId?: string | null

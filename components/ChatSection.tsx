@@ -454,6 +454,10 @@ function replaceMessageById(
   return nextMessages
 }
 
+function getMessageStableRenderKey(message: ChatMessageItem) {
+  return message.optimisticRenderKey ?? message.id
+}
+
 function getOptimisticMessageReplyPreview(message: ChatMessageItem | null) {
   if (!message) {
     return null
@@ -1254,13 +1258,19 @@ function mergeServerMessageWithOptimisticImageState(
   currentUserId: string | null
 ): ChatMessageItem {
   if (optimisticMessage.id !== serverMessage.id) {
-    return serverMessage
+    return {
+      ...serverMessage,
+      optimisticRenderKey: optimisticMessage.optimisticRenderKey ?? optimisticMessage.id,
+    }
   }
 
   const nextStates = getAttachmentStatesForImageMerge(optimisticMessage, serverMessage, currentUserId)
 
   if (!nextStates) {
-    return serverMessage
+    return {
+      ...serverMessage,
+      optimisticRenderKey: optimisticMessage.optimisticRenderKey ?? optimisticMessage.id,
+    }
   }
 
   const optimisticAttachmentsBySortOrder = new Map(
@@ -1297,7 +1307,10 @@ function mergeServerMessageWithOptimisticImageState(
   const hasPendingAttachments = nextStates.some((state) => state !== 'attached')
 
   if (!hasPendingAttachments) {
-    return serverMessage
+    return {
+      ...serverMessage,
+      optimisticRenderKey: optimisticMessage.optimisticRenderKey ?? optimisticMessage.id,
+    }
   }
 
   const overallAttachmentUploadState = deriveOptimisticAttachmentUploadState(nextStates)
@@ -1306,6 +1319,7 @@ function mergeServerMessageWithOptimisticImageState(
     ...serverMessage,
     attachments: mergedAttachments,
     imageUrl: mergedAttachments[0]?.publicUrl ?? serverMessage.imageUrl,
+    optimisticRenderKey: optimisticMessage.optimisticRenderKey ?? optimisticMessage.id,
     isOptimistic: true,
     optimisticStatus: undefined,
     optimisticServerMessageId: optimisticMessage.optimisticServerMessageId ?? serverMessage.id,
@@ -1427,6 +1441,7 @@ function finalizeOptimisticMessageFromRealtimeRow(
     createdAtLabel: 'Сейчас',
     replyToId: realtimeRow.reply_to_id,
     previewText: getRealtimePreviewText(realtimeRow, optimisticMessage),
+    optimisticRenderKey: optimisticMessage.optimisticRenderKey ?? optimisticMessage.id,
     isOptimistic: false,
     optimisticStatus: undefined,
     optimisticServerMessageId: null,
@@ -3058,7 +3073,7 @@ const ChatMessageList = memo(function ChatMessageList({
 
           return (
             <div
-              key={message.id}
+              key={getMessageStableRenderKey(message)}
               className={messageSpacingClass}
             >
               <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
@@ -5418,6 +5433,7 @@ export default function ChatSection({
     attachments: PendingComposerImage[]
   }): ChatMessageItem {
     const createdAt = new Date().toISOString()
+    const optimisticMessageId = createOptimisticMessageId(attachments.length > 0 ? 'image' : 'text')
     const normalizedAttachments = attachments.map((attachment, index) => ({
       id: `temp-attachment-${index}-${attachment.id}`,
       type: 'image' as const,
@@ -5431,7 +5447,7 @@ export default function ChatSection({
     const previewText = text.trim() || (normalizedAttachments.length > 1 ? `${normalizedAttachments.length} фото` : normalizedAttachments.length === 1 ? 'Фото' : '')
 
     return {
-      id: createOptimisticMessageId(messageType),
+      id: optimisticMessageId,
       userId,
       text,
       messageType,
@@ -5449,6 +5465,7 @@ export default function ChatSection({
       replyTo: getOptimisticMessageReplyPreview(replyingToMessage),
       reactions: [],
       previewText,
+      optimisticRenderKey: optimisticMessageId,
       isOptimistic: true,
       optimisticStatus: 'sending',
       optimisticServerMessageId: null,
@@ -5683,9 +5700,10 @@ export default function ChatSection({
   function createOptimisticVoiceMessage(file: File, userId: string, durationSeconds: number | null): ChatMessageItem {
     const createdAt = new Date().toISOString()
     const localObjectUrl = URL.createObjectURL(file)
+    const optimisticMessageId = `temp-${Date.now()}`
 
     return {
-      id: `temp-${Date.now()}`,
+      id: optimisticMessageId,
       userId,
       text: '',
       messageType: 'voice',
@@ -5708,6 +5726,7 @@ export default function ChatSection({
       } : null,
       reactions: [],
       previewText: 'Голосовое сообщение',
+      optimisticRenderKey: optimisticMessageId,
       isOptimistic: true,
       optimisticStatus: 'sending',
       optimisticServerMessageId: null,
