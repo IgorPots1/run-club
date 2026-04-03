@@ -116,6 +116,7 @@ type ThreadOpenDebugSource =
   | 'unknown'
 
 const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
+const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 480
 
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'panel_mounted',
@@ -861,6 +862,12 @@ function ChatImageAttachmentTile({
     incomingSourceType === 'local_preview' ? incomingSourceUrl : null
   )
   const [softPreviewLoadErrorSourceUrl, setSoftPreviewLoadErrorSourceUrl] = useState<string | null>(null)
+  const shouldGateRemoteImageLoad = Boolean(
+    incomingSourceType === 'remote_public_url' &&
+    attachmentState === 'attached' &&
+    !message.isOptimistic
+  )
+  const [isRemoteImageLoadAllowed, setIsRemoteImageLoadAllowed] = useState(() => !shouldGateRemoteImageLoad)
   const hasSoftPreviewLoadError = Boolean(
     displayedSourceType === 'local_preview' &&
     displayedSourceUrl &&
@@ -884,6 +891,11 @@ function ChatImageAttachmentTile({
     previewFailedToLoad,
     hasLoadedCurrentSource,
   })
+  const canBeginCurrentImageLoad = Boolean(
+    displayedSourceUrl &&
+    canShowImage &&
+    (!shouldGateRemoteImageLoad || isRemoteImageLoadAllowed || hasLoadedCurrentSource || shouldKeepPreviewVisibleWhileRemoteLoads)
+  )
   const shouldShowRemoteLoadingPlaceholder = Boolean(
     effectiveSourceType === 'remote_public_url' &&
     displayedSourceUrl &&
@@ -901,6 +913,53 @@ function ChatImageAttachmentTile({
   })
 
   latestPayloadRef.current = debugPayload
+
+  useEffect(() => {
+    if (!shouldGateRemoteImageLoad || shouldKeepPreviewVisibleWhileRemoteLoads) {
+      setIsRemoteImageLoadAllowed(true)
+      return
+    }
+
+    setIsRemoteImageLoadAllowed(false)
+  }, [incomingSourceUrl, shouldGateRemoteImageLoad, shouldKeepPreviewVisibleWhileRemoteLoads])
+
+  useEffect(() => {
+    if (
+      !shouldGateRemoteImageLoad ||
+      isRemoteImageLoadAllowed ||
+      shouldKeepPreviewVisibleWhileRemoteLoads
+    ) {
+      return
+    }
+
+    const node = tileRef.current
+
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setIsRemoteImageLoadAllowed(true)
+      return
+    }
+
+    const scrollRoot = node.closest('[data-chat-scroll-container="true"]')
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsRemoteImageLoadAllowed(true)
+          observer.disconnect()
+        }
+      },
+      {
+        root: scrollRoot instanceof Element ? scrollRoot : null,
+        rootMargin: `${CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX}px 0px ${CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX}px 0px`,
+        threshold: 0.01,
+      }
+    )
+
+    observer.observe(node)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [isRemoteImageLoadAllowed, shouldGateRemoteImageLoad, shouldKeepPreviewVisibleWhileRemoteLoads])
 
   useEffect(() => {
     if (incomingSourceType === 'local_preview' && incomingSourceUrl) {
@@ -971,6 +1030,10 @@ function ChatImageAttachmentTile({
       return
     }
 
+    if (!canBeginCurrentImageLoad) {
+      return
+    }
+
     if (displayedSourceType === 'remote_public_url' && shouldKeepPreviewVisibleWhileRemoteLoads) {
       return
     }
@@ -1012,6 +1075,7 @@ function ChatImageAttachmentTile({
   }, [
     attachment,
     attachmentState,
+    canBeginCurrentImageLoad,
     canShowImage,
     debugPayload,
     displayedSourceType,
@@ -1161,7 +1225,7 @@ function ChatImageAttachmentTile({
           : `Открыть изображение ${tileIndex + 1}`
       }
     >
-      {canShowImage ? (
+      {canShowImage && canBeginCurrentImageLoad ? (
         <img
           ref={imgRef}
           src={displayedSourceUrl ?? undefined}
@@ -7049,6 +7113,7 @@ export default function ChatSection({
           ) : null}
           <div
             ref={scrollContainerRef}
+            data-chat-scroll-container="true"
             className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
           >
             <div ref={scrollContentRef} className="flex min-h-full flex-col">
