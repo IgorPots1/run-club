@@ -6,6 +6,7 @@ import {
   logChatSendDebug,
   logChatSendDebugError,
 } from '@/lib/chatSendDebug'
+import { markChatSendTimingAttachmentPhase } from '@/lib/chatSendTiming'
 
 export type PendingChatMediaAttachmentState =
   | 'pending'
@@ -141,6 +142,10 @@ async function processPendingChatMediaTask(messageId: string) {
               sortOrder: attachment.sortOrder,
               reason: attachment.error,
             })
+            markChatSendTimingAttachmentPhase('attachment_upload_failed', {
+              serverMessageId: task.messageId,
+              sortOrder: attachment.sortOrder,
+            })
             emitPendingChatMediaTasksChanged()
             continue
           }
@@ -154,6 +159,10 @@ async function processPendingChatMediaTask(messageId: string) {
             fileName: attachment.file.name,
             fileSize: attachment.file.size,
             fileType: attachment.file.type,
+          })
+          markChatSendTimingAttachmentPhase('attachment_upload_start', {
+            serverMessageId: task.messageId,
+            sortOrder: attachment.sortOrder,
           })
           emitPendingChatMediaTasksChanged()
 
@@ -172,6 +181,10 @@ async function processPendingChatMediaTask(messageId: string) {
             publicUrl: uploadedImage.publicUrl,
             width: attachment.width,
             height: attachment.height,
+          })
+          markChatSendTimingAttachmentPhase('attachment_upload_success', {
+            serverMessageId: task.messageId,
+            sortOrder: attachment.sortOrder,
           })
           emitPendingChatMediaTasksChanged()
         } else {
@@ -216,6 +229,10 @@ async function processPendingChatMediaTask(messageId: string) {
           storagePath: attachment.storagePath,
           publicUrl: attachment.publicUrl,
         })
+        markChatSendTimingAttachmentPhase('attachment_attach_success', {
+          serverMessageId: task.messageId,
+          sortOrder: attachment.sortOrder,
+        })
         revokeTaskAttachmentPreviewUrl(attachment)
         attachment.previewUrl = null
         attachment.file = null
@@ -238,6 +255,10 @@ async function processPendingChatMediaTask(messageId: string) {
           storagePath: attachment.storagePath,
           publicUrl: attachment.publicUrl,
           error: normalizedError,
+        })
+        markChatSendTimingAttachmentPhase('attachment_attach_failed', {
+          serverMessageId: task.messageId,
+          sortOrder: attachment.sortOrder,
         })
         emitPendingChatMediaTasksChanged()
       }

@@ -16,6 +16,14 @@ import {
   logChatSendDebugError,
   subscribeChatSendDebugEvents,
 } from '@/lib/chatSendDebug'
+import {
+  markChatSendTimingOptimisticInsert,
+  markChatSendTimingPhase,
+  markChatSendTimingReconciliationSuccess,
+  markChatSendTimingRequestSuccess,
+  registerChatSendTimingTap,
+  scanChatSendTimingVisualComplete,
+} from '@/lib/chatSendTiming'
 import type { ChatThreadLastMessage } from '@/lib/chat/threads'
 import {
   CHAT_MESSAGE_MAX_ATTACHMENTS,
@@ -115,6 +123,9 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'reconciliation_success',
   'reconciliation_failure',
   'ui_error_path_trigger',
+  'visual_complete',
+  'send_timing_summary',
+  'attachment_timing_summary',
 ])
 
 function formatChatSendDebugValue(value: unknown): string | null {
@@ -3181,6 +3192,10 @@ export default function ChatSection({
   }, [messages])
 
   useEffect(() => {
+    scanChatSendTimingVisualComplete(messages)
+  }, [messages])
+
+  useEffect(() => {
     function syncPendingMediaTasksIntoMessages() {
       setMessages((currentMessages) => {
         const nextMessages = applyPendingMediaTasksToMessages(currentMessages)
@@ -3970,6 +3985,11 @@ export default function ChatSection({
                 source: 'realtime_insert',
                 messageType: 'voice',
               })
+              markChatSendTimingReconciliationSuccess({
+                optimisticMessageId: optimisticVoiceMatch.id,
+                serverMessageId: nextMessageId,
+                source: 'realtime_insert',
+              })
               releaseOptimisticClientMedia(optimisticVoiceMatch)
               setMessages((currentMessages) =>
                 keepLatestRenderedMessages(
@@ -4013,6 +4033,11 @@ export default function ChatSection({
                 source: 'realtime_insert',
                 messageType: finalizedMessage.messageType,
                 isStillOptimistic: Boolean(mergedMessage.isOptimistic),
+              })
+              markChatSendTimingReconciliationSuccess({
+                optimisticMessageId: optimisticTextOrImageMatch.id,
+                serverMessageId: nextMessageId,
+                source: 'realtime_insert',
               })
 
               if (!mergedMessage.isOptimistic) {
@@ -4249,20 +4274,23 @@ export default function ChatSection({
           )
         }
       } else {
-        logChatSendDebug('send_start', {
-          threadId,
-          textLength: trimmedDraftMessage.length,
-          attachmentCounts: getComposerAttachmentDebugCounts(pendingImages),
-          attachmentKinds: pendingImages.length > 0 ? ['image'] : [],
-          contentKind: getChatSendContentKind({
-            textLength: trimmedDraftMessage.length,
-            imageCount: pendingImages.length,
-          }),
-        })
         const optimisticMessage = createOptimisticTextOrImageMessage({
           userId: currentUserId,
           text: trimmedDraftMessage,
           attachments: pendingImages,
+        })
+        const sendContentKind = getChatSendContentKind({
+          textLength: trimmedDraftMessage.length,
+          imageCount: pendingImages.length,
+        })
+        registerChatSendTimingTap(optimisticMessage.id, sendContentKind)
+        logChatSendDebug('send_start', {
+          threadId,
+          optimisticMessageId: optimisticMessage.id,
+          textLength: trimmedDraftMessage.length,
+          attachmentCounts: getComposerAttachmentDebugCounts(pendingImages),
+          attachmentKinds: pendingImages.length > 0 ? ['image'] : [],
+          contentKind: sendContentKind,
         })
         submitOptimisticMessageId = optimisticMessage.id
 
@@ -4756,6 +4784,11 @@ export default function ChatSection({
             source: 'fallback_fetch',
             isStillOptimistic: Boolean(mergedMessage.isOptimistic),
           })
+          markChatSendTimingReconciliationSuccess({
+            optimisticMessageId,
+            serverMessageId,
+            source: 'fallback_fetch',
+          })
 
           if (!mergedMessage.isOptimistic) {
             releaseOptimisticClientMedia(currentOptimisticMessage)
@@ -4887,6 +4920,10 @@ export default function ChatSection({
       )
     )
 
+    queueMicrotask(() => {
+      markChatSendTimingOptimisticInsert(optimisticMessage.id)
+    })
+
     let serverMessageId = getOptimisticServerMessageId(workingMessage)
 
     if (!serverMessageId) {
@@ -4926,7 +4963,14 @@ export default function ChatSection({
               height: attachment.height,
             })),
         hasPendingAttachmentUploads ? null : workingMessage.imageUrl,
-        hasPendingAttachmentUploads ? { pendingAttachmentCount: workingMessage.attachments.length } : undefined
+        hasPendingAttachmentUploads
+          ? {
+              pendingAttachmentCount: workingMessage.attachments.length,
+              optimisticMessageId: workingMessage.id,
+            }
+          : {
+              optimisticMessageId: workingMessage.id,
+            }
       )
 
       if (insertError || !messageId) {
@@ -4968,6 +5012,7 @@ export default function ChatSection({
         optimisticMessageId: workingMessage.id,
         serverMessageId: messageId,
       })
+      markChatSendTimingRequestSuccess(workingMessage.id, messageId)
 
       if (hasPendingAttachmentUploads) {
         const queuedTask = queuePendingChatMediaTask({
@@ -4989,6 +5034,10 @@ export default function ChatSection({
           serverMessageId: messageId,
           attachmentCount: queuedTask.attachments.length,
           attachmentStates: queuedTask.attachments.map((attachment) => attachment.state),
+        })
+        markChatSendTimingPhase('attachment_task_queued', {
+          optimisticMessageId: workingMessage.id,
+          serverMessageId: messageId,
         })
 
         setMessages((currentMessages) =>

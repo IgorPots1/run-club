@@ -6,6 +6,7 @@ import {
   logChatSendDebug,
   logChatSendDebugError,
 } from './chatSendDebug'
+import { markChatSendTimingPhase } from './chatSendTiming'
 
 export const CHAT_MESSAGE_MAX_LENGTH = 500
 export const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
@@ -588,7 +589,8 @@ function parseJsonResponse<T>(rawText: string): T | null {
 }
 
 async function createChatMessageViaApi(
-  payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload
+  payload: CreateTextChatMessageApiPayload | CreateVoiceChatMessageApiPayload,
+  optimisticMessageId?: string | null
 ): Promise<CreateChatMessageApiResult> {
   const requestStartedAt = Date.now()
   const requestMeta = {
@@ -605,6 +607,7 @@ async function createChatMessageViaApi(
 
   try {
     logChatSendDebug('request_start', requestMeta)
+    markChatSendTimingPhase('request_start', { optimisticMessageId: optimisticMessageId ?? undefined })
 
     const response = await fetch('/api/chat/messages', {
       method: 'POST',
@@ -621,6 +624,7 @@ async function createChatMessageViaApi(
       ok: response.ok,
       elapsedMs: Date.now() - requestStartedAt,
     })
+    markChatSendTimingPhase('response_status', { optimisticMessageId: optimisticMessageId ?? undefined })
 
     let result:
       | {
@@ -660,6 +664,7 @@ async function createChatMessageViaApi(
       ok: response.ok,
       result,
     })
+    markChatSendTimingPhase('parsed_response', { optimisticMessageId: optimisticMessageId ?? undefined })
 
     const responseMessageId = typeof result?.messageId === 'string'
       ? result.messageId
@@ -741,7 +746,7 @@ export async function createChatMessage(
   threadId?: string | null,
   attachments: ChatComposerImageUpload[] = [],
   imageUrl?: string | null,
-  options?: { pendingAttachmentCount?: number | null }
+  options?: { pendingAttachmentCount?: number | null; optimisticMessageId?: string | null }
 ) {
   const trimmedText = text.trim()
   const normalizedAttachments = attachments
@@ -771,15 +776,18 @@ export async function createChatMessage(
     throw new Error('message_too_long')
   }
 
-  return createChatMessageViaApi({
-    kind: 'text',
-    text: trimmedText,
-    imageUrl: imageUrl ?? null,
-    pendingAttachmentCount: pendingAttachmentCount || null,
-    attachments: normalizedAttachments,
-    replyToId: replyToId ?? null,
-    threadId: threadId ?? null,
-  })
+  return createChatMessageViaApi(
+    {
+      kind: 'text',
+      text: trimmedText,
+      imageUrl: imageUrl ?? null,
+      pendingAttachmentCount: pendingAttachmentCount || null,
+      attachments: normalizedAttachments,
+      replyToId: replyToId ?? null,
+      threadId: threadId ?? null,
+    },
+    options?.optimisticMessageId ?? null
+  )
 }
 
 export async function attachImageToChatMessage(
