@@ -113,6 +113,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'response_status',
   'parsed_response',
   'request_success',
+  'text_pending_label_cleared',
   'attachment_task_queued',
   'attachment_upload_start',
   'attachment_upload_success',
@@ -5064,13 +5065,17 @@ export default function ChatSection({
 
       scheduleOptimisticRealtimeFallback(workingMessage.id, messageId)
       if (!hasPendingAttachmentUploads) {
+        logChatSendDebug('text_pending_label_cleared', {
+          optimisticMessageId: workingMessage.id,
+          serverMessageId: messageId,
+        })
         setMessages((currentMessages) =>
           keepLatestRenderedMessages(
             currentMessages.map((message) =>
               message.id === workingMessage.id
                 ? {
                     ...message,
-                    optimisticStatus: 'sending',
+                    optimisticStatus: undefined,
                     optimisticServerMessageId: messageId,
                   }
                 : message
