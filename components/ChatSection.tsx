@@ -765,7 +765,14 @@ function ChatImageAttachmentTile({
   const [loadedDisplayedSourceUrl, setLoadedDisplayedSourceUrl] = useState<string | null>(
     incomingSourceType === 'local_preview' ? incomingSourceUrl : null
   )
-  const canShowImage = Boolean(displayedSourceUrl) && !previewFailedToLoad
+  const [softPreviewLoadErrorSourceUrl, setSoftPreviewLoadErrorSourceUrl] = useState<string | null>(null)
+  const hasSoftPreviewLoadError = Boolean(
+    displayedSourceType === 'local_preview' &&
+    displayedSourceUrl &&
+    softPreviewLoadErrorSourceUrl === displayedSourceUrl
+  )
+  const effectiveSourceType = hasSoftPreviewLoadError ? 'placeholder' : displayedSourceType
+  const canShowImage = Boolean(displayedSourceUrl) && !previewFailedToLoad && !hasSoftPreviewLoadError
   const isFailedAttachment = attachmentState === 'failed'
   const canOpenAttachment = Boolean(onImageClick && canShowImage && !isFailedAttachment)
   const shouldKeepPreviewVisibleWhileRemoteLoads = Boolean(
@@ -776,7 +783,7 @@ function ChatImageAttachmentTile({
     displayedSourceUrl !== incomingSourceUrl
   )
   const visualState = getAttachmentDebugVisualState({
-    sourceType: displayedSourceType,
+    sourceType: effectiveSourceType,
     attachmentState,
     previewFailedToLoad,
     hasLoadedCurrentSource: loadedDisplayedSourceUrl === displayedSourceUrl && Boolean(displayedSourceUrl),
@@ -786,7 +793,7 @@ function ChatImageAttachmentTile({
     attachment,
     tileIndex,
     renderKey,
-    sourceType: displayedSourceType,
+    sourceType: effectiveSourceType,
     sourceUrlChanged: previousSourceUrlRef.current !== null && previousSourceUrlRef.current !== displayedSourceUrl,
     visualState,
   })
@@ -798,6 +805,7 @@ function ChatImageAttachmentTile({
       preservedPreviewUrlRef.current = incomingSourceUrl
       backgroundRemoteLoadUrlRef.current = null
       notifiedImageLoadSourceUrlRef.current = null
+      setSoftPreviewLoadErrorSourceUrl(null)
 
       if (displayedSourceUrl !== incomingSourceUrl || displayedSourceType !== 'local_preview') {
         setDisplayedSourceUrl(incomingSourceUrl)
@@ -821,6 +829,7 @@ function ChatImageAttachmentTile({
       setDisplayedSourceType('remote_public_url')
       setLoadedDisplayedSourceUrl(null)
       notifiedImageLoadSourceUrlRef.current = null
+      setSoftPreviewLoadErrorSourceUrl(null)
     }
   }, [
     displayedSourceType,
@@ -947,6 +956,7 @@ function ChatImageAttachmentTile({
       setDisplayedSourceUrl(incomingSourceUrl)
       setDisplayedSourceType('remote_public_url')
       setLoadedDisplayedSourceUrl(incomingSourceUrl)
+      setSoftPreviewLoadErrorSourceUrl(null)
       logChatSendDebug('attachment_img_load_success', {
         ...buildAttachmentDebugPayload({
           message,
@@ -1020,7 +1030,7 @@ function ChatImageAttachmentTile({
           ...(latestPayloadRef.current ?? debugPayload),
           previousHeight,
           nextHeight,
-          sourceType: displayedSourceType,
+          sourceType: effectiveSourceType,
           visualState,
         })
       }
@@ -1033,7 +1043,7 @@ function ChatImageAttachmentTile({
     return () => {
       observer.disconnect()
     }
-  }, [debugPayload, displayedSourceType, visualState])
+  }, [debugPayload, effectiveSourceType, visualState])
 
   return (
     <button
@@ -1083,16 +1093,35 @@ function ChatImageAttachmentTile({
             }
           }}
           onError={() => {
+            const isSoftLocalPreviewError = Boolean(
+              displayedSourceType === 'local_preview' &&
+              displayedSourceUrl &&
+              attachmentState !== 'failed' &&
+              (incomingSourceType === 'remote_public_url' || attachmentState !== 'attached')
+            )
+
             logChatSendDebug('attachment_img_load_error', {
               ...(latestPayloadRef.current ?? debugPayload),
-              visualState: 'error',
+              visualState: isSoftLocalPreviewError
+                ? (incomingSourceType === 'remote_public_url' ? 'loading_remote' : 'blank')
+                : 'error',
             })
+
+            if (isSoftLocalPreviewError && displayedSourceUrl) {
+              setSoftPreviewLoadErrorSourceUrl(displayedSourceUrl)
+              return
+            }
 
             if (
               displayedSourceType === 'remote_public_url' &&
               preservedPreviewUrlRef.current &&
               preservedPreviewUrlRef.current !== displayedSourceUrl
             ) {
+              if (softPreviewLoadErrorSourceUrl === preservedPreviewUrlRef.current) {
+                onPreviewError(attachment.id)
+                return
+              }
+
               setDisplayedSourceUrl(preservedPreviewUrlRef.current)
               setDisplayedSourceType('local_preview')
               setLoadedDisplayedSourceUrl(preservedPreviewUrlRef.current)
