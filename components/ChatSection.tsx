@@ -4022,9 +4022,14 @@ export default function ChatSection({
   }, [messages, selectedReactionDetails])
 
   useLayoutEffect(() => {
-    const cachedRecentMessages = currentUserId
-      ? getCachedRecentChatMessages(threadId)
-      : null
+    if (!currentUserId) {
+      return
+    }
+
+    const cachedRecentMessages = getCachedRecentChatMessages(threadId)
+    const previousMessages = messagesRef.current
+    const hasBootstrapFallbackMessages = Boolean(cachedRecentMessages?.messages.length)
+    const shouldApplyBootstrapFallback = hasBootstrapFallbackMessages || previousMessages.length > 0
 
     threadOpenDebugWindowRef.current = {
       threadId: threadId ?? null,
@@ -4050,19 +4055,24 @@ export default function ChatSection({
       releaseOptimisticClientMedia(message)
     })
     pendingDeletedMessageIdsRef.current.clear()
-    const previousMessages = messagesRef.current
-    messagesRef.current = []
-    const nextMessages = applyPendingMediaTasksToMessages(cachedRecentMessages?.messages ?? [])
-    logThreadOpenMessageMutation(previousMessages, nextMessages, {
-      source: 'fallback',
-      replacedWholeList: true,
-      mergedIntoCurrentList: false,
-    })
-    setMessages(nextMessages)
+
+    if (shouldApplyBootstrapFallback) {
+      const nextMessages = applyPendingMediaTasksToMessages(
+        hasBootstrapFallbackMessages ? cachedRecentMessages?.messages ?? [] : []
+      )
+      messagesRef.current = nextMessages
+      logThreadOpenMessageMutation(previousMessages, nextMessages, {
+        source: 'fallback',
+        replacedWholeList: true,
+        mergedIntoCurrentList: false,
+      })
+      setMessages(nextMessages)
+    }
+
     setPendingInitialScroll(false)
-    setHasDeferredInitialSettle(Boolean(cachedRecentMessages?.messages.length))
+    setHasDeferredInitialSettle(hasBootstrapFallbackMessages)
     setPendingNewMessagesCount(0)
-    setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
+    setHasMoreOlderMessages(hasBootstrapFallbackMessages ? cachedRecentMessages?.hasMoreOlderMessages ?? true : true)
     setError('')
     setDraftMessage('')
     setSubmitError('')
@@ -4070,7 +4080,7 @@ export default function ChatSection({
     setEditingMessageId(null)
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
-    setLoading(!cachedRecentMessages)
+    setLoading(!hasBootstrapFallbackMessages)
   }, [applyPendingMediaTasksToMessages, currentUserId, deactivateInitialBottomLock, logThreadOpenMessageMutation, releaseOptimisticClientMedia, threadId])
 
   useEffect(() => {
