@@ -134,6 +134,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'attachment_img_load_success',
   'attachment_img_load_error',
   'attachment_layout_shift',
+  'thread_open_image_load_anchor_skipped',
   'visual_complete',
   'send_timing_summary',
   'attachment_timing_summary',
@@ -3606,7 +3607,11 @@ export default function ChatSection({
     }
 
     if (isInitialBottomLockActive) {
-      keepInitialBottomLockAnchored('image-load')
+      logChatSendDebug('thread_open_image_load_anchor_skipped', {
+        messageId: message.id,
+        sortOrder,
+        isInitialBottomLockActive,
+      })
       return
     }
 
@@ -3624,7 +3629,6 @@ export default function ChatSection({
     isInitialBottomLockActive,
     isNearBottom,
     isThreadLayoutReady,
-    keepInitialBottomLockAnchored,
     scrollPageToBottom,
     showScrollToBottomButton,
   ])
