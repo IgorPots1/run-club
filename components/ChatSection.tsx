@@ -950,9 +950,17 @@ function ChatImageAttachmentTile({
   const renderKey = getAttachmentStableRenderKey(attachment, tileIndex)
   const [displayedSourceUrl, setDisplayedSourceUrl] = useState<string | null>(incomingSourceUrl)
   const [displayedSourceType, setDisplayedSourceType] = useState<AttachmentDebugSourceType>(incomingSourceType)
+  const isStableRemoteAttachmentInitiallyRenderReady = Boolean(
+    incomingSourceType === 'remote_public_url' &&
+    attachmentState === 'attached' &&
+    !message.isOptimistic &&
+    attachment.width &&
+    attachment.height
+  )
   const [loadedDisplayedSourceUrl, setLoadedDisplayedSourceUrl] = useState<string | null>(
     incomingSourceType === 'local_preview' ||
-      isRemoteAttachmentLoadedAtSourceActivation
+      isRemoteAttachmentLoadedAtSourceActivation ||
+      isStableRemoteAttachmentInitiallyRenderReady
       ? incomingSourceUrl
       : null
   )
@@ -984,6 +992,15 @@ function ChatImageAttachmentTile({
     displayedSourceUrl &&
     displayedSourceUrl !== incomingSourceUrl
   )
+  const isStableRemoteAttachmentRenderReady = Boolean(
+    incomingSourceType === 'remote_public_url' &&
+    attachmentState === 'attached' &&
+    !message.isOptimistic &&
+    attachment.width &&
+    attachment.height &&
+    displayedSourceType === 'remote_public_url' &&
+    displayedSourceUrl === incomingSourceUrl
+  )
   const isRemoteAttachmentCachedReady = Boolean(
     isRemoteAttachmentLoadedAtSourceActivation &&
     displayedSourceType === 'remote_public_url' &&
@@ -994,7 +1011,8 @@ function ChatImageAttachmentTile({
     displayedSourceUrl &&
     (
       loadedDisplayedSourceUrl === displayedSourceUrl ||
-      isRemoteAttachmentCachedReady
+      isRemoteAttachmentCachedReady ||
+      isStableRemoteAttachmentRenderReady
     )
   )
   const canBeginCurrentImageLoad = Boolean(
@@ -1151,7 +1169,7 @@ function ChatImageAttachmentTile({
       setDisplayedSourceUrl(incomingSourceUrl)
       setDisplayedSourceType('remote_public_url')
       setLoadedDisplayedSourceUrl(
-        isRemoteAttachmentLoadedAtSourceActivation
+        isRemoteAttachmentLoadedAtSourceActivation || isStableRemoteAttachmentInitiallyRenderReady
           ? incomingSourceUrl
           : null
       )
@@ -1165,6 +1183,7 @@ function ChatImageAttachmentTile({
     incomingSourceUrl,
     remoteAttachmentLoadedCacheKey,
     isRemoteAttachmentLoadedAtSourceActivation,
+    isStableRemoteAttachmentInitiallyRenderReady,
     shouldKeepPreviewVisibleWhileRemoteLoads,
     debugPayload,
   ])
