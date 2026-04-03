@@ -62,6 +62,10 @@ function readInitialMessagesListState() {
   return getMessagesListCacheSnapshot()
 }
 
+function isNonNull<T>(value: T | null): value is T {
+  return value !== null
+}
+
 async function loadCommonThreadsAndUnreadCounts() {
   const [commonThreadsResult, unreadCountsResult] = await Promise.allSettled([
     getCommonChannels(),
@@ -422,7 +426,7 @@ export default function MessagesPage() {
           avatar: <ThreadAvatar>{channelKey === 'important_info' ? '!' : 'O'}</ThreadAvatar>,
         } satisfies MessageThreadListItem
       })
-      .filter((item): item is MessageThreadListItem => item !== null)
+      .filter(isNonNull)
   }, [commonThreads, currentUserId, unreadCountsByThread])
 
   const coachChatItem = useMemo(() => {
