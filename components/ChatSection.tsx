@@ -7272,9 +7272,12 @@ export default function ChatSection({
           <div
             ref={scrollContainerRef}
             data-chat-scroll-container="true"
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] [WebkitOverflowScrolling:touch]"
           >
-            <div ref={scrollContentRef} className="flex min-h-full flex-col">
+            <div
+              ref={scrollContentRef}
+              className="flex min-h-full flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))]"
+            >
               {error ? (
                 <section className="flex flex-1 p-1">
                   <p className="text-sm text-red-600">{error}</p>
