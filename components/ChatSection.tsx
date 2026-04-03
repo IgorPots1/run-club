@@ -3706,12 +3706,6 @@ export default function ChatSection({
   )
   const initialBottomLockRequiredStableSamples = 3
   const initialBottomLockSafetyTimeoutMs = 4000
-  const shouldHideInitialThreadContent = Boolean(
-    threadId &&
-    !loading &&
-    messages.length > 0 &&
-    (hasDeferredInitialSettle || pendingInitialScroll || isInitialBottomLockActive)
-  )
 
   useEffect(() => {
     if (!CHAT_SEND_DEBUG) {
@@ -7253,14 +7247,7 @@ export default function ChatSection({
             data-chat-scroll-container="true"
             className="flex min-h-0 flex-1 flex-col overflow-y-auto [WebkitOverflowScrolling:touch]"
           >
-            <div
-              ref={scrollContentRef}
-              className={`flex min-h-full flex-col transition-opacity duration-150 ${
-                shouldHideInitialThreadContent ? 'opacity-0' : 'opacity-100'
-              }`}
-              style={shouldHideInitialThreadContent ? { visibility: 'hidden' } : undefined}
-              aria-hidden={shouldHideInitialThreadContent}
-            >
+            <div ref={scrollContentRef} className="flex min-h-full flex-col">
               {error ? (
                 <section className="flex flex-1 p-1">
                   <p className="text-sm text-red-600">{error}</p>
