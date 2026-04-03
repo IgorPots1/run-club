@@ -877,12 +877,19 @@ function ChatImageAttachmentTile({
     displayedSourceUrl &&
     displayedSourceUrl !== incomingSourceUrl
   )
+  const hasLoadedCurrentSource = loadedDisplayedSourceUrl === displayedSourceUrl && Boolean(displayedSourceUrl)
   const visualState = getAttachmentDebugVisualState({
     sourceType: effectiveSourceType,
     attachmentState,
     previewFailedToLoad,
-    hasLoadedCurrentSource: loadedDisplayedSourceUrl === displayedSourceUrl && Boolean(displayedSourceUrl),
+    hasLoadedCurrentSource,
   })
+  const shouldShowRemoteLoadingPlaceholder = Boolean(
+    effectiveSourceType === 'remote_public_url' &&
+    displayedSourceUrl &&
+    !hasLoadedCurrentSource &&
+    !isFailedAttachment
+  )
   const debugPayload = buildAttachmentDebugPayload({
     message,
     attachment,
@@ -1226,9 +1233,30 @@ function ChatImageAttachmentTile({
             onPreviewError(attachment.id)
           }}
           className={`h-full w-full object-cover transition duration-300 ${
-            attachmentState === 'uploading' || attachmentState === 'uploaded' ? 'scale-[1.01] opacity-85 blur-[1px]' : 'opacity-100'
+            shouldShowRemoteLoadingPlaceholder
+              ? 'opacity-0'
+              : attachmentState === 'uploading' || attachmentState === 'uploaded'
+                ? 'scale-[1.01] opacity-85 blur-[1px]'
+                : 'opacity-100'
           }`}
         />
+      ) : null}
+
+      {shouldShowRemoteLoadingPlaceholder ? (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 block bg-slate-200/85 dark:bg-slate-800/85"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 block bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 block animate-pulse bg-gradient-to-r from-white/0 via-white/35 to-white/0 dark:via-white/10"
+          />
+        </>
       ) : null}
 
       {!canShowImage ? (
