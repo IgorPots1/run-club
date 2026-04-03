@@ -160,6 +160,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'send_timing_summary',
   'attachment_timing_summary',
 ])
+const CHAT_SEND_DEBUG_VISIBLE_EVENT_LIMIT = 100
 
 function summarizeThreadOpenMessages(messages: ChatMessageItem[]) {
   return {
@@ -3328,11 +3329,14 @@ export default function ChatSection({
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
-  const visibleChatSendDebugEvents = useMemo(
+  const filteredChatSendDebugEvents = useMemo(
     () => chatSendDebugEvents
-      .filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase))
-      .slice(0, 20),
+      .filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase)),
     [chatSendDebugEvents]
+  )
+  const visibleChatSendDebugEvents = useMemo(
+    () => filteredChatSendDebugEvents.slice(0, CHAT_SEND_DEBUG_VISIBLE_EVENT_LIMIT),
+    [filteredChatSendDebugEvents]
   )
   const isThreadOpenDebugActive = useCallback((nextThreadId: string | null | undefined = threadId) => (
     Boolean(nextThreadId) &&
@@ -6611,7 +6615,7 @@ export default function ChatSection({
   }, [getChatSendErrorGuardState])
 
   const handleCopyChatSendDebug = useCallback(async () => {
-    const exportPayload = visibleChatSendDebugEvents.map((event) => ({
+    const exportPayload = filteredChatSendDebugEvents.map((event) => ({
       timestamp: event.timestamp,
       phase: event.phase,
       level: event.level,
@@ -6640,7 +6644,7 @@ export default function ChatSection({
       setChatSendDebugCopyStatus('')
       chatSendDebugCopyTimeoutRef.current = null
     }, 3000)
-  }, [visibleChatSendDebugEvents])
+  }, [filteredChatSendDebugEvents])
 
   function renderComposer() {
     return (

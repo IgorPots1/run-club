@@ -1,7 +1,7 @@
 export const CHAT_SEND_DEBUG_PREFIX = '[chat-send-debug]'
 // TEMP: force debug ON for mobile debugging, revert after investigation
 export const CHAT_SEND_DEBUG = true
-const MAX_CHAT_SEND_DEBUG_EVENTS = 50
+const MAX_CHAT_SEND_DEBUG_EVENTS = 200
 
 export type ChatSendDebugErrorCategory =
   | 'network_error'
