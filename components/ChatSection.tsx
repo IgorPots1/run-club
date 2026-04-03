@@ -621,6 +621,7 @@ function isLocalOrTransientImageUrl(url: string | null | undefined): boolean {
 
 type AttachmentDebugSourceType = 'local_preview' | 'remote_public_url' | 'placeholder' | 'unknown'
 type AttachmentDebugVisualState = 'preview' | 'pending' | 'loading_remote' | 'final' | 'error' | 'blank'
+type AttachmentDebugAttachmentState = NonNullable<ChatMessageItem['optimisticAttachmentStates']>[number]
 
 function getAttachmentDebugSourceType(url: string | null | undefined): AttachmentDebugSourceType {
   if (!url?.trim()) {
@@ -641,7 +642,7 @@ function getAttachmentDebugVisualState({
   hasLoadedCurrentSource,
 }: {
   sourceType: AttachmentDebugSourceType
-  attachmentState: ChatMessageItem['optimisticAttachmentStates'] extends Array<infer T> ? T : never
+  attachmentState: AttachmentDebugAttachmentState
   previewFailedToLoad: boolean
   hasLoadedCurrentSource: boolean
 }): AttachmentDebugVisualState {
@@ -725,7 +726,7 @@ function ChatImageAttachmentTile({
 }: {
   message: ChatMessageItem
   attachment: ChatMessageAttachment
-  attachmentState: NonNullable<ChatMessageItem['optimisticAttachmentStates']>[number]
+  attachmentState: AttachmentDebugAttachmentState
   tileIndex: number
   className: string
   style?: {
