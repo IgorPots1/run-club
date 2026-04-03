@@ -202,23 +202,6 @@ function getAttachmentMaterialSignature(message: ChatMessageItem) {
     .join('|')
 }
 
-function getThreadOpenMessageEquivalenceSignature(message: ChatMessageItem) {
-  return [
-    message.id,
-    message.messageType,
-    message.createdAt,
-    message.editedAt ?? '',
-    message.isDeleted ? 'deleted' : 'active',
-    message.imageUrl ?? '',
-    message.mediaUrl ?? '',
-    message.replyToId ?? '',
-    getAttachmentMaterialSignature(message),
-    message.reactions
-      .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.userIds.join(',')}`)
-      .join('|'),
-  ].join('::')
-}
-
 function areThreadOpenMessageListsEquivalent(
   currentMessages: ChatMessageItem[],
   nextMessages: ChatMessageItem[]
@@ -228,8 +211,7 @@ function areThreadOpenMessageListsEquivalent(
   }
 
   return currentMessages.every((message, index) => (
-    getThreadOpenMessageEquivalenceSignature(message) ===
-      getThreadOpenMessageEquivalenceSignature(nextMessages[index]!)
+    message.id === nextMessages[index]?.id
   ))
 }
 
