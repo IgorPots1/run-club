@@ -239,6 +239,8 @@ export default function MessagesPage() {
   const [error, setError] = useState('')
   const [openingCoachThread, setOpeningCoachThread] = useState(false)
   const [openingStudentId, setOpeningStudentId] = useState<string | null>(null)
+  const [isActiveOpen, setIsActiveOpen] = useState(true)
+  const [isAllStudentsOpen, setIsAllStudentsOpen] = useState(false)
 
   const isCoach = currentUserId === COACH_USER_ID
 
@@ -992,21 +994,35 @@ export default function MessagesPage() {
                 title="Активные диалоги"
                 description="Существующие личные чаты с учениками."
               >
-                {activeDialogItems.length > 0 ? (
-                  <div className="space-y-3">
-                    {activeDialogItems.map((item) => (
-                      <ThreadListRow
-                        key={item.listKey}
-                        item={item}
-                        onPrefetch={handlePrefetchThreadMessages}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <section className="app-card rounded-2xl border p-4 shadow-sm">
-                    <p className="app-text-secondary text-sm">Пока нет активных личных диалогов.</p>
-                  </section>
-                )}
+                <section className="app-card rounded-2xl border p-4 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setIsActiveOpen((current) => !current)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+                    aria-expanded={isActiveOpen}
+                  >
+                    <span className="app-text-primary text-base font-medium">Активные диалоги</span>
+                    <span className="app-text-secondary text-sm">{isActiveOpen ? '▼' : '▶'}</span>
+                  </button>
+
+                  {isActiveOpen ? (
+                    <div className="mt-3">
+                      {activeDialogItems.length > 0 ? (
+                        <div className="space-y-3">
+                          {activeDialogItems.map((item) => (
+                            <ThreadListRow
+                              key={item.listKey}
+                              item={item}
+                              onPrefetch={handlePrefetchThreadMessages}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="app-text-secondary text-sm">Пока нет активных личных диалогов.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </section>
               </MessagesSection>
 
               <MessagesSection
@@ -1014,43 +1030,57 @@ export default function MessagesPage() {
                 description="Открывайте существующий чат или создавайте его только при входе."
               >
                 <section className="app-card rounded-2xl border p-4 shadow-sm">
-                  {students.length === 0 ? (
-                    <p className="app-text-secondary text-sm">Пока нет зарегистрированных учеников.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {students.map((student) => {
-                        const existingThread = directThreadByStudentId[student.id]
-                        const isOpeningThisStudent = openingStudentId === student.id
+                  <button
+                    type="button"
+                    onClick={() => setIsAllStudentsOpen((current) => !current)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+                    aria-expanded={isAllStudentsOpen}
+                  >
+                    <span className="app-text-primary text-base font-medium">Все ученики</span>
+                    <span className="app-text-secondary text-sm">{isAllStudentsOpen ? '▼' : '▶'}</span>
+                  </button>
 
-                        return (
-                          <div
-                            key={student.id}
-                            className="flex items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 dark:border-white/[0.08]"
-                          >
-                            <StudentAvatar student={student} />
-                            <div className="min-w-0 flex-1">
-                              <p className="app-text-primary truncate text-sm font-medium">
-                                {getProfileDisplayName(student, 'Ученик')}
-                              </p>
-                              <p className="app-text-secondary truncate text-xs">
-                                {student.nickname?.trim() || 'Профиль участника'}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleOpenStudentThread(student.id)
-                              }}
-                              disabled={isOpeningThisStudent}
-                              className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-xs font-medium disabled:opacity-60"
-                            >
-                              {isOpeningThisStudent ? '...' : existingThread ? 'Открыть' : 'Начать'}
-                            </button>
-                          </div>
-                        )
-                      })}
+                  {isAllStudentsOpen ? (
+                    <div className="mt-3">
+                      {students.length === 0 ? (
+                        <p className="app-text-secondary text-sm">Пока нет зарегистрированных учеников.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {students.map((student) => {
+                            const existingThread = directThreadByStudentId[student.id]
+                            const isOpeningThisStudent = openingStudentId === student.id
+
+                            return (
+                              <div
+                                key={student.id}
+                                className="flex items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 dark:border-white/[0.08]"
+                              >
+                                <StudentAvatar student={student} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="app-text-primary truncate text-sm font-medium">
+                                    {getProfileDisplayName(student, 'Ученик')}
+                                  </p>
+                                  <p className="app-text-secondary truncate text-xs">
+                                    {student.nickname?.trim() || 'Профиль участника'}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleOpenStudentThread(student.id)
+                                  }}
+                                  disabled={isOpeningThisStudent}
+                                  className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-xs font-medium disabled:opacity-60"
+                                >
+                                  {isOpeningThisStudent ? '...' : existingThread ? 'Открыть' : 'Начать'}
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : null}
                 </section>
               </MessagesSection>
             </>
