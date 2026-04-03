@@ -777,23 +777,61 @@ function getAttachmentDebugIds(message: ChatMessageItem) {
   }
 }
 
-const loadedRemoteAttachmentSourcesByKey = new Map<string, string>()
+const loadedRemoteAttachmentSourcesByKey = new Set<string>()
+
+function normalizeRemoteAttachmentSourceIdentity(sourceUrl: string | null) {
+  if (!sourceUrl) {
+    return null
+  }
+
+  const trimmedSourceUrl = sourceUrl.trim()
+
+  if (!trimmedSourceUrl) {
+    return null
+  }
+
+  try {
+    const normalizedUrl = new URL(trimmedSourceUrl)
+    normalizedUrl.hash = ''
+
+    const sortedSearchParams = [...normalizedUrl.searchParams.entries()]
+      .sort(([leftKey, leftValue], [rightKey, rightValue]) => {
+        if (leftKey === rightKey) {
+          return leftValue.localeCompare(rightValue)
+        }
+
+        return leftKey.localeCompare(rightKey)
+      })
+
+    normalizedUrl.search = ''
+
+    sortedSearchParams.forEach(([key, value]) => {
+      normalizedUrl.searchParams.append(key, value)
+    })
+
+    return normalizedUrl.toString()
+  } catch {
+    return trimmedSourceUrl
+  }
+}
 
 function getRemoteAttachmentLoadedCacheKey(
   message: ChatMessageItem,
   attachment: ChatMessageAttachment,
   sourceUrl: string | null
 ) {
-  if (!sourceUrl) {
+  const normalizedSourceIdentity = normalizeRemoteAttachmentSourceIdentity(sourceUrl)
+
+  if (!normalizedSourceIdentity) {
     return null
   }
 
   if (attachment.id) {
-    return `attachment:${attachment.id}`
+    return `attachment:${attachment.id}:${normalizedSourceIdentity}`
   }
 
   const { serverMessageId } = getAttachmentDebugIds(message)
-  return `message:${serverMessageId ?? message.id}:${attachment.sortOrder}:${sourceUrl}`
+  return `message:${serverMessageId ?? message.id}:${attachment.sortOrder}:${normalizedSourceIdentity}`
 }
 
 function hasLoadedRemoteAttachmentSourceInSession(
@@ -802,7 +840,7 @@ function hasLoadedRemoteAttachmentSourceInSession(
   sourceUrl: string | null
 ) {
   const cacheKey = getRemoteAttachmentLoadedCacheKey(message, attachment, sourceUrl)
-  return Boolean(cacheKey && loadedRemoteAttachmentSourcesByKey.get(cacheKey) === sourceUrl)
+  return Boolean(cacheKey && loadedRemoteAttachmentSourcesByKey.has(cacheKey))
 }
 
 function markRemoteAttachmentSourceLoadedInSession(
@@ -816,7 +854,7 @@ function markRemoteAttachmentSourceLoadedInSession(
     return
   }
 
-  loadedRemoteAttachmentSourcesByKey.set(cacheKey, sourceUrl)
+  loadedRemoteAttachmentSourcesByKey.add(cacheKey)
 }
 
 function buildAttachmentDebugPayload({
