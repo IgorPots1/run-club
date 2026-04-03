@@ -149,6 +149,7 @@ const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'thread_open_initial_messages_loaded',
   'thread_open_messages_set',
   'thread_open_messages_replaced',
+  'thread_open_messages_replace_skipped',
   'thread_open_messages_merged',
   'thread_open_realtime_subscription_ready',
   'thread_open_realtime_insert_received',
@@ -196,6 +197,37 @@ function getAttachmentMaterialSignature(message: ChatMessageItem) {
   return message.attachments
     .map((attachment) => `${attachment.id}:${attachment.sortOrder}:${attachment.publicUrl ?? ''}`)
     .join('|')
+}
+
+function getThreadOpenMessageEquivalenceSignature(message: ChatMessageItem) {
+  return [
+    message.id,
+    message.messageType,
+    message.createdAt,
+    message.editedAt ?? '',
+    message.isDeleted ? 'deleted' : 'active',
+    message.imageUrl ?? '',
+    message.mediaUrl ?? '',
+    message.replyToId ?? '',
+    getAttachmentMaterialSignature(message),
+    message.reactions
+      .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.userIds.join(',')}`)
+      .join('|'),
+  ].join('::')
+}
+
+function areThreadOpenMessageListsEquivalent(
+  currentMessages: ChatMessageItem[],
+  nextMessages: ChatMessageItem[]
+) {
+  if (currentMessages.length !== nextMessages.length) {
+    return false
+  }
+
+  return currentMessages.every((message, index) => (
+    getThreadOpenMessageEquivalenceSignature(message) ===
+      getThreadOpenMessageEquivalenceSignature(nextMessages[index]!)
+  ))
 }
 
 function formatChatSendDebugValue(value: unknown): string | null {
@@ -4305,6 +4337,9 @@ export default function ChatSection({
         }
 
         const nextMessages = applyPendingMediaTasksToMessages(keepLatestRenderedMessages(initialMessages))
+        const shouldSkipEquivalentInitialReplace =
+          messagesRef.current.length > 0 &&
+          areThreadOpenMessageListsEquivalent(messagesRef.current, nextMessages)
 
         if (threadId && isThreadOpenDebugActive(threadId)) {
           logChatSendDebug('thread_open_initial_messages_loaded', {
@@ -4314,14 +4349,27 @@ export default function ChatSection({
             replacedWholeList: true,
             mergedIntoCurrentList: false,
           })
-          logThreadOpenMessageMutation(messagesRef.current, nextMessages, {
-            source: 'initial_load',
-            replacedWholeList: true,
-            mergedIntoCurrentList: false,
-          })
+
+          if (shouldSkipEquivalentInitialReplace) {
+            logChatSendDebug('thread_open_messages_replace_skipped', {
+              threadId,
+              source: 'initial_load',
+              reason: 'equivalent_message_set',
+              ...summarizeThreadOpenMessages(nextMessages),
+              ...buildThreadOpenMessageChangeStats(messagesRef.current, nextMessages),
+            })
+          } else {
+            logThreadOpenMessageMutation(messagesRef.current, nextMessages, {
+              source: 'initial_load',
+              replacedWholeList: true,
+              mergedIntoCurrentList: false,
+            })
+          }
         }
 
-        setMessages(nextMessages)
+        if (!shouldSkipEquivalentInitialReplace) {
+          setMessages(nextMessages)
+        }
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
         if (!hasCachedMessages) {
