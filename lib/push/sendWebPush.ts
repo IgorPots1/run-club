@@ -10,8 +10,15 @@ type SendWebPushInput = {
     title: string
     body: string
     targetUrl: string
+    messageId?: string
     threadId?: string
     threadType?: 'club' | 'direct_coach'
+    priority?: 'normal' | 'important'
+    threadUnreadCount?: number
+    badgeCount?: number
+    unreadScope?: 'thread'
+    tag?: string
+    timestamp?: number
   }
 }
 
@@ -61,8 +68,15 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
       title: input.payload.title,
       body: input.payload.body,
       targetUrl: input.payload.targetUrl,
+      messageId: input.payload.messageId,
       threadId: input.payload.threadId,
       threadType: input.payload.threadType,
+      priority: input.payload.priority,
+      threadUnreadCount: input.payload.threadUnreadCount,
+      badgeCount: input.payload.badgeCount,
+      unreadScope: input.payload.unreadScope,
+      tag: input.payload.tag,
+      timestamp: input.payload.timestamp,
     })
 
     await webpush.sendNotification(
@@ -77,8 +91,15 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
         title: input.payload.title,
         body: input.payload.body,
         targetUrl: input.payload.targetUrl,
+        messageId: input.payload.messageId,
         threadId: input.payload.threadId,
         threadType: input.payload.threadType,
+        priority: input.payload.priority,
+        threadUnreadCount: input.payload.threadUnreadCount,
+        badgeCount: input.payload.badgeCount,
+        unreadScope: input.payload.unreadScope,
+        tag: input.payload.tag,
+        timestamp: input.payload.timestamp,
       })
     )
 

@@ -33,10 +33,27 @@ type UserNotificationSettingRow = {
   muted?: boolean | null
   push_level?: string | null
 }
+type ChatThreadReadStateRow = {
+  last_read_at: string | null
+}
 
 type AppEventPushDeliveryStatus = 'processing' | 'sent' | 'failed' | 'skipped' | 'expired'
 type HandledAppEventPushDeliveryStatus = Extract<AppEventPushDeliveryStatus, 'sent' | 'skipped' | 'expired'>
 type ChatPushEnvelope = NonNullable<ReturnType<typeof getChatPushEnvelopeFromAppEvent>>
+type ChatPushDeliveryPayload = {
+  title: string
+  body: string
+  targetUrl: string
+  messageId?: string
+  threadId: string
+  threadType: 'club' | 'direct_coach'
+  priority: 'normal' | 'important'
+  threadUnreadCount?: number
+  badgeCount?: number
+  unreadScope?: 'thread'
+  tag?: string
+  timestamp?: number
+}
 type AppEventPushDeliveryRow = {
   app_event_id: string
   status: AppEventPushDeliveryStatus
@@ -172,22 +189,26 @@ function buildGroupedChatPushPayload(group: ChatPushCoalescedGroup) {
     return null
   }
 
+  const timestamp = Date.parse(group.latestEvent.createdAt)
+  const basePayload: ChatPushDeliveryPayload = {
+    title: latestEnvelope.title,
+    body: latestEnvelope.body,
+    targetUrl: latestEnvelope.targetPath,
+    messageId: latestEnvelope.messageId || undefined,
+    threadId: latestEnvelope.threadId,
+    threadType: latestEnvelope.threadType,
+    priority: latestEnvelope.priority,
+    tag: latestEnvelope.priority === 'normal' ? `chat:${latestEnvelope.threadId}` : undefined,
+    timestamp: Number.isNaN(timestamp) ? undefined : timestamp,
+  }
+
   if (group.events.length === 1) {
-    return {
-      title: latestEnvelope.title,
-      body: latestEnvelope.body,
-      targetUrl: latestEnvelope.targetPath,
-      threadId: latestEnvelope.threadId,
-      threadType: latestEnvelope.threadType,
-    }
+    return basePayload
   }
 
   return {
-    title: latestEnvelope.title,
+    ...basePayload,
     body: `${group.events.length} новых сообщений`,
-    targetUrl: latestEnvelope.targetPath,
-    threadId: latestEnvelope.threadId,
-    threadType: latestEnvelope.threadType,
   }
 }
 
@@ -241,6 +262,68 @@ async function loadThreadPushLevel(
   }
 
   return normalizeThreadPushLevel((data as UserNotificationSettingRow | null) ?? null)
+}
+
+async function loadThreadUnreadCount(
+  supabaseAdmin: SupabaseAdminClient,
+  userId: string,
+  threadId: string
+) {
+  const { data: existingReadMarker, error: existingReadMarkerError } = await supabaseAdmin
+    .from('chat_thread_reads')
+    .select('last_read_at')
+    .eq('thread_id', threadId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (existingReadMarkerError) {
+    throw existingReadMarkerError
+  }
+
+  const previousLastReadAt =
+    ((existingReadMarker as ChatThreadReadStateRow | null) ?? null)?.last_read_at ?? null
+  const unreadMessagesQuery = supabaseAdmin
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('thread_id', threadId)
+    .eq('is_deleted', false)
+    .neq('user_id', userId)
+
+  if (previousLastReadAt) {
+    unreadMessagesQuery.gt('created_at', previousLastReadAt)
+  }
+
+  const { count, error: unreadMessagesError } = await unreadMessagesQuery
+
+  if (unreadMessagesError) {
+    throw unreadMessagesError
+  }
+
+  return count ?? 0
+}
+
+async function loadChatPushDeliveryPayloadMetadata(
+  supabaseAdmin: SupabaseAdminClient,
+  userId: string,
+  threadId: string
+) {
+  try {
+    const threadUnreadCount = await loadThreadUnreadCount(supabaseAdmin, userId, threadId)
+
+    return {
+      threadUnreadCount,
+      badgeCount: threadUnreadCount,
+      unreadScope: 'thread' as const,
+    }
+  } catch (error) {
+    console.error('Failed to load chat push unread metadata', {
+      userId,
+      threadId,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+
+    return {}
+  }
 }
 
 async function loadUserSubscriptions(
@@ -627,6 +710,25 @@ async function processSingleChatAppEventPush(supabaseAdmin: SupabaseAdminClient,
     return
   }
 
+  const unreadMetadata = await loadChatPushDeliveryPayloadMetadata(
+    supabaseAdmin,
+    targetUserId,
+    pushEnvelope.threadId
+  )
+  const timestamp = Date.parse(event.createdAt)
+  const payload: ChatPushDeliveryPayload = {
+    title: pushEnvelope.title,
+    body: pushEnvelope.body,
+    targetUrl: pushEnvelope.targetPath,
+    messageId: pushEnvelope.messageId || undefined,
+    threadId: pushEnvelope.threadId,
+    threadType: pushEnvelope.threadType,
+    priority: pushEnvelope.priority,
+    tag: pushEnvelope.priority === 'normal' ? `chat:${pushEnvelope.threadId}` : undefined,
+    timestamp: Number.isNaN(timestamp) ? undefined : timestamp,
+    ...unreadMetadata,
+  }
+
   for (const subscription of subscriptions) {
     const claim = await claimDeliveryAttempt({
       supabaseAdmin,
@@ -643,13 +745,7 @@ async function processSingleChatAppEventPush(supabaseAdmin: SupabaseAdminClient,
       endpoint: subscription.endpoint,
       p256dh: subscription.p256dh,
       auth: subscription.auth,
-      payload: {
-        title: pushEnvelope.title,
-        body: pushEnvelope.body,
-        targetUrl: pushEnvelope.targetPath,
-        threadId: pushEnvelope.threadId,
-        threadType: pushEnvelope.threadType,
-      },
+      payload,
     })
 
     if (result.ok) {
@@ -710,9 +806,9 @@ async function processCoalescedChatAppEventPush(
     return
   }
 
-  const pushPayload = buildGroupedChatPushPayload(group)
+  const basePushPayload = buildGroupedChatPushPayload(group)
 
-  if (!pushPayload) {
+  if (!basePushPayload) {
     await recordGroupedEventLevelOutcome({
       supabaseAdmin,
       events: group.events,
@@ -782,6 +878,16 @@ async function processCoalescedChatAppEventPush(
       errorBody: 'no_push_subscriptions',
     })
     return
+  }
+
+  const unreadMetadata = await loadChatPushDeliveryPayloadMetadata(
+    supabaseAdmin,
+    descriptor.targetUserId,
+    descriptor.threadId
+  )
+  const pushPayload = {
+    ...basePushPayload,
+    ...unreadMetadata,
   }
 
   for (const subscription of subscriptions) {

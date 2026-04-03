@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
@@ -32,15 +32,21 @@ type ProfileRow = {
 
 const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
 
+function normalizeMessageId(value: string | null) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { isKeyboardOpen, isolatedViewportStyle } = useIsolatedViewportHeight()
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
   const markReadTimeoutRef = useRef<number | null>(null)
   const isMarkingThreadReadRef = useRef(false)
   const pendingMarkThreadReadRef = useRef(false)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
+  const targetMessageId = normalizeMessageId(searchParams.get('messageId'))
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('')
@@ -450,6 +456,7 @@ export default function MessageThreadPage() {
           <ChatSection
             showTitle={false}
             threadId={threadId}
+            targetMessageId={targetMessageId}
             currentUserId={currentUserId}
             isKeyboardOpen={isKeyboardOpen}
             isThreadLayoutReady={isThreadLayoutReady}

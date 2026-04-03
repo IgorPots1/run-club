@@ -43,7 +43,22 @@ function getClubImportantTitle(channelKey: CommonChannelKey | null) {
 }
 
 export function buildChatMessageEventTargetPath(threadId: string) {
-  return `/messages/${threadId}`
+  return `/messages/${encodeURIComponent(threadId)}`
+}
+
+export function buildChatMessageDeepLinkTargetPath(threadId: string, messageId?: string | null) {
+  const threadPath = buildChatMessageEventTargetPath(threadId)
+  const normalizedMessageId = messageId?.trim()
+
+  if (!normalizedMessageId) {
+    return threadPath
+  }
+
+  const searchParams = new URLSearchParams({
+    messageId: normalizedMessageId,
+  })
+
+  return `${threadPath}?${searchParams.toString()}`
 }
 
 export function buildChatPushPreview(input: ChatPreviewInput): ChatEventPreview {
@@ -81,7 +96,7 @@ export function buildChatPushPreview(input: ChatPreviewInput): ChatEventPreview 
 export function buildChatMessageCreatedAppEvent(
   input: ChatMessageCreatedAppEventInput
 ): CreateAppEventInput {
-  const targetPath = buildChatMessageEventTargetPath(input.threadId)
+  const targetPath = buildChatMessageDeepLinkTargetPath(input.threadId, input.messageId)
   const preview = buildChatPushPreview(input)
 
   return {
@@ -141,6 +156,7 @@ export function getChatPushEnvelopeFromAppEvent(input: {
     : null
   const targetPath = normalizeAppEventTargetPath(input.targetPath)
     ?? normalizeAppEventTargetPath(typeof payload?.targetPath === 'string' ? payload.targetPath : null)
+    ?? buildChatMessageDeepLinkTargetPath(threadId, messageId)
 
   if (!title || !threadId || !threadType || !targetPath) {
     return null

@@ -5,6 +5,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
+import { logoutCurrentUser } from '@/lib/auth/logoutClient'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import LevelOverviewSheet from '@/components/LevelOverviewSheet'
@@ -25,7 +26,6 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from '@/lib/push/subscribeToPush'
-import { stopVoiceStream } from '@/lib/voice/voiceStream'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP, getLevelProgressFromXP, getRankTitleFromLevel, type XpBreakdownItem } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
@@ -912,17 +912,12 @@ function ProfilePageContent() {
     setPageError('')
     setStravaSyncMessage('')
     setStravaConnectionState('disconnected')
-    stopVoiceStream()
 
     try {
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        setPageError('Не удалось выйти из аккаунта')
-        return
-      }
-
-      router.replace('/login')
+      await logoutCurrentUser({
+        router,
+        redirectTo: '/login',
+      })
     } catch {
       setPageError('Не удалось выйти из аккаунта')
     } finally {

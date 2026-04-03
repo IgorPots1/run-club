@@ -10,14 +10,73 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(event.request))
 })
 
-function buildChatThreadTargetUrl(threadId) {
-  return typeof threadId === 'string' && threadId.trim()
-    ? `/messages/${threadId.trim()}`
-    : '/dashboard'
+function normalizeThreadId(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
-function resolveNotificationTargetUrl(targetUrl, threadId) {
-  const fallbackUrl = buildChatThreadTargetUrl(threadId)
+function normalizeMessageId(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function normalizePriority(value) {
+  return value === 'important' ? 'important' : 'normal'
+}
+
+function normalizeCount(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.round(value)
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsedValue = Number(value)
+
+    if (Number.isFinite(parsedValue) && parsedValue >= 0) {
+      return Math.round(parsedValue)
+    }
+  }
+
+  return undefined
+}
+
+function normalizeTimestamp(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.round(value)
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsedValue = Date.parse(value)
+
+    if (!Number.isNaN(parsedValue)) {
+      return parsedValue
+    }
+  }
+
+  return undefined
+}
+
+function normalizeNotificationTag(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function buildChatThreadTargetUrl(threadId, messageId) {
+  const normalizedThreadId = normalizeThreadId(threadId)
+  const normalizedMessageId = normalizeMessageId(messageId)
+
+  if (!normalizedThreadId) {
+    return '/dashboard'
+  }
+
+  const targetUrl = new URL(`/messages/${encodeURIComponent(normalizedThreadId)}`, self.location.origin)
+
+  if (normalizedMessageId) {
+    targetUrl.searchParams.set('messageId', normalizedMessageId)
+  }
+
+  return `${targetUrl.pathname}${targetUrl.search}`
+}
+
+function resolveNotificationTargetUrl(targetUrl, threadId, messageId) {
+  const fallbackUrl = buildChatThreadTargetUrl(threadId, messageId)
 
   if (typeof targetUrl !== 'string' || !targetUrl.trim()) {
     return new URL(fallbackUrl, self.location.origin).toString()
@@ -52,14 +111,6 @@ function postNavigateMessage(client, payload) {
   } catch {
     // Ignore postMessage failures; direct navigation/openWindow already handled the route.
   }
-}
-
-function normalizeThreadId(value) {
-  return typeof value === 'string' && value.trim() ? value.trim() : ''
-}
-
-function normalizePriority(value) {
-  return value === 'important' ? 'important' : 'normal'
 }
 
 function getThreadIdFromUrl(url) {
@@ -141,10 +192,16 @@ self.addEventListener('push', (event) => {
     ? payload.title.trim()
     : 'Run Club'
   const body = typeof payload.body === 'string' ? payload.body : ''
+  const messageId = normalizeMessageId(payload.messageId)
   const threadId = normalizeThreadId(payload.threadId)
   const threadType = typeof payload.threadType === 'string' ? payload.threadType : undefined
   const priority = normalizePriority(payload.priority)
-  const targetUrl = resolveNotificationTargetUrl(payload.targetUrl, threadId)
+  const targetUrl = resolveNotificationTargetUrl(payload.targetUrl, threadId, messageId)
+  const threadUnreadCount = normalizeCount(payload.threadUnreadCount)
+  const badgeCount = normalizeCount(payload.badgeCount)
+  const unreadScope = payload.unreadScope === 'thread' ? 'thread' : undefined
+  const tag = normalizeNotificationTag(payload.tag)
+  const timestamp = normalizeTimestamp(payload.timestamp)
 
   event.waitUntil(
     (async () => {
@@ -160,6 +217,7 @@ self.addEventListener('push', (event) => {
         suppressionState.visibleClients.forEach((client) => {
           postNavigateMessage(client, {
             type: 'PUSH_SUPPRESSED',
+            messageId,
             threadId,
             threadType,
             priority,
@@ -175,15 +233,23 @@ self.addEventListener('push', (event) => {
       console.log('[sw] show_notification', {
         title,
         body,
+        threadUnreadCount,
+        badgeCount,
       })
 
       await self.registration.showNotification(title, {
         body,
+        tag,
+        timestamp,
         data: {
           targetUrl,
+          messageId,
           threadId,
           threadType,
           priority,
+          threadUnreadCount,
+          badgeCount,
+          unreadScope,
         },
       })
 
@@ -195,14 +261,13 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
-  const threadId = typeof event.notification.data?.threadId === 'string'
-    ? event.notification.data.threadId
-    : ''
+  const messageId = normalizeMessageId(event.notification.data?.messageId)
+  const threadId = normalizeThreadId(event.notification.data?.threadId)
   const threadType = typeof event.notification.data?.threadType === 'string'
     ? event.notification.data.threadType
     : undefined
-  const url = resolveNotificationTargetUrl(event.notification.data?.targetUrl, threadId)
-  const navigationKey = `${Date.now()}:${threadId || url}`
+  const url = resolveNotificationTargetUrl(event.notification.data?.targetUrl, threadId, messageId)
+  const navigationKey = `${Date.now()}:${messageId || threadId || url}`
 
   console.log('[sw] notification_click')
   console.log('[sw] target_url', {
@@ -244,6 +309,7 @@ self.addEventListener('notificationclick', (event) => {
         postNavigateMessage(bestClient, {
           type: 'NAVIGATE',
           url,
+          messageId,
           threadId,
           threadType,
           navigationKey,

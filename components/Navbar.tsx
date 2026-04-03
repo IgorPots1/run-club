@@ -3,13 +3,12 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { logoutCurrentUser } from '@/lib/auth/logoutClient'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import useRealtimeTotalUnreadCount, {
   initializeRealtimeTotalUnreadCount,
 } from '@/components/chat/useRealtimeTotalUnreadCount'
 import { prefetchMessagesListData } from '@/lib/chat/messagesListPrefetch'
-import { stopVoiceStream } from '@/lib/voice/voiceStream'
-import { supabase } from '../lib/supabase'
 
 type NavbarUser = {
   id: string
@@ -55,10 +54,17 @@ export default function Navbar({ initialUser }: { initialUser: NavbarUser | null
   }, [])
 
   async function handleLogout() {
-    stopVoiceStream()
-    await supabase.auth.signOut()
-    setUser(null)
-    router.replace('/login')
+    try {
+      await logoutCurrentUser({
+        router,
+        redirectTo: '/login',
+        onSignedOut: () => {
+          setUser(null)
+        },
+      })
+    } catch {
+      // Keep navbar logout non-blocking and let auth listeners recover UI state.
+    }
   }
 
   if (!user) return null

@@ -60,6 +60,7 @@ import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream
 type ChatSectionProps = {
   showTitle?: boolean
   threadId?: string | null
+  targetMessageId?: string | null
   currentUserId?: string | null
   isKeyboardOpen?: boolean
   isThreadLayoutReady?: boolean
@@ -3530,6 +3531,7 @@ const ChatMessageList = memo(function ChatMessageList({
 export default function ChatSection({
   showTitle = true,
   threadId = null,
+  targetMessageId = null,
   currentUserId = null,
   isKeyboardOpen = false,
   isThreadLayoutReady = false,
@@ -3551,6 +3553,8 @@ export default function ChatSection({
   const pendingDeletedMessageIdsRef = useRef<Set<string>>(new Set())
   const optimisticRealtimeFallbackTimeoutsRef = useRef<Record<string, number>>({})
   const chatSendErrorGuardStateRef = useRef<Record<string, ChatSendErrorGuardState>>({})
+  const isJumpingToTargetMessageRef = useRef(false)
+  const lastHandledTargetMessageKeyRef = useRef<string | null>(null)
   const longPressTimeoutRef = useRef<number | null>(null)
   const pendingReplyJumpTargetIdRef = useRef<string | null>(null)
   const swipeGestureMessageIdRef = useRef<string | null>(null)
@@ -4330,6 +4334,56 @@ export default function ChatSection({
     threadId,
   ])
 
+  const jumpToTargetMessage = useCallback(async (nextTargetMessageId: string) => {
+    if (!threadId) {
+      return true
+    }
+
+    if (scrollAndHighlightMessage(nextTargetMessageId)) {
+      return true
+    }
+
+    let targetMessage: ChatMessageItem | null = null
+
+    try {
+      targetMessage = await loadChatMessageById(nextTargetMessageId, threadId)
+    } catch {
+      return false
+    }
+
+    if (!targetMessage) {
+      return true
+    }
+
+    pendingReplyJumpTargetIdRef.current = nextTargetMessageId
+
+    let canLoadMore = hasMoreOlderMessages
+
+    while (!messagesRef.current.some((message) => message.id === nextTargetMessageId) && canLoadMore) {
+      const loadResult = await loadOlderMessages({ requireNearTop: false })
+
+      if (!loadResult) {
+        break
+      }
+
+      canLoadMore = loadResult.hasMoreOlderMessages
+    }
+
+    if (messagesRef.current.some((message) => message.id === nextTargetMessageId)) {
+      return true
+    }
+
+    setMessages((currentMessages) => {
+      if (currentMessages.some((message) => message.id === nextTargetMessageId)) {
+        return currentMessages
+      }
+
+      return insertMessageChronologically(currentMessages, targetMessage)
+    })
+
+    return true
+  }, [hasMoreOlderMessages, loadOlderMessages, scrollAndHighlightMessage, threadId])
+
   useEffect(() => {
     activeThreadIdRef.current = threadId
   }, [threadId])
@@ -4572,6 +4626,44 @@ export default function ChatSection({
       }
     }
   }, [messages, scrollAndHighlightMessage])
+
+  useEffect(() => {
+    if (!threadId || loading || !targetMessageId) {
+      if (!targetMessageId) {
+        lastHandledTargetMessageKeyRef.current = null
+      }
+      return
+    }
+
+    const targetMessageKey = `${threadId}:${targetMessageId}`
+
+    if (
+      isJumpingToTargetMessageRef.current ||
+      lastHandledTargetMessageKeyRef.current === targetMessageKey
+    ) {
+      return
+    }
+
+    let isCancelled = false
+    isJumpingToTargetMessageRef.current = true
+
+    void jumpToTargetMessage(targetMessageId)
+      .then((didHandleTarget) => {
+        if (!isCancelled && didHandleTarget) {
+          lastHandledTargetMessageKeyRef.current = targetMessageKey
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          isJumpingToTargetMessageRef.current = false
+        }
+      })
+
+    return () => {
+      isCancelled = true
+      isJumpingToTargetMessageRef.current = false
+    }
+  }, [jumpToTargetMessage, loading, targetMessageId, threadId])
 
   useEffect(() => {
     return () => {

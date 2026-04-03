@@ -49,6 +49,7 @@ export default function PwaRegister() {
     const handler = (event: MessageEvent<{
       type?: string
       url?: string
+      messageId?: string
       threadId?: string
       threadType?: string
       priority?: string
@@ -59,6 +60,7 @@ export default function PwaRegister() {
         window.dispatchEvent(
           new CustomEvent(CHAT_NOTIFICATION_SUPPRESSED_EVENT, {
             detail: {
+              messageId: event.data.messageId ?? null,
               threadId: event.data.threadId ?? null,
               priority: event.data.priority ?? null,
               source: 'service-worker',
@@ -86,6 +88,7 @@ export default function PwaRegister() {
           new CustomEvent(CHAT_NOTIFICATION_NAVIGATE_EVENT, {
             detail: {
               href,
+              messageId: event.data.messageId ?? null,
               threadId: event.data.threadId ?? null,
               threadType: event.data.threadType ?? null,
               source: event.data.source ?? 'service-worker',
