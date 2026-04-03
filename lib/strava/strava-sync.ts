@@ -1817,15 +1817,6 @@ export async function importStravaActivityForUser(
 
   const supabase = createSupabaseAdminClient()
   const payload = buildRunInsertPayload(userId, activityForImport)
-  const runXp = await calculateRunXp({
-    userId,
-    createdAt: payload.created_at,
-    distanceKm: payload.distance_km,
-    supabase,
-  })
-  const recalculatedXp = runXp.xp
-
-  payload.xp = recalculatedXp
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
     .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, name_manually_edited, description_manually_edited')
@@ -1838,6 +1829,18 @@ export async function importStravaActivityForUser(
   }
 
   const normalizedExistingRun = (existingRun as ExistingStravaRunRow | null) ?? null
+  const runXp = normalizedExistingRun
+    ? null
+    : await calculateRunXp({
+        userId,
+        createdAt: payload.created_at,
+        distanceKm: payload.distance_km,
+        supabase,
+      })
+
+  payload.xp = normalizedExistingRun
+    ? Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0)))
+    : runXp.xp
   let finalCity = payload.city
   let finalRegion = payload.region
   let finalCountry = payload.country
@@ -2154,7 +2157,7 @@ export async function importStravaActivityForUser(
     achievement_count: payload.achievement_count,
     strava_synced_at: payload.strava_synced_at,
     created_at: payload.created_at,
-    xp: recalculatedXp,
+    xp: payload.xp,
   }
 
   const previousTotalXp = await loadProfileTotalXp(userId, { supabase })
