@@ -14,7 +14,11 @@ import {
   type UnreadCountsByThread,
 } from '@/lib/chat/reads'
 import {
+  getMessagesListCacheSnapshot,
   getPrefetchedMessagesListData,
+  peekMessagesListCache,
+  revalidateMessagesListCache,
+  seedMessagesListCache,
   updatePrefetchedMessagesListThreadLastMessage,
   updatePrefetchedMessagesListUnreadCounts,
 } from '@/lib/chat/messagesListPrefetch'
@@ -38,6 +42,24 @@ import {
 import { prefetchRecentChatMessages } from '@/lib/chat'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
+
+const MESSAGES_LIST_UNREAD_REFRESH_GUARD_MS = 4500
+
+function logMessagesListLoad(event: string, detail?: Record<string, number | string | boolean>) {
+  if (process.env.NODE_ENV === 'production') {
+    return
+  }
+
+  console.debug(`[messages-list] ${event}`, detail ?? {})
+}
+
+function readInitialMessagesListState() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return getMessagesListCacheSnapshot()
+}
 
 function AvatarFallback() {
   return (
@@ -176,13 +198,21 @@ export default function MessagesPage() {
   const currentThreadLastMessageIdByThreadIdRef = useRef<Record<string, string | null>>({})
   const unreadCountsRefreshPromiseRef = useRef<Promise<UnreadCountsByThread> | null>(null)
   const unreadCountsRefreshTimeoutRef = useRef<number | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [clubThread, setClubThread] = useState<ClubThread | null>(null)
-  const [coachThread, setCoachThread] = useState<DirectCoachThreadItem | null>(null)
-  const [directThreads, setDirectThreads] = useState<CoachDirectThreadItem[]>([])
-  const [students, setStudents] = useState<StudentProfile[]>([])
-  const [unreadCountsByThread, setUnreadCountsByThread] = useState<UnreadCountsByThread>({})
+  const lastUnreadFetchAtRef = useRef(0)
+  const initialCacheSnapshot = readInitialMessagesListState()
+  const [loading, setLoading] = useState(() => initialCacheSnapshot === null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => initialCacheSnapshot?.currentUserId ?? null)
+  const [clubThread, setClubThread] = useState<ClubThread | null>(() => initialCacheSnapshot?.clubThread ?? null)
+  const [coachThread, setCoachThread] = useState<DirectCoachThreadItem | null>(
+    () => initialCacheSnapshot?.coachThread ?? null
+  )
+  const [directThreads, setDirectThreads] = useState<CoachDirectThreadItem[]>(
+    () => initialCacheSnapshot?.directThreads ?? []
+  )
+  const [students, setStudents] = useState<StudentProfile[]>(() => initialCacheSnapshot?.students ?? [])
+  const [unreadCountsByThread, setUnreadCountsByThread] = useState<UnreadCountsByThread>(
+    () => initialCacheSnapshot?.unreadCountsByThread ?? {}
+  )
   const [error, setError] = useState('')
   const [openingCoachThread, setOpeningCoachThread] = useState(false)
   const [openingStudentId, setOpeningStudentId] = useState<string | null>(null)
@@ -190,6 +220,7 @@ export default function MessagesPage() {
   const isCoach = currentUserId === COACH_USER_ID
 
   const applyUnreadCountsByThread = useCallback((nextUnreadCountsByThread: UnreadCountsByThread) => {
+    lastUnreadFetchAtRef.current = Date.now()
     setUnreadCountsByThread(nextUnreadCountsByThread)
     updatePrefetchedMessagesListUnreadCounts(nextUnreadCountsByThread)
   }, [])
@@ -279,6 +310,30 @@ export default function MessagesPage() {
 
     unreadCountsRefreshTimeoutRef.current = window.setTimeout(() => {
       unreadCountsRefreshTimeoutRef.current = null
+      void refreshUnreadCounts()
+    }, delayMs)
+  }, [refreshUnreadCounts])
+
+  /** Visibility/focus only: avoids duplicating unread RPC right after cache hydration or a fresh fetch. */
+  const scheduleUnreadCountsRefreshFromWindowAttention = useCallback((delayMs = 120) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (unreadCountsRefreshTimeoutRef.current !== null) {
+      window.clearTimeout(unreadCountsRefreshTimeoutRef.current)
+    }
+
+    unreadCountsRefreshTimeoutRef.current = window.setTimeout(() => {
+      unreadCountsRefreshTimeoutRef.current = null
+      const elapsedSinceUnreadFetch = Date.now() - lastUnreadFetchAtRef.current
+      if (elapsedSinceUnreadFetch < MESSAGES_LIST_UNREAD_REFRESH_GUARD_MS) {
+        logMessagesListLoad('unread_refresh_skipped_recently', {
+          elapsedMs: elapsedSinceUnreadFetch,
+          guardMs: MESSAGES_LIST_UNREAD_REFRESH_GUARD_MS,
+        })
+        return
+      }
       void refreshUnreadCounts()
     }, delayMs)
   }, [refreshUnreadCounts])
@@ -394,10 +449,55 @@ export default function MessagesPage() {
 
   useEffect(() => {
     let isMounted = true
+    const loadStartedAt = typeof performance !== 'undefined' ? performance.now() : 0
 
     async function loadPage() {
       try {
-        const prefetchedData = await getPrefetchedMessagesListData()
+        const peek = peekMessagesListCache()
+
+        if (peek?.data) {
+          const cacheAgeMs = peek.dataFetchedAt > 0 ? Date.now() - peek.dataFetchedAt : -1
+          logMessagesListLoad('cache_hit', {
+            cacheAgeMs,
+            needsRevalidate: peek.needsBackgroundRevalidate,
+          })
+          logMessagesListLoad('stale_rendered_immediately', { cacheAgeMs })
+
+          setCurrentUserId(peek.data.currentUserId)
+          setClubThread(peek.data.clubThread)
+          setCoachThread(peek.data.coachThread)
+          setDirectThreads(peek.data.directThreads)
+          setStudents(peek.data.students)
+          applyUnreadCountsByThread(peek.data.unreadCountsByThread)
+          setLoading(false)
+          setError('')
+
+          if (peek.needsBackgroundRevalidate) {
+            logMessagesListLoad('background_revalidate_started', { tSinceLoadMs: performance.now() - loadStartedAt })
+            const fresh = await revalidateMessagesListCache()
+
+            if (!isMounted || !fresh) {
+              return
+            }
+
+            setCurrentUserId(fresh.currentUserId)
+            setClubThread(fresh.clubThread)
+            setCoachThread(fresh.coachThread)
+            setDirectThreads(fresh.directThreads)
+            setStudents(fresh.students)
+            applyUnreadCountsByThread(fresh.unreadCountsByThread)
+            setError('')
+          }
+
+          return
+        }
+
+        logMessagesListLoad('cache_miss', {})
+
+        setLoading(true)
+
+        const prefetchedPromise = getPrefetchedMessagesListData()
+        const prefetchedData = prefetchedPromise ? await prefetchedPromise : null
 
         if (!isMounted) {
           return
@@ -439,6 +539,10 @@ export default function MessagesPage() {
         setClubThread(clubThread)
         applyUnreadCountsByThread(unreadCounts)
 
+        let seededCoachThread: DirectCoachThreadItem | null = null
+        let seededDirectThreads: CoachDirectThreadItem[] = []
+        let seededStudents: StudentProfile[] = []
+
         if (user.id === COACH_USER_ID) {
           const [coachThreads, registeredStudents] = await Promise.all([
             getCoachDirectThreads(),
@@ -451,6 +555,8 @@ export default function MessagesPage() {
 
           setDirectThreads(coachThreads)
           setStudents(registeredStudents)
+          seededDirectThreads = coachThreads
+          seededStudents = registeredStudents
         } else {
           const directCoachThread = await getDirectCoachThread(user.id)
 
@@ -459,7 +565,17 @@ export default function MessagesPage() {
           }
 
           setCoachThread(directCoachThread)
+          seededCoachThread = directCoachThread
         }
+
+        seedMessagesListCache({
+          currentUserId: user.id,
+          clubThread,
+          coachThread: seededCoachThread,
+          directThreads: seededDirectThreads,
+          students: seededStudents,
+          unreadCountsByThread: unreadCounts,
+        })
 
         setError('')
       } catch {
@@ -526,12 +642,12 @@ export default function MessagesPage() {
 
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible') {
-        scheduleUnreadCountsRefresh(0)
+        scheduleUnreadCountsRefreshFromWindowAttention(0)
       }
     }
 
     function handleWindowFocus() {
-      scheduleUnreadCountsRefresh(0)
+      scheduleUnreadCountsRefreshFromWindowAttention(0)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -541,7 +657,7 @@ export default function MessagesPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [currentUserId, loading, scheduleUnreadCountsRefresh])
+  }, [currentUserId, loading, scheduleUnreadCountsRefreshFromWindowAttention])
 
   useEffect(() => {
     if (loading || !currentUserId) {

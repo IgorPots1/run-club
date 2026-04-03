@@ -15,7 +15,14 @@ import {
   type StudentProfile,
 } from '@/lib/chat/threads'
 
-const MESSAGES_LIST_PREFETCH_TTL_MS = 15000
+/** Cache entry is evicted after this; no instant hydration beyond this age. */
+const MESSAGES_LIST_CACHE_MAX_AGE_MS = 5 * 60 * 1000
+
+/**
+ * After this age since last full fetch, show cached data immediately but refresh in the background.
+ * Partial cache updates (unread / last message) do not reset this clock.
+ */
+const MESSAGES_LIST_BACKGROUND_REVALIDATE_AFTER_MS = 45 * 1000
 
 export type MessagesListPrefetchData = {
   currentUserId: string
@@ -30,6 +37,8 @@ type MessagesListPrefetchEntry = {
   promise: Promise<MessagesListPrefetchData | null>
   data: MessagesListPrefetchData | null
   expiresAt: number
+  /** Set when a full list fetch completes; used for stale-while-revalidate. */
+  dataFetchedAt: number
 }
 
 let messagesListPrefetchEntry: MessagesListPrefetchEntry | null = null
@@ -51,6 +60,10 @@ function getMessagesListPrefetchEntry() {
   return messagesListPrefetchEntry
 }
 
+function touchMessagesListCacheExpiry(entry: MessagesListPrefetchEntry) {
+  entry.expiresAt = Date.now() + MESSAGES_LIST_CACHE_MAX_AGE_MS
+}
+
 function updateMessagesListPrefetchEntry(
   updater: (data: MessagesListPrefetchData) => MessagesListPrefetchData
 ) {
@@ -61,7 +74,7 @@ function updateMessagesListPrefetchEntry(
   }
 
   entry.data = updater(entry.data)
-  entry.expiresAt = Date.now() + MESSAGES_LIST_PREFETCH_TTL_MS
+  touchMessagesListCacheExpiry(entry)
 }
 
 async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData | null> {
@@ -104,6 +117,92 @@ async function fetchMessagesListPrefetchData(): Promise<MessagesListPrefetchData
   }
 }
 
+function applySuccessfulFetchToEntry(
+  entry: MessagesListPrefetchEntry,
+  data: MessagesListPrefetchData
+) {
+  entry.data = data
+  entry.dataFetchedAt = Date.now()
+  touchMessagesListCacheExpiry(entry)
+}
+
+/**
+ * Synchronous read for instant hydration on client remount (e.g. router.back()).
+ * Returns null if there is no valid cached payload.
+ */
+export function getMessagesListCacheSnapshot(): MessagesListPrefetchData | null {
+  const entry = getMessagesListPrefetchEntry()
+
+  if (!entry?.data) {
+    return null
+  }
+
+  return entry.data
+}
+
+export type MessagesListCachePeek = {
+  data: MessagesListPrefetchData
+  needsBackgroundRevalidate: boolean
+  dataFetchedAt: number
+}
+
+/**
+ * Valid cache metadata for the messages list (same validity rules as snapshot).
+ */
+export function peekMessagesListCache(): MessagesListCachePeek | null {
+  const entry = getMessagesListPrefetchEntry()
+
+  if (!entry?.data) {
+    return null
+  }
+
+  const fetchedAt = entry.dataFetchedAt
+  const needsBackgroundRevalidate =
+    fetchedAt > 0 && Date.now() - fetchedAt >= MESSAGES_LIST_BACKGROUND_REVALIDATE_AFTER_MS
+
+  return {
+    data: entry.data,
+    needsBackgroundRevalidate,
+    dataFetchedAt: fetchedAt,
+  }
+}
+
+/**
+ * Full refetch; updates in-place cache on success. Does not clear valid stale entries on failure.
+ */
+export function seedMessagesListCache(data: MessagesListPrefetchData) {
+  messagesListPrefetchEntry = {
+    promise: Promise.resolve(data),
+    data,
+    expiresAt: Date.now() + MESSAGES_LIST_CACHE_MAX_AGE_MS,
+    dataFetchedAt: Date.now(),
+  }
+}
+
+export async function revalidateMessagesListCache(): Promise<MessagesListPrefetchData | null> {
+  const data = await fetchMessagesListPrefetchData()
+
+  if (!data) {
+    return null
+  }
+
+  const existing = getMessagesListPrefetchEntry()
+
+  if (existing) {
+    applySuccessfulFetchToEntry(existing, data)
+    return data
+  }
+
+  messagesListPrefetchEntry = {
+    promise: Promise.resolve(data),
+    data,
+    expiresAt: Date.now() + MESSAGES_LIST_CACHE_MAX_AGE_MS,
+    dataFetchedAt: Date.now(),
+  }
+
+  return data
+}
+
 export function getPrefetchedMessagesListData(): Promise<MessagesListPrefetchData | null> | null {
   const entry = getMessagesListPrefetchEntry()
 
@@ -128,7 +227,8 @@ export function prefetchMessagesListData(): Promise<MessagesListPrefetchData | n
   const nextEntry: MessagesListPrefetchEntry = {
     promise: fetchMessagesListPrefetchData(),
     data: null,
-    expiresAt: Date.now() + MESSAGES_LIST_PREFETCH_TTL_MS,
+    expiresAt: Date.now() + MESSAGES_LIST_CACHE_MAX_AGE_MS,
+    dataFetchedAt: 0,
   }
 
   messagesListPrefetchEntry = nextEntry
@@ -139,8 +239,12 @@ export function prefetchMessagesListData(): Promise<MessagesListPrefetchData | n
         return
       }
 
-      nextEntry.data = data
-      nextEntry.expiresAt = Date.now() + MESSAGES_LIST_PREFETCH_TTL_MS
+      if (!data) {
+        messagesListPrefetchEntry = null
+        return
+      }
+
+      applySuccessfulFetchToEntry(nextEntry, data)
     })
     .catch(() => {
       if (messagesListPrefetchEntry === nextEntry) {
