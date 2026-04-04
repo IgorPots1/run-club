@@ -106,8 +106,6 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
-  let xpGained = 0
-  let xpRemoved = 0
 
   if (likedByMe) {
     const { data: deletedLikes, error: deleteError } = await supabaseAdmin
@@ -128,14 +126,10 @@ export async function POST(request: Request) {
     }
 
     const deletedLike = ((deletedLikes as RunLikeMutationRow[] | null) ?? [])[0] ?? null
-    xpRemoved = Math.max(0, Math.round(Number(deletedLike?.xp_awarded ?? 0)))
 
     if (!deletedLike?.created_at) {
       return NextResponse.json({
         ok: true,
-        xpGained: 0,
-        xpRemoved: 0,
-        breakdown: [],
       })
     }
   } else {
@@ -176,9 +170,6 @@ export async function POST(request: Request) {
       if (isDuplicateRunLikeError(insertError)) {
         return NextResponse.json({
           ok: true,
-          xpGained: 0,
-          xpRemoved: 0,
-          breakdown: [],
         })
       }
 
@@ -202,14 +193,11 @@ export async function POST(request: Request) {
     }
 
     const insertedLike = ((insertedLikes as RunLikeMutationRow[] | null) ?? [])[0] ?? null
-    xpGained = Math.max(0, Math.round(Number(insertedLike?.xp_awarded ?? 0)))
+    const xpAwarded = Math.max(0, Math.round(Number(insertedLike?.xp_awarded ?? 0)))
 
     if (!insertedLike?.created_at) {
       return NextResponse.json({
         ok: true,
-        xpGained: 0,
-        xpRemoved: 0,
-        breakdown: [],
       })
     }
 
@@ -217,15 +205,12 @@ export async function POST(request: Request) {
       await emitRunLikeCreatedEvent({
         actorUserId: user.id,
         runId,
-        xpAwarded: xpGained,
+        xpAwarded,
       })
     })
   }
 
   return NextResponse.json({
     ok: true,
-    xpGained,
-    xpRemoved,
-    breakdown: xpGained > 0 ? [{ label: 'Лайк', value: xpGained }] : [],
   })
 }

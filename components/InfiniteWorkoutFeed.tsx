@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import XpGainToast from '@/components/XpGainToast'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
@@ -14,10 +13,10 @@ import {
   type RunCommentRealtimeRow,
   type RunCommentVisibilityRecord,
 } from '@/lib/run-comments'
-import { loadRunLikedUsers, type RunLikedUserItem } from '@/lib/run-likes'
-import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
+import { loadRunLikedUsers, subscribeToRunLikes, type RunLikedUserItem } from '@/lib/run-likes'
+import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
-import { getLevelFromXP, type XpBreakdownItem } from '@/lib/xp'
+import { getLevelFromXP } from '@/lib/xp'
 
 type InfiniteWorkoutFeedProps = {
   currentUserId: string | null
@@ -56,7 +55,6 @@ export default function InfiniteWorkoutFeed({
   const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
   const [activeLikesRun, setActiveLikesRun] = useState<{ runId: string } | null>(null)
-  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
   const [feedError, setFeedError] = useState('')
   const [initialLoading, setInitialLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -310,18 +308,18 @@ export default function InfiniteWorkoutFeed({
   }, [applyRealtimeComment, items.length])
 
   useEffect(() => {
-    if (!xpToast) {
+    if (!enabled) {
       return
     }
 
-    const timer = window.setTimeout(() => {
-      setXpToast(null)
-    }, 3000)
+    const unsubscribe = subscribeToRunLikes(() => {
+      void loadFirstPage()
+    })
 
     return () => {
-      window.clearTimeout(timer)
+      unsubscribe()
     }
-  }, [xpToast])
+  }, [enabled, loadFirstPage])
 
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current
@@ -353,7 +351,7 @@ export default function InfiniteWorkoutFeed({
       setItems(nextItems)
 
       void toggleRunLike(runId, activeUserId, wasLiked)
-        .then(({ error: likeError, xpGained, breakdown }) => {
+        .then(({ error: likeError }) => {
           if (likeRequestVersionByRunIdRef.current[runId] !== nextRequestVersion) {
             return
           }
@@ -383,12 +381,7 @@ export default function InfiniteWorkoutFeed({
             return next
           })
 
-          if (xpGained > 0) {
-            setXpToast({
-              xpGained,
-              breakdown,
-            })
-          }
+          dispatchRunsUpdatedEvent()
         })
         .catch(() => {
           if (likeRequestVersionByRunIdRef.current[runId] !== nextRequestVersion) {
@@ -467,7 +460,6 @@ export default function InfiniteWorkoutFeed({
 
   return (
     <>
-      {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} /> : null}
       <div className="min-h-[236px] space-y-4 pb-2">
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         {initialLoading && items.length === 0 ? (

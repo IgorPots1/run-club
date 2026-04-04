@@ -1,6 +1,5 @@
 import { getProfileDisplayName } from './profiles'
 import { supabase } from './supabase'
-import type { XpBreakdownItem } from './xp'
 
 export type RunLikesSummary = {
   likesByRunId: Record<string, number>
@@ -183,8 +182,6 @@ export async function toggleRunLike(runId: string, currentUserId: string, likedB
   const payload = await response.json().catch(() => null) as
     | {
         ok?: boolean
-        xpGained?: number
-        breakdown?: XpBreakdownItem[]
         error?: string
       }
     | null
@@ -196,15 +193,11 @@ export async function toggleRunLike(runId: string, currentUserId: string, likedB
           ? payload.error
           : 'run_like_toggle_failed'
       ),
-      xpGained: 0,
-      breakdown: [],
     }
   }
 
   return {
     error: null,
-    xpGained: typeof payload.xpGained === 'number' ? payload.xpGained : 0,
-    breakdown: Array.isArray(payload.breakdown) ? payload.breakdown : [],
   }
 }
 
