@@ -5,12 +5,14 @@ import { formatXpBreakdownLabels, type XpBreakdownItem } from '@/lib/xp'
 type XpGainToastProps = {
   xpGained: number
   breakdown?: XpBreakdownItem[]
+  challengeMessages?: string[]
   offsetClassName?: string
 }
 
 export default function XpGainToast({
   xpGained,
   breakdown = [],
+  challengeMessages = [],
   offsetClassName = 'top-4',
 }: XpGainToastProps) {
   const breakdownLabel = formatXpBreakdownLabels(breakdown)
@@ -21,6 +23,15 @@ export default function XpGainToast({
         <p className="app-text-primary text-sm font-medium">{`+${xpGained} XP`}</p>
         {breakdownLabel ? (
           <p className="app-text-secondary mt-1 text-xs">{breakdownLabel}</p>
+        ) : null}
+        {challengeMessages.length > 0 ? (
+          <div className="mt-2 space-y-1">
+            {challengeMessages.map((message) => (
+              <p key={message} className="app-text-primary text-xs font-medium">
+                {message}
+              </p>
+            ))}
+          </div>
         ) : null}
       </div>
     </div>
