@@ -143,6 +143,47 @@ function isDashboardChallengeNearCompletion(challenge: DashboardActiveChallenge)
   return challenge.percent >= 80 && challenge.percent < 100
 }
 
+function DashboardChallengeCard({ challenge }: { challenge: DashboardActiveChallenge }) {
+  const dateRange = formatDashboardChallengeRange(challenge)
+  const daysLeft = formatDashboardChallengeDaysLeft(challenge)
+
+  return (
+    <article className="app-card w-[86%] shrink-0 snap-start overflow-hidden rounded-xl border p-4 shadow-sm sm:w-[420px]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="app-text-primary break-words text-base font-semibold">{challenge.title}</h3>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
+              {dashboardChallengeTypeLabels[challenge.period_type]}
+            </span>
+            {dateRange ? (
+              <span className="app-text-secondary text-xs">{dateRange}</span>
+            ) : null}
+          </div>
+        </div>
+        {isDashboardChallengeNearCompletion(challenge) ? (
+          <span className="shrink-0 text-xs font-medium text-orange-600">Почти готово 🔥</span>
+        ) : null}
+      </div>
+      <div className="mt-3">
+        <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
+          <div
+            className="app-accent-bg h-full rounded-full"
+            style={{ width: `${challenge.percent}%` }}
+          />
+        </div>
+        <div className="mt-2 space-y-1">
+          <p className="app-text-secondary text-sm">Прогресс: {formatDashboardChallengeProgress(challenge)}</p>
+          <p className="app-text-secondary text-sm">{formatDashboardChallengeRemaining(challenge)}</p>
+          {daysLeft !== null ? (
+            <p className="app-text-secondary text-sm">{daysLeft}</p>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  )
+}
+
 function getRaceBadgeText(badgeCode: string | null | undefined, rank: number | null | undefined) {
   if (badgeCode === 'race_week_winner') {
     return 'Победитель недели'
@@ -168,14 +209,14 @@ export default function DashboardPageClient({
   initialProfileSummary,
   initialStats,
   initialLevelProgress,
-  initialActiveChallenge,
+  initialActiveChallenges,
   initialAllChallengesCompleted,
 }: {
   initialUser: DashboardInitialUser
   initialProfileSummary: DashboardInitialProfileSummary
   initialStats: DashboardInitialStats
   initialLevelProgress: DashboardInitialLevelProgress
-  initialActiveChallenge: DashboardActiveChallenge | null
+  initialActiveChallenges: DashboardActiveChallenge[]
   initialAllChallengesCompleted: boolean
 }) {
   const router = useRouter()
@@ -207,9 +248,9 @@ export default function DashboardPageClient({
   const initialOverview = useMemo<DashboardOverview>(() => ({
     stats: initialStats,
     profileSummary: initialProfileSummary,
-    activeChallenge: initialActiveChallenge,
+    activeChallenges: initialActiveChallenges,
     allChallengesCompleted: initialAllChallengesCompleted,
-  }), [initialActiveChallenge, initialAllChallengesCompleted, initialProfileSummary, initialStats])
+  }), [initialActiveChallenges, initialAllChallengesCompleted, initialProfileSummary, initialStats])
 
   const {
     data: overview,
@@ -327,7 +368,7 @@ export default function DashboardPageClient({
   }, [refreshDashboardData])
 
   const stats = overview?.stats ?? initialStats
-  const activeChallenge: DashboardActiveChallenge | null = overview?.activeChallenge ?? initialActiveChallenge
+  const activeChallenges = overview?.activeChallenges ?? initialActiveChallenges
   const allChallengesCompleted = overview?.allChallengesCompleted ?? initialAllChallengesCompleted
   const levelProgress = hasLoadedOverviewDetails && stats
     ? getLevelProgressFromXP(stats.totalXp)
@@ -442,53 +483,27 @@ export default function DashboardPageClient({
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </div>
           )}
-          {activeChallenge ? (
-            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
-              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Активный челлендж</span>
-              </p>
-              <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="app-text-primary break-words text-lg font-semibold">{activeChallenge.title}</h2>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
-                      {dashboardChallengeTypeLabels[activeChallenge.period_type]}
-                    </span>
-                    {formatDashboardChallengeRange(activeChallenge) ? (
-                      <span className="app-text-secondary text-xs">
-                        {formatDashboardChallengeRange(activeChallenge)}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
-                  <div
-                    className="app-accent-bg h-full rounded-full"
-                    style={{ width: `${activeChallenge.percent}%` }}
-                  />
-                </div>
-                <p className="app-text-secondary mt-2 text-sm">
-                  Прогресс: {formatDashboardChallengeProgress(activeChallenge)}
+          {activeChallenges.length > 0 ? (
+            <section className="mb-4">
+              <div className="mb-3 flex items-center gap-2">
+                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                  <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                  <span>Челленджи</span>
                 </p>
-                <div className="mt-2 space-y-1">
-                  <p className="app-text-secondary text-sm">{formatDashboardChallengeRemaining(activeChallenge)}</p>
-                  {formatDashboardChallengeDaysLeft(activeChallenge) ? (
-                    <p className="app-text-secondary text-sm">{formatDashboardChallengeDaysLeft(activeChallenge)}</p>
-                  ) : null}
-                  {isDashboardChallengeNearCompletion(activeChallenge) ? (
-                    <p className="text-sm font-medium text-orange-600">Почти готово 🔥</p>
-                  ) : null}
+              </div>
+              <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex snap-x snap-mandatory gap-3 pr-12">
+                  {activeChallenges.map((challenge) => (
+                    <DashboardChallengeCard key={challenge.id} challenge={challenge} />
+                  ))}
                 </div>
               </div>
-            </div>
+            </section>
           ) : allChallengesCompleted ? (
             <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Активный челлендж</span>
+                <span>Челленджи</span>
               </p>
               <p className="app-text-secondary mt-3 text-sm">Все активные челленджи уже выполнены</p>
               <Link

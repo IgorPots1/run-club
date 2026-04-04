@@ -34,7 +34,7 @@ export default async function DashboardPage() {
       }}
       initialStats={overview.stats}
       initialLevelProgress={initialLevelProgress}
-      initialActiveChallenge={overview.activeChallenge}
+      initialActiveChallenges={overview.activeChallenges}
       initialAllChallengesCompleted={overview.allChallengesCompleted}
     />
   )

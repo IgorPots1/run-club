@@ -283,7 +283,6 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
   const activeChallenges = [...challengeItems]
     .filter((challenge) => !challenge.isCompleted)
     .sort(compareActiveChallenges)
-  const activeChallenge = activeChallenges[0] ? stripInternalChallenge(activeChallenges[0]) : null
 
   return {
     stats: {
@@ -296,7 +295,7 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
       nickname: profileRow?.nickname?.trim() || null,
       email: profileRow?.email ?? null,
     },
-    activeChallenge,
+    activeChallenges: activeChallenges.map(stripInternalChallenge),
     allChallengesCompleted: challengeItems.length > 0 && activeChallenges.length === 0,
   }
 }

@@ -285,7 +285,7 @@ function buildEmptyDashboardOverview(): DashboardOverview {
       nickname: null,
       email: null,
     },
-    activeChallenge: null,
+    activeChallenges: [],
     allChallengesCompleted: false,
   }
 }
@@ -309,7 +309,7 @@ function isDashboardOverview(value: unknown): value is DashboardOverview {
     'nickname' in candidate.profileSummary &&
     'email' in candidate.profileSummary &&
     typeof candidate.allChallengesCompleted === 'boolean' &&
-    'activeChallenge' in candidate
+    Array.isArray(candidate.activeChallenges)
   )
 }
 

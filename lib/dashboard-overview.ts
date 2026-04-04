@@ -26,6 +26,6 @@ export type UserProfileSummary = {
 export type DashboardOverview = {
   stats: DashboardProgressStats
   profileSummary: UserProfileSummary
-  activeChallenge: DashboardActiveChallenge | null
+  activeChallenges: DashboardActiveChallenge[]
   allChallengesCompleted: boolean
 }
