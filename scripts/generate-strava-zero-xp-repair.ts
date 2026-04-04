@@ -222,11 +222,18 @@ async function fetchRunsForUsers(userIds: string[], minCreatedAtIso: string, max
 async function loadPriorDailyXp(userId: string, timestamp: string) {
   const supabase = createSupabaseAdminClient()
   const { startIso } = getUtcDayBounds(timestamp)
-  const { data, error } = await supabase.rpc('get_daily_xp_usage', {
+  const params = {
     p_user_id: userId,
     p_start: startIso,
     p_end: timestamp,
-  })
+  }
+  const rpcClient = supabase as {
+    rpc(
+      fn: 'get_daily_xp_usage',
+      args: typeof params
+    ): Promise<{ data: unknown; error: unknown }>
+  }
+  const { data, error } = await rpcClient.rpc('get_daily_xp_usage', params)
 
   if (error) {
     throw error
