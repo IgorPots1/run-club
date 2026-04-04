@@ -98,6 +98,51 @@ function formatDashboardChallengeProgress(challenge: DashboardActiveChallenge) {
   return `${Math.round(challenge.progress_value)} / ${Math.round(challenge.goal_target)} тренировок`
 }
 
+function formatDashboardChallengeRemaining(challenge: DashboardActiveChallenge) {
+  const remainingValue = Math.max(challenge.goal_target - challenge.progress_value, 0)
+
+  if (challenge.goal_unit === 'distance_km') {
+    return `Осталось: ${formatDistanceKm(remainingValue)} км`
+  }
+
+  const roundedRemaining = Math.max(Math.ceil(remainingValue), 0)
+  return `Осталось: ${roundedRemaining} ${roundedRemaining === 1 ? 'тренировка' : roundedRemaining < 5 ? 'тренировки' : 'тренировок'}`
+}
+
+function getDashboardChallengeDaysLeft(challenge: DashboardActiveChallenge) {
+  if (challenge.period_type !== 'challenge' || !challenge.period_end) {
+    return null
+  }
+
+  const periodEndTimestamp = new Date(challenge.period_end).getTime()
+
+  if (Number.isNaN(periodEndTimestamp)) {
+    return null
+  }
+
+  const remainingMs = periodEndTimestamp - Date.now()
+
+  if (remainingMs <= 0) {
+    return 0
+  }
+
+  return Math.ceil(remainingMs / (1000 * 60 * 60 * 24))
+}
+
+function formatDashboardChallengeDaysLeft(challenge: DashboardActiveChallenge) {
+  const daysLeft = getDashboardChallengeDaysLeft(challenge)
+
+  if (daysLeft === null) {
+    return null
+  }
+
+  return `До конца: ${daysLeft} ${daysLeft === 1 ? 'день' : daysLeft < 5 ? 'дня' : 'дней'}`
+}
+
+function isDashboardChallengeNearCompletion(challenge: DashboardActiveChallenge) {
+  return challenge.percent >= 80 && challenge.percent < 100
+}
+
 function getRaceBadgeText(badgeCode: string | null | undefined, rank: number | null | undefined) {
   if (badgeCode === 'race_week_winner') {
     return 'Победитель недели'
@@ -428,6 +473,15 @@ export default function DashboardPageClient({
                 <p className="app-text-secondary mt-2 text-sm">
                   Прогресс: {formatDashboardChallengeProgress(activeChallenge)}
                 </p>
+                <div className="mt-2 space-y-1">
+                  <p className="app-text-secondary text-sm">{formatDashboardChallengeRemaining(activeChallenge)}</p>
+                  {formatDashboardChallengeDaysLeft(activeChallenge) ? (
+                    <p className="app-text-secondary text-sm">{formatDashboardChallengeDaysLeft(activeChallenge)}</p>
+                  ) : null}
+                  {isDashboardChallengeNearCompletion(activeChallenge) ? (
+                    <p className="text-sm font-medium text-orange-600">Почти готово 🔥</p>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : allChallengesCompleted ? (
