@@ -54,24 +54,27 @@ export default async function EditChallengePage({
   return (
     <div className="max-w-2xl space-y-6">
       <div className="space-y-2">
-        <Link href={`/admin/challenges/${challenge.id}`} className="text-sm underline">
-          Back to challenge
+        <Link
+          href={`/admin/challenges/${challenge.id}`}
+          className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4"
+        >
+          Назад к челленджу
         </Link>
-        <h1 className="text-2xl font-semibold">Edit challenge</h1>
+        <h1 className="app-text-primary text-2xl font-bold">Редактирование челленджа</h1>
       </div>
 
       {error ? (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
-      <form action={updateChallengeAction} className="space-y-4 rounded border p-4">
+      <form action={updateChallengeAction} className="app-card space-y-4 rounded-2xl border p-4 shadow-sm">
         <input type="hidden" name="challenge_id" value={challenge.id} />
 
         <div className="space-y-1">
-          <label htmlFor="title" className="block text-sm font-medium">
-            Title
+          <label htmlFor="title" className="app-text-secondary block text-sm">
+            Название
           </label>
           <input
             id="title"
@@ -79,41 +82,41 @@ export default async function EditChallengePage({
             type="text"
             required
             defaultValue={challenge.title}
-            className="w-full rounded border px-3 py-2"
+            className="app-input w-full rounded-2xl border px-3 py-2"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="description" className="block text-sm font-medium">
-            Description
+          <label htmlFor="description" className="app-text-secondary block text-sm">
+            Описание
           </label>
           <textarea
             id="description"
             name="description"
             rows={4}
             defaultValue={challenge.description ?? ''}
-            className="w-full rounded border px-3 py-2"
+            className="app-input w-full rounded-2xl border px-3 py-2"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="visibility" className="block text-sm font-medium">
-            Visibility
+          <label htmlFor="visibility" className="app-text-secondary block text-sm">
+            Видимость
           </label>
           <select
             id="visibility"
             name="visibility"
             defaultValue={challenge.visibility ?? 'public'}
-            className="w-full rounded border px-3 py-2"
+            className="app-input w-full rounded-2xl border px-3 py-2"
           >
-            <option value="public">public</option>
-            <option value="restricted">restricted</option>
+            <option value="public">Открытый</option>
+            <option value="restricted">По доступу</option>
           </select>
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="goal_km" className="block text-sm font-medium">
-            Goal km
+          <label htmlFor="goal_km" className="app-text-secondary block text-sm">
+            Цель по километрам
           </label>
           <input
             id="goal_km"
@@ -122,13 +125,13 @@ export default async function EditChallengePage({
             min="0"
             step="0.01"
             defaultValue={challenge.goal_km ?? ''}
-            className="w-full rounded border px-3 py-2"
+            className="app-input w-full rounded-2xl border px-3 py-2"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="goal_runs" className="block text-sm font-medium">
-            Goal runs
+          <label htmlFor="goal_runs" className="app-text-secondary block text-sm">
+            Цель по тренировкам
           </label>
           <input
             id="goal_runs"
@@ -137,13 +140,13 @@ export default async function EditChallengePage({
             min="0"
             step="1"
             defaultValue={challenge.goal_runs ?? ''}
-            className="w-full rounded border px-3 py-2"
+            className="app-input w-full rounded-2xl border px-3 py-2"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="xp_reward" className="block text-sm font-medium">
-            XP reward
+          <label htmlFor="xp_reward" className="app-text-secondary block text-sm">
+            Награда XP
           </label>
           <input
             id="xp_reward"
@@ -152,16 +155,19 @@ export default async function EditChallengePage({
             min="0"
             step="1"
             defaultValue={challenge.xp_reward ?? 0}
-            className="w-full rounded border px-3 py-2"
+            className="app-input w-full rounded-2xl border px-3 py-2"
           />
         </div>
 
         <div className="flex items-center gap-3">
-          <button type="submit" className="rounded border px-3 py-2 text-sm">
-            Save changes
+          <button type="submit" className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
+            Сохранить
           </button>
-          <Link href={`/admin/challenges/${challenge.id}`} className="text-sm underline">
-            Cancel
+          <Link
+            href={`/admin/challenges/${challenge.id}`}
+            className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4"
+          >
+            Отмена
           </Link>
         </div>
       </form>

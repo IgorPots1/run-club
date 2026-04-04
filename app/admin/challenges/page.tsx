@@ -17,6 +17,20 @@ function formatNullableValue(value: number | string | null | undefined) {
   return value == null || value === '' ? '—' : String(value)
 }
 
+function formatVisibility(value: string | null | undefined) {
+  if (value === 'public') return 'Открытый'
+  if (value === 'restricted') return 'По доступу'
+  return formatNullableValue(value)
+}
+
+function formatChallengeStatus(value: string | null | undefined) {
+  if (value === 'draft') return 'Черновик'
+  if (value === 'active') return 'Активный'
+  if (value === 'completed') return 'Завершён'
+  if (value === 'archived') return 'В архиве'
+  return formatNullableValue(value)
+}
+
 function isMissingChallengeStatusColumnError(error: { code?: string | null; message?: string | null }) {
   return (
     error.code === '42703' ||
@@ -61,57 +75,59 @@ export default async function AdminChallengesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Challenges admin</h1>
-          <p className="text-sm text-gray-600">Manage challenge definitions.</p>
+        <div className="space-y-2">
+          <h1 className="app-text-primary text-2xl font-bold">Челленджи</h1>
+          <p className="app-text-secondary text-sm">Создание, редактирование и управление доступом к челленджам.</p>
         </div>
         <Link
           href="/admin/challenges/new"
-          className="rounded border px-3 py-2 text-sm"
+          className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm"
         >
-          New challenge
+          Новый челлендж
         </Link>
       </div>
 
       {challenges.length === 0 ? (
-        <p>No challenges yet.</p>
+        <div className="app-card rounded-2xl border p-4 shadow-sm">
+          <p className="app-text-secondary text-sm">Челленджей пока нет.</p>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="app-card overflow-x-auto rounded-2xl border shadow-sm">
           <table className="min-w-full border-collapse">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="px-3 py-2 font-medium">Title</th>
-                <th className="px-3 py-2 font-medium">Visibility</th>
+            <thead className="app-surface-muted">
+              <tr className="text-left">
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Название</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Видимость</th>
                 {hasStatusColumn ? (
-                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Статус</th>
                 ) : null}
-                <th className="px-3 py-2 font-medium">XP reward</th>
-                <th className="px-3 py-2 font-medium">Goal km</th>
-                <th className="px-3 py-2 font-medium">Goal runs</th>
-                <th className="px-3 py-2 font-medium">Created</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Награда XP</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Цель, км</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Цель, тренировки</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Создан</th>
               </tr>
             </thead>
             <tbody>
               {challenges.map((challenge) => (
                 <tr key={challenge.id} className="border-b align-top">
-                  <td className="px-3 py-2">
-                    <div className="flex flex-col gap-1">
-                      <Link href={`/admin/challenges/${challenge.id}`} className="underline">
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-2">
+                      <Link href={`/admin/challenges/${challenge.id}`} className="app-text-primary font-semibold underline decoration-black/20 underline-offset-4">
                         {challenge.title}
                       </Link>
-                      <Link href={`/admin/challenges/${challenge.id}/edit`} className="text-sm underline">
-                        Edit
+                      <Link href={`/admin/challenges/${challenge.id}/edit`} className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+                        Редактировать
                       </Link>
                     </div>
                   </td>
-                  <td className="px-3 py-2">{formatNullableValue(challenge.visibility)}</td>
+                  <td className="px-4 py-3">{formatVisibility(challenge.visibility)}</td>
                   {hasStatusColumn ? (
-                    <td className="px-3 py-2">{formatNullableValue(challenge.status)}</td>
+                    <td className="px-4 py-3">{formatChallengeStatus(challenge.status)}</td>
                   ) : null}
-                  <td className="px-3 py-2">{formatNullableValue(challenge.xp_reward)}</td>
-                  <td className="px-3 py-2">{formatNullableValue(challenge.goal_km)}</td>
-                  <td className="px-3 py-2">{formatNullableValue(challenge.goal_runs)}</td>
-                  <td className="px-3 py-2">{formatNullableValue(challenge.created_at)}</td>
+                  <td className="px-4 py-3">{formatNullableValue(challenge.xp_reward)}</td>
+                  <td className="px-4 py-3">{formatNullableValue(challenge.goal_km)}</td>
+                  <td className="px-4 py-3">{formatNullableValue(challenge.goal_runs)}</td>
+                  <td className="app-text-secondary px-4 py-3 text-sm">{formatNullableValue(challenge.created_at)}</td>
                 </tr>
               ))}
             </tbody>

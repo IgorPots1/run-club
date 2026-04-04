@@ -57,6 +57,19 @@ function formatNullableValue(value: number | string | null | undefined) {
   return value == null || value === '' ? '—' : String(value)
 }
 
+function formatRole(value: string | null | undefined) {
+  if (value === 'admin') return 'Админ'
+  if (value === 'coach') return 'Тренер'
+  if (value === 'user') return 'Участник'
+  return formatNullableValue(value)
+}
+
+function formatAppAccessStatus(value: string | null | undefined) {
+  if (value === 'active') return 'Активен'
+  if (value === 'blocked') return 'Заблокирован'
+  return formatNullableValue(value)
+}
+
 export default async function AdminUserDetailPage({
   params,
   searchParams,
@@ -88,68 +101,68 @@ export default async function AdminUserDetailPage({
   return (
     <div className="max-w-3xl space-y-6">
       <div className="space-y-2">
-        <Link href="/admin/users" className="text-sm underline">
-          Back to users
+        <Link href="/admin/users" className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+          Назад к пользователям
         </Link>
-        <h1 className="text-2xl font-semibold">User admin</h1>
-        <p className="text-sm text-gray-600">Review profile details and adjust XP manually.</p>
+        <h1 className="app-text-primary text-2xl font-bold">Профиль пользователя</h1>
+        <p className="app-text-secondary text-sm">Просмотр данных профиля и ручная корректировка XP.</p>
       </div>
 
       {error ? (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
-      <section className="rounded border p-4">
+      <section className="app-card rounded-2xl border p-4 shadow-sm">
         <dl className="grid gap-3 sm:grid-cols-2">
           <div>
-            <dt className="text-sm font-medium">ID</dt>
-            <dd className="break-all">{profile.id}</dd>
+            <dt className="app-text-secondary text-sm">ID</dt>
+            <dd className="app-text-primary mt-1 break-all font-medium">{profile.id}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Name</dt>
-            <dd>{formatNullableValue(profile.name)}</dd>
+            <dt className="app-text-secondary text-sm">Имя</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(profile.name)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Nickname</dt>
-            <dd>{formatNullableValue(profile.nickname)}</dd>
+            <dt className="app-text-secondary text-sm">Никнейм</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(profile.nickname)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Email</dt>
-            <dd className="break-all">{formatNullableValue(profile.email)}</dd>
+            <dt className="app-text-secondary text-sm">Email</dt>
+            <dd className="app-text-primary mt-1 break-all font-medium">{formatNullableValue(profile.email)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Role</dt>
-            <dd>{formatNullableValue(profile.role)}</dd>
+            <dt className="app-text-secondary text-sm">Роль</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatRole(profile.role)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">App access status</dt>
-            <dd>{formatNullableValue(profile.app_access_status)}</dd>
+            <dt className="app-text-secondary text-sm">Статус доступа</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatAppAccessStatus(profile.app_access_status)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Total XP</dt>
-            <dd>{formatNullableValue(profile.total_xp ?? 0)}</dd>
+            <dt className="app-text-secondary text-sm">Всего XP</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(profile.total_xp ?? 0)}</dd>
           </div>
         </dl>
       </section>
 
-      <section className="space-y-3 rounded border p-4">
+      <section className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Manual XP adjustment</h2>
-          <p className="text-sm text-gray-600">Use a positive number to add XP. Use a negative number to remove XP.</p>
+          <h2 className="app-text-primary text-lg font-semibold">Ручная корректировка XP</h2>
+          <p className="app-text-secondary text-sm">Используйте положительное число, чтобы добавить XP. Отрицательное число уменьшит XP.</p>
         </div>
 
         {isCurrentAdmin ? (
-          <div className="rounded border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-            You cannot adjust your own XP from this page.
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            Нельзя менять свой собственный XP с этой страницы.
           </div>
         ) : (
           <form action={adjustUserXpAction} className="space-y-4">
             <input type="hidden" name="user_id" value={profile.id} />
             <div className="space-y-1">
-              <label htmlFor="delta_xp" className="block text-sm font-medium">
-                XP delta
+              <label htmlFor="delta_xp" className="app-text-secondary block text-sm">
+                Изменение XP
               </label>
               <input
                 id="delta_xp"
@@ -157,23 +170,23 @@ export default async function AdminUserDetailPage({
                 type="number"
                 step="1"
                 required
-                className="w-full rounded border px-3 py-2"
+                className="app-input w-full rounded-2xl border px-3 py-2"
               />
             </div>
             <div className="space-y-1">
-              <label htmlFor="reason" className="block text-sm font-medium">
-                Reason
+              <label htmlFor="reason" className="app-text-secondary block text-sm">
+                Причина
               </label>
               <textarea
                 id="reason"
                 name="reason"
                 rows={3}
                 required
-                className="w-full rounded border px-3 py-2"
+                className="app-input w-full rounded-2xl border px-3 py-2"
               />
             </div>
-            <button type="submit" className="rounded border px-3 py-2 text-sm">
-              Apply XP adjustment
+            <button type="submit" className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
+              Применить изменение
             </button>
           </form>
         )}

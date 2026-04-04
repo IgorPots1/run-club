@@ -216,21 +216,21 @@ export async function updateChallengeAction(formData: FormData) {
   }
 
   if (!title) {
-    redirectToEditChallengeForm(challengeId, 'Title is required.')
+    redirectToEditChallengeForm(challengeId, 'Укажите название челленджа.')
   }
 
   if (visibilityValue !== 'public' && visibilityValue !== 'restricted') {
-    redirectToEditChallengeForm(challengeId, 'Visibility must be public or restricted.')
+    redirectToEditChallengeForm(challengeId, 'Выберите корректную видимость челленджа.')
   }
 
   if ((goalKm ?? 0) <= 0 && (goalRuns ?? 0) <= 0) {
-    redirectToEditChallengeForm(challengeId, 'At least one goal must be greater than 0.')
+    redirectToEditChallengeForm(challengeId, 'Укажите цель по километрам или тренировкам больше 0.')
   }
 
   const xpRewardNumber = xpRewardValue ? Number(xpRewardValue) : 0
 
   if (!Number.isFinite(xpRewardNumber) || xpRewardNumber < 0) {
-    redirectToEditChallengeForm(challengeId, 'XP reward must be a non-negative number.')
+    redirectToEditChallengeForm(challengeId, 'Награда XP должна быть неотрицательным числом.')
   }
 
   const xpReward = Math.max(0, Math.round(xpRewardNumber))
@@ -313,7 +313,7 @@ export async function grantChallengeAccessAction(formData: FormData) {
   }
 
   if (!userId) {
-    redirectToChallengeAccessPage(challengeId, 'User ID is required.')
+    redirectToChallengeAccessPage(challengeId, 'Укажите ID пользователя.')
   }
 
   const supabase = createSupabaseAdminClient()

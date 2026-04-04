@@ -118,19 +118,19 @@ export async function adjustUserXpAction(formData: FormData) {
   }
 
   if (user.id === userId) {
-    redirectToAdminUserPage(userId, 'You cannot adjust your own XP.')
+    redirectToAdminUserPage(userId, 'Нельзя менять свой собственный XP.')
   }
 
   if (deltaXp == null) {
-    redirectToAdminUserPage(userId, 'XP delta must be a valid integer.')
+    redirectToAdminUserPage(userId, 'Изменение XP должно быть целым числом.')
   }
 
   if (deltaXp === 0) {
-    redirectToAdminUserPage(userId, 'XP delta cannot be 0.')
+    redirectToAdminUserPage(userId, 'Изменение XP не может быть равно 0.')
   }
 
   if (!reason) {
-    redirectToAdminUserPage(userId, 'Reason is required.')
+    redirectToAdminUserPage(userId, 'Укажите причину изменения XP.')
   }
 
   const supabase = createSupabaseAdminClient()

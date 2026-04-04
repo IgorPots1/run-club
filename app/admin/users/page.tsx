@@ -52,6 +52,19 @@ function formatNullableValue(value: string | number | null | undefined) {
   return value == null || value === '' ? '—' : String(value)
 }
 
+function formatRole(value: string | null | undefined) {
+  if (value === 'admin') return 'Админ'
+  if (value === 'coach') return 'Тренер'
+  if (value === 'user') return 'Участник'
+  return formatNullableValue(value)
+}
+
+function formatAppAccessStatus(value: string | null | undefined) {
+  if (value === 'active') return 'Активен'
+  if (value === 'blocked') return 'Заблокирован'
+  return formatNullableValue(value)
+}
+
 function isMissingProfileColumnError(
   error: { code?: string | null; message?: string | null },
   column: 'nickname' | 'email' | 'created_at'
@@ -114,26 +127,28 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Users admin</h1>
-        <p className="text-sm text-gray-600">Manage participant app access.</p>
+      <div className="space-y-2">
+        <h1 className="app-text-primary text-2xl font-bold">Пользователи</h1>
+        <p className="app-text-secondary text-sm">Управление доступом в приложение и ручными действиями по аккаунтам.</p>
       </div>
 
       {profiles.length === 0 ? (
-        <p>No users found.</p>
+        <div className="app-card rounded-2xl border p-4 shadow-sm">
+          <p className="app-text-secondary text-sm">Пользователи не найдены.</p>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="app-card overflow-x-auto rounded-2xl border shadow-sm">
           <table className="min-w-full border-collapse">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="px-3 py-2 font-medium">ID</th>
-                <th className="px-3 py-2 font-medium">Name</th>
-                {includesNickname ? <th className="px-3 py-2 font-medium">Nickname</th> : null}
-                {includesEmail ? <th className="px-3 py-2 font-medium">Email</th> : null}
-                <th className="px-3 py-2 font-medium">Role</th>
-                <th className="px-3 py-2 font-medium">App access</th>
-                {includesCreatedAt ? <th className="px-3 py-2 font-medium">Created</th> : null}
-                <th className="px-3 py-2 font-medium">Action</th>
+            <thead className="app-surface-muted">
+              <tr className="text-left">
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">ID</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Имя</th>
+                {includesNickname ? <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Никнейм</th> : null}
+                {includesEmail ? <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Email</th> : null}
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Роль</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Доступ</th>
+                {includesCreatedAt ? <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Создан</th> : null}
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -143,49 +158,52 @@ export default async function AdminUsersPage() {
 
                 return (
                   <tr key={profile.id} className="border-b align-top">
-                    <td className="px-3 py-2">{profile.id}</td>
-                    <td className="px-3 py-2">
+                    <td className="app-text-secondary px-4 py-3 text-sm">{profile.id}</td>
+                    <td className="px-4 py-3">
                       {getProfileDisplayName(profile, profile.id)}
                     </td>
                     {includesNickname ? (
-                      <td className="px-3 py-2">{formatNullableValue(profile.nickname)}</td>
+                      <td className="px-4 py-3">{formatNullableValue(profile.nickname)}</td>
                     ) : null}
                     {includesEmail ? (
-                      <td className="px-3 py-2">{formatNullableValue(profile.email)}</td>
+                      <td className="px-4 py-3">{formatNullableValue(profile.email)}</td>
                     ) : null}
-                    <td className="px-3 py-2">{formatNullableValue(profile.role)}</td>
-                    <td className="px-3 py-2">{formatNullableValue(appAccessStatus)}</td>
+                    <td className="px-4 py-3">{formatRole(profile.role)}</td>
+                    <td className="px-4 py-3">{formatAppAccessStatus(appAccessStatus)}</td>
                     {includesCreatedAt ? (
-                      <td className="px-3 py-2">{formatNullableValue(profile.created_at)}</td>
+                      <td className="app-text-secondary px-4 py-3 text-sm">{formatNullableValue(profile.created_at)}</td>
                     ) : null}
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3">
                       <div className="flex flex-col gap-2">
-                        <Link href={`/admin/users/${profile.id}`} className="rounded border px-3 py-2 text-center text-sm">
-                          Manage
+                        <Link
+                          href={`/admin/users/${profile.id}`}
+                          className="app-button-secondary rounded-2xl border px-4 py-2 text-center text-sm font-medium shadow-sm"
+                        >
+                          Открыть
                         </Link>
                         {isCurrentAdmin ? (
                           <div className="space-y-1">
-                            <p className="text-sm text-gray-500">Current account</p>
+                            <p className="app-text-secondary text-sm">Текущий аккаунт</p>
                             <button
                               type="button"
                               disabled
-                              className="cursor-not-allowed rounded border px-3 py-2 text-sm opacity-50"
+                              className="app-button-secondary cursor-not-allowed rounded-2xl border px-4 py-2 text-sm font-medium opacity-50"
                             >
-                              {appAccessStatus === 'blocked' ? 'Unblock' : 'Block'}
+                              {appAccessStatus === 'blocked' ? 'Разблокировать' : 'Заблокировать'}
                             </button>
                           </div>
                         ) : appAccessStatus === 'blocked' ? (
                           <form action={unblockUserAppAccess}>
                             <input type="hidden" name="user_id" value={profile.id} />
-                            <button type="submit" className="rounded border px-3 py-2 text-sm">
-                              Unblock
+                            <button type="submit" className="app-button-secondary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
+                              Разблокировать
                             </button>
                           </form>
                         ) : (
                           <form action={blockUserAppAccess}>
                             <input type="hidden" name="user_id" value={profile.id} />
-                            <button type="submit" className="rounded border px-3 py-2 text-sm">
-                              Block
+                            <button type="submit" className="app-button-secondary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
+                              Заблокировать
                             </button>
                           </form>
                         )}

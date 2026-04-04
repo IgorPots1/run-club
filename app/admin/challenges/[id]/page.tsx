@@ -85,6 +85,12 @@ function formatNullableValue(value: number | string | null | undefined) {
   return value == null || value === '' ? '—' : String(value)
 }
 
+function formatVisibility(value: string | null | undefined) {
+  if (value === 'public') return 'Открытый'
+  if (value === 'restricted') return 'По доступу'
+  return formatNullableValue(value)
+}
+
 function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
   return (
     error.code === '42703' ||
@@ -154,39 +160,42 @@ export default async function AdminChallengeDetailsPage({
     <div className="max-w-3xl space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <Link href="/admin/challenges" className="text-sm underline">
-            Back to challenges
+          <Link href="/admin/challenges" className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+            Назад к челленджам
           </Link>
-          <h1 className="text-2xl font-semibold">{challengeRow.title}</h1>
+          <h1 className="app-text-primary text-2xl font-bold">{challengeRow.title}</h1>
         </div>
-        <Link href={`/admin/challenges/${challengeRow.id}/edit`} className="text-sm underline">
-          Edit
+        <Link
+          href={`/admin/challenges/${challengeRow.id}/edit`}
+          className="app-button-secondary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm"
+        >
+          Редактировать
         </Link>
       </div>
 
-      <div className="rounded border p-4">
+      <div className="app-card rounded-2xl border p-4 shadow-sm">
         <dl className="grid gap-3 sm:grid-cols-2">
           <div>
-            <dt className="text-sm font-medium">Visibility</dt>
-            <dd>{formatNullableValue(challengeRow.visibility)}</dd>
+            <dt className="app-text-secondary text-sm">Видимость</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatVisibility(challengeRow.visibility)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">XP reward</dt>
-            <dd>{formatNullableValue(challengeRow.xp_reward)}</dd>
+            <dt className="app-text-secondary text-sm">Награда XP</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.xp_reward)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Goal km</dt>
-            <dd>{formatNullableValue(challengeRow.goal_km)}</dd>
+            <dt className="app-text-secondary text-sm">Цель по километрам</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.goal_km)}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium">Goal runs</dt>
-            <dd>{formatNullableValue(challengeRow.goal_runs)}</dd>
+            <dt className="app-text-secondary text-sm">Цель по тренировкам</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.goal_runs)}</dd>
           </div>
         </dl>
       </div>
 
       {error ? (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
@@ -194,51 +203,51 @@ export default async function AdminChallengeDetailsPage({
       {challengeRow.visibility === 'restricted' ? (
         <>
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Grant access</h2>
-            <form action={grantChallengeAccessAction} className="space-y-3 rounded border p-4">
+            <h2 className="app-text-primary text-lg font-semibold">Выдать доступ</h2>
+            <form action={grantChallengeAccessAction} className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
               <input type="hidden" name="challenge_id" value={challengeRow.id} />
               <div className="space-y-1">
-                <label htmlFor="user_id" className="block text-sm font-medium">
-                  User ID
+                <label htmlFor="user_id" className="app-text-secondary block text-sm">
+                  ID пользователя
                 </label>
                 <input
                   id="user_id"
                   name="user_id"
                   type="text"
                   required
-                  className="w-full rounded border px-3 py-2"
+                  className="app-input w-full rounded-2xl border px-3 py-2"
                 />
               </div>
-              <button type="submit" className="rounded border px-3 py-2 text-sm">
-                Grant access
+              <button type="submit" className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
+                Выдать доступ
               </button>
             </form>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Current access</h2>
+            <h2 className="app-text-primary text-lg font-semibold">Текущий доступ</h2>
             {accessRows.length === 0 ? (
-              <div className="rounded border p-4 text-sm text-gray-600">
-                No users have access yet.
+              <div className="app-card rounded-2xl border p-4 shadow-sm">
+                <p className="app-text-secondary text-sm">Пока никому не выдан доступ.</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {accessRows.map((accessRow) => (
                   <div
                     key={accessRow.user_id}
-                    className="flex items-center justify-between gap-4 rounded border p-4"
+                    className="app-card flex items-center justify-between gap-4 rounded-2xl border p-4 shadow-sm"
                   >
                     <div className="min-w-0">
-                      <p className="font-medium">
+                      <p className="app-text-primary font-medium">
                         {getProfileDisplayName(accessRow.profiles, accessRow.user_id)}
                       </p>
-                      <p className="text-sm text-gray-600">{accessRow.user_id}</p>
+                      <p className="app-text-secondary text-sm">{accessRow.user_id}</p>
                     </div>
                     <form action={revokeChallengeAccessAction}>
                       <input type="hidden" name="challenge_id" value={challengeRow.id} />
                       <input type="hidden" name="user_id" value={accessRow.user_id} />
-                      <button type="submit" className="rounded border px-3 py-2 text-sm">
-                        Remove
+                      <button type="submit" className="app-button-secondary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
+                        Убрать
                       </button>
                     </form>
                   </div>

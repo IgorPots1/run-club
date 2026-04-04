@@ -59,6 +59,37 @@ function formatJson(value: Record<string, unknown>) {
   return JSON.stringify(value, null, 2)
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
+
+function formatAction(value: string) {
+  if (value === 'app_access.block') return 'Блокировка доступа'
+  if (value === 'app_access.unblock') return 'Разблокировка доступа'
+  if (value === 'challenge.create') return 'Создание челленджа'
+  if (value === 'challenge.update') return 'Обновление челленджа'
+  if (value === 'challenge_access.grant') return 'Выдача доступа к челленджу'
+  if (value === 'challenge_access.revoke') return 'Отзыв доступа к челленджу'
+  if (value === 'xp.adjust') return 'Ручная корректировка XP'
+  return value
+}
+
+function formatEntityType(value: string) {
+  if (value === 'profile') return 'Профиль'
+  if (value === 'challenge') return 'Челлендж'
+  if (value === 'challenge_access') return 'Доступ к челленджу'
+  return value
+}
+
 export default async function AdminAuditPage() {
   await requireAdmin()
 
@@ -77,46 +108,48 @@ export default async function AdminAuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Admin audit log</h1>
-        <p className="text-sm text-gray-600">Recent admin actions recorded by the server.</p>
+      <div className="space-y-2">
+        <h1 className="app-text-primary text-2xl font-bold">Журнал действий</h1>
+        <p className="app-text-secondary text-sm">Последние административные действия, записанные на сервере.</p>
       </div>
 
       {rows.length === 0 ? (
-        <p>No audit entries yet.</p>
+        <div className="app-card rounded-2xl border p-4 shadow-sm">
+          <p className="app-text-secondary text-sm">Записей в журнале пока нет.</p>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="app-card overflow-x-auto rounded-2xl border shadow-sm">
           <table className="min-w-full border-collapse">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="px-3 py-2 font-medium">Created</th>
-                <th className="px-3 py-2 font-medium">Actor user ID</th>
-                <th className="px-3 py-2 font-medium">Action</th>
-                <th className="px-3 py-2 font-medium">Entity type</th>
-                <th className="px-3 py-2 font-medium">Entity ID</th>
-                <th className="px-3 py-2 font-medium">Before</th>
-                <th className="px-3 py-2 font-medium">After</th>
+            <thead className="app-surface-muted">
+              <tr className="text-left">
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Когда</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">ID администратора</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Действие</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Тип сущности</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">ID сущности</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">До</th>
+                <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">После</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b align-top">
-                  <td className="px-3 py-2 whitespace-nowrap">{row.created_at}</td>
-                  <td className="px-3 py-2">
+                  <td className="app-text-primary px-4 py-3 whitespace-nowrap">{formatDateTime(row.created_at)}</td>
+                  <td className="px-4 py-3">
                     <span className="break-all">{row.actor_user_id}</span>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.action}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.entity_type}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-3 whitespace-nowrap">{formatAction(row.action)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{formatEntityType(row.entity_type)}</td>
+                  <td className="px-4 py-3">
                     <span className="break-all">{row.entity_id ?? '—'}</span>
                   </td>
-                  <td className="px-3 py-2">
-                    <pre className="max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-3 text-xs">
+                  <td className="px-4 py-3">
+                    <pre className="app-surface-muted max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded-2xl p-3 text-xs">
                       {formatJson(row.payload_before)}
                     </pre>
                   </td>
-                  <td className="px-3 py-2">
-                    <pre className="max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-3 text-xs">
+                  <td className="px-4 py-3">
+                    <pre className="app-surface-muted max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded-2xl p-3 text-xs">
                       {formatJson(row.payload_after)}
                     </pre>
                   </td>
