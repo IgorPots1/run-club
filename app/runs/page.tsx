@@ -6,8 +6,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import XpGainToast from '@/components/XpGainToast'
+import {
+  buildPostRunChallengeFeedbackItems,
+  getAffectedChallengeIdsForRun,
+  saveRecentAffectedChallengeIds,
+  type PostRunChallengeFeedbackItem,
+} from '@/lib/challenge-ux'
 import { loadDashboardOverview } from '@/lib/dashboard'
-import type { DashboardActiveChallenge } from '@/lib/dashboard-overview'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { createRun, deleteRun } from '@/lib/runs'
@@ -118,40 +123,6 @@ function formatDistanceKmLabel(run: Pick<Run, 'distance_km' | 'external_source'>
   }
 
   return formatDistanceKm(run.distance_km)
-}
-
-function buildNearCompletionChallengeMessage(challenge: DashboardActiveChallenge) {
-  if (challenge.isCompleted) {
-    return null
-  }
-
-  const remaining = Math.max(challenge.goal_target - challenge.progress_value, 0)
-
-  if (remaining <= 0) {
-    return null
-  }
-
-  if (challenge.goal_unit === 'run_count' && Math.ceil(remaining) === 1) {
-    return '💥 Ещё 1 тренировка — и ты закроешь челлендж'
-  }
-
-  if (challenge.goal_unit === 'distance_km' && (remaining <= 2 || remaining <= challenge.goal_target * 0.15)) {
-    return `🔥 Осталось всего ${formatDistanceKm(remaining)} км`
-  }
-
-  return null
-}
-
-function getNearCompletionChallengeMessages(challenges: DashboardActiveChallenge[]) {
-  return challenges
-    .map((challenge) => ({
-      challenge,
-      message: buildNearCompletionChallengeMessage(challenge),
-    }))
-    .filter((item): item is { challenge: DashboardActiveChallenge; message: string } => Boolean(item.message))
-    .sort((left, right) => left.challenge.goal_target - left.challenge.progress_value - (right.challenge.goal_target - right.challenge.progress_value))
-    .slice(0, 2)
-    .map((item) => item.message)
 }
 
 function getRunDurationSeconds(run: Pick<Run, 'duration_minutes' | 'duration_seconds'>) {
@@ -548,7 +519,7 @@ export default function RunsPage() {
   const [durationSecondsInput, setDurationSecondsInput] = useState('0')
   const [error, setError] = useState('')
   const [saveInfoMessage, setSaveInfoMessage] = useState('')
-  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[]; challengeMessages: string[] } | null>(null)
+  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[]; challengeMessages: PostRunChallengeFeedbackItem[] } | null>(null)
   const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
@@ -951,7 +922,15 @@ export default function RunsPage() {
       setError('')
       setSaveInfoMessage(shoeWearMessage ?? '')
       const overview = await loadDashboardOverview(user.id)
-      const challengeMessages = getNearCompletionChallengeMessages(overview.activeChallenges)
+      const runContext = {
+        distanceKm: d,
+        createdAt: createdAtDate.toISOString(),
+      }
+      const challengeMessages = buildPostRunChallengeFeedbackItems(overview.activeChallenges, {
+        distanceKm: runContext.distanceKm,
+        createdAt: runContext.createdAt,
+      })
+      saveRecentAffectedChallengeIds(getAffectedChallengeIdsForRun(overview.activeChallenges, runContext))
 
       if (xpGained > 0 || challengeMessages.length > 0) {
         setXpToast({

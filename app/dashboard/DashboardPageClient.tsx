@@ -10,6 +10,7 @@ import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
+import { loadRecentAffectedChallengeIds, prioritizeChallengesByIds } from '@/lib/challenge-ux'
 import {
   loadLatestFinalizedRaceWeek,
   loadRaceWeekUserBadge,
@@ -247,8 +248,9 @@ export default function DashboardPageClient({
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails, setHasLoadedOverviewDetails] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
+  const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
   const [featuredChallengeId, setFeaturedChallengeId] = useState<string | null>(
-    initialActiveChallenges[0]?.id ?? null
+    initialActiveChallenges.find((challenge) => !challenge.isCompleted)?.id ?? null
   )
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
   const challengeRailRef = useRef<HTMLDivElement | null>(null)
@@ -396,7 +398,13 @@ export default function DashboardPageClient({
   }, [refreshDashboardData])
 
   const stats = overview?.stats ?? initialStats
-  const activeChallenges = overview?.activeChallenges ?? initialActiveChallenges
+  const activeChallenges = useMemo(
+    () => prioritizeChallengesByIds(
+      (overview?.activeChallenges ?? initialActiveChallenges).filter((challenge) => !challenge.isCompleted),
+      recentlyAffectedChallengeIds
+    ),
+    [initialActiveChallenges, overview?.activeChallenges, recentlyAffectedChallengeIds]
+  )
   const allChallengesCompleted = overview?.allChallengesCompleted ?? initialAllChallengesCompleted
   const levelProgress = hasLoadedOverviewDetails && stats
     ? getLevelProgressFromXP(stats.totalXp)

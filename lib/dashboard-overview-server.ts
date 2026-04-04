@@ -282,9 +282,8 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
     } satisfies InternalDashboardChallenge]
   })
 
-  const activeChallenges = [...challengeItems]
-    .filter((challenge) => !challenge.isCompleted)
-    .sort(compareActiveChallenges)
+  const sortedChallenges = [...challengeItems].sort(compareActiveChallenges)
+  const incompleteChallenges = sortedChallenges.filter((challenge) => !challenge.isCompleted)
 
   return {
     stats: {
@@ -297,7 +296,7 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
       nickname: profileRow?.nickname?.trim() || null,
       email: profileRow?.email ?? null,
     },
-    activeChallenges: activeChallenges.map(stripInternalChallenge),
-    allChallengesCompleted: challengeItems.length > 0 && activeChallenges.length === 0,
+    activeChallenges: sortedChallenges.map(stripInternalChallenge),
+    allChallengesCompleted: challengeItems.length > 0 && incompleteChallenges.length === 0,
   }
 }

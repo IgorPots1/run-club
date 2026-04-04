@@ -1,11 +1,12 @@
 'use client'
 
+import type { PostRunChallengeFeedbackItem } from '@/lib/challenge-ux'
 import { formatXpBreakdownLabels, type XpBreakdownItem } from '@/lib/xp'
 
 type XpGainToastProps = {
   xpGained: number
   breakdown?: XpBreakdownItem[]
-  challengeMessages?: string[]
+  challengeMessages?: PostRunChallengeFeedbackItem[]
   offsetClassName?: string
 }
 
@@ -25,11 +26,18 @@ export default function XpGainToast({
           <p className="app-text-secondary mt-1 text-xs">{breakdownLabel}</p>
         ) : null}
         {challengeMessages.length > 0 ? (
-          <div className="mt-2 space-y-1">
+          <div className="mt-2 space-y-2">
             {challengeMessages.map((message) => (
-              <p key={message} className="app-text-primary text-xs font-medium">
-                {message}
-              </p>
+              <div
+                key={message.challengeId}
+                className="rounded-xl border border-black/[0.06] px-3 py-2 text-left dark:border-white/[0.08]"
+              >
+                <p className="app-text-primary text-xs font-medium">{message.title}</p>
+                <p className="app-text-secondary mt-1 text-xs">{message.todayProgressLabel}</p>
+                {message.nearCompletionMessage ? (
+                  <p className="app-text-primary mt-1 text-xs font-medium">{message.nearCompletionMessage}</p>
+                ) : null}
+              </div>
             ))}
           </div>
         ) : null}
