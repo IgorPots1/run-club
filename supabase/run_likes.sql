@@ -19,7 +19,15 @@ create policy "Users can like runs as themselves"
 on public.run_likes
 for insert
 to authenticated
-with check (auth.uid() = user_id);
+with check (
+  auth.uid() = user_id
+  and exists (
+    select 1
+    from public.runs r
+    where r.id = run_id
+      and r.user_id is distinct from auth.uid()
+  )
+);
 
 drop policy if exists "Users can remove their own likes" on public.run_likes;
 create policy "Users can remove their own likes"

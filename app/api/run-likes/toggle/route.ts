@@ -21,12 +21,20 @@ type RunEventTargetRow = {
   name: string | null
 }
 
+type RunLikeTargetOwnerRow = {
+  user_id: string | null
+}
+
 function isDuplicateRunLikeError(error: { code?: string | null; message?: string | null }) {
   return (
     error.code === '23505' ||
     Boolean(error.message?.includes('duplicate key value')) ||
     Boolean(error.message?.includes('run_likes_pkey'))
   )
+}
+
+function isSelfRunLikeError(error: { code?: string | null; message?: string | null }) {
+  return Boolean(error.message?.includes('cannot_like_own_run'))
 }
 
 async function emitRunLikeCreatedEvent(input: {
@@ -131,6 +139,34 @@ export async function POST(request: Request) {
       })
     }
   } else {
+    const { data: runTarget, error: runTargetError } = await supabaseAdmin
+      .from('runs')
+      .select('user_id')
+      .eq('id', runId)
+      .maybeSingle()
+
+    if (runTargetError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: runTargetError.message,
+        },
+        { status: 500 }
+      )
+    }
+
+    const runOwnerUserId = (runTarget as RunLikeTargetOwnerRow | null)?.user_id ?? null
+
+    if (runOwnerUserId === user.id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'cannot_like_own_run',
+        },
+        { status: 409 }
+      )
+    }
+
     const { data: insertedLikes, error: insertError } = await supabaseAdmin
       .from('run_likes')
       .insert({ run_id: runId, user_id: user.id })
@@ -144,6 +180,16 @@ export async function POST(request: Request) {
           xpRemoved: 0,
           breakdown: [],
         })
+      }
+
+      if (isSelfRunLikeError(insertError)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'cannot_like_own_run',
+          },
+          { status: 409 }
+        )
       }
 
       return NextResponse.json(
