@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { redirect } from 'next/navigation'
+import { forbidden, redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
@@ -8,26 +8,19 @@ export type ProfileRole = 'user' | 'coach' | 'admin'
 
 type AdminProfile = {
   id: string
-  role: ProfileRole | null
+  role: ProfileRole
 }
 
 type RequireAdminResult = {
   user: User
-  profile: AdminProfile | null
+  profile: AdminProfile
 }
 
 export async function requireAdmin(): Promise<RequireAdminResult> {
   const supabase = await createSupabaseServerClient()
   const {
     data: { user },
-    error: userError,
   } = await supabase.auth.getUser()
-
-  console.log('[admin-auth] getUser result', {
-    hasUser: Boolean(user),
-    userId: user?.id ?? null,
-    userError: userError?.message ?? null,
-  })
 
   if (!user) {
     redirect('/login')
@@ -39,25 +32,30 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     .eq('id', user.id)
     .maybeSingle()
 
-  console.log('[admin-auth] profile result', {
-    userId: user.id,
-    profile: profile ?? null,
-    profileError: profileError
-      ? {
-          code: profileError.code ?? null,
-          message: profileError.message,
-          details: profileError.details ?? null,
-        }
-      : null,
-  })
+  if (profileError) {
+    console.error('[admin-auth] profile lookup failed', {
+      userId: user.id,
+      code: profileError.code ?? null,
+      message: profileError.message,
+      details: profileError.details ?? null,
+    })
+
+    throw profileError
+  }
+
+  if (!profile) {
+    forbidden()
+  }
+
+  if (profile.role !== 'admin') {
+    forbidden()
+  }
 
   return {
     user,
-    profile: profile
-      ? {
-          id: profile.id,
-          role: profile.role,
-        }
-      : null,
+    profile: {
+      id: profile.id,
+      role: profile.role,
+    },
   }
 }
