@@ -16,9 +16,9 @@ import {
   type RaceWeekResultRow,
   type RaceWeekSummary,
 } from '@/lib/race-results-client'
-import { loadDashboardOverview, type DashboardOverview } from '@/lib/dashboard'
+import { loadDashboardOverview } from '@/lib/dashboard'
+import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
 import { formatDistanceKm } from '@/lib/format'
-import type { ChallengeWithProgress } from '@/lib/challenges'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
@@ -55,6 +55,49 @@ type LastWeekResultsCardData = {
   badgeText: string
 }
 
+const dashboardChallengeTypeLabels: Record<DashboardActiveChallenge['period_type'], string> = {
+  challenge: 'По расписанию',
+  weekly: 'Еженедельный',
+  monthly: 'Ежемесячный',
+  lifetime: 'Достижение',
+}
+
+function formatDashboardChallengeDate(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+function formatDashboardChallengeRange(challenge: DashboardActiveChallenge) {
+  if (challenge.period_type !== 'challenge' || !challenge.period_start || !challenge.period_end) {
+    return null
+  }
+
+  const startLabel = formatDashboardChallengeDate(challenge.period_start)
+  const endLabel = formatDashboardChallengeDate(challenge.period_end)
+
+  if (!startLabel || !endLabel) {
+    return null
+  }
+
+  return `${startLabel} - ${endLabel}`
+}
+
+function formatDashboardChallengeProgress(challenge: DashboardActiveChallenge) {
+  if (challenge.goal_unit === 'distance_km') {
+    return `${formatDistanceKm(challenge.progress_value)} / ${formatDistanceKm(challenge.goal_target)} км`
+  }
+
+  return `${Math.round(challenge.progress_value)} / ${Math.round(challenge.goal_target)} тренировок`
+}
+
 function getRaceBadgeText(badgeCode: string | null | undefined, rank: number | null | undefined) {
   if (badgeCode === 'race_week_winner') {
     return 'Победитель недели'
@@ -87,7 +130,7 @@ export default function DashboardPageClient({
   initialProfileSummary: DashboardInitialProfileSummary
   initialStats: DashboardInitialStats
   initialLevelProgress: DashboardInitialLevelProgress
-  initialActiveChallenge: ChallengeWithProgress | null
+  initialActiveChallenge: DashboardActiveChallenge | null
   initialAllChallengesCompleted: boolean
 }) {
   const router = useRouter()
@@ -239,7 +282,7 @@ export default function DashboardPageClient({
   }, [refreshDashboardData])
 
   const stats = overview?.stats ?? initialStats
-  const activeChallenge: ChallengeWithProgress | null = overview?.activeChallenge ?? initialActiveChallenge
+  const activeChallenge: DashboardActiveChallenge | null = overview?.activeChallenge ?? initialActiveChallenge
   const allChallengesCompleted = overview?.allChallengesCompleted ?? initialAllChallengesCompleted
   const levelProgress = hasLoadedOverviewDetails && stats
     ? getLevelProgressFromXP(stats.totalXp)
@@ -360,20 +403,32 @@ export default function DashboardPageClient({
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 <span>Активный челлендж</span>
               </p>
-              <h2 className="app-text-primary mt-3 break-words text-lg font-semibold">{activeChallenge.title}</h2>
-              {activeChallenge.progressItems[0] ? (
-                <div className="mt-3">
-                  <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
-                    <div
-                      className="app-accent-bg h-full rounded-full"
-                      style={{ width: `${activeChallenge.progressItems[0].percent}%` }}
-                    />
+              <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="app-text-primary break-words text-lg font-semibold">{activeChallenge.title}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
+                      {dashboardChallengeTypeLabels[activeChallenge.period_type]}
+                    </span>
+                    {formatDashboardChallengeRange(activeChallenge) ? (
+                      <span className="app-text-secondary text-xs">
+                        {formatDashboardChallengeRange(activeChallenge)}
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="app-text-secondary mt-2 text-sm">Прогресс: {activeChallenge.progressItems[0].label}</p>
                 </div>
-              ) : (
-                <p className="app-text-secondary mt-2 text-sm">Прогресс появится после первой тренировки</p>
-              )}
+              </div>
+              <div className="mt-3">
+                <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">
+                  <div
+                    className="app-accent-bg h-full rounded-full"
+                    style={{ width: `${activeChallenge.percent}%` }}
+                  />
+                </div>
+                <p className="app-text-secondary mt-2 text-sm">
+                  Прогресс: {formatDashboardChallengeProgress(activeChallenge)}
+                </p>
+              </div>
             </div>
           ) : allChallengesCompleted ? (
             <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">

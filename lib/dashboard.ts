@@ -1,4 +1,4 @@
-import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress, type RunRecord } from './challenges'
+import type { DashboardOverview } from './dashboard-overview'
 import { getProfileDisplayName } from './profiles'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
@@ -78,19 +78,6 @@ export type FeedRunPage = {
   hasMore: boolean
 }
 
-export type DashboardProgressStats = {
-  totalKmThisMonth: number
-  runsCount: number
-  totalXp: number
-}
-
-export type DashboardOverview = {
-  stats: DashboardProgressStats
-  profileSummary: UserProfileSummary
-  activeChallenge: ChallengeWithProgress | null
-  allChallengesCompleted: boolean
-}
-
 export type UserProfileSummary = {
   name: string | null
   nickname: string | null
@@ -102,10 +89,6 @@ const TOTAL_XP_CACHE_TTL_MS = 60 * 1000
 
 const profileCache = new Map<string, { value: ProfileRow | null; expiresAt: number }>()
 const totalXpCache = new Map<string, { value: number; expiresAt: number }>()
-
-function getMonthStart(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
 
 function formatPace(distanceKm: number, totalDurationSeconds: number | null) {
   if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null
@@ -291,75 +274,18 @@ export async function loadTotalXpByUserIds(userIds: string[]) {
 }
 
 export async function loadDashboardOverview(userId: string): Promise<DashboardOverview> {
-  const [
-    profileById,
-    { data: myRuns, error: myRunsError },
-    { data: challenges, error: challengesError },
-    { data: completedChallenges, error: completedChallengesError },
-  ] = await Promise.all([
-    loadProfilesByUserIds([userId], { includeAvatarUrl: false }),
-    supabase
-      .from('runs')
-      .select('distance_km, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('challenges')
-      .select('id, title, description, goal_km, goal_runs, xp_reward, created_at')
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('user_challenges')
-      .select('challenge_id')
-      .eq('user_id', userId),
-  ])
+  void userId
 
-  if (myRunsError || challengesError || completedChallengesError) {
-    throw new Error('Не удалось загрузить дашборд')
-  }
-
-  const currentUserRuns = (myRuns as RunRecord[] | null) ?? []
-  const completedChallengeIds = new Set(
-    ((((completedChallenges as Array<{ challenge_id: string }> | null) ?? [])).map((row) => row.challenge_id))
-  )
-  const monthStart = getMonthStart(new Date()).getTime()
-  const totalKmThisMonth = currentUserRuns.reduce((sum, run) => {
-    const runTime = new Date(run.created_at).getTime()
-    return runTime >= monthStart ? sum + Number(run.distance_km ?? 0) : sum
-  }, 0)
-  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => {
-    const progress = getChallengeProgress(challenge, currentUserRuns)
-    const isCompleted = progress.isCompleted || completedChallengeIds.has(challenge.id)
-
-    return {
-      ...progress,
-      isCompleted,
-      progressItems: isCompleted
-        ? progress.progressItems.map((item) => ({
-            ...item,
-            completed: true,
-            percent: 100,
-          }))
-        : progress.progressItems,
-    }
+  const response = await fetch('/api/dashboard/overview', {
+    credentials: 'include',
   })
-  const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
-  const firstActiveChallenge = activeChallenges[0] ?? null
-  const profile = profileById[userId]
+  const payload = await response.json().catch(() => null) as (DashboardOverview & { error?: never }) | { error?: string } | null
 
-  return {
-    stats: {
-      totalKmThisMonth,
-      runsCount: currentUserRuns.length,
-      totalXp: Number(profile?.total_xp ?? 0),
-    },
-    profileSummary: {
-      name: profile?.name?.trim() || null,
-      nickname: profile?.nickname?.trim() || null,
-      email: profile?.email ?? null,
-    },
-    activeChallenge: firstActiveChallenge,
-    allChallengesCompleted: challengeItems.length > 0 && activeChallenges.length === 0,
+  if (!response.ok || !payload || 'error' in payload) {
+    throw new Error(payload && 'error' in payload && payload.error ? payload.error : 'Не удалось загрузить дашборд')
   }
+
+  return payload
 }
 
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {

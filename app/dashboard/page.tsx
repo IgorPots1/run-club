@@ -1,29 +1,9 @@
 import { redirect } from 'next/navigation'
 import DashboardPageClient from './DashboardPageClient'
-import { getChallengeProgress, sortChallengesByPriority, type Challenge, type ChallengeWithProgress } from '@/lib/challenges'
+import { loadDashboardOverviewServer } from '@/lib/dashboard-overview-server'
 import { getFirstSessionState } from '@/lib/onboarding'
-import { createSupabaseServerClient, getAuthenticatedUser } from '@/lib/supabase-server'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP } from '@/lib/xp'
-
-type ProfileSummaryRow = {
-  name: string | null
-  nickname: string | null
-  email: string | null
-  total_xp: number | null
-}
-
-type RunSummaryRow = {
-  distance_km: number | null
-  created_at: string
-}
-
-type CompletedChallengeRow = {
-  challenge_id: string
-}
-
-function getMonthStart(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
 
 export default async function DashboardPage() {
   const { user } = await getAuthenticatedUser()
@@ -38,69 +18,8 @@ export default async function DashboardPage() {
     redirect('/onboarding')
   }
 
-  const supabase = await createSupabaseServerClient()
-  const [
-    { data: profile },
-    { data: runs },
-    { data: challenges },
-    { data: completedChallenges },
-  ] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('name, nickname, email, total_xp')
-      .eq('id', user.id)
-      .maybeSingle(),
-    supabase
-      .from('runs')
-      .select('distance_km, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('challenges')
-      .select('id, title, description, goal_km, goal_runs, xp_reward, created_at, kind')
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('user_challenges')
-      .select('challenge_id')
-      .eq('user_id', user.id),
-  ])
-
-  const initialProfileSummary = (profile as ProfileSummaryRow | null) ?? {
-    name: null,
-    nickname: null,
-    email: null,
-    total_xp: 0,
-  }
-  const runRows = (runs as RunSummaryRow[] | null) ?? []
-  const completedChallengeIds = new Set(
-    (((completedChallenges as CompletedChallengeRow[] | null) ?? []).map((row) => row.challenge_id))
-  )
-  const monthStart = getMonthStart(new Date()).getTime()
-  const totalKmThisMonth = runRows.reduce((sum, run) => {
-    const runTime = new Date(run.created_at).getTime()
-    return runTime >= monthStart ? sum + Number(run.distance_km ?? 0) : sum
-  }, 0)
-  const totalXp = Number(initialProfileSummary.total_xp ?? 0)
-  const challengeItems = ((challenges as Challenge[] | null) ?? []).map((challenge) => {
-    const progress = getChallengeProgress(challenge, runRows)
-    const isCompleted = progress.isCompleted || completedChallengeIds.has(challenge.id)
-
-    return {
-      ...progress,
-      isCompleted,
-      progressItems: isCompleted
-        ? progress.progressItems.map((item) => ({
-            ...item,
-            completed: true,
-            percent: 100,
-          }))
-        : progress.progressItems,
-    }
-  })
-  const activeChallenges = sortChallengesByPriority(challengeItems.filter((challenge) => !challenge.isCompleted))
-  const initialActiveChallenge: ChallengeWithProgress | null = activeChallenges[0] ?? null
-  const initialAllChallengesCompleted = challengeItems.length > 0 && activeChallenges.length === 0
-  const initialLevelProgress = getLevelProgressFromXP(totalXp)
+  const overview = await loadDashboardOverviewServer(user.id)
+  const initialLevelProgress = getLevelProgressFromXP(overview.stats.totalXp)
 
   return (
     <DashboardPageClient
@@ -109,18 +28,14 @@ export default async function DashboardPage() {
         email: user.email ?? null,
       }}
       initialProfileSummary={{
-        name: initialProfileSummary.name,
-        nickname: initialProfileSummary.nickname,
-        email: initialProfileSummary.email ?? user.email ?? null,
+        name: overview.profileSummary.name,
+        nickname: overview.profileSummary.nickname,
+        email: overview.profileSummary.email ?? user.email ?? null,
       }}
-      initialStats={{
-        totalKmThisMonth,
-        runsCount: runRows.length,
-        totalXp,
-      }}
+      initialStats={overview.stats}
       initialLevelProgress={initialLevelProgress}
-      initialActiveChallenge={initialActiveChallenge}
-      initialAllChallengesCompleted={initialAllChallengesCompleted}
+      initialActiveChallenge={overview.activeChallenge}
+      initialAllChallengesCompleted={overview.allChallengesCompleted}
     />
   )
 }
