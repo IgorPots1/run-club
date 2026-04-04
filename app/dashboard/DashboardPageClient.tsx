@@ -143,12 +143,25 @@ function isDashboardChallengeNearCompletion(challenge: DashboardActiveChallenge)
   return challenge.percent >= 80 && challenge.percent < 100
 }
 
-function DashboardChallengeCard({ challenge }: { challenge: DashboardActiveChallenge }) {
+function DashboardChallengeCard({
+  challenge,
+  featured,
+}: {
+  challenge: DashboardActiveChallenge
+  featured: boolean
+}) {
   const dateRange = formatDashboardChallengeRange(challenge)
   const daysLeft = formatDashboardChallengeDaysLeft(challenge)
 
   return (
-    <article className="app-card w-[86%] shrink-0 snap-start overflow-hidden rounded-xl border p-4 shadow-sm sm:w-[420px]">
+    <article
+      data-challenge-card={challenge.id}
+      className={`app-card w-[86%] shrink-0 snap-center overflow-hidden rounded-xl border p-4 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none sm:w-[420px] ${
+        featured
+          ? 'scale-100 opacity-100 shadow-md ring-1 ring-black/5 dark:ring-white/10'
+          : 'scale-[0.985] opacity-80 shadow-sm'
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="app-text-primary break-words text-base font-semibold">{challenge.title}</h3>
@@ -223,7 +236,11 @@ export default function DashboardPageClient({
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails, setHasLoadedOverviewDetails] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
+  const [featuredChallengeId, setFeaturedChallengeId] = useState<string | null>(
+    initialActiveChallenges[0]?.id ?? null
+  )
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
+  const challengeRailRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -402,6 +419,75 @@ export default function DashboardPageClient({
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
     : 0
   const currentRankTitle = levelProgress ? getRankTitleFromLevel(levelProgress.level) : ''
+  const resolvedFeaturedChallengeId = featuredChallengeId && activeChallenges.some((challenge) => challenge.id === featuredChallengeId)
+    ? featuredChallengeId
+    : activeChallenges[0]?.id ?? null
+
+  useEffect(() => {
+    const railElement = challengeRailRef.current
+
+    if (!railElement || activeChallenges.length === 0 || typeof IntersectionObserver === 'undefined') {
+      return
+    }
+
+    const cardElements = Array.from(railElement.querySelectorAll<HTMLElement>('[data-challenge-card]'))
+
+    if (cardElements.length === 0) {
+      return
+    }
+
+    const visibleRatios = new Map<string, number>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let hasVisibleEntry = false
+
+        for (const entry of entries) {
+          const challengeId = entry.target.getAttribute('data-challenge-card')
+
+          if (!challengeId) {
+            continue
+          }
+
+          const ratio = entry.isIntersecting ? entry.intersectionRatio : 0
+          visibleRatios.set(challengeId, ratio)
+
+          if (ratio > 0) {
+            hasVisibleEntry = true
+          }
+        }
+
+        if (!hasVisibleEntry && visibleRatios.size === 0) {
+          return
+        }
+
+        let nextFeaturedChallengeId = activeChallenges[0]?.id ?? null
+        let nextFeaturedRatio = -1
+
+        for (const challenge of activeChallenges) {
+          const ratio = visibleRatios.get(challenge.id) ?? 0
+
+          if (ratio > nextFeaturedRatio) {
+            nextFeaturedRatio = ratio
+            nextFeaturedChallengeId = challenge.id
+          }
+        }
+
+        setFeaturedChallengeId(nextFeaturedChallengeId)
+      },
+      {
+        root: railElement,
+        threshold: [0.35, 0.5, 0.65, 0.8, 0.95],
+      }
+    )
+
+    for (const cardElement of cardElements) {
+      observer.observe(cardElement)
+    }
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [activeChallenges])
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
@@ -491,10 +577,17 @@ export default function DashboardPageClient({
                   <span>Челленджи</span>
                 </p>
               </div>
-              <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <div
+                ref={challengeRailRef}
+                className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              >
                 <div className="flex snap-x snap-mandatory gap-3 pr-12">
                   {activeChallenges.map((challenge) => (
-                    <DashboardChallengeCard key={challenge.id} challenge={challenge} />
+                    <DashboardChallengeCard
+                      key={challenge.id}
+                      challenge={challenge}
+                      featured={resolvedFeaturedChallengeId === challenge.id}
+                    />
                   ))}
                 </div>
               </div>
