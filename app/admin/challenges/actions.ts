@@ -31,17 +31,24 @@ function redirectToNewChallengeForm(error: string) {
 export async function createChallengeAction(formData: FormData) {
   await requireAdmin()
 
-  const title = typeof formData.get('title') === 'string' ? formData.get('title')!.trim() : ''
-  const descriptionValue = typeof formData.get('description') === 'string'
-    ? formData.get('description')!.trim()
+  const titleValue = formData.get('title')
+  const descriptionInput = formData.get('description')
+  const visibilityInput = formData.get('visibility')
+  const goalKmValue = formData.get('goal_km')
+  const goalRunsValue = formData.get('goal_runs')
+  const xpRewardInput = formData.get('xp_reward')
+
+  const title = typeof titleValue === 'string' ? titleValue.trim() : ''
+  const descriptionValue = typeof descriptionInput === 'string'
+    ? descriptionInput.trim()
     : ''
-  const visibilityValue = typeof formData.get('visibility') === 'string'
-    ? formData.get('visibility')!.trim()
+  const visibilityValue = typeof visibilityInput === 'string'
+    ? visibilityInput.trim()
     : ''
-  const goalKm = normalizeOptionalPositiveNumber(formData.get('goal_km'))
-  const goalRuns = normalizeOptionalPositiveNumber(formData.get('goal_runs'))
-  const xpRewardValue = typeof formData.get('xp_reward') === 'string'
-    ? formData.get('xp_reward')!.trim()
+  const goalKm = normalizeOptionalPositiveNumber(goalKmValue)
+  const goalRuns = normalizeOptionalPositiveNumber(goalRunsValue)
+  const xpRewardValue = typeof xpRewardInput === 'string'
+    ? xpRewardInput.trim()
     : ''
 
   if (!title) {
