@@ -319,13 +319,6 @@ export async function createChallengeAction(formData: FormData) {
     }
   }
 
-  if (!badgeUrl || !badgeStoragePath) {
-    redirectToNewChallengeForm({
-      error: 'Загрузите бейдж челленджа перед сохранением.',
-      ...formValues,
-    })
-  }
-
   const xpReward = Math.max(0, Math.round(xpRewardNumber))
   const normalizedGoalTarget = goalUnit === 'run_count'
     ? Math.round(goalTarget ?? 0)
@@ -344,8 +337,8 @@ export async function createChallengeAction(formData: FormData) {
     goal_target: normalizedGoalTarget,
     starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
     end_at: periodType === 'challenge' ? normalizedEndAt : null,
-    badge_url: badgeUrl,
-    badge_storage_path: badgeStoragePath,
+    badge_url: badgeUrl || null,
+    badge_storage_path: badgeStoragePath || null,
     goal_km: legacyGoalFields.goal_km,
     goal_runs: legacyGoalFields.goal_runs,
     xp_reward: xpReward,
@@ -362,8 +355,8 @@ export async function createChallengeAction(formData: FormData) {
       goal_target: normalizedGoalTarget,
       starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
       end_at: periodType === 'challenge' ? normalizedEndAt : null,
-      badge_url: badgeUrl,
-      badge_storage_path: badgeStoragePath,
+      badge_url: badgeUrl || null,
+      badge_storage_path: badgeStoragePath || null,
       goal_km: legacyGoalFields.goal_km,
       goal_runs: legacyGoalFields.goal_runs,
       xp_reward: xpReward,
@@ -512,13 +505,6 @@ export async function updateChallengeAction(formData: FormData) {
     }
   }
 
-  if (!badgeUrl || !badgeStoragePath) {
-    redirectToEditChallengeForm(challengeId, {
-      error: 'Загрузите бейдж челленджа перед сохранением.',
-      ...formValues,
-    })
-  }
-
   const xpReward = Math.max(0, Math.round(xpRewardNumber))
   const normalizedGoalTarget = goalUnit === 'run_count'
     ? Math.round(goalTarget ?? 0)
@@ -554,8 +540,8 @@ export async function updateChallengeAction(formData: FormData) {
     goal_target: normalizedGoalTarget,
     starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
     end_at: periodType === 'challenge' ? normalizedEndAt : null,
-    badge_url: badgeUrl,
-    badge_storage_path: badgeStoragePath,
+    badge_url: badgeUrl || null,
+    badge_storage_path: badgeStoragePath || null,
     goal_km: legacyGoalFields.goal_km,
     goal_runs: legacyGoalFields.goal_runs,
     xp_reward: xpReward,
@@ -572,8 +558,8 @@ export async function updateChallengeAction(formData: FormData) {
       goal_target: normalizedGoalTarget,
       starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
       end_at: periodType === 'challenge' ? normalizedEndAt : null,
-      badge_url: badgeUrl,
-      badge_storage_path: badgeStoragePath,
+      badge_url: badgeUrl || null,
+      badge_storage_path: badgeStoragePath || null,
       goal_km: legacyGoalFields.goal_km,
       goal_runs: legacyGoalFields.goal_runs,
       xp_reward: xpReward,

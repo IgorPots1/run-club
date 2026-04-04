@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
@@ -162,21 +163,31 @@ function DashboardChallengeCard({
           : 'scale-[0.985] opacity-80 shadow-sm'
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="app-text-primary break-words text-base font-semibold">{challenge.title}</h3>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
-              {dashboardChallengeTypeLabels[challenge.period_type]}
-            </span>
-            {dateRange ? (
-              <span className="app-text-secondary text-xs">{dateRange}</span>
+      <div className="flex items-start gap-3">
+        <ChallengeBadgeArtwork
+          badgeUrl={challenge.badge_url}
+          title={challenge.title}
+          className="h-14 w-14 shrink-0 rounded-2xl"
+          placeholderLabel="Badge"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="app-text-primary break-words text-base font-semibold">{challenge.title}</h3>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
+                  {dashboardChallengeTypeLabels[challenge.period_type]}
+                </span>
+                {dateRange ? (
+                  <span className="app-text-secondary text-xs">{dateRange}</span>
+                ) : null}
+              </div>
+            </div>
+            {isDashboardChallengeNearCompletion(challenge) ? (
+              <span className="shrink-0 text-xs font-medium text-orange-600">Почти готово 🔥</span>
             ) : null}
           </div>
         </div>
-        {isDashboardChallengeNearCompletion(challenge) ? (
-          <span className="shrink-0 text-xs font-medium text-orange-600">Почти готово 🔥</span>
-        ) : null}
       </div>
       <div className="mt-3">
         <div className="app-progress-track h-2 w-full overflow-hidden rounded-full">

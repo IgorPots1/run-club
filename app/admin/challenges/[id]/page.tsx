@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -236,16 +237,17 @@ export default async function AdminChallengeDetailsPage({
           </div>
         </dl>
 
-        {challengeRow.badge_url ? (
-          <div className="mt-4 border-t pt-4">
-            <p className="app-text-secondary text-sm">Бейдж</p>
-            <img
-              src={challengeRow.badge_url}
-              alt={`Бейдж ${challengeRow.title}`}
-              className="mt-2 h-24 w-24 rounded-2xl border border-black/[0.06] object-cover dark:border-white/[0.08]"
+        <div className="mt-4 border-t pt-4">
+          <p className="app-text-secondary text-sm">Бейдж</p>
+          <div className="mt-2">
+            <ChallengeBadgeArtwork
+              badgeUrl={challengeRow.badge_url}
+              title={challengeRow.title}
+              className="h-24 w-24 rounded-2xl"
+              placeholderLabel="Нет бейджа"
             />
           </div>
-        ) : null}
+        </div>
       </div>
 
       {error ? (

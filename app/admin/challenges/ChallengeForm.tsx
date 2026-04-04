@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import { deleteUploadedChallengeBadge, uploadChallengeBadge } from '@/lib/storage/uploadChallengeBadge'
 
 type ChallengePeriodType = 'lifetime' | 'challenge' | 'weekly' | 'monthly'
@@ -209,10 +210,6 @@ export function ChallengeForm({
       if (new Date(startsAt).getTime() >= new Date(endAt).getTime()) {
         return 'Дата начала должна быть раньше даты окончания.'
       }
-    }
-
-    if (!badgeUrl.trim() || !badgeStoragePath.trim()) {
-      return 'Загрузите бейдж челленджа перед сохранением.'
     }
 
     return ''
@@ -446,7 +443,7 @@ export function ChallengeForm({
             <div className="space-y-1">
               <h2 className="app-text-primary text-lg font-semibold">Badge</h2>
               <p className="app-text-secondary text-sm">
-                Бейдж обязателен для сохранения. Используйте квадратное изображение для аккуратного отображения.
+                Бейдж необязателен. Если изображение не загружено, в интерфейсе будет показан аккуратный плейсхолдер.
               </p>
             </div>
 
@@ -479,23 +476,22 @@ export function ChallengeForm({
               ) : null}
             </div>
 
-            {badgeUrl ? (
-              <div className="flex items-center gap-4 rounded-2xl border border-black/[0.06] p-3 dark:border-white/[0.08]">
-                <img
-                  src={badgeUrl}
-                  alt="Предпросмотр бейджа"
-                  className="h-20 w-20 rounded-2xl border border-black/[0.06] object-cover dark:border-white/[0.08]"
-                />
-                <div className="min-w-0">
-                  <p className="app-text-primary text-sm font-medium">Бейдж загружен</p>
-                  <p className="app-text-secondary truncate text-xs">{badgeStoragePath}</p>
-                </div>
+            <div className="flex items-center gap-4 rounded-2xl border border-black/[0.06] p-3 dark:border-white/[0.08]">
+              <ChallengeBadgeArtwork
+                badgeUrl={badgeUrl}
+                title={title}
+                className="h-20 w-20 rounded-2xl"
+                placeholderLabel="Нет бейджа"
+              />
+              <div className="min-w-0">
+                <p className="app-text-primary text-sm font-medium">
+                  {badgeUrl ? 'Бейдж загружен' : 'Будет использован плейсхолдер'}
+                </p>
+                <p className="app-text-secondary truncate text-xs">
+                  {badgeStoragePath || 'Изображение можно добавить позже.'}
+                </p>
               </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-black/[0.08] px-4 py-6 text-sm text-black/60 dark:border-white/[0.12] dark:text-white/60">
-                Бейдж пока не загружен.
-              </div>
-            )}
+            </div>
           </section>
         </div>
 
@@ -510,17 +506,12 @@ export function ChallengeForm({
 
             <div className="space-y-3 rounded-2xl border border-black/[0.06] p-4 dark:border-white/[0.08]">
               <div className="flex items-center gap-3">
-                {badgeUrl ? (
-                  <img
-                    src={badgeUrl}
-                    alt="Badge preview"
-                    className="h-14 w-14 rounded-2xl border border-black/[0.06] object-cover dark:border-white/[0.08]"
-                  />
-                ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-dashed border-black/[0.08] text-xs text-black/50 dark:border-white/[0.12] dark:text-white/50">
-                    Badge
-                  </div>
-                )}
+                <ChallengeBadgeArtwork
+                  badgeUrl={badgeUrl}
+                  title={title}
+                  className="h-14 w-14 rounded-2xl"
+                  placeholderLabel="Badge"
+                />
                 <div className="min-w-0">
                   <p className="app-text-primary truncate font-semibold">
                     {title.trim() || 'Название челленджа'}

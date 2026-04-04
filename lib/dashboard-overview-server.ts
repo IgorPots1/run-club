@@ -18,6 +18,7 @@ type RunRow = {
 type ChallengeRow = {
   id: string
   title: string | null
+  badge_url: string | null
   period_type: string | null
   goal_unit: string | null
   goal_target: number | string | null
@@ -196,7 +197,7 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
       .order('created_at', { ascending: false }),
     supabaseAdmin
       .from('challenges')
-      .select('id, title, period_type, goal_unit, goal_target, starts_at, end_at, created_at, visibility')
+      .select('id, title, badge_url, period_type, goal_unit, goal_target, starts_at, end_at, created_at, visibility')
       .order('created_at', { ascending: true }),
     supabaseAdmin
       .from('challenge_access_users')
@@ -268,6 +269,7 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
     return [{
       id: challenge.id,
       title: challenge.title?.trim() || 'Челлендж',
+      badge_url: challenge.badge_url ?? null,
       period_type: challenge.period_type,
       goal_unit: challenge.goal_unit,
       goal_target: goalTarget,

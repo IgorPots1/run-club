@@ -1,6 +1,7 @@
 export type DashboardActiveChallenge = {
   id: string
   title: string
+  badge_url?: string | null
   period_type: 'lifetime' | 'challenge' | 'weekly' | 'monthly'
   goal_unit: 'distance_km' | 'run_count'
   goal_target: number
