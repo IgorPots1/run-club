@@ -28,6 +28,11 @@ function redirectToNewChallengeForm(error: string) {
   redirect(`/admin/challenges/new?error=${encodeURIComponent(error)}`)
 }
 
+function redirectToEditChallengeForm(challengeId: string, error?: string) {
+  const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}/edit`
+  redirect(error ? `${basePath}?error=${encodeURIComponent(error)}` : basePath)
+}
+
 function redirectToChallengeAccessPage(challengeId: string, error?: string) {
   const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}`
   redirect(error ? `${basePath}?error=${encodeURIComponent(error)}` : basePath)
@@ -95,6 +100,77 @@ export async function createChallengeAction(formData: FormData) {
   }
 
   redirect('/admin/challenges')
+}
+
+export async function updateChallengeAction(formData: FormData) {
+  await requireAdmin()
+
+  const challengeIdValue = formData.get('challenge_id')
+  const titleValue = formData.get('title')
+  const descriptionInput = formData.get('description')
+  const visibilityInput = formData.get('visibility')
+  const goalKmValue = formData.get('goal_km')
+  const goalRunsValue = formData.get('goal_runs')
+  const xpRewardInput = formData.get('xp_reward')
+
+  const challengeId = typeof challengeIdValue === 'string' ? challengeIdValue.trim() : ''
+  const title = typeof titleValue === 'string' ? titleValue.trim() : ''
+  const descriptionValue = typeof descriptionInput === 'string'
+    ? descriptionInput.trim()
+    : ''
+  const visibilityValue = typeof visibilityInput === 'string'
+    ? visibilityInput.trim()
+    : ''
+  const goalKm = normalizeOptionalPositiveNumber(goalKmValue)
+  const goalRuns = normalizeOptionalPositiveNumber(goalRunsValue)
+  const xpRewardValue = typeof xpRewardInput === 'string'
+    ? xpRewardInput.trim()
+    : ''
+
+  if (!challengeId) {
+    redirect('/admin/challenges')
+  }
+
+  if (!title) {
+    redirectToEditChallengeForm(challengeId, 'Title is required.')
+  }
+
+  if (visibilityValue !== 'public' && visibilityValue !== 'restricted') {
+    redirectToEditChallengeForm(challengeId, 'Visibility must be public or restricted.')
+  }
+
+  if ((goalKm ?? 0) <= 0 && (goalRuns ?? 0) <= 0) {
+    redirectToEditChallengeForm(challengeId, 'At least one goal must be greater than 0.')
+  }
+
+  const xpRewardNumber = xpRewardValue ? Number(xpRewardValue) : 0
+
+  if (!Number.isFinite(xpRewardNumber) || xpRewardNumber < 0) {
+    redirectToEditChallengeForm(challengeId, 'XP reward must be a non-negative number.')
+  }
+
+  const xpReward = Math.max(0, Math.round(xpRewardNumber))
+  const normalizedGoalKm = goalKm != null && goalKm > 0 ? goalKm : null
+  const normalizedGoalRuns = goalRuns != null && goalRuns > 0 ? Math.round(goalRuns) : null
+  const description = descriptionValue.length > 0 ? descriptionValue : null
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('challenges')
+    .update({
+      title,
+      description,
+      visibility: visibilityValue,
+      goal_km: normalizedGoalKm,
+      goal_runs: normalizedGoalRuns,
+      xp_reward: xpReward,
+    })
+    .eq('id', challengeId)
+
+  if (error) {
+    throw error
+  }
+
+  redirectToChallengeAccessPage(challengeId)
 }
 
 export async function grantChallengeAccessAction(formData: FormData) {

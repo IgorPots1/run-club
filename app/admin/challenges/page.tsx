@@ -95,9 +95,14 @@ export default async function AdminChallengesPage() {
               {challenges.map((challenge) => (
                 <tr key={challenge.id} className="border-b align-top">
                   <td className="px-3 py-2">
-                    <Link href={`/admin/challenges/${challenge.id}`} className="underline">
-                      {challenge.title}
-                    </Link>
+                    <div className="flex flex-col gap-1">
+                      <Link href={`/admin/challenges/${challenge.id}`} className="underline">
+                        {challenge.title}
+                      </Link>
+                      <Link href={`/admin/challenges/${challenge.id}/edit`} className="text-sm underline">
+                        Edit
+                      </Link>
+                    </div>
                   </td>
                   <td className="px-3 py-2">{formatNullableValue(challenge.visibility)}</td>
                   {hasStatusColumn ? (

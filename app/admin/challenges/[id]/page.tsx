@@ -157,6 +157,9 @@ export default async function AdminChallengeDetailsPage({
           Back to challenges
         </Link>
         <h1 className="text-2xl font-semibold">{challengeRow.title}</h1>
+        <Link href={`/admin/challenges/${challengeRow.id}/edit`} className="text-sm underline">
+          Edit challenge
+        </Link>
       </div>
 
       <div className="rounded border p-4">
