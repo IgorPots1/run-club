@@ -227,13 +227,7 @@ async function loadPriorDailyXp(userId: string, timestamp: string) {
     p_start: startIso,
     p_end: timestamp,
   }
-  const rpcClient = supabase as {
-    rpc(
-      fn: 'get_daily_xp_usage',
-      args: typeof params
-    ): Promise<{ data: unknown; error: unknown }>
-  }
-  const { data, error } = await rpcClient.rpc('get_daily_xp_usage', params)
+  const { data, error } = await (supabase as any).rpc('get_daily_xp_usage', params)
 
   if (error) {
     throw error
