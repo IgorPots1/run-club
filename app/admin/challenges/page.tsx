@@ -36,7 +36,7 @@ export default async function AdminChallengesPage() {
     .select('id, title, visibility, status, xp_reward, goal_km, goal_runs, created_at')
     .order('created_at', { ascending: false })
 
-  let data = primaryResult.data
+  let data: ChallengeRow[] | null = (primaryResult.data as ChallengeRow[] | null) ?? null
 
   if (primaryResult.error) {
     if (!isMissingChallengeStatusColumnError(primaryResult.error)) {
@@ -53,10 +53,10 @@ export default async function AdminChallengesPage() {
       throw fallbackResult.error
     }
 
-    data = fallbackResult.data
+    data = (fallbackResult.data as ChallengeRow[] | null) ?? null
   }
 
-  const challenges = (data as ChallengeRow[] | null) ?? []
+  const challenges = data ?? []
 
   return (
     <div className="space-y-6">
