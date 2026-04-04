@@ -18,6 +18,12 @@ type ChallengeRow = {
   id: string
   title: string
   visibility: string | null
+  period_type: string | null
+  goal_unit: string | null
+  goal_target: number | null
+  starts_at: string | null
+  end_at: string | null
+  badge_url: string | null
   xp_reward: number | null
   goal_km: number | null
   goal_runs: number | null
@@ -91,6 +97,20 @@ function formatVisibility(value: string | null | undefined) {
   return formatNullableValue(value)
 }
 
+function formatPeriodType(value: string | null | undefined) {
+  if (value === 'lifetime') return 'Пожизненный'
+  if (value === 'challenge') return 'По расписанию'
+  if (value === 'weekly') return 'Еженедельный'
+  if (value === 'monthly') return 'Ежемесячный'
+  return formatNullableValue(value)
+}
+
+function formatGoalUnit(value: string | null | undefined) {
+  if (value === 'distance_km') return 'Дистанция'
+  if (value === 'run_count') return 'Количество тренировок'
+  return formatNullableValue(value)
+}
+
 function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
   return (
     error.code === '42703' ||
@@ -114,7 +134,7 @@ export default async function AdminChallengeDetailsPage({
   const supabase = createSupabaseAdminClient()
   const { data: challenge, error: challengeError } = await supabase
     .from('challenges')
-    .select('id, title, visibility, xp_reward, goal_km, goal_runs')
+    .select('id, title, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, xp_reward, goal_km, goal_runs')
     .eq('id', id)
     .maybeSingle()
 
@@ -183,6 +203,18 @@ export default async function AdminChallengeDetailsPage({
             <dd className="app-text-primary mt-1 font-medium">{formatVisibility(challengeRow.visibility)}</dd>
           </div>
           <div>
+            <dt className="app-text-secondary text-sm">Тип челленджа</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatPeriodType(challengeRow.period_type)}</dd>
+          </div>
+          <div>
+            <dt className="app-text-secondary text-sm">Тип цели</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatGoalUnit(challengeRow.goal_unit)}</dd>
+          </div>
+          <div>
+            <dt className="app-text-secondary text-sm">Целевое значение</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.goal_target)}</dd>
+          </div>
+          <div>
             <dt className="app-text-secondary text-sm">Награда XP</dt>
             <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.xp_reward)}</dd>
           </div>
@@ -194,7 +226,26 @@ export default async function AdminChallengeDetailsPage({
             <dt className="app-text-secondary text-sm">Цель по тренировкам</dt>
             <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.goal_runs)}</dd>
           </div>
+          <div>
+            <dt className="app-text-secondary text-sm">Дата начала</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.starts_at)}</dd>
+          </div>
+          <div>
+            <dt className="app-text-secondary text-sm">Дата окончания</dt>
+            <dd className="app-text-primary mt-1 font-medium">{formatNullableValue(challengeRow.end_at)}</dd>
+          </div>
         </dl>
+
+        {challengeRow.badge_url ? (
+          <div className="mt-4 border-t pt-4">
+            <p className="app-text-secondary text-sm">Бейдж</p>
+            <img
+              src={challengeRow.badge_url}
+              alt={`Бейдж ${challengeRow.title}`}
+              className="mt-2 h-24 w-24 rounded-2xl border border-black/[0.06] object-cover dark:border-white/[0.08]"
+            />
+          </div>
+        ) : null}
       </div>
 
       {error ? (

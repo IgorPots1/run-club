@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { updateChallengeAction } from '../../actions'
+import { ChallengeForm } from '../../ChallengeForm'
 
 type EditChallengePageProps = {
   params: Promise<{
@@ -10,6 +11,17 @@ type EditChallengePageProps = {
   }>
   searchParams?: Promise<{
     error?: string
+    title?: string
+    description?: string
+    visibility?: string
+    period_type?: string
+    goal_unit?: string
+    goal_target?: string
+    xp_reward?: string
+    starts_at?: string
+    end_at?: string
+    badge_url?: string
+    badge_storage_path?: string
   }>
 }
 
@@ -18,6 +30,13 @@ type ChallengeRow = {
   title: string
   description: string | null
   visibility: string | null
+  period_type: 'lifetime' | 'challenge' | 'weekly' | 'monthly' | null
+  goal_unit: 'distance_km' | 'run_count' | null
+  goal_target: number | null
+  starts_at: string | null
+  end_at: string | null
+  badge_url: string | null
+  badge_storage_path: string | null
   goal_km: number | null
   goal_runs: number | null
   xp_reward: number | null
@@ -27,7 +46,7 @@ export default async function EditChallengePage({
   params,
   searchParams,
 }: EditChallengePageProps) {
-  await requireAdmin()
+  const { profile } = await requireAdmin()
 
   const [{ id }, resolvedSearchParams] = await Promise.all([
     params,
@@ -37,7 +56,7 @@ export default async function EditChallengePage({
   const supabase = createSupabaseAdminClient()
   const { data, error: challengeError } = await supabase
     .from('challenges')
-    .select('id, title, description, visibility, goal_km, goal_runs, xp_reward')
+    .select('id, title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward')
     .eq('id', id)
     .maybeSingle()
 
@@ -50,6 +69,44 @@ export default async function EditChallengePage({
   if (!challenge) {
     notFound()
   }
+
+  const formValues = {
+    challengeId: challenge.id,
+    title: resolvedSearchParams?.title ?? challenge.title,
+    description: resolvedSearchParams?.description ?? challenge.description ?? '',
+    visibility: resolvedSearchParams?.visibility === 'restricted'
+      ? 'restricted'
+      : challenge.visibility === 'restricted'
+        ? 'restricted'
+        : 'public',
+    periodType:
+      resolvedSearchParams?.period_type === 'challenge' ||
+      resolvedSearchParams?.period_type === 'weekly' ||
+      resolvedSearchParams?.period_type === 'monthly' ||
+      resolvedSearchParams?.period_type === 'lifetime'
+        ? resolvedSearchParams.period_type
+        : challenge.period_type ?? 'lifetime',
+    goalUnit:
+      resolvedSearchParams?.goal_unit === 'run_count'
+        ? 'run_count'
+        : resolvedSearchParams?.goal_unit === 'distance_km'
+          ? 'distance_km'
+          : challenge.goal_unit ?? 'distance_km',
+    goalTarget:
+      resolvedSearchParams?.goal_target
+      ?? (
+        challenge.goal_target != null
+          ? String(challenge.goal_target)
+          : challenge.goal_unit === 'run_count'
+            ? String(challenge.goal_runs ?? '')
+            : String(challenge.goal_km ?? '')
+      ),
+    xpReward: resolvedSearchParams?.xp_reward ?? String(challenge.xp_reward ?? 0),
+    startsAt: resolvedSearchParams?.starts_at ?? challenge.starts_at ?? '',
+    endAt: resolvedSearchParams?.end_at ?? challenge.end_at ?? '',
+    badgeUrl: resolvedSearchParams?.badge_url ?? challenge.badge_url ?? '',
+    badgeStoragePath: resolvedSearchParams?.badge_storage_path ?? challenge.badge_storage_path ?? '',
+  } as const
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -69,108 +126,13 @@ export default async function EditChallengePage({
         </div>
       ) : null}
 
-      <form action={updateChallengeAction} className="app-card space-y-4 rounded-2xl border p-4 shadow-sm">
-        <input type="hidden" name="challenge_id" value={challenge.id} />
-
-        <div className="space-y-1">
-          <label htmlFor="title" className="app-text-secondary block text-sm">
-            Название
-          </label>
-          <input
-            id="title"
-            name="title"
-            type="text"
-            required
-            defaultValue={challenge.title}
-            className="app-input w-full rounded-2xl border px-3 py-2"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="description" className="app-text-secondary block text-sm">
-            Описание
-          </label>
-          <textarea
-            id="description"
-            name="description"
-            rows={4}
-            defaultValue={challenge.description ?? ''}
-            className="app-input w-full rounded-2xl border px-3 py-2"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="visibility" className="app-text-secondary block text-sm">
-            Видимость
-          </label>
-          <select
-            id="visibility"
-            name="visibility"
-            defaultValue={challenge.visibility ?? 'public'}
-            className="app-input w-full rounded-2xl border px-3 py-2"
-          >
-            <option value="public">Открытый</option>
-            <option value="restricted">По доступу</option>
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="goal_km" className="app-text-secondary block text-sm">
-            Цель по километрам
-          </label>
-          <input
-            id="goal_km"
-            name="goal_km"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={challenge.goal_km ?? ''}
-            className="app-input w-full rounded-2xl border px-3 py-2"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="goal_runs" className="app-text-secondary block text-sm">
-            Цель по тренировкам
-          </label>
-          <input
-            id="goal_runs"
-            name="goal_runs"
-            type="number"
-            min="0"
-            step="1"
-            defaultValue={challenge.goal_runs ?? ''}
-            className="app-input w-full rounded-2xl border px-3 py-2"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="xp_reward" className="app-text-secondary block text-sm">
-            Награда XP
-          </label>
-          <input
-            id="xp_reward"
-            name="xp_reward"
-            type="number"
-            min="0"
-            step="1"
-            defaultValue={challenge.xp_reward ?? 0}
-            className="app-input w-full rounded-2xl border px-3 py-2"
-          />
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button type="submit" className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
-            Сохранить
-          </button>
-          <Link
-            href={`/admin/challenges/${challenge.id}`}
-            className="app-text-secondary text-sm transition-opacity hover:opacity-70"
-          >
-            Отмена
-          </Link>
-        </div>
-      </form>
+      <ChallengeForm
+        mode="edit"
+        action={updateChallengeAction}
+        cancelHref={`/admin/challenges/${challenge.id}`}
+        currentUserId={profile.id}
+        initialValues={formValues}
+      />
     </div>
   )
 }

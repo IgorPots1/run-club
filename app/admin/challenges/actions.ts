@@ -9,10 +9,20 @@ type ChallengeAuditSnapshot = {
   title: string
   description: string | null
   visibility: string
+  period_type: 'lifetime' | 'challenge' | 'weekly' | 'monthly'
+  goal_unit: 'distance_km' | 'run_count'
+  goal_target: number
+  starts_at: string | null
+  end_at: string | null
+  badge_url: string | null
+  badge_storage_path: string | null
   goal_km: number | null
   goal_runs: number | null
   xp_reward: number
 }
+
+type ChallengePeriodType = 'lifetime' | 'challenge' | 'weekly' | 'monthly'
+type ChallengeGoalUnit = 'distance_km' | 'run_count'
 
 function normalizeOptionalPositiveNumber(value: FormDataEntryValue | null) {
   if (typeof value !== 'string') {
@@ -34,14 +44,89 @@ function normalizeOptionalPositiveNumber(value: FormDataEntryValue | null) {
   return numericValue
 }
 
+function normalizeOptionalIsoDateTime(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return null
+  }
+
+  const parsed = new Date(trimmed)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  return parsed.toISOString()
+}
+
+function normalizePeriodType(value: FormDataEntryValue | null): ChallengePeriodType | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  if (
+    trimmed === 'lifetime' ||
+    trimmed === 'challenge' ||
+    trimmed === 'weekly' ||
+    trimmed === 'monthly'
+  ) {
+    return trimmed
+  }
+
+  return null
+}
+
+function normalizeGoalUnit(value: FormDataEntryValue | null): ChallengeGoalUnit | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  if (trimmed === 'distance_km' || trimmed === 'run_count') {
+    return trimmed
+  }
+
+  return null
+}
+
+function buildLegacyGoalFields(input: {
+  goalUnit: ChallengeGoalUnit
+  goalTarget: number
+}) {
+  if (input.goalUnit === 'distance_km') {
+    return {
+      goal_km: input.goalTarget,
+      goal_runs: null,
+    }
+  }
+
+  return {
+    goal_km: null,
+    goal_runs: Math.round(input.goalTarget),
+  }
+}
+
 function buildChallengeFormSearchParams(input: {
   error?: string
   title?: string
   description?: string
   visibility?: string
-  goalKm?: string
-  goalRuns?: string
+  periodType?: string
+  goalUnit?: string
+  goalTarget?: string
   xpReward?: string
+  startsAt?: string
+  endAt?: string
+  badgeUrl?: string
+  badgeStoragePath?: string
 }) {
   const searchParams = new URLSearchParams()
 
@@ -49,9 +134,14 @@ function buildChallengeFormSearchParams(input: {
   if (input.title) searchParams.set('title', input.title)
   if (input.description) searchParams.set('description', input.description)
   if (input.visibility) searchParams.set('visibility', input.visibility)
-  if (input.goalKm) searchParams.set('goal_km', input.goalKm)
-  if (input.goalRuns) searchParams.set('goal_runs', input.goalRuns)
+  if (input.periodType) searchParams.set('period_type', input.periodType)
+  if (input.goalUnit) searchParams.set('goal_unit', input.goalUnit)
+  if (input.goalTarget) searchParams.set('goal_target', input.goalTarget)
   if (input.xpReward) searchParams.set('xp_reward', input.xpReward)
+  if (input.startsAt) searchParams.set('starts_at', input.startsAt)
+  if (input.endAt) searchParams.set('end_at', input.endAt)
+  if (input.badgeUrl) searchParams.set('badge_url', input.badgeUrl)
+  if (input.badgeStoragePath) searchParams.set('badge_storage_path', input.badgeStoragePath)
 
   return searchParams.toString()
 }
@@ -61,17 +151,52 @@ function redirectToNewChallengeForm(input: {
   title?: string
   description?: string
   visibility?: string
-  goalKm?: string
-  goalRuns?: string
+  periodType?: string
+  goalUnit?: string
+  goalTarget?: string
   xpReward?: string
+  startsAt?: string
+  endAt?: string
+  badgeUrl?: string
+  badgeStoragePath?: string
 }) {
   const query = buildChallengeFormSearchParams(input)
   redirect(`/admin/challenges/new${query ? `?${query}` : ''}`)
 }
 
-function redirectToEditChallengeForm(challengeId: string, error?: string) {
+function redirectToEditChallengeForm(
+  challengeId: string,
+  input?: {
+    error?: string
+    title?: string
+    description?: string
+    visibility?: string
+    periodType?: string
+    goalUnit?: string
+    goalTarget?: string
+    xpReward?: string
+    startsAt?: string
+    endAt?: string
+    badgeUrl?: string
+    badgeStoragePath?: string
+  }
+) {
   const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}/edit`
-  redirect(error ? `${basePath}?error=${encodeURIComponent(error)}` : basePath)
+  const query = buildChallengeFormSearchParams({
+    error: input?.error,
+    title: input?.title,
+    description: input?.description,
+    visibility: input?.visibility,
+    periodType: input?.periodType,
+    goalUnit: input?.goalUnit,
+    goalTarget: input?.goalTarget,
+    xpReward: input?.xpReward,
+    startsAt: input?.startsAt,
+    endAt: input?.endAt,
+    badgeUrl: input?.badgeUrl,
+    badgeStoragePath: input?.badgeStoragePath,
+  })
+  redirect(query ? `${basePath}?${query}` : basePath)
 }
 
 function redirectToChallengeAccessPage(challengeId: string, error?: string) {
@@ -85,9 +210,14 @@ export async function createChallengeAction(formData: FormData) {
   const titleValue = formData.get('title')
   const descriptionInput = formData.get('description')
   const visibilityInput = formData.get('visibility')
-  const goalKmValue = formData.get('goal_km')
-  const goalRunsValue = formData.get('goal_runs')
+  const periodTypeInput = formData.get('period_type')
+  const goalUnitInput = formData.get('goal_unit')
+  const goalTargetInput = formData.get('goal_target')
   const xpRewardInput = formData.get('xp_reward')
+  const startsAtInput = formData.get('starts_at')
+  const endAtInput = formData.get('end_at')
+  const badgeUrlInput = formData.get('badge_url')
+  const badgeStoragePathInput = formData.get('badge_storage_path')
 
   const title = typeof titleValue === 'string' ? titleValue.trim() : ''
   const descriptionValue = typeof descriptionInput === 'string'
@@ -96,18 +226,28 @@ export async function createChallengeAction(formData: FormData) {
   const visibilityValue = typeof visibilityInput === 'string'
     ? visibilityInput.trim()
     : ''
-  const goalKm = normalizeOptionalPositiveNumber(goalKmValue)
-  const goalRuns = normalizeOptionalPositiveNumber(goalRunsValue)
+  const periodType = normalizePeriodType(periodTypeInput)
+  const goalUnit = normalizeGoalUnit(goalUnitInput)
+  const goalTarget = normalizeOptionalPositiveNumber(goalTargetInput)
   const xpRewardValue = typeof xpRewardInput === 'string'
     ? xpRewardInput.trim()
     : ''
+  const startsAtValue = typeof startsAtInput === 'string' ? startsAtInput.trim() : ''
+  const endAtValue = typeof endAtInput === 'string' ? endAtInput.trim() : ''
+  const badgeUrl = typeof badgeUrlInput === 'string' ? badgeUrlInput.trim() : ''
+  const badgeStoragePath = typeof badgeStoragePathInput === 'string' ? badgeStoragePathInput.trim() : ''
   const formValues = {
     title,
     description: descriptionValue,
     visibility: visibilityValue || 'public',
-    goalKm: typeof goalKmValue === 'string' ? goalKmValue.trim() : '',
-    goalRuns: typeof goalRunsValue === 'string' ? goalRunsValue.trim() : '',
+    periodType: typeof periodTypeInput === 'string' ? periodTypeInput.trim() : '',
+    goalUnit: typeof goalUnitInput === 'string' ? goalUnitInput.trim() : '',
+    goalTarget: typeof goalTargetInput === 'string' ? goalTargetInput.trim() : '',
     xpReward: xpRewardValue,
+    startsAt: startsAtValue,
+    endAt: endAtValue,
+    badgeUrl,
+    badgeStoragePath,
   }
 
   if (!title) {
@@ -124,9 +264,23 @@ export async function createChallengeAction(formData: FormData) {
     })
   }
 
-  if ((goalKm ?? 0) <= 0 && (goalRuns ?? 0) <= 0) {
+  if (!periodType) {
     redirectToNewChallengeForm({
-      error: 'Укажите goal_km или goal_runs больше 0.',
+      error: 'Выберите тип челленджа.',
+      ...formValues,
+    })
+  }
+
+  if (!goalUnit) {
+    redirectToNewChallengeForm({
+      error: 'Выберите тип цели.',
+      ...formValues,
+    })
+  }
+
+  if ((goalTarget ?? 0) <= 0) {
+    redirectToNewChallengeForm({
+      error: 'Укажите цель больше 0.',
       ...formValues,
     })
   }
@@ -140,16 +294,54 @@ export async function createChallengeAction(formData: FormData) {
     })
   }
 
+  const normalizedStartsAt = normalizeOptionalIsoDateTime(startsAtInput)
+  const normalizedEndAt = normalizeOptionalIsoDateTime(endAtInput)
+
+  if (periodType === 'challenge') {
+    if (!normalizedStartsAt || !normalizedEndAt) {
+      redirectToNewChallengeForm({
+        error: 'Для челленджа с расписанием укажите дату начала и окончания.',
+        ...formValues,
+      })
+    }
+
+    if (new Date(normalizedStartsAt).getTime() >= new Date(normalizedEndAt).getTime()) {
+      redirectToNewChallengeForm({
+        error: 'Дата начала должна быть раньше даты окончания.',
+        ...formValues,
+      })
+    }
+  }
+
+  if (!badgeUrl || !badgeStoragePath) {
+    redirectToNewChallengeForm({
+      error: 'Загрузите бейдж челленджа перед сохранением.',
+      ...formValues,
+    })
+  }
+
   const xpReward = Math.max(0, Math.round(xpRewardNumber))
-  const normalizedGoalKm = goalKm != null && goalKm > 0 ? goalKm : null
-  const normalizedGoalRuns = goalRuns != null && goalRuns > 0 ? Math.round(goalRuns) : null
+  const normalizedGoalTarget = goalUnit === 'run_count'
+    ? Math.round(goalTarget ?? 0)
+    : Number(goalTarget ?? 0)
+  const legacyGoalFields = buildLegacyGoalFields({
+    goalUnit,
+    goalTarget: normalizedGoalTarget,
+  })
   const description = descriptionValue.length > 0 ? descriptionValue : null
   const auditSnapshot: ChallengeAuditSnapshot = {
     title,
     description,
     visibility: visibilityValue,
-    goal_km: normalizedGoalKm,
-    goal_runs: normalizedGoalRuns,
+    period_type: periodType,
+    goal_unit: goalUnit,
+    goal_target: normalizedGoalTarget,
+    starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+    end_at: periodType === 'challenge' ? normalizedEndAt : null,
+    badge_url: badgeUrl,
+    badge_storage_path: badgeStoragePath,
+    goal_km: legacyGoalFields.goal_km,
+    goal_runs: legacyGoalFields.goal_runs,
     xp_reward: xpReward,
   }
   const supabase = createSupabaseAdminClient()
@@ -159,8 +351,15 @@ export async function createChallengeAction(formData: FormData) {
       title,
       description,
       visibility: visibilityValue,
-      goal_km: normalizedGoalKm,
-      goal_runs: normalizedGoalRuns,
+      period_type: periodType,
+      goal_unit: goalUnit,
+      goal_target: normalizedGoalTarget,
+      starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+      end_at: periodType === 'challenge' ? normalizedEndAt : null,
+      badge_url: badgeUrl,
+      badge_storage_path: badgeStoragePath,
+      goal_km: legacyGoalFields.goal_km,
+      goal_runs: legacyGoalFields.goal_runs,
       xp_reward: xpReward,
     })
     .select('id, visibility')
@@ -193,9 +392,14 @@ export async function updateChallengeAction(formData: FormData) {
   const titleValue = formData.get('title')
   const descriptionInput = formData.get('description')
   const visibilityInput = formData.get('visibility')
-  const goalKmValue = formData.get('goal_km')
-  const goalRunsValue = formData.get('goal_runs')
+  const periodTypeInput = formData.get('period_type')
+  const goalUnitInput = formData.get('goal_unit')
+  const goalTargetInput = formData.get('goal_target')
   const xpRewardInput = formData.get('xp_reward')
+  const startsAtInput = formData.get('starts_at')
+  const endAtInput = formData.get('end_at')
+  const badgeUrlInput = formData.get('badge_url')
+  const badgeStoragePathInput = formData.get('badge_storage_path')
 
   const challengeId = typeof challengeIdValue === 'string' ? challengeIdValue.trim() : ''
   const title = typeof titleValue === 'string' ? titleValue.trim() : ''
@@ -205,42 +409,117 @@ export async function updateChallengeAction(formData: FormData) {
   const visibilityValue = typeof visibilityInput === 'string'
     ? visibilityInput.trim()
     : ''
-  const goalKm = normalizeOptionalPositiveNumber(goalKmValue)
-  const goalRuns = normalizeOptionalPositiveNumber(goalRunsValue)
+  const periodType = normalizePeriodType(periodTypeInput)
+  const goalUnit = normalizeGoalUnit(goalUnitInput)
+  const goalTarget = normalizeOptionalPositiveNumber(goalTargetInput)
   const xpRewardValue = typeof xpRewardInput === 'string'
     ? xpRewardInput.trim()
     : ''
+  const startsAtValue = typeof startsAtInput === 'string' ? startsAtInput.trim() : ''
+  const endAtValue = typeof endAtInput === 'string' ? endAtInput.trim() : ''
+  const badgeUrl = typeof badgeUrlInput === 'string' ? badgeUrlInput.trim() : ''
+  const badgeStoragePath = typeof badgeStoragePathInput === 'string' ? badgeStoragePathInput.trim() : ''
+  const formValues = {
+    title,
+    description: descriptionValue,
+    visibility: visibilityValue || 'public',
+    periodType: typeof periodTypeInput === 'string' ? periodTypeInput.trim() : '',
+    goalUnit: typeof goalUnitInput === 'string' ? goalUnitInput.trim() : '',
+    goalTarget: typeof goalTargetInput === 'string' ? goalTargetInput.trim() : '',
+    xpReward: xpRewardValue,
+    startsAt: startsAtValue,
+    endAt: endAtValue,
+    badgeUrl,
+    badgeStoragePath,
+  }
 
   if (!challengeId) {
     redirect('/admin/challenges')
   }
 
   if (!title) {
-    redirectToEditChallengeForm(challengeId, 'Укажите название челленджа.')
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Укажите название челленджа.',
+      ...formValues,
+    })
   }
 
   if (visibilityValue !== 'public' && visibilityValue !== 'restricted') {
-    redirectToEditChallengeForm(challengeId, 'Выберите корректную видимость челленджа.')
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Выберите корректную видимость челленджа.',
+      ...formValues,
+    })
   }
 
-  if ((goalKm ?? 0) <= 0 && (goalRuns ?? 0) <= 0) {
-    redirectToEditChallengeForm(challengeId, 'Укажите цель по километрам или тренировкам больше 0.')
+  if (!periodType) {
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Выберите тип челленджа.',
+      ...formValues,
+    })
+  }
+
+  if (!goalUnit) {
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Выберите тип цели.',
+      ...formValues,
+    })
+  }
+
+  if ((goalTarget ?? 0) <= 0) {
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Укажите цель больше 0.',
+      ...formValues,
+    })
   }
 
   const xpRewardNumber = xpRewardValue ? Number(xpRewardValue) : 0
 
   if (!Number.isFinite(xpRewardNumber) || xpRewardNumber < 0) {
-    redirectToEditChallengeForm(challengeId, 'Награда XP должна быть неотрицательным числом.')
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Награда XP должна быть неотрицательным числом.',
+      ...formValues,
+    })
+  }
+
+  const normalizedStartsAt = normalizeOptionalIsoDateTime(startsAtInput)
+  const normalizedEndAt = normalizeOptionalIsoDateTime(endAtInput)
+
+  if (periodType === 'challenge') {
+    if (!normalizedStartsAt || !normalizedEndAt) {
+      redirectToEditChallengeForm(challengeId, {
+        error: 'Для челленджа с расписанием укажите дату начала и окончания.',
+        ...formValues,
+      })
+    }
+
+    if (new Date(normalizedStartsAt).getTime() >= new Date(normalizedEndAt).getTime()) {
+      redirectToEditChallengeForm(challengeId, {
+        error: 'Дата начала должна быть раньше даты окончания.',
+        ...formValues,
+      })
+    }
+  }
+
+  if (!badgeUrl || !badgeStoragePath) {
+    redirectToEditChallengeForm(challengeId, {
+      error: 'Загрузите бейдж челленджа перед сохранением.',
+      ...formValues,
+    })
   }
 
   const xpReward = Math.max(0, Math.round(xpRewardNumber))
-  const normalizedGoalKm = goalKm != null && goalKm > 0 ? goalKm : null
-  const normalizedGoalRuns = goalRuns != null && goalRuns > 0 ? Math.round(goalRuns) : null
+  const normalizedGoalTarget = goalUnit === 'run_count'
+    ? Math.round(goalTarget ?? 0)
+    : Number(goalTarget ?? 0)
+  const legacyGoalFields = buildLegacyGoalFields({
+    goalUnit,
+    goalTarget: normalizedGoalTarget,
+  })
   const description = descriptionValue.length > 0 ? descriptionValue : null
   const supabase = createSupabaseAdminClient()
   const { data: existingChallenge, error: existingChallengeError } = await supabase
     .from('challenges')
-    .select('title, description, visibility, goal_km, goal_runs, xp_reward')
+    .select('title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward')
     .eq('id', challengeId)
     .maybeSingle()
 
@@ -258,8 +537,15 @@ export async function updateChallengeAction(formData: FormData) {
     title,
     description,
     visibility: visibilityValue,
-    goal_km: normalizedGoalKm,
-    goal_runs: normalizedGoalRuns,
+    period_type: periodType,
+    goal_unit: goalUnit,
+    goal_target: normalizedGoalTarget,
+    starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+    end_at: periodType === 'challenge' ? normalizedEndAt : null,
+    badge_url: badgeUrl,
+    badge_storage_path: badgeStoragePath,
+    goal_km: legacyGoalFields.goal_km,
+    goal_runs: legacyGoalFields.goal_runs,
     xp_reward: xpReward,
   }
 
@@ -269,8 +555,15 @@ export async function updateChallengeAction(formData: FormData) {
       title,
       description,
       visibility: visibilityValue,
-      goal_km: normalizedGoalKm,
-      goal_runs: normalizedGoalRuns,
+      period_type: periodType,
+      goal_unit: goalUnit,
+      goal_target: normalizedGoalTarget,
+      starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+      end_at: periodType === 'challenge' ? normalizedEndAt : null,
+      badge_url: badgeUrl,
+      badge_storage_path: badgeStoragePath,
+      goal_km: legacyGoalFields.goal_km,
+      goal_runs: legacyGoalFields.goal_runs,
       xp_reward: xpReward,
     })
     .eq('id', challengeId)
@@ -289,6 +582,13 @@ export async function updateChallengeAction(formData: FormData) {
           title: existingChallenge.title,
           description: existingChallenge.description,
           visibility: existingChallenge.visibility,
+          period_type: existingChallenge.period_type,
+          goal_unit: existingChallenge.goal_unit,
+          goal_target: existingChallenge.goal_target,
+          starts_at: existingChallenge.starts_at,
+          end_at: existingChallenge.end_at,
+          badge_url: existingChallenge.badge_url,
+          badge_storage_path: existingChallenge.badge_storage_path,
           goal_km: existingChallenge.goal_km,
           goal_runs: existingChallenge.goal_runs,
           xp_reward: existingChallenge.xp_reward,
