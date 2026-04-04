@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { forbidden, redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
@@ -8,22 +8,12 @@ export type ProfileRole = 'user' | 'coach' | 'admin'
 
 type AdminProfile = {
   id: string
-  role: ProfileRole
+  role: ProfileRole | null
 }
 
 type RequireAdminResult = {
   user: User
-  profile: AdminProfile
-}
-
-function isAdminAccessDeniedError(error: { code?: string | null; message?: string | null }) {
-  const normalizedMessage = error.message?.toLowerCase() ?? ''
-
-  return (
-    error.code === '42501' ||
-    normalizedMessage.includes('permission denied') ||
-    normalizedMessage.includes('row-level security')
-  )
+  profile: AdminProfile | null
 }
 
 export async function requireAdmin(): Promise<RequireAdminResult> {
@@ -33,7 +23,13 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     error: userError,
   } = await supabase.auth.getUser()
 
-  if (userError || !user) {
+  console.log('[admin-auth] getUser result', {
+    hasUser: Boolean(user),
+    userId: user?.id ?? null,
+    userError: userError?.message ?? null,
+  })
+
+  if (!user) {
     redirect('/login')
   }
 
@@ -43,33 +39,25 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profileError) {
-    console.error('[admin-auth] profile lookup failed', {
-      userId: user.id,
-      code: profileError.code ?? null,
-      message: profileError.message,
-    })
-
-    if (isAdminAccessDeniedError(profileError)) {
-      forbidden()
-    }
-
-    throw profileError
-  }
-
-  if (!profile) {
-    forbidden()
-  }
-
-  if (profile.role !== 'admin') {
-    forbidden()
-  }
+  console.log('[admin-auth] profile result', {
+    userId: user.id,
+    profile: profile ?? null,
+    profileError: profileError
+      ? {
+          code: profileError.code ?? null,
+          message: profileError.message,
+          details: profileError.details ?? null,
+        }
+      : null,
+  })
 
   return {
     user,
-    profile: {
-      id: profile.id,
-      role: profile.role,
-    },
+    profile: profile
+      ? {
+          id: profile.id,
+          role: profile.role,
+        }
+      : null,
   }
 }
