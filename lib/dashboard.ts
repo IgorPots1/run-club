@@ -273,19 +273,68 @@ export async function loadTotalXpByUserIds(userIds: string[]) {
   return totalsByUserId
 }
 
+function buildEmptyDashboardOverview(): DashboardOverview {
+  return {
+    stats: {
+      totalKmThisMonth: 0,
+      runsCount: 0,
+      totalXp: 0,
+    },
+    profileSummary: {
+      name: null,
+      nickname: null,
+      email: null,
+    },
+    activeChallenge: null,
+    allChallengesCompleted: false,
+  }
+}
+
+function isDashboardOverview(value: unknown): value is DashboardOverview {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<DashboardOverview>
+
+  return (
+    !!candidate.stats &&
+    typeof candidate.stats === 'object' &&
+    typeof candidate.stats.totalKmThisMonth === 'number' &&
+    typeof candidate.stats.runsCount === 'number' &&
+    typeof candidate.stats.totalXp === 'number' &&
+    !!candidate.profileSummary &&
+    typeof candidate.profileSummary === 'object' &&
+    'name' in candidate.profileSummary &&
+    'nickname' in candidate.profileSummary &&
+    'email' in candidate.profileSummary &&
+    typeof candidate.allChallengesCompleted === 'boolean' &&
+    'activeChallenge' in candidate
+  )
+}
+
 export async function loadDashboardOverview(userId: string): Promise<DashboardOverview> {
   void userId
 
-  const response = await fetch('/api/dashboard/overview', {
-    credentials: 'include',
-  })
-  const payload = await response.json().catch(() => null) as (DashboardOverview & { error?: never }) | { error?: string } | null
+  try {
+    const response = await fetch('/api/dashboard/overview', {
+      credentials: 'include',
+    })
+    const payload = await response.json().catch(() => null) as unknown
 
-  if (!response.ok || !payload || 'error' in payload) {
-    throw new Error(payload && 'error' in payload && payload.error ? payload.error : 'Не удалось загрузить дашборд')
+    if (response.ok && isDashboardOverview(payload)) {
+      return payload
+    }
+
+    console.error('[dashboard] invalid overview payload', {
+      status: response.status,
+      payload,
+    })
+  } catch (error) {
+    console.error('[dashboard] failed to load overview', error)
   }
 
-  return payload
+  return buildEmptyDashboardOverview()
 }
 
 export async function loadUserProfileSummary(userId: string): Promise<UserProfileSummary> {
