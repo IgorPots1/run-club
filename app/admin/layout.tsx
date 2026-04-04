@@ -16,6 +16,7 @@ export default async function AdminLayout({
           <Link href="/admin">Dashboard</Link>
           <Link href="/admin/challenges">Challenges</Link>
           <Link href="/admin/users">Users</Link>
+          <Link href="/admin/audit">Audit log</Link>
         </nav>
       </aside>
       <main className="flex-1 p-6">{children}</main>
