@@ -146,6 +146,7 @@ export async function adjustUserXpAction(formData: FormData) {
 
   if (!existingProfile) {
     redirectToAdminUsersPage()
+    return
   }
 
   const currentTotalXp = Number(existingProfile.total_xp ?? 0)
