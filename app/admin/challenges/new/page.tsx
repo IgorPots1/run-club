@@ -5,6 +5,12 @@ import { createChallengeAction } from '../actions'
 type NewChallengePageProps = {
   searchParams?: Promise<{
     error?: string
+    title?: string
+    description?: string
+    visibility?: string
+    goal_km?: string
+    goal_runs?: string
+    xp_reward?: string
   }>
 }
 
@@ -13,6 +19,12 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined
   const error = resolvedSearchParams?.error?.trim() || ''
+  const title = resolvedSearchParams?.title ?? ''
+  const description = resolvedSearchParams?.description ?? ''
+  const visibility = resolvedSearchParams?.visibility === 'restricted' ? 'restricted' : 'public'
+  const goalKm = resolvedSearchParams?.goal_km ?? ''
+  const goalRuns = resolvedSearchParams?.goal_runs ?? ''
+  const xpReward = resolvedSearchParams?.xp_reward ?? '0'
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -37,6 +49,7 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
             name="title"
             type="text"
             required
+            defaultValue={title}
             className="w-full rounded border px-3 py-2"
           />
         </div>
@@ -49,6 +62,7 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
             id="description"
             name="description"
             rows={4}
+            defaultValue={description}
             className="w-full rounded border px-3 py-2"
           />
         </div>
@@ -60,12 +74,17 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
           <select
             id="visibility"
             name="visibility"
-            defaultValue="public"
+            defaultValue={visibility}
             className="w-full rounded border px-3 py-2"
           >
             <option value="public">public</option>
             <option value="restricted">restricted</option>
           </select>
+          {visibility === 'restricted' ? (
+            <p className="text-sm text-gray-600">
+              После создания нужно выдать доступ участникам
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1">
@@ -78,6 +97,7 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
             type="number"
             min="0"
             step="0.01"
+            defaultValue={goalKm}
             className="w-full rounded border px-3 py-2"
           />
         </div>
@@ -92,6 +112,7 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
             type="number"
             min="0"
             step="1"
+            defaultValue={goalRuns}
             className="w-full rounded border px-3 py-2"
           />
         </div>
@@ -106,7 +127,7 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
             type="number"
             min="0"
             step="1"
-            defaultValue="0"
+            defaultValue={xpReward}
             className="w-full rounded border px-3 py-2"
           />
         </div>

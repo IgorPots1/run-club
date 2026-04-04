@@ -24,8 +24,39 @@ function normalizeOptionalPositiveNumber(value: FormDataEntryValue | null) {
   return numericValue
 }
 
-function redirectToNewChallengeForm(error: string) {
-  redirect(`/admin/challenges/new?error=${encodeURIComponent(error)}`)
+function buildChallengeFormSearchParams(input: {
+  error?: string
+  title?: string
+  description?: string
+  visibility?: string
+  goalKm?: string
+  goalRuns?: string
+  xpReward?: string
+}) {
+  const searchParams = new URLSearchParams()
+
+  if (input.error) searchParams.set('error', input.error)
+  if (input.title) searchParams.set('title', input.title)
+  if (input.description) searchParams.set('description', input.description)
+  if (input.visibility) searchParams.set('visibility', input.visibility)
+  if (input.goalKm) searchParams.set('goal_km', input.goalKm)
+  if (input.goalRuns) searchParams.set('goal_runs', input.goalRuns)
+  if (input.xpReward) searchParams.set('xp_reward', input.xpReward)
+
+  return searchParams.toString()
+}
+
+function redirectToNewChallengeForm(input: {
+  error: string
+  title?: string
+  description?: string
+  visibility?: string
+  goalKm?: string
+  goalRuns?: string
+  xpReward?: string
+}) {
+  const query = buildChallengeFormSearchParams(input)
+  redirect(`/admin/challenges/new${query ? `?${query}` : ''}`)
 }
 
 function redirectToEditChallengeForm(challengeId: string, error?: string) {
@@ -60,23 +91,43 @@ export async function createChallengeAction(formData: FormData) {
   const xpRewardValue = typeof xpRewardInput === 'string'
     ? xpRewardInput.trim()
     : ''
+  const formValues = {
+    title,
+    description: descriptionValue,
+    visibility: visibilityValue || 'public',
+    goalKm: typeof goalKmValue === 'string' ? goalKmValue.trim() : '',
+    goalRuns: typeof goalRunsValue === 'string' ? goalRunsValue.trim() : '',
+    xpReward: xpRewardValue,
+  }
 
   if (!title) {
-    redirectToNewChallengeForm('Title is required.')
+    redirectToNewChallengeForm({
+      error: 'Укажите название челленджа.',
+      ...formValues,
+    })
   }
 
   if (visibilityValue !== 'public' && visibilityValue !== 'restricted') {
-    redirectToNewChallengeForm('Visibility must be public or restricted.')
+    redirectToNewChallengeForm({
+      error: 'Выберите корректную видимость челленджа.',
+      ...formValues,
+    })
   }
 
   if ((goalKm ?? 0) <= 0 && (goalRuns ?? 0) <= 0) {
-    redirectToNewChallengeForm('At least one goal must be greater than 0.')
+    redirectToNewChallengeForm({
+      error: 'Укажите goal_km или goal_runs больше 0.',
+      ...formValues,
+    })
   }
 
   const xpRewardNumber = xpRewardValue ? Number(xpRewardValue) : 0
 
   if (!Number.isFinite(xpRewardNumber) || xpRewardNumber < 0) {
-    redirectToNewChallengeForm('XP reward must be a non-negative number.')
+    redirectToNewChallengeForm({
+      error: 'XP reward должен быть неотрицательным числом.',
+      ...formValues,
+    })
   }
 
   const xpReward = Math.max(0, Math.round(xpRewardNumber))
@@ -84,7 +135,7 @@ export async function createChallengeAction(formData: FormData) {
   const normalizedGoalRuns = goalRuns != null && goalRuns > 0 ? Math.round(goalRuns) : null
   const description = descriptionValue.length > 0 ? descriptionValue : null
   const supabase = createSupabaseAdminClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('challenges')
     .insert({
       title,
@@ -94,9 +145,15 @@ export async function createChallengeAction(formData: FormData) {
       goal_runs: normalizedGoalRuns,
       xp_reward: xpReward,
     })
+    .select('id, visibility')
+    .single()
 
   if (error) {
     throw error
+  }
+
+  if (data.visibility === 'restricted') {
+    redirectToChallengeAccessPage(data.id)
   }
 
   redirect('/admin/challenges')

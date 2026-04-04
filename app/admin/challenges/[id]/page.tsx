@@ -152,13 +152,15 @@ export default async function AdminChallengeDetailsPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="space-y-2">
-        <Link href="/admin/challenges" className="text-sm underline">
-          Back to challenges
-        </Link>
-        <h1 className="text-2xl font-semibold">{challengeRow.title}</h1>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <Link href="/admin/challenges" className="text-sm underline">
+            Back to challenges
+          </Link>
+          <h1 className="text-2xl font-semibold">{challengeRow.title}</h1>
+        </div>
         <Link href={`/admin/challenges/${challengeRow.id}/edit`} className="text-sm underline">
-          Edit challenge
+          Edit
         </Link>
       </div>
 
@@ -189,59 +191,63 @@ export default async function AdminChallengeDetailsPage({
         </div>
       ) : null}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Grant access</h2>
-        <form action={grantChallengeAccessAction} className="space-y-3 rounded border p-4">
-          <input type="hidden" name="challenge_id" value={challengeRow.id} />
-          <div className="space-y-1">
-            <label htmlFor="user_id" className="block text-sm font-medium">
-              User ID
-            </label>
-            <input
-              id="user_id"
-              name="user_id"
-              type="text"
-              required
-              className="w-full rounded border px-3 py-2"
-            />
-          </div>
-          <button type="submit" className="rounded border px-3 py-2 text-sm">
-            Grant access
-          </button>
-        </form>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Current access</h2>
-        {accessRows.length === 0 ? (
-          <div className="rounded border p-4 text-sm text-gray-600">
-            No users have access yet.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {accessRows.map((accessRow) => (
-              <div
-                key={accessRow.user_id}
-                className="flex items-center justify-between gap-4 rounded border p-4"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {getProfileDisplayName(accessRow.profiles, accessRow.user_id)}
-                  </p>
-                  <p className="text-sm text-gray-600">{accessRow.user_id}</p>
-                </div>
-                <form action={revokeChallengeAccessAction}>
-                  <input type="hidden" name="challenge_id" value={challengeRow.id} />
-                  <input type="hidden" name="user_id" value={accessRow.user_id} />
-                  <button type="submit" className="rounded border px-3 py-2 text-sm">
-                    Remove
-                  </button>
-                </form>
+      {challengeRow.visibility === 'restricted' ? (
+        <>
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">Grant access</h2>
+            <form action={grantChallengeAccessAction} className="space-y-3 rounded border p-4">
+              <input type="hidden" name="challenge_id" value={challengeRow.id} />
+              <div className="space-y-1">
+                <label htmlFor="user_id" className="block text-sm font-medium">
+                  User ID
+                </label>
+                <input
+                  id="user_id"
+                  name="user_id"
+                  type="text"
+                  required
+                  className="w-full rounded border px-3 py-2"
+                />
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+              <button type="submit" className="rounded border px-3 py-2 text-sm">
+                Grant access
+              </button>
+            </form>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">Current access</h2>
+            {accessRows.length === 0 ? (
+              <div className="rounded border p-4 text-sm text-gray-600">
+                No users have access yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {accessRows.map((accessRow) => (
+                  <div
+                    key={accessRow.user_id}
+                    className="flex items-center justify-between gap-4 rounded border p-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        {getProfileDisplayName(accessRow.profiles, accessRow.user_id)}
+                      </p>
+                      <p className="text-sm text-gray-600">{accessRow.user_id}</p>
+                    </div>
+                    <form action={revokeChallengeAccessAction}>
+                      <input type="hidden" name="challenge_id" value={challengeRow.id} />
+                      <input type="hidden" name="user_id" value={accessRow.user_id} />
+                      <button type="submit" className="rounded border px-3 py-2 text-sm">
+                        Remove
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
     </div>
   )
 }
