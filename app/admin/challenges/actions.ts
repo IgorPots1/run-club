@@ -305,7 +305,10 @@ export async function createChallengeAction(formData: FormData) {
       })
     }
 
-    if (new Date(normalizedStartsAt).getTime() >= new Date(normalizedEndAt).getTime()) {
+    const challengeStartsAt = normalizedStartsAt
+    const challengeEndsAt = normalizedEndAt
+
+    if (new Date(challengeStartsAt).getTime() >= new Date(challengeEndsAt).getTime()) {
       redirectToNewChallengeForm({
         error: 'Дата начала должна быть раньше даты окончания.',
         ...formValues,
@@ -492,7 +495,10 @@ export async function updateChallengeAction(formData: FormData) {
       })
     }
 
-    if (new Date(normalizedStartsAt).getTime() >= new Date(normalizedEndAt).getTime()) {
+    const challengeStartsAt = normalizedStartsAt
+    const challengeEndsAt = normalizedEndAt
+
+    if (new Date(challengeStartsAt).getTime() >= new Date(challengeEndsAt).getTime()) {
       redirectToEditChallengeForm(challengeId, {
         error: 'Дата начала должна быть раньше даты окончания.',
         ...formValues,
