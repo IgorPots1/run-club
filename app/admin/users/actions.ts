@@ -123,6 +123,7 @@ export async function adjustUserXpAction(formData: FormData) {
 
   if (deltaXp == null) {
     redirectToAdminUserPage(userId, 'Изменение XP должно быть целым числом.')
+    return
   }
 
   if (deltaXp === 0) {
@@ -149,8 +150,9 @@ export async function adjustUserXpAction(formData: FormData) {
     return
   }
 
+  const delta = deltaXp
   const currentTotalXp = Number(existingProfile.total_xp ?? 0)
-  const nextTotalXp = Math.max(0, currentTotalXp + deltaXp)
+  const nextTotalXp = Math.max(0, currentTotalXp + delta)
   const { data: updatedProfile, error: updateError } = await supabase
     .from('profiles')
     .update({
@@ -175,7 +177,7 @@ export async function adjustUserXpAction(formData: FormData) {
       },
       payloadAfter: {
         total_xp: Number(updatedProfile.total_xp ?? nextTotalXp),
-        delta_xp: deltaXp,
+        delta_xp: delta,
         reason,
       },
     })
