@@ -14,6 +14,15 @@ type ChallengeCompletionRpcResult = {
   completed_at?: string | null
 }
 
+type ExistingChallengeCompletionResult = {
+  completed_at?: string | null
+  awarded_xp?: number | null
+  title_snapshot?: string | null
+  period_key?: string | null
+  period_start?: string | null
+  period_end?: string | null
+}
+
 export async function POST(request: Request) {
   const { user, error } = await getAuthenticatedUser()
 
@@ -65,12 +74,15 @@ export async function POST(request: Request) {
       typeof row?.out_challenge_id === 'string' && row.out_challenge_id.length > 0
   )
   const finalizedChallenge = finalizedRows.find((row) => row.out_challenge_id === challengeId) ?? null
-  const { data: existingCompletion, error: existingCompletionError } = await supabaseAdmin
-    .from('user_challenges')
-    .select('completed_at')
-    .eq('user_id', user.id)
-    .eq('challenge_id', challengeId)
-    .maybeSingle()
+  const { data: existingCompletionRows, error: existingCompletionError } = await supabaseAdmin.rpc(
+    'get_challenge_completion_for_user',
+    {
+      p_user_id: user.id,
+      p_challenge_id: challengeId,
+    }
+  )
+
+  const existingCompletion = ((existingCompletionRows as ExistingChallengeCompletionResult[] | null) ?? [])[0] ?? null
 
   if (existingCompletionError) {
     return NextResponse.json(
