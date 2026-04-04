@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -158,32 +159,37 @@ export default async function AdminUsersPage() {
                       <td className="px-3 py-2">{formatNullableValue(profile.created_at)}</td>
                     ) : null}
                     <td className="px-3 py-2">
-                      {isCurrentAdmin ? (
-                        <div className="space-y-1">
-                          <p className="text-sm text-gray-500">Current account</p>
-                          <button
-                            type="button"
-                            disabled
-                            className="cursor-not-allowed rounded border px-3 py-2 text-sm opacity-50"
-                          >
-                            {appAccessStatus === 'blocked' ? 'Unblock' : 'Block'}
-                          </button>
-                        </div>
-                      ) : appAccessStatus === 'blocked' ? (
-                        <form action={unblockUserAppAccess}>
-                          <input type="hidden" name="user_id" value={profile.id} />
-                          <button type="submit" className="rounded border px-3 py-2 text-sm">
-                            Unblock
-                          </button>
-                        </form>
-                      ) : (
-                        <form action={blockUserAppAccess}>
-                          <input type="hidden" name="user_id" value={profile.id} />
-                          <button type="submit" className="rounded border px-3 py-2 text-sm">
-                            Block
-                          </button>
-                        </form>
-                      )}
+                      <div className="flex flex-col gap-2">
+                        <Link href={`/admin/users/${profile.id}`} className="rounded border px-3 py-2 text-center text-sm">
+                          Manage
+                        </Link>
+                        {isCurrentAdmin ? (
+                          <div className="space-y-1">
+                            <p className="text-sm text-gray-500">Current account</p>
+                            <button
+                              type="button"
+                              disabled
+                              className="cursor-not-allowed rounded border px-3 py-2 text-sm opacity-50"
+                            >
+                              {appAccessStatus === 'blocked' ? 'Unblock' : 'Block'}
+                            </button>
+                          </div>
+                        ) : appAccessStatus === 'blocked' ? (
+                          <form action={unblockUserAppAccess}>
+                            <input type="hidden" name="user_id" value={profile.id} />
+                            <button type="submit" className="rounded border px-3 py-2 text-sm">
+                              Unblock
+                            </button>
+                          </form>
+                        ) : (
+                          <form action={blockUserAppAccess}>
+                            <input type="hidden" name="user_id" value={profile.id} />
+                            <button type="submit" className="rounded border px-3 py-2 text-sm">
+                              Block
+                            </button>
+                          </form>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
