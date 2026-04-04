@@ -1,8 +1,18 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { writeAdminAuditEntry } from '@/lib/admin/audit'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+
+type ChallengeAuditSnapshot = {
+  title: string
+  description: string | null
+  visibility: string
+  goal_km: number | null
+  goal_runs: number | null
+  xp_reward: number
+}
 
 function normalizeOptionalPositiveNumber(value: FormDataEntryValue | null) {
   if (typeof value !== 'string') {
@@ -70,7 +80,7 @@ function redirectToChallengeAccessPage(challengeId: string, error?: string) {
 }
 
 export async function createChallengeAction(formData: FormData) {
-  await requireAdmin()
+  const { profile } = await requireAdmin()
 
   const titleValue = formData.get('title')
   const descriptionInput = formData.get('description')
@@ -134,6 +144,14 @@ export async function createChallengeAction(formData: FormData) {
   const normalizedGoalKm = goalKm != null && goalKm > 0 ? goalKm : null
   const normalizedGoalRuns = goalRuns != null && goalRuns > 0 ? Math.round(goalRuns) : null
   const description = descriptionValue.length > 0 ? descriptionValue : null
+  const auditSnapshot: ChallengeAuditSnapshot = {
+    title,
+    description,
+    visibility: visibilityValue,
+    goal_km: normalizedGoalKm,
+    goal_runs: normalizedGoalRuns,
+    xp_reward: xpReward,
+  }
   const supabase = createSupabaseAdminClient()
   const { data, error } = await supabase
     .from('challenges')
@@ -152,6 +170,15 @@ export async function createChallengeAction(formData: FormData) {
     throw error
   }
 
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge.create',
+    entityType: 'challenge',
+    entityId: data.id,
+    payloadBefore: {},
+    payloadAfter: auditSnapshot,
+  })
+
   if (data.visibility === 'restricted') {
     redirectToChallengeAccessPage(data.id)
   }
@@ -160,7 +187,7 @@ export async function createChallengeAction(formData: FormData) {
 }
 
 export async function updateChallengeAction(formData: FormData) {
-  await requireAdmin()
+  const { profile } = await requireAdmin()
 
   const challengeIdValue = formData.get('challenge_id')
   const titleValue = formData.get('title')
@@ -211,6 +238,31 @@ export async function updateChallengeAction(formData: FormData) {
   const normalizedGoalRuns = goalRuns != null && goalRuns > 0 ? Math.round(goalRuns) : null
   const description = descriptionValue.length > 0 ? descriptionValue : null
   const supabase = createSupabaseAdminClient()
+  const { data: existingChallenge, error: existingChallengeError } = await supabase
+    .from('challenges')
+    .select('title, description, visibility, goal_km, goal_runs, xp_reward')
+    .eq('id', challengeId)
+    .maybeSingle()
+
+  if (existingChallengeError) {
+    console.error('[admin-challenges] failed to load previous challenge state', {
+      actorUserId: profile.id,
+      challengeId,
+      code: existingChallengeError.code ?? null,
+      message: existingChallengeError.message,
+      details: existingChallengeError.details ?? null,
+    })
+  }
+
+  const nextChallengeSnapshot: ChallengeAuditSnapshot = {
+    title,
+    description,
+    visibility: visibilityValue,
+    goal_km: normalizedGoalKm,
+    goal_runs: normalizedGoalRuns,
+    xp_reward: xpReward,
+  }
+
   const { error } = await supabase
     .from('challenges')
     .update({
@@ -227,11 +279,29 @@ export async function updateChallengeAction(formData: FormData) {
     throw error
   }
 
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge.update',
+    entityType: 'challenge',
+    entityId: challengeId,
+    payloadBefore: existingChallenge
+      ? {
+          title: existingChallenge.title,
+          description: existingChallenge.description,
+          visibility: existingChallenge.visibility,
+          goal_km: existingChallenge.goal_km,
+          goal_runs: existingChallenge.goal_runs,
+          xp_reward: existingChallenge.xp_reward,
+        }
+      : {},
+    payloadAfter: nextChallengeSnapshot,
+  })
+
   redirectToChallengeAccessPage(challengeId)
 }
 
 export async function grantChallengeAccessAction(formData: FormData) {
-  await requireAdmin()
+  const { profile } = await requireAdmin()
 
   const challengeIdValue = formData.get('challenge_id')
   const userIdValue = formData.get('user_id')
@@ -246,7 +316,6 @@ export async function grantChallengeAccessAction(formData: FormData) {
     redirectToChallengeAccessPage(challengeId, 'User ID is required.')
   }
 
-  const { profile } = await requireAdmin()
   const supabase = createSupabaseAdminClient()
   const { error } = await supabase
     .from('challenge_access_users')
@@ -266,11 +335,28 @@ export async function grantChallengeAccessAction(formData: FormData) {
     throw error
   }
 
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge_access.grant',
+    entityType: 'challenge_access',
+    entityId: challengeId,
+    payloadBefore: {
+      challenge_id: challengeId,
+      user_id: userId,
+      has_access: false,
+    },
+    payloadAfter: {
+      challenge_id: challengeId,
+      user_id: userId,
+      has_access: true,
+    },
+  })
+
   redirectToChallengeAccessPage(challengeId)
 }
 
 export async function revokeChallengeAccessAction(formData: FormData) {
-  await requireAdmin()
+  const { profile } = await requireAdmin()
 
   const challengeIdValue = formData.get('challenge_id')
   const userIdValue = formData.get('user_id')
@@ -295,6 +381,23 @@ export async function revokeChallengeAccessAction(formData: FormData) {
   if (error) {
     throw error
   }
+
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge_access.revoke',
+    entityType: 'challenge_access',
+    entityId: challengeId,
+    payloadBefore: {
+      challenge_id: challengeId,
+      user_id: userId,
+      has_access: true,
+    },
+    payloadAfter: {
+      challenge_id: challengeId,
+      user_id: userId,
+      has_access: false,
+    },
+  })
 
   redirectToChallengeAccessPage(challengeId)
 }
