@@ -159,7 +159,7 @@ function redirectToNewChallengeForm(input: {
   endAt?: string
   badgeUrl?: string
   badgeStoragePath?: string
-}) {
+}): never {
   const query = buildChallengeFormSearchParams(input)
   redirect(`/admin/challenges/new${query ? `?${query}` : ''}`)
 }
@@ -180,7 +180,7 @@ function redirectToEditChallengeForm(
     badgeUrl?: string
     badgeStoragePath?: string
   }
-) {
+): never {
   const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}/edit`
   const query = buildChallengeFormSearchParams({
     error: input?.error,
@@ -199,7 +199,7 @@ function redirectToEditChallengeForm(
   redirect(query ? `${basePath}?${query}` : basePath)
 }
 
-function redirectToChallengeAccessPage(challengeId: string, error?: string) {
+function redirectToChallengeAccessPage(challengeId: string, error?: string): never {
   const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}`
   redirect(error ? `${basePath}?error=${encodeURIComponent(error)}` : basePath)
 }
@@ -305,10 +305,13 @@ export async function createChallengeAction(formData: FormData) {
       })
     }
 
-    const challengeStartsAt = normalizedStartsAt
-    const challengeEndsAt = normalizedEndAt
+    const challengeStartsAt: string = normalizedStartsAt
+    const challengeEndsAt: string = normalizedEndAt
 
-    if (new Date(challengeStartsAt).getTime() >= new Date(challengeEndsAt).getTime()) {
+    const startsAtDate = new Date(challengeStartsAt)
+    const endsAtDate = new Date(challengeEndsAt)
+
+    if (startsAtDate.getTime() >= endsAtDate.getTime()) {
       redirectToNewChallengeForm({
         error: 'Дата начала должна быть раньше даты окончания.',
         ...formValues,
@@ -495,10 +498,13 @@ export async function updateChallengeAction(formData: FormData) {
       })
     }
 
-    const challengeStartsAt = normalizedStartsAt
-    const challengeEndsAt = normalizedEndAt
+    const challengeStartsAt: string = normalizedStartsAt
+    const challengeEndsAt: string = normalizedEndAt
 
-    if (new Date(challengeStartsAt).getTime() >= new Date(challengeEndsAt).getTime()) {
+    const startsAtDate = new Date(challengeStartsAt)
+    const endsAtDate = new Date(challengeEndsAt)
+
+    if (startsAtDate.getTime() >= endsAtDate.getTime()) {
       redirectToEditChallengeForm(challengeId, {
         error: 'Дата начала должна быть раньше даты окончания.',
         ...formValues,
