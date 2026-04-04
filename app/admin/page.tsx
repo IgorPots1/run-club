@@ -11,6 +11,9 @@ export default function AdminPage() {
         <li>
           <Link href="/admin/challenges">Challenges admin</Link>
         </li>
+        <li>
+          <Link href="/admin/users">Users admin</Link>
+        </li>
       </ul>
     </div>
   )
