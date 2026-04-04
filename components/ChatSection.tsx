@@ -7895,7 +7895,7 @@ export default function ChatSection({
           >
             <div
               ref={scrollContentRef}
-              className="flex min-h-full flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))]"
+              className="flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))]"
             >
               {error ? (
                 <section className="flex flex-1 p-1">
@@ -7942,7 +7942,9 @@ export default function ChatSection({
           <div
             ref={composerWrapperRef}
             data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
-            className="shrink-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            className={`shrink-0 pt-1 ${
+              isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+            }`}
           >
             {!isReadOnlyAnnouncement ? renderComposer() : null}
           </div>
