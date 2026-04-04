@@ -93,7 +93,7 @@ export default async function AdminChallengesPage() {
         </div>
       ) : (
         <div className="app-card overflow-x-auto rounded-2xl border shadow-sm">
-          <table className="min-w-full border-collapse">
+          <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead className="app-surface-muted">
               <tr className="text-left">
                 <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">Название</th>
@@ -110,24 +110,30 @@ export default async function AdminChallengesPage() {
             <tbody>
               {challenges.map((challenge) => (
                 <tr key={challenge.id} className="border-b align-top">
-                  <td className="px-4 py-3">
+                  <td className="w-[280px] px-4 py-3">
                     <div className="flex flex-col gap-2">
-                      <Link href={`/admin/challenges/${challenge.id}`} className="app-text-primary font-semibold underline decoration-black/20 underline-offset-4">
+                      <Link
+                        href={`/admin/challenges/${challenge.id}`}
+                        className="app-text-primary font-semibold transition-opacity hover:opacity-70"
+                      >
                         {challenge.title}
                       </Link>
-                      <Link href={`/admin/challenges/${challenge.id}/edit`} className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+                      <Link
+                        href={`/admin/challenges/${challenge.id}/edit`}
+                        className="app-text-secondary text-sm transition-opacity hover:opacity-70"
+                      >
                         Редактировать
                       </Link>
                     </div>
                   </td>
-                  <td className="px-4 py-3">{formatVisibility(challenge.visibility)}</td>
+                  <td className="w-[140px] px-4 py-3">{formatVisibility(challenge.visibility)}</td>
                   {hasStatusColumn ? (
-                    <td className="px-4 py-3">{formatChallengeStatus(challenge.status)}</td>
+                    <td className="w-[140px] px-4 py-3">{formatChallengeStatus(challenge.status)}</td>
                   ) : null}
-                  <td className="px-4 py-3">{formatNullableValue(challenge.xp_reward)}</td>
-                  <td className="px-4 py-3">{formatNullableValue(challenge.goal_km)}</td>
-                  <td className="px-4 py-3">{formatNullableValue(challenge.goal_runs)}</td>
-                  <td className="app-text-secondary px-4 py-3 text-sm">{formatNullableValue(challenge.created_at)}</td>
+                  <td className="w-[120px] px-4 py-3">{formatNullableValue(challenge.xp_reward)}</td>
+                  <td className="w-[120px] px-4 py-3">{formatNullableValue(challenge.goal_km)}</td>
+                  <td className="w-[150px] px-4 py-3">{formatNullableValue(challenge.goal_runs)}</td>
+                  <td className="app-text-secondary w-[170px] px-4 py-3 text-sm">{formatNullableValue(challenge.created_at)}</td>
                 </tr>
               ))}
             </tbody>

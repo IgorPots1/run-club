@@ -138,7 +138,7 @@ export default async function AdminUsersPage() {
         </div>
       ) : (
         <div className="app-card overflow-x-auto rounded-2xl border shadow-sm">
-          <table className="min-w-full border-collapse">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead className="app-surface-muted">
               <tr className="text-left">
                 <th className="app-text-secondary px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em]">ID</th>
@@ -158,26 +158,26 @@ export default async function AdminUsersPage() {
 
                 return (
                   <tr key={profile.id} className="border-b align-top">
-                    <td className="app-text-secondary px-4 py-3 text-sm">{profile.id}</td>
-                    <td className="px-4 py-3">
+                    <td className="app-text-secondary w-[240px] px-4 py-3 text-sm">{profile.id}</td>
+                    <td className="w-[180px] px-4 py-3">
                       {getProfileDisplayName(profile, profile.id)}
                     </td>
                     {includesNickname ? (
-                      <td className="px-4 py-3">{formatNullableValue(profile.nickname)}</td>
+                      <td className="w-[140px] px-4 py-3">{formatNullableValue(profile.nickname)}</td>
                     ) : null}
                     {includesEmail ? (
-                      <td className="px-4 py-3">{formatNullableValue(profile.email)}</td>
+                      <td className="w-[220px] px-4 py-3">{formatNullableValue(profile.email)}</td>
                     ) : null}
-                    <td className="px-4 py-3">{formatRole(profile.role)}</td>
-                    <td className="px-4 py-3">{formatAppAccessStatus(appAccessStatus)}</td>
+                    <td className="w-[120px] px-4 py-3">{formatRole(profile.role)}</td>
+                    <td className="w-[140px] px-4 py-3">{formatAppAccessStatus(appAccessStatus)}</td>
                     {includesCreatedAt ? (
-                      <td className="app-text-secondary px-4 py-3 text-sm">{formatNullableValue(profile.created_at)}</td>
+                      <td className="app-text-secondary w-[170px] px-4 py-3 text-sm">{formatNullableValue(profile.created_at)}</td>
                     ) : null}
-                    <td className="px-4 py-3">
+                    <td className="w-[170px] px-4 py-3">
                       <div className="flex flex-col gap-2">
                         <Link
                           href={`/admin/users/${profile.id}`}
-                          className="app-button-secondary rounded-2xl border px-4 py-2 text-center text-sm font-medium shadow-sm"
+                          className="app-button-secondary rounded-2xl border px-4 py-2 text-center text-sm font-medium shadow-sm transition-opacity hover:opacity-80"
                         >
                           Открыть
                         </Link>

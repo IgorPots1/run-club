@@ -56,7 +56,7 @@ export default async function EditChallengePage({
       <div className="space-y-2">
         <Link
           href={`/admin/challenges/${challenge.id}`}
-          className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4"
+          className="app-text-secondary text-sm transition-opacity hover:opacity-70"
         >
           Назад к челленджу
         </Link>
@@ -165,7 +165,7 @@ export default async function EditChallengePage({
           </button>
           <Link
             href={`/admin/challenges/${challenge.id}`}
-            className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4"
+            className="app-text-secondary text-sm transition-opacity hover:opacity-70"
           >
             Отмена
           </Link>

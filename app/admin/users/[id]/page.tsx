@@ -101,7 +101,10 @@ export default async function AdminUserDetailPage({
   return (
     <div className="max-w-3xl space-y-6">
       <div className="space-y-2">
-        <Link href="/admin/users" className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+        <Link
+          href="/admin/users"
+          className="app-text-secondary text-sm transition-opacity hover:opacity-70"
+        >
           Назад к пользователям
         </Link>
         <h1 className="app-text-primary text-2xl font-bold">Профиль пользователя</h1>

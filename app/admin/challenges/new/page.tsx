@@ -29,7 +29,10 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
   return (
     <div className="max-w-2xl space-y-6">
       <div className="space-y-2">
-        <Link href="/admin/challenges" className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+        <Link
+          href="/admin/challenges"
+          className="app-text-secondary text-sm transition-opacity hover:opacity-70"
+        >
           Назад к челленджам
         </Link>
         <h1 className="app-text-primary text-2xl font-bold">Новый челлендж</h1>
@@ -139,7 +142,10 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
           <button type="submit" className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
             Создать челлендж
           </button>
-          <Link href="/admin/challenges" className="app-text-secondary text-sm underline decoration-black/20 underline-offset-4">
+          <Link
+            href="/admin/challenges"
+            className="app-text-secondary text-sm transition-opacity hover:opacity-70"
+          >
             Отмена
           </Link>
         </div>
