@@ -13,6 +13,40 @@ type ProfileRow = {
   created_at?: string | null
 }
 
+function isProfileRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function getOptionalProfileString(
+  record: Record<string, unknown>,
+  key: keyof Omit<ProfileRow, 'id'>
+): string | null | undefined {
+  const value = record[key]
+  return typeof value === 'string' || value == null ? value : undefined
+}
+
+function normalizeProfiles(data: unknown): ProfileRow[] {
+  if (!Array.isArray(data)) return []
+
+  return data.flatMap((row) => {
+    if (!isProfileRecord(row) || typeof row.id !== 'string') {
+      return []
+    }
+
+    return [
+      {
+        id: row.id,
+        name: getOptionalProfileString(row, 'name'),
+        nickname: getOptionalProfileString(row, 'nickname'),
+        email: getOptionalProfileString(row, 'email'),
+        role: getOptionalProfileString(row, 'role'),
+        app_access_status: getOptionalProfileString(row, 'app_access_status'),
+        created_at: getOptionalProfileString(row, 'created_at'),
+      },
+    ]
+  })
+}
+
 function formatNullableValue(value: string | number | null | undefined) {
   return value == null || value === '' ? '—' : String(value)
 }
@@ -75,7 +109,7 @@ export default async function AdminUsersPage() {
     throw result.error
   }
 
-  const profiles = (result.data as ProfileRow[] | null) ?? []
+  const profiles = normalizeProfiles(result.data)
 
   return (
     <div className="space-y-6">
