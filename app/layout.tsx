@@ -6,6 +6,7 @@ import MobileTabBar from "../components/MobileTabBar";
 import Navbar from "../components/Navbar";
 import PwaRegister from "../components/PwaRegister";
 import VoiceStreamLifecycle from "../components/VoiceStreamLifecycle";
+import { requireAppAccess } from "@/lib/auth/requireAppAccess";
 import { getAuthenticatedUser } from "@/lib/supabase-server";
 import "./globals.css";
 
@@ -59,12 +60,33 @@ export default async function RootLayout({
 }>) {
   const requestHeaders = await headers()
   const pathname = requestHeaders.get("x-run-club-pathname") ?? ""
+  const isAdminRoute = pathname.startsWith("/admin")
+  const shouldEnforceAppAccess =
+    pathname !== "/" &&
+    pathname !== "/login" &&
+    pathname !== "/register" &&
+    pathname !== "/blocked" &&
+    !pathname.startsWith("/auth") &&
+    !isAdminRoute
   const shouldHideNavbar =
-    pathname === "/" || pathname === "/login" || pathname === "/register" || pathname === "/onboarding" || pathname.startsWith("/auth")
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/blocked" ||
+    pathname === "/onboarding" ||
+    pathname.startsWith("/auth")
 
   let resolvedNavbarUser: { id: string; email: string | null } | null = null
 
-  if (!shouldHideNavbar) {
+  if (shouldEnforceAppAccess) {
+    const { user } = await requireAppAccess()
+    resolvedNavbarUser = user
+      ? {
+          id: user.id,
+          email: user.email ?? null,
+        }
+      : null
+  } else if (!shouldHideNavbar) {
     const { user } = await getAuthenticatedUser()
     resolvedNavbarUser = user
       ? {
