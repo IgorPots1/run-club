@@ -1840,7 +1840,7 @@ export async function importStravaActivityForUser(
 
   payload.xp = normalizedExistingRun
     ? Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0)))
-    : runXp.xp
+    : Math.max(0, Math.round(Number(runXp?.xp ?? 0)))
   let finalCity = payload.city
   let finalRegion = payload.region
   let finalCountry = payload.country
@@ -2039,8 +2039,8 @@ export async function importStravaActivityForUser(
     return {
       status: 'imported',
       activityId: payload.external_id,
-      xpGained: runXp.xp,
-      breakdown: runXp.breakdown,
+      xpGained: Math.max(0, Math.round(Number(runXp?.xp ?? 0))),
+      breakdown: runXp?.breakdown ?? [],
       levelUp: levelState.levelUp,
       newLevel: levelState.newLevel,
     }
