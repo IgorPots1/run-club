@@ -40,6 +40,47 @@ type ChallengeAccessRow = {
     | null
 }
 
+function normalizeChallengeAccessRows(data: unknown): ChallengeAccessRow[] {
+  if (!Array.isArray(data)) {
+    return []
+  }
+
+  return data.flatMap((item) => {
+    if (!item || typeof item !== 'object') {
+      return []
+    }
+
+    const userId = 'user_id' in item && typeof item.user_id === 'string'
+      ? item.user_id
+      : null
+
+    if (!userId) {
+      return []
+    }
+
+    const rawProfiles = 'profiles' in item ? item.profiles : null
+    const rawProfile = Array.isArray(rawProfiles)
+      ? rawProfiles[0] ?? null
+      : rawProfiles && typeof rawProfiles === 'object'
+        ? rawProfiles
+        : null
+
+    const profile = rawProfile && typeof rawProfile === 'object'
+      ? {
+          id: 'id' in rawProfile && typeof rawProfile.id === 'string' ? rawProfile.id : userId,
+          name: 'name' in rawProfile && typeof rawProfile.name === 'string' ? rawProfile.name : null,
+          nickname: 'nickname' in rawProfile && typeof rawProfile.nickname === 'string' ? rawProfile.nickname : null,
+          email: 'email' in rawProfile && typeof rawProfile.email === 'string' ? rawProfile.email : null,
+        }
+      : null
+
+    return [{
+      user_id: userId,
+      profiles: profile,
+    }]
+  })
+}
+
 function formatNullableValue(value: number | string | null | undefined) {
   return value == null || value === '' ? '—' : String(value)
 }
@@ -104,9 +145,9 @@ export default async function AdminChallengeDetailsPage({
       throw fallbackAccessResult.error
     }
 
-    accessRows = (fallbackAccessResult.data as ChallengeAccessRow[] | null) ?? []
+    accessRows = normalizeChallengeAccessRows(fallbackAccessResult.data)
   } else {
-    accessRows = (primaryAccessResult.data as ChallengeAccessRow[] | null) ?? []
+    accessRows = normalizeChallengeAccessRows(primaryAccessResult.data)
   }
 
   return (
