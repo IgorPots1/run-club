@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { forbidden, redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
@@ -44,11 +44,11 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
   }
 
   if (!profile) {
-    forbidden()
+    redirect('/dashboard')
   }
 
   if (profile.role !== 'admin') {
-    forbidden()
+    redirect('/dashboard')
   }
 
   return {
