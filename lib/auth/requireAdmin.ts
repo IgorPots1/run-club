@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { redirect } from 'next/navigation'
+import { forbidden, redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
@@ -16,16 +16,14 @@ type RequireAdminResult = {
   profile: AdminProfile
 }
 
-type ForbiddenError = Error & {
-  code: 'FORBIDDEN'
-  status: 403
-}
+function isAdminAccessDeniedError(error: { code?: string | null; message?: string | null }) {
+  const normalizedMessage = error.message?.toLowerCase() ?? ''
 
-function createForbiddenError() {
-  const error = new Error('Forbidden') as ForbiddenError
-  error.code = 'FORBIDDEN'
-  error.status = 403
-  return error
+  return (
+    error.code === '42501' ||
+    normalizedMessage.includes('permission denied') ||
+    normalizedMessage.includes('row-level security')
+  )
 }
 
 export async function requireAdmin(): Promise<RequireAdminResult> {
@@ -46,11 +44,25 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     .maybeSingle()
 
   if (profileError) {
+    console.error('[admin-auth] profile lookup failed', {
+      userId: user.id,
+      code: profileError.code ?? null,
+      message: profileError.message,
+    })
+
+    if (isAdminAccessDeniedError(profileError)) {
+      forbidden()
+    }
+
     throw profileError
   }
 
-  if (!profile || profile.role !== 'admin') {
-    throw createForbiddenError()
+  if (!profile) {
+    forbidden()
+  }
+
+  if (profile.role !== 'admin') {
+    forbidden()
   }
 
   return {

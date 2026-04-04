@@ -8,5 +8,5 @@ export default async function AdminLayout({
 }) {
   await requireAdmin()
 
-  return <div>{children}</div>
+  return children
 }
