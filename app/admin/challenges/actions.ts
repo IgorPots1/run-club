@@ -28,6 +28,11 @@ function redirectToNewChallengeForm(error: string) {
   redirect(`/admin/challenges/new?error=${encodeURIComponent(error)}`)
 }
 
+function redirectToChallengeAccessPage(challengeId: string, error?: string) {
+  const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}`
+  redirect(error ? `${basePath}?error=${encodeURIComponent(error)}` : basePath)
+}
+
 export async function createChallengeAction(formData: FormData) {
   await requireAdmin()
 
@@ -90,4 +95,73 @@ export async function createChallengeAction(formData: FormData) {
   }
 
   redirect('/admin/challenges')
+}
+
+export async function grantChallengeAccessAction(formData: FormData) {
+  await requireAdmin()
+
+  const challengeIdValue = formData.get('challenge_id')
+  const userIdValue = formData.get('user_id')
+  const challengeId = typeof challengeIdValue === 'string' ? challengeIdValue.trim() : ''
+  const userId = typeof userIdValue === 'string' ? userIdValue.trim() : ''
+
+  if (!challengeId) {
+    redirect('/admin/challenges')
+  }
+
+  if (!userId) {
+    redirectToChallengeAccessPage(challengeId, 'User ID is required.')
+  }
+
+  const { profile } = await requireAdmin()
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('challenge_access_users')
+    .upsert(
+      {
+        challenge_id: challengeId,
+        user_id: userId,
+        granted_by: profile.id,
+      },
+      {
+        onConflict: 'challenge_id,user_id',
+        ignoreDuplicates: true,
+      }
+    )
+
+  if (error) {
+    throw error
+  }
+
+  redirectToChallengeAccessPage(challengeId)
+}
+
+export async function revokeChallengeAccessAction(formData: FormData) {
+  await requireAdmin()
+
+  const challengeIdValue = formData.get('challenge_id')
+  const userIdValue = formData.get('user_id')
+  const challengeId = typeof challengeIdValue === 'string' ? challengeIdValue.trim() : ''
+  const userId = typeof userIdValue === 'string' ? userIdValue.trim() : ''
+
+  if (!challengeId) {
+    redirect('/admin/challenges')
+  }
+
+  if (!userId) {
+    redirectToChallengeAccessPage(challengeId)
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('challenge_access_users')
+    .delete()
+    .eq('challenge_id', challengeId)
+    .eq('user_id', userId)
+
+  if (error) {
+    throw error
+  }
+
+  redirectToChallengeAccessPage(challengeId)
 }

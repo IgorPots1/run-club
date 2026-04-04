@@ -94,7 +94,11 @@ export default async function AdminChallengesPage() {
             <tbody>
               {challenges.map((challenge) => (
                 <tr key={challenge.id} className="border-b align-top">
-                  <td className="px-3 py-2">{challenge.title}</td>
+                  <td className="px-3 py-2">
+                    <Link href={`/admin/challenges/${challenge.id}`} className="underline">
+                      {challenge.title}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2">{formatNullableValue(challenge.visibility)}</td>
                   {hasStatusColumn ? (
                     <td className="px-3 py-2">{formatNullableValue(challenge.status)}</td>
