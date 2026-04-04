@@ -99,21 +99,16 @@ export function useIsolatedViewportHeight() {
     const handleVisualViewportResize = () => {
       syncViewportHeight('vv-resize')
     }
-    const handleVisualViewportScroll = () => {
-      syncViewportHeight('vv-scroll')
-    }
     const handleWindowResize = () => {
       syncViewportHeight('win-resize')
     }
 
     window.visualViewport?.addEventListener('resize', handleVisualViewportResize)
-    window.visualViewport?.addEventListener('scroll', handleVisualViewportScroll)
     window.addEventListener('resize', handleWindowResize)
 
     return () => {
       clearScheduledViewportSync()
       window.visualViewport?.removeEventListener('resize', handleVisualViewportResize)
-      window.visualViewport?.removeEventListener('scroll', handleVisualViewportScroll)
       window.removeEventListener('resize', handleWindowResize)
       lastAppliedViewportHeightRef.current = null
       lastKeyboardOpenRef.current = null

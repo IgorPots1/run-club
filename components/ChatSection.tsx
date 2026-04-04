@@ -3613,9 +3613,6 @@ export default function ChatSection({
   const initialSavedScrollRestoreActiveRef = useRef(false)
   const threadScrollStateSaveFrameRef = useRef<number | null>(null)
   const isLoadingOlderMessagesRef = useRef(false)
-  const focusedGestureStartScrollTopRef = useRef<number | null>(null)
-  const focusedGestureStartClientYRef = useRef<number | null>(null)
-  const focusedGestureBlurredRef = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startTimeRef = useRef(0)
@@ -3694,7 +3691,6 @@ export default function ChatSection({
   } | null>(null)
   const [swipingMessageId, setSwipingMessageId] = useState<string | null>(null)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
-  const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const pageTitle = title ?? 'Чат клуба'
@@ -5525,82 +5521,6 @@ export default function ChatSection({
     oldestLoadedMessageId,
     threadId,
   ])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const scrollContainer = scrollContainerRef.current
-
-    if (!scrollContainer) {
-      return
-    }
-
-    function resetFocusedGestureTracking() {
-      focusedGestureStartScrollTopRef.current = null
-      focusedGestureStartClientYRef.current = null
-      focusedGestureBlurredRef.current = false
-    }
-
-    function handleTouchStart(event: TouchEvent) {
-      if (!isComposerFocused || window.innerWidth >= 768) {
-        resetFocusedGestureTracking()
-        return
-      }
-
-      const activeScrollContainer = scrollContainerRef.current
-      const touch = event.touches[0]
-
-      if (!touch || !activeScrollContainer) {
-        resetFocusedGestureTracking()
-        return
-      }
-
-      focusedGestureStartScrollTopRef.current = activeScrollContainer.scrollTop
-      focusedGestureStartClientYRef.current = touch.clientY
-      focusedGestureBlurredRef.current = false
-    }
-
-    function handleTouchMove(event: TouchEvent) {
-      if (!isComposerFocused || focusedGestureBlurredRef.current) {
-        return
-      }
-
-      const activeScrollContainer = scrollContainerRef.current
-      const touch = event.touches[0]
-      const gestureStartScrollTop = focusedGestureStartScrollTopRef.current
-      const gestureStartClientY = focusedGestureStartClientYRef.current
-      const textarea = composerTextareaRef.current
-
-      if (!touch || !activeScrollContainer || gestureStartScrollTop === null || gestureStartClientY === null || !textarea) {
-        return
-      }
-
-      const dragDistance = touch.clientY - gestureStartClientY
-      const scrollDelta = gestureStartScrollTop - activeScrollContainer.scrollTop
-      const isIntentionalUpwardScroll = dragDistance > 18 && scrollDelta > 24
-
-      if (!isIntentionalUpwardScroll) {
-        return
-      }
-
-      focusedGestureBlurredRef.current = true
-      textarea.blur()
-    }
-
-    scrollContainer.addEventListener('touchstart', handleTouchStart, { passive: true })
-    scrollContainer.addEventListener('touchmove', handleTouchMove, { passive: true })
-    scrollContainer.addEventListener('touchend', resetFocusedGestureTracking, { passive: true })
-    scrollContainer.addEventListener('touchcancel', resetFocusedGestureTracking, { passive: true })
-
-    return () => {
-      scrollContainer.removeEventListener('touchstart', handleTouchStart)
-      scrollContainer.removeEventListener('touchmove', handleTouchMove)
-      scrollContainer.removeEventListener('touchend', resetFocusedGestureTracking)
-      scrollContainer.removeEventListener('touchcancel', resetFocusedGestureTracking)
-    }
-  }, [isComposerFocused])
 
   useEffect(() => {
     if (loading || !currentUserId) {
@@ -7810,8 +7730,6 @@ export default function ChatSection({
                       setDraftMessage(event.target.value)
                       setSubmitError('')
                     }}
-                    onFocus={() => setIsComposerFocused(true)}
-                    onBlur={() => setIsComposerFocused(false)}
                     placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись к фото' : 'Сообщение'}
                     disabled={submitting || uploadingImage || uploadingVoice}
                     maxLength={CHAT_MESSAGE_MAX_LENGTH}
@@ -8023,9 +7941,8 @@ export default function ChatSection({
           </div>
           <div
             ref={composerWrapperRef}
-            className={`shrink-0 pt-3 ${
-              isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
-            }`}
+            data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
+            className="shrink-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             {!isReadOnlyAnnouncement ? renderComposer() : null}
           </div>
