@@ -71,6 +71,11 @@ type ChatSectionProps = {
   description?: string
 }
 
+type ChatScrollTouchOrigin = 'scroll' | 'composer' | 'textarea'
+type ChatScrollComposerMode = 'scroll-shell' | 'footer'
+
+const DEBUG_CHAT_SCROLL = true
+
 function getChatRestrictionErrorMessage(error: unknown, fallbackMessage: string) {
   if (!(error instanceof Error)) {
     return fallbackMessage
@@ -3560,6 +3565,38 @@ const ChatMessageList = memo(function ChatMessageList({
   )
 })
 
+function ChatScrollDebugOverlay({
+  keyboardOpen,
+  lastTouchOrigin,
+  scrollTop,
+  viewportHeight,
+  viewportOffsetTop,
+  composerMode,
+}: {
+  keyboardOpen: boolean
+  lastTouchOrigin: ChatScrollTouchOrigin
+  scrollTop: number
+  viewportHeight: number
+  viewportOffsetTop: number
+  composerMode: ChatScrollComposerMode
+}) {
+  if (!DEBUG_CHAT_SCROLL) {
+    return null
+  }
+
+  return (
+    <div className="pointer-events-none fixed bottom-[100px] left-2 z-[80] rounded-[8px] bg-black/70 p-[6px] text-xs text-white">
+      <div>[chat-debug]</div>
+      <div>keyboard: {keyboardOpen ? 'open' : 'closed'}</div>
+      <div>mode: {composerMode}</div>
+      <div>origin: {lastTouchOrigin}</div>
+      <div>scrollTop: {scrollTop}</div>
+      <div>vvHeight: {viewportHeight}</div>
+      <div>vvOffset: {viewportOffsetTop}</div>
+    </div>
+  )
+}
+
 export default function ChatSection({
   showTitle = true,
   threadId = null,
@@ -3631,6 +3668,7 @@ export default function ChatSection({
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
   const chatSendDebugCopyTimeoutRef = useRef<number | null>(null)
+  const debugShouldCaptureNextScrollRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
@@ -3693,6 +3731,12 @@ export default function ChatSection({
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
+  const [keyboardOpen, setKeyboardOpen] = useState(isKeyboardOpen)
+  const [lastTouchOrigin, setLastTouchOrigin] = useState<ChatScrollTouchOrigin>('scroll')
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
+  const [viewportOffsetTop, setViewportOffsetTop] = useState(0)
+  const [composerMode, setComposerMode] = useState<ChatScrollComposerMode>('footer')
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
   const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
@@ -3833,6 +3877,110 @@ export default function ChatSection({
   )
   const initialBottomLockRequiredStableSamples = 3
   const initialBottomLockSafetyTimeoutMs = 4000
+
+  useEffect(() => {
+    if (!DEBUG_CHAT_SCROLL) {
+      return
+    }
+
+    setKeyboardOpen(isKeyboardOpen)
+  }, [isKeyboardOpen])
+
+  useEffect(() => {
+    if (!DEBUG_CHAT_SCROLL || typeof window === 'undefined') {
+      return
+    }
+
+    function updateDebugViewportMetrics() {
+      const visualViewport = window.visualViewport
+      const nextViewportHeight = Math.round(visualViewport?.height ?? window.innerHeight)
+      const nextViewportOffsetTop = Math.round(visualViewport?.offsetTop ?? 0)
+      const scrollContainer = scrollContainerRef.current
+      const composerWrapper = composerWrapperRef.current
+
+      setViewportHeight(nextViewportHeight)
+      setViewportOffsetTop(nextViewportOffsetTop)
+
+      if (!scrollContainer || !composerWrapper) {
+        return
+      }
+
+      setComposerMode(scrollContainer.contains(composerWrapper) ? 'scroll-shell' : 'footer')
+    }
+
+    updateDebugViewportMetrics()
+    window.visualViewport?.addEventListener('resize', updateDebugViewportMetrics)
+    window.visualViewport?.addEventListener('scroll', updateDebugViewportMetrics)
+    window.addEventListener('resize', updateDebugViewportMetrics)
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateDebugViewportMetrics)
+      window.visualViewport?.removeEventListener('scroll', updateDebugViewportMetrics)
+      window.removeEventListener('resize', updateDebugViewportMetrics)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!DEBUG_CHAT_SCROLL || typeof document === 'undefined') {
+      return
+    }
+
+    function handleDebugTouchStart(event: TouchEvent) {
+      const target = event.target
+      const scrollContainer = scrollContainerRef.current
+      const composerWrapper = composerWrapperRef.current
+
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      let nextTouchOrigin: ChatScrollTouchOrigin = 'scroll'
+
+      if (composerWrapper?.contains(target)) {
+        nextTouchOrigin = target.closest('textarea,button') ? 'textarea' : 'composer'
+      } else if (scrollContainer?.contains(target)) {
+        nextTouchOrigin = 'scroll'
+      }
+
+      debugShouldCaptureNextScrollRef.current = true
+      setLastTouchOrigin(nextTouchOrigin)
+    }
+
+    document.addEventListener('touchstart', handleDebugTouchStart, { capture: true, passive: true })
+
+    return () => {
+      document.removeEventListener('touchstart', handleDebugTouchStart, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!DEBUG_CHAT_SCROLL) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    setScrollTop(Math.round(scrollContainer.scrollTop))
+
+    function handleDebugScroll() {
+      if (!debugShouldCaptureNextScrollRef.current) {
+        return
+      }
+
+      debugShouldCaptureNextScrollRef.current = false
+      setScrollTop(Math.round(scrollContainer.scrollTop))
+    }
+
+    scrollContainer.addEventListener('scroll', handleDebugScroll, { passive: true })
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleDebugScroll)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isReadOnlyAnnouncement) {
@@ -7948,6 +8096,14 @@ export default function ChatSection({
           >
             {!isReadOnlyAnnouncement ? renderComposer() : null}
           </div>
+          <ChatScrollDebugOverlay
+            keyboardOpen={keyboardOpen}
+            lastTouchOrigin={lastTouchOrigin}
+            scrollTop={scrollTop}
+            viewportHeight={viewportHeight}
+            viewportOffsetTop={viewportOffsetTop}
+            composerMode={composerMode}
+          />
         </>
       </div>
       {selectedViewerState ? (
