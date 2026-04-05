@@ -7817,7 +7817,7 @@ export default function ChatSection({
   return (
     <div
       className={`mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden px-3 md:px-5 md:py-4 ${
-        showTitle ? 'pt-4' : 'pt-[calc(env(safe-area-inset-top)+2.75rem)]'
+        showTitle ? 'pt-4' : 'pt-2'
       }`}
     >
       {showTitle ? (
@@ -7895,7 +7895,9 @@ export default function ChatSection({
           >
             <div
               ref={scrollContentRef}
-              className="flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))]"
+              className={`flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
+                showTitle ? '' : 'pt-4'
+              }`}
             >
               {error ? (
                 <section className="flex flex-1 p-1">
