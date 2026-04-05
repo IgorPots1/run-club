@@ -394,7 +394,7 @@ export default function MessageThreadPage() {
         type="button"
         onClick={() => setIsHeaderMenuOpen((open) => !open)}
         disabled={isLoadingThreadMuteState || isUpdatingThreadMute}
-        className="app-text-primary inline-flex h-9 w-9 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-60"
+        className="app-text-primary inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/5 bg-[color:var(--surface)]/96 shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10"
         aria-label="Действия чата"
         aria-expanded={isHeaderMenuOpen}
         aria-haspopup="menu"
