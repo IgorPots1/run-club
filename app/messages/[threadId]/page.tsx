@@ -379,7 +379,7 @@ export default function MessageThreadPage() {
         style={isolatedViewportStyle}
       >
         <div className="mx-auto max-w-3xl">
-          <InnerPageHeader title="Чат" fallbackHref="/messages" minimal />
+          <InnerPageHeader title="Общение" fallbackHref="/messages" minimal pillLayout />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error || 'Не удалось открыть чат'}</p>
           </section>
@@ -394,7 +394,7 @@ export default function MessageThreadPage() {
         type="button"
         onClick={() => setIsHeaderMenuOpen((open) => !open)}
         disabled={isLoadingThreadMuteState || isUpdatingThreadMute}
-        className="app-text-primary inline-flex h-11 w-11 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-60"
+        className="app-text-primary inline-flex h-9 w-9 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-60"
         aria-label="Действия чата"
         aria-expanded={isHeaderMenuOpen}
         aria-haspopup="menu"
@@ -446,7 +446,7 @@ export default function MessageThreadPage() {
       style={isolatedViewportStyle}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-        <InnerPageHeader title={threadTitle || ' '} fallbackHref="/messages" minimal rightSlot={headerRightSlot} />
+        <InnerPageHeader title="Общение" fallbackHref="/messages" minimal rightSlot={headerRightSlot} pillLayout />
         {threadMuteError ? (
           <div className="px-4 pb-2">
             <p className="text-xs text-red-600">{threadMuteError}</p>

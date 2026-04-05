@@ -9,6 +9,7 @@ type MobileBackHeaderProps = {
   fullBleedOnMobile?: boolean
   minimal?: boolean
   rightSlot?: ReactNode
+  pillLayout?: boolean
 }
 
 export default function MobileBackHeader({
@@ -19,6 +20,7 @@ export default function MobileBackHeader({
   fullBleedOnMobile = true,
   minimal = false,
   rightSlot = null,
+  pillLayout = false,
 }: MobileBackHeaderProps) {
   const headerSurfaceClassName = minimal
     ? 'mb-0 bg-transparent pb-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] shadow-none'
@@ -39,12 +41,24 @@ export default function MobileBackHeader({
 
   return (
     <header className={layoutClassName}>
-      <div className="grid min-h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3">
+      <div className={`min-h-12 items-center ${pillLayout ? 'flex justify-between gap-3' : 'grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] gap-3'}`}>
         <BackNavigationButton fallbackHref={fallbackHref} variant="icon" />
-        <h1 className="app-text-primary truncate text-center text-base font-semibold">
-          {title}
-        </h1>
-        {rightSlot ? <div className="flex h-11 w-11 items-center justify-center">{rightSlot}</div> : <div className="h-11 w-11" aria-hidden="true" />}
+        <div className={`${pillLayout ? 'flex min-w-0 flex-1 justify-center px-2' : 'min-w-0'}`}>
+          <h1 className={`app-text-primary truncate text-base ${pillLayout ? 'rounded-full bg-black/[0.04] px-3 py-1.5 text-center font-medium dark:bg-white/[0.08]' : 'text-center font-semibold'}`}>
+            {title}
+          </h1>
+        </div>
+        {rightSlot ? (
+          pillLayout ? (
+            <div className="flex shrink-0 items-center justify-center rounded-full bg-black/[0.04] px-1 py-1 dark:bg-white/[0.08]">
+              {rightSlot}
+            </div>
+          ) : (
+            <div className="flex h-11 w-11 items-center justify-center">{rightSlot}</div>
+          )
+        ) : (
+          <div className="h-11 w-11 shrink-0" aria-hidden="true" />
+        )}
       </div>
     </header>
   )

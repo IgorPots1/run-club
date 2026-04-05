@@ -6,6 +6,7 @@ type InnerPageHeaderProps = {
   fallbackHref?: string
   minimal?: boolean
   rightSlot?: ReactNode
+  pillLayout?: boolean
 }
 
 export default function InnerPageHeader({
@@ -13,6 +14,7 @@ export default function InnerPageHeader({
   fallbackHref,
   minimal = false,
   rightSlot,
+  pillLayout = false,
 }: InnerPageHeaderProps) {
   const headerClassName = minimal ? 'mb-0' : 'mb-0 md:mt-4'
 
@@ -24,6 +26,7 @@ export default function InnerPageHeader({
       fullBleedOnMobile={false}
       minimal={minimal}
       rightSlot={rightSlot}
+      pillLayout={pillLayout}
       className={headerClassName}
     />
   )
