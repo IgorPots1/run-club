@@ -3696,6 +3696,8 @@ export default function ChatSection({
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
   const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
+  const composerLayoutMode = isKeyboardOpen ? 'scroll-shell' : 'footer'
+  const composerElement = isReadOnlyAnnouncement ? null : renderComposer()
   const filteredChatSendDebugEvents = useMemo(
     () => chatSendDebugEvents
       .filter((event) => CHAT_SEND_DEBUG_VISIBLE_PHASES.has(event.phase)),
@@ -7895,7 +7897,7 @@ export default function ChatSection({
           >
             <div
               ref={scrollContentRef}
-              className="flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))]"
+              className="flex min-h-full flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))]"
             >
               {error ? (
                 <section className="flex flex-1 p-1">
@@ -7937,17 +7939,26 @@ export default function ChatSection({
                   onMessageContextMenu={handleMessageContextMenu}
                 />
               )}
+              {composerLayoutMode === 'scroll-shell' && composerElement ? (
+                <div
+                  ref={composerWrapperRef}
+                  data-composer-layout-mode="scroll-shell"
+                  className="sticky bottom-0 z-10 mt-auto pt-2"
+                >
+                  {composerElement}
+                </div>
+              ) : null}
             </div>
           </div>
-          <div
-            ref={composerWrapperRef}
-            data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
-            className={`shrink-0 pt-1 ${
-              isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
-            }`}
-          >
-            {!isReadOnlyAnnouncement ? renderComposer() : null}
-          </div>
+          {composerLayoutMode === 'footer' && composerElement ? (
+            <div
+              ref={composerWrapperRef}
+              data-composer-layout-mode="footer"
+              className="shrink-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            >
+              {composerElement}
+            </div>
+          ) : null}
         </>
       </div>
       {selectedViewerState ? (
