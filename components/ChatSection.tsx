@@ -3884,6 +3884,7 @@ export default function ChatSection({
     }
 
     setKeyboardOpen(isKeyboardOpen)
+    setComposerMode(isKeyboardOpen ? 'scroll-shell' : 'footer')
   }, [isKeyboardOpen])
 
   useEffect(() => {
@@ -3895,17 +3896,9 @@ export default function ChatSection({
       const visualViewport = window.visualViewport
       const nextViewportHeight = Math.round(visualViewport?.height ?? window.innerHeight)
       const nextViewportOffsetTop = Math.round(visualViewport?.offsetTop ?? 0)
-      const scrollContainer = scrollContainerRef.current
-      const composerWrapper = composerWrapperRef.current
 
       setViewportHeight(nextViewportHeight)
       setViewportOffsetTop(nextViewportOffsetTop)
-
-      if (!scrollContainer || !composerWrapper) {
-        return
-      }
-
-      setComposerMode(scrollContainer.contains(composerWrapper) ? 'scroll-shell' : 'footer')
     }
 
     updateDebugViewportMetrics()

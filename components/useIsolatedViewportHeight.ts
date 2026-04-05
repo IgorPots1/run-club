@@ -4,11 +4,16 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const ISOLATED_VIEWPORT_HEIGHT_CSS_VAR = '--chat-app-height'
 const DEFAULT_ISOLATED_VIEWPORT_HEIGHT = '100svh'
+const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 80
+const KEYBOARD_CLOSE_HEIGHT_DELTA_PX = 40
+const KEYBOARD_OPEN_OFFSET_TOP_PX = 10
+const KEYBOARD_CLOSE_OFFSET_TOP_PX = 4
 
 export function useIsolatedViewportHeight() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const lastAppliedViewportHeightRef = useRef<number | null>(null)
   const lastKeyboardOpenRef = useRef<boolean | null>(null)
+  const baselineViewportHeightRef = useRef<number | null>(null)
   const isolatedViewportStyle = useMemo(
     () => ({
       height: `var(${ISOLATED_VIEWPORT_HEIGHT_CSS_VAR}, ${DEFAULT_ISOLATED_VIEWPORT_HEIGHT})`,
@@ -47,8 +52,31 @@ export function useIsolatedViewportHeight() {
       const viewportOffsetTop = visualViewport?.offsetTop ?? 0
       const isMobileViewport = window.innerWidth < 768
       const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
-      const nextIsKeyboardOpen = isMobileViewport && window.innerHeight - effectiveViewportHeight > 120
+      const baselineViewportHeight = baselineViewportHeightRef.current ?? effectiveViewportHeight
+      const viewportHeightDelta = baselineViewportHeight - effectiveViewportHeight
+      let nextIsKeyboardOpen = lastKeyboardOpenRef.current ?? false
       const cssVarChanged = lastAppliedViewportHeightRef.current !== effectiveViewportHeight
+
+      if (!isMobileViewport) {
+        nextIsKeyboardOpen = false
+      } else if (
+        viewportHeightDelta >= KEYBOARD_OPEN_HEIGHT_DELTA_PX ||
+        viewportOffsetTop >= KEYBOARD_OPEN_OFFSET_TOP_PX
+      ) {
+        nextIsKeyboardOpen = true
+      } else if (
+        viewportHeightDelta <= KEYBOARD_CLOSE_HEIGHT_DELTA_PX &&
+        viewportOffsetTop <= KEYBOARD_CLOSE_OFFSET_TOP_PX
+      ) {
+        nextIsKeyboardOpen = false
+      }
+
+      if (
+        !nextIsKeyboardOpen &&
+        (baselineViewportHeightRef.current === null || effectiveViewportHeight > baselineViewportHeightRef.current)
+      ) {
+        baselineViewportHeightRef.current = effectiveViewportHeight
+      }
 
       if (cssVarChanged) {
         rootStyle.setProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
@@ -100,6 +128,7 @@ export function useIsolatedViewportHeight() {
       syncViewportHeight('vv-resize')
     }
     const handleWindowResize = () => {
+      baselineViewportHeightRef.current = null
       syncViewportHeight('win-resize')
     }
 
@@ -110,6 +139,7 @@ export function useIsolatedViewportHeight() {
       clearScheduledViewportSync()
       window.visualViewport?.removeEventListener('resize', handleVisualViewportResize)
       window.removeEventListener('resize', handleWindowResize)
+      baselineViewportHeightRef.current = null
       lastAppliedViewportHeightRef.current = null
       lastKeyboardOpenRef.current = null
       rootStyle.removeProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR)
