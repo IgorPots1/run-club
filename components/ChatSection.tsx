@@ -3964,7 +3964,9 @@ export default function ChatSection({
       return
     }
 
-    setScrollTop(Math.round(scrollContainer.scrollTop))
+    const resolvedScrollContainer = scrollContainer
+
+    setScrollTop(Math.round(resolvedScrollContainer.scrollTop))
 
     function handleDebugScroll() {
       if (!debugShouldCaptureNextScrollRef.current) {
@@ -3972,13 +3974,13 @@ export default function ChatSection({
       }
 
       debugShouldCaptureNextScrollRef.current = false
-      setScrollTop(Math.round(scrollContainer.scrollTop))
+      setScrollTop(Math.round(resolvedScrollContainer.scrollTop))
     }
 
-    scrollContainer.addEventListener('scroll', handleDebugScroll, { passive: true })
+    resolvedScrollContainer.addEventListener('scroll', handleDebugScroll, { passive: true })
 
     return () => {
-      scrollContainer.removeEventListener('scroll', handleDebugScroll)
+      resolvedScrollContainer.removeEventListener('scroll', handleDebugScroll)
     }
   }, [])
 
