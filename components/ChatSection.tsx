@@ -7817,7 +7817,7 @@ export default function ChatSection({
   return (
     <div
       className={`mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden px-3 md:px-5 md:py-4 ${
-        showTitle ? 'pt-4' : 'pt-2'
+        showTitle ? 'pt-4' : 'pt-[calc(env(safe-area-inset-top)+2.75rem)]'
       }`}
     >
       {showTitle ? (

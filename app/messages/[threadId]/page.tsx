@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
-import InnerPageHeader from '@/components/InnerPageHeader'
+import BackNavigationButton from '@/components/BackNavigationButton'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
 import { getCommonChannelTitle, IMPORTANT_INFO_CHANNEL_KEY } from '@/lib/chat/commonChannels'
@@ -34,6 +34,30 @@ const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
 
 function normalizeMessageId(value: string | null) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function ThreadOverlayHeader({
+  rightSlot,
+}: {
+  rightSlot?: React.ReactNode
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.25rem)]">
+      <div className="mx-auto flex min-h-11 max-w-3xl items-center justify-between gap-3">
+        <div className="pointer-events-auto shrink-0">
+          <BackNavigationButton fallbackHref="/messages" variant="icon" />
+        </div>
+        <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
+          <p className="app-text-primary truncate px-2 text-center text-base font-medium">
+            Общение
+          </p>
+        </div>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-end">
+          {rightSlot ? <div className="pointer-events-auto">{rightSlot}</div> : null}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function MessageThreadPage() {
@@ -378,8 +402,8 @@ export default function MessageThreadPage() {
         className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
         style={isolatedViewportStyle}
       >
-        <div className="mx-auto max-w-3xl">
-          <InnerPageHeader title="Общение" fallbackHref="/messages" minimal pillLayout />
+        <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
+          <ThreadOverlayHeader />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error || 'Не удалось открыть чат'}</p>
           </section>
@@ -442,13 +466,13 @@ export default function MessageThreadPage() {
   return (
     <main
       data-chat-isolated-route="true"
-      className="flex flex-col overflow-hidden"
+      className="relative flex flex-col overflow-hidden"
       style={isolatedViewportStyle}
     >
+      <ThreadOverlayHeader rightSlot={headerRightSlot} />
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-        <InnerPageHeader title="Общение" fallbackHref="/messages" minimal rightSlot={headerRightSlot} pillLayout />
         {threadMuteError ? (
-          <div className="px-4 pb-2">
+          <div className="px-4 pb-2 pt-[calc(env(safe-area-inset-top)+3rem)]">
             <p className="text-xs text-red-600">{threadMuteError}</p>
           </div>
         ) : null}

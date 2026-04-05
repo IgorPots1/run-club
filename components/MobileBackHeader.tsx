@@ -9,7 +9,6 @@ type MobileBackHeaderProps = {
   fullBleedOnMobile?: boolean
   minimal?: boolean
   rightSlot?: ReactNode
-  pillLayout?: boolean
 }
 
 export default function MobileBackHeader({
@@ -20,7 +19,6 @@ export default function MobileBackHeader({
   fullBleedOnMobile = true,
   minimal = false,
   rightSlot = null,
-  pillLayout = false,
 }: MobileBackHeaderProps) {
   const headerSurfaceClassName = minimal
     ? 'mb-0 bg-transparent pb-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] shadow-none'
@@ -41,23 +39,15 @@ export default function MobileBackHeader({
 
   return (
     <header className={layoutClassName}>
-      <div className={pillLayout ? 'relative flex min-h-12 items-center justify-between gap-3' : 'grid min-h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3'}>
+      <div className="grid min-h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3">
         <BackNavigationButton fallbackHref={fallbackHref} variant="icon" />
-        {pillLayout ? (
-          <div className="pointer-events-none absolute inset-x-14 top-1/2 -translate-y-1/2">
-            <h1 className="app-text-primary truncate px-2 text-center text-base font-medium">
-              {title}
-            </h1>
-          </div>
-        ) : (
-          <div className="min-w-0">
-            <h1 className="app-text-primary truncate text-center text-base font-semibold">
-              {title}
-            </h1>
-          </div>
-        )}
+        <div className="min-w-0">
+          <h1 className="app-text-primary truncate text-center text-base font-semibold">
+            {title}
+          </h1>
+        </div>
         {rightSlot ? (
-          <div className={`flex shrink-0 items-center ${pillLayout ? 'h-11 w-11 justify-end' : 'h-11 w-11 justify-center'}`}>
+          <div className="flex h-11 w-11 items-center justify-center">
             {rightSlot}
           </div>
         ) : (
