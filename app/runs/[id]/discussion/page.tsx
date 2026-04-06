@@ -1,7 +1,7 @@
 'use client'
 
 import { LoaderCircle } from 'lucide-react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ConversationScreenShell from '@/components/ConversationScreenShell'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
@@ -156,10 +156,18 @@ function StravaIcon() {
   )
 }
 
+function normalizeCommentTarget(value: string | null) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 export default function RunDiscussionPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const runId = typeof params?.id === 'string' ? params.id : ''
+  const targetCommentId = normalizeCommentTarget(searchParams.get('commentId'))
+  const targetParentCommentId = normalizeCommentTarget(searchParams.get('parentCommentId'))
+  const hasDeepLinkTarget = Boolean(targetCommentId || targetParentCommentId)
 
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -174,9 +182,11 @@ export default function RunDiscussionPage() {
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null)
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const hasHandledInitialCommentTargetRef = useRef(false)
   const handleAuthRequired = useMemo(
     () => () => {
       router.replace('/login')
@@ -406,14 +416,74 @@ export default function RunDiscussionPage() {
   }, [draft])
 
   useEffect(() => {
+    if (!highlightedCommentId) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setHighlightedCommentId((currentValue) => (
+        currentValue === highlightedCommentId ? null : currentValue
+      ))
+    }, 2600)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [highlightedCommentId])
+
+  useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
+      if (hasDeepLinkTarget && !hasHandledInitialCommentTargetRef.current) {
+        return
+      }
+
       scrollToBottom(comments.length > 0 ? 'smooth' : 'auto')
     })
 
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [comments.length, loadingComments])
+  }, [comments.length, hasDeepLinkTarget, loadingComments])
+
+  useEffect(() => {
+    if (!hasDeepLinkTarget || loadingComments) {
+      return
+    }
+
+    const candidateCommentIds = [
+      targetCommentId,
+      targetParentCommentId,
+    ].filter((value): value is string => Boolean(value))
+
+    if (candidateCommentIds.length === 0) {
+      hasHandledInitialCommentTargetRef.current = true
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      for (const commentId of candidateCommentIds) {
+        const targetElement = document.getElementById(`run-comment-${commentId}`)
+
+        if (!targetElement) {
+          continue
+        }
+
+        targetElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
+        setHighlightedCommentId(commentId)
+        hasHandledInitialCommentTargetRef.current = true
+        return
+      }
+
+      hasHandledInitialCommentTargetRef.current = true
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [hasDeepLinkTarget, loadingComments, targetCommentId, targetParentCommentId])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -657,6 +727,7 @@ export default function RunDiscussionPage() {
           <RunCommentThreadList
             comments={comments}
             currentUserId={user?.id ?? null}
+            highlightedCommentId={highlightedCommentId}
             pendingLikeCommentIds={pendingLikeCommentIds}
             onToggleLikeComment={handleToggleLikeComment}
             replyComposerMode="external"

@@ -68,6 +68,8 @@ export function buildRunCommentCreatedEvent(input: {
   runTitle?: string | null
   comment: string
 }): CreateAppEventInput {
+  const targetPath = `/runs/${input.runId}/discussion?commentId=${encodeURIComponent(input.commentId)}`
+
   return {
     type: 'run_comment.created',
     actorUserId: input.actorUserId,
@@ -77,10 +79,10 @@ export function buildRunCommentCreatedEvent(input: {
     category: 'run',
     channel: 'inbox',
     priority: 'normal',
-    targetPath: `/runs/${input.runId}/discussion`,
+    targetPath,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
-      targetPath: `/runs/${input.runId}/discussion`,
+      targetPath,
       preview: {
         title: 'Новый комментарий к вашей пробежке',
         body: truncatePreviewBody(input.comment) ?? getRunLabel(input.runTitle),
@@ -101,6 +103,10 @@ export function buildRunCommentReplyCreatedEvent(input: {
   parentCommentId: string
   comment: string
 }): CreateAppEventInput {
+  const targetPath =
+    `/runs/${input.runId}/discussion?commentId=${encodeURIComponent(input.commentId)}` +
+    `&parentCommentId=${encodeURIComponent(input.parentCommentId)}`
+
   return {
     type: 'run_comment.reply_created',
     actorUserId: input.actorUserId,
@@ -110,10 +116,10 @@ export function buildRunCommentReplyCreatedEvent(input: {
     category: 'run',
     channel: 'inbox',
     priority: 'normal',
-    targetPath: `/runs/${input.runId}/discussion`,
+    targetPath,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
-      targetPath: `/runs/${input.runId}/discussion`,
+      targetPath,
       preview: {
         title: 'Новый ответ на ваш комментарий',
         body: truncatePreviewBody(input.comment) ?? 'Откройте обсуждение пробежки',

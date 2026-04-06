@@ -29,7 +29,7 @@ export default function ConversationScreenShell({
 }: ConversationScreenShellProps) {
   const { isKeyboardOpen, isolatedViewportStyle } = useIsolatedViewportHeight()
   const resolvedScrollContainerClassName = [
-    'min-h-0 flex-1 overflow-y-auto [WebkitOverflowScrolling:touch] [overscroll-behavior-y:contain]',
+    'flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] [WebkitOverflowScrolling:touch] [overscroll-behavior-y:contain]',
     scrollContainerClassName,
   ]
     .filter(Boolean)
@@ -37,28 +37,44 @@ export default function ConversationScreenShell({
   const resolvedContentClassName = ['flex min-h-full flex-col gap-3 px-4 pb-4 pt-3', contentClassName]
     .filter(Boolean)
     .join(' ')
-  const footerClassName = [
-    'relative z-10 shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pt-3 dark:border-white/10',
+  const footerWrapperClassName = [
+    'shrink-0 pt-1',
+    isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
   ]
     .filter(Boolean)
     .join(' ')
-  const footerStyle = {
-    paddingBottom: isKeyboardOpen ? '0px' : 'max(0.75rem, env(safe-area-inset-bottom))',
-  }
+  const footerSurfaceClassName = [
+    'relative z-10 rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/90 px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <main
       data-chat-isolated-route="true"
-      className="flex flex-col overflow-hidden bg-[color:var(--background)]"
+      className="relative flex flex-col overflow-hidden bg-[color:var(--background)]"
       style={isolatedViewportStyle}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
         <InnerPageHeader title={title} fallbackHref={fallbackHref} minimal rightSlot={rightSlot} />
         {headerBottom ? <div className="shrink-0 px-4 pb-2">{headerBottom}</div> : null}
-        <div ref={scrollContainerRef} className={resolvedScrollContainerClassName}>
-          <div className={resolvedContentClassName}>{children}</div>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scrollContainerRef}
+            data-chat-scroll-container="true"
+            className={resolvedScrollContainerClassName}
+          >
+            <div className={resolvedContentClassName}>{children}</div>
+          </div>
+          {footer ? (
+            <div
+              data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
+              className={footerWrapperClassName}
+            >
+              <div className={footerSurfaceClassName}>{footer}</div>
+            </div>
+          ) : null}
         </div>
-        {footer ? <div className={footerClassName} style={footerStyle}>{footer}</div> : null}
       </div>
     </main>
   )

@@ -14,6 +14,7 @@ type RunCommentThreadListProps = {
   currentUserId?: string | null
   replyComposerMode?: 'inline' | 'external'
   activeReplyTargetId?: string | null
+  highlightedCommentId?: string | null
   pendingLikeCommentIds?: Record<string, boolean>
   onReplyTargetChange?: (comment: RunCommentItem | null) => void
   onToggleLikeComment?: (commentId: string) => void
@@ -153,6 +154,7 @@ type CommentCardProps = {
   currentUserId?: string | null
   isReply?: boolean
   isReplyTargetActive?: boolean
+  isHighlighted?: boolean
   isLikePending?: boolean
   isReplyComposerOpen?: boolean
   isEditComposerOpen?: boolean
@@ -177,6 +179,7 @@ function CommentCard({
   currentUserId = null,
   isReply = false,
   isReplyTargetActive = false,
+  isHighlighted = false,
   isLikePending = false,
   isReplyComposerOpen = false,
   isEditComposerOpen = false,
@@ -218,7 +221,10 @@ function CommentCard({
   }
 
   return (
-    <div className={isReply ? 'ml-7 border-l border-black/10 pl-3 sm:ml-13 sm:pl-4 dark:border-white/10' : ''}>
+    <div
+      id={`run-comment-${comment.id}`}
+      className={isReply ? 'ml-7 border-l border-black/10 pl-3 sm:ml-13 sm:pl-4 dark:border-white/10' : ''}
+    >
       <div className="flex items-start gap-3">
         {showAvatarImage && avatarSrc ? (
           <Image
@@ -232,7 +238,13 @@ function CommentCard({
         ) : (
           <AvatarFallback />
         )}
-        <div className="min-w-0 flex-1 pt-0.5">
+        <div
+          className={`min-w-0 flex-1 rounded-2xl pt-0.5 transition-colors ${
+            isHighlighted
+              ? 'bg-amber-100/70 ring-1 ring-amber-300/70 dark:bg-amber-300/10 dark:ring-amber-300/30'
+              : ''
+          }`}
+        >
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <p className="app-text-primary truncate text-[15px] font-semibold leading-5">{comment.displayName}</p>
             {nicknameLabel ? (
@@ -344,6 +356,7 @@ export default function RunCommentThreadList({
   currentUserId = null,
   replyComposerMode = 'inline',
   activeReplyTargetId = null,
+  highlightedCommentId = null,
   pendingLikeCommentIds = {},
   onReplyTargetChange,
   onToggleLikeComment,
@@ -472,6 +485,7 @@ export default function RunCommentThreadList({
             comment={thread}
             currentUserId={currentUserId}
             isReplyTargetActive={replyComposerMode === 'external' && activeReplyTargetId === thread.id}
+            isHighlighted={highlightedCommentId === thread.id}
             isLikePending={pendingLikeCommentIds[thread.id] === true}
             isReplyComposerOpen={replyComposerMode === 'inline' && activeReplyParentId === thread.id}
             isEditComposerOpen={activeEditingCommentId === thread.id}
@@ -505,6 +519,7 @@ export default function RunCommentThreadList({
                   comment={reply}
                   currentUserId={currentUserId}
                   isReply
+                  isHighlighted={highlightedCommentId === reply.id}
                   isLikePending={pendingLikeCommentIds[reply.id] === true}
                   isEditComposerOpen={activeEditingCommentId === reply.id}
                   replyDraft=""
