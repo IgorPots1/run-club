@@ -26,6 +26,12 @@ export type RunLikedUserItem = {
   avatarUrl: string | null
 }
 
+export type RunLikeRealtimePayload = {
+  eventType: 'INSERT' | 'DELETE'
+  runId: string
+  userId: string
+}
+
 function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
   return (
     error.code === '42703' ||
@@ -201,18 +207,53 @@ export async function toggleRunLike(runId: string, currentUserId: string, likedB
   }
 }
 
-export function subscribeToRunLikes(onChange: () => void) {
+export function subscribeToRunLikes(onChange: (payload: RunLikeRealtimePayload) => void) {
   const channel = supabase
     .channel(`run-likes-${Math.random().toString(36).slice(2)}`)
     .on(
       'postgres_changes',
       {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'run_likes',
       },
-      () => {
-        onChange()
+      (payload) => {
+        const nextLike = payload.new as RunLikeRow | null
+        const runId = String(nextLike?.run_id ?? '')
+        const userId = String(nextLike?.user_id ?? '')
+
+        if (!runId || !userId) {
+          return
+        }
+
+        onChange({
+          eventType: 'INSERT',
+          runId,
+          userId,
+        })
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'run_likes',
+      },
+      (payload) => {
+        const previousLike = payload.old as RunLikeRow | null
+        const runId = String(previousLike?.run_id ?? '')
+        const userId = String(previousLike?.user_id ?? '')
+
+        if (!runId || !userId) {
+          return
+        }
+
+        onChange({
+          eventType: 'DELETE',
+          runId,
+          userId,
+        })
       }
     )
     .subscribe()

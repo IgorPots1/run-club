@@ -13,8 +13,13 @@ import {
   type RunCommentRealtimeRow,
   type RunCommentVisibilityRecord,
 } from '@/lib/run-comments'
-import { loadRunLikedUsers, subscribeToRunLikes, type RunLikedUserItem } from '@/lib/run-likes'
-import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
+import {
+  loadRunLikedUsers,
+  subscribeToRunLikes,
+  type RunLikeRealtimePayload,
+  type RunLikedUserItem,
+} from '@/lib/run-likes'
+import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
 import { getLevelFromXP } from '@/lib/xp'
 
@@ -85,6 +90,27 @@ export default function InfiniteWorkoutFeed({
     const nextItems = itemsRef.current.map((item) => (item.id === runId ? updater(item) : item))
     itemsRef.current = nextItems
     setItems(nextItems)
+  }, [])
+
+  const clearRunLikesCache = useCallback((runId: string) => {
+    setLikedUsersByRunId((prev) => {
+      if (!(runId in prev)) {
+        return prev
+      }
+
+      const next = { ...prev }
+      delete next[runId]
+      return next
+    })
+    setLikedUsersErrorByRunId((prev) => {
+      if (!(runId in prev)) {
+        return prev
+      }
+
+      const next = { ...prev }
+      delete next[runId]
+      return next
+    })
   }, [])
 
   const setRunCommentVisibility = useCallback((runId: string, comments: RunCommentVisibilityRecord[]) => {
@@ -312,14 +338,58 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    const unsubscribe = subscribeToRunLikes(() => {
-      void loadFirstPage()
+    const unsubscribe = subscribeToRunLikes((payload: RunLikeRealtimePayload) => {
+      const activeUserId = currentUserIdRef.current
+      const currentItem = itemsRef.current.find((item) => item.id === payload.runId)
+
+      if (!currentItem) {
+        return
+      }
+
+      if (payload.eventType === 'INSERT') {
+        if (payload.userId === activeUserId) {
+          if (currentItem.likedByMe) {
+            return
+          }
+
+          updateRunItem(payload.runId, (item) => ({
+            ...item,
+            likedByMe: true,
+            likesCount: item.likesCount + 1,
+          }))
+          return
+        }
+
+        updateRunItem(payload.runId, (item) => ({
+          ...item,
+          likesCount: item.likesCount + 1,
+        }))
+        return
+      }
+
+      if (payload.userId === activeUserId) {
+        if (!currentItem.likedByMe) {
+          return
+        }
+
+        updateRunItem(payload.runId, (item) => ({
+          ...item,
+          likedByMe: false,
+          likesCount: Math.max(0, item.likesCount - 1),
+        }))
+        return
+      }
+
+      updateRunItem(payload.runId, (item) => ({
+        ...item,
+        likesCount: Math.max(0, item.likesCount - 1),
+      }))
     })
 
     return () => {
       unsubscribe()
     }
-  }, [enabled, loadFirstPage])
+  }, [enabled, updateRunItem])
 
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current
@@ -331,6 +401,7 @@ export default function InfiniteWorkoutFeed({
 
     const currentItem = itemsRef.current.find((item) => item.id === runId)
     if (!currentItem) return
+    if (currentItem.user_id === activeUserId) return
 
     const wasLiked = currentItem.likedByMe
     const previousItems = itemsRef.current
@@ -362,26 +433,7 @@ export default function InfiniteWorkoutFeed({
             return
           }
 
-          setLikedUsersByRunId((prev) => {
-            if (!(runId in prev)) {
-              return prev
-            }
-
-            const next = { ...prev }
-            delete next[runId]
-            return next
-          })
-          setLikedUsersErrorByRunId((prev) => {
-            if (!(runId in prev)) {
-              return prev
-            }
-
-            const next = { ...prev }
-            delete next[runId]
-            return next
-          })
-
-          dispatchRunsUpdatedEvent()
+          clearRunLikesCache(runId)
         })
         .catch(() => {
           if (likeRequestVersionByRunIdRef.current[runId] !== nextRequestVersion) {
@@ -395,7 +447,7 @@ export default function InfiniteWorkoutFeed({
       itemsRef.current = previousItems
       setItems(previousItems)
     }
-  }, [router])
+  }, [clearRunLikesCache, router])
 
   const loadLikedUsersForRun = useCallback(async (runId: string, force = false) => {
     if (!runId) {
@@ -515,6 +567,7 @@ export default function InfiniteWorkoutFeed({
               likesCount={item.likesCount}
               commentsCount={item.commentsCount}
               likedByMe={item.likedByMe}
+              isOwnRun={item.user_id === currentUserId}
               photos={item.photos}
               onToggleLike={handleLikeToggle}
               onOpenLikes={() => handleOpenLikes(item)}

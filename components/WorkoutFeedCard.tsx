@@ -41,6 +41,7 @@ type WorkoutFeedCardProps = {
   likesCount: number
   commentsCount?: number
   likedByMe: boolean
+  isOwnRun?: boolean
   onToggleLike: (runId: string) => void
   onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
@@ -97,6 +98,7 @@ type FeedActionButtonProps = {
   onCountClick?: () => void
   active?: boolean
   disabled?: boolean
+  actionDisabled?: boolean
 }
 
 function FeedActionButton({
@@ -106,6 +108,7 @@ function FeedActionButton({
   onCountClick,
   active = false,
   disabled = false,
+  actionDisabled = false,
 }: FeedActionButtonProps) {
   return (
     <div
@@ -116,7 +119,7 @@ function FeedActionButton({
       <button
         type="button"
         onClick={onClick}
-        disabled={disabled}
+        disabled={disabled || actionDisabled}
         className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span aria-hidden="true" className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
@@ -154,6 +157,7 @@ function WorkoutFeedCard({
   likesCount,
   commentsCount = 0,
   likedByMe,
+  isOwnRun = false,
   onToggleLike,
   onOpenLikes,
   onCommentClick,
@@ -497,6 +501,7 @@ function WorkoutFeedCard({
             count={likesCount}
             active={likedByMe}
             disabled={!runId}
+            actionDisabled={isOwnRun}
             onClick={() => onToggleLike(runId)}
             onCountClick={() => onOpenLikes?.()}
             icon={
