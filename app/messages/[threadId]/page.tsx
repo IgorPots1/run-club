@@ -449,6 +449,25 @@ export default function MessageThreadPage() {
       events={chatLayoutDebugData.events}
     />
   ) : null
+  const threadPageBuildMarker = (
+    <>
+      <div className="pointer-events-none fixed inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[2147483647] flex justify-center px-2">
+        <div className="w-full max-w-3xl rounded-3xl border-4 border-white bg-red-600 px-4 py-4 text-center text-white shadow-[0_24px_90px_rgba(220,38,38,0.82)] ring-4 ring-red-300/80">
+          <p className="text-[clamp(1.25rem,5.5vw,2.5rem)] font-black uppercase tracking-[0.12em]">
+            THREAD PAGE BUILD MARKER
+          </p>
+          <div className="mt-2 space-y-1 font-mono text-[13px] font-bold sm:text-[15px]">
+            <p>commit: c9fb216</p>
+            <p>messages route active</p>
+            <p>{`threadId: ${threadId || 'missing'}`}</p>
+          </div>
+        </div>
+      </div>
+      <div className="pointer-events-none fixed bottom-3 left-3 z-[2147483647] rounded-full border-2 border-white bg-red-600 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(220,38,38,0.72)]">
+        BUILD c9fb216
+      </div>
+    </>
+  )
   const routeLevelDebugMarker = isRouteChatDebugEnabled ? (
     <>
       <div className="pointer-events-none fixed inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[2147483647] flex justify-center px-2">
@@ -479,6 +498,7 @@ export default function MessageThreadPage() {
         className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
         style={isolatedViewportStyle}
       >
+        {threadPageBuildMarker}
         {routeLevelDebugMarker}
         {chatLayoutDebugOverlay}
         <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
@@ -548,6 +568,7 @@ export default function MessageThreadPage() {
       className="relative flex flex-col overflow-hidden"
       style={isolatedViewportStyle}
     >
+      {threadPageBuildMarker}
       {routeLevelDebugMarker}
       {chatLayoutDebugOverlay}
       <ThreadOverlayHeader rightSlot={headerRightSlot} />
