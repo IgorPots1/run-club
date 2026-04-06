@@ -1,12 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import ChatSection, {
-  ChatLayoutDebugOverlay,
-  EMPTY_CHAT_LAYOUT_DEBUG_DATA,
-  type ChatLayoutDebugOverlayData,
-} from '@/components/ChatSection'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
+import ChatSection from '@/components/ChatSection'
 import BackNavigationButton from '@/components/BackNavigationButton'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
@@ -35,6 +31,300 @@ type ProfileRow = {
 }
 
 const CHAT_NOTIFICATION_NAVIGATE_EVENT = 'run-club:chat-notification-navigate'
+const CHAT_DEBUG_EVENT_LIMIT = 8
+
+type ChatDebugSnapshot = {
+  pathname: string
+  threadId: string
+  windowInnerHeight: number | null
+  visualViewportHeight: number | null
+  visualViewportOffsetTop: number | null
+  chatAppHeight: string | null
+  pageScrollY: number | null
+  scrollTop: number | null
+  scrollHeight: number | null
+  scrollClientHeight: number | null
+  composerTop: number | null
+  composerBottom: number | null
+  composerHeight: number | null
+  mainBottom: number | null
+  composerBottomToViewportBottom: number | null
+}
+
+type ChatDebugEventName =
+  | 'mount'
+  | 'scroll'
+  | 'vv-resize'
+  | 'vv-scroll'
+  | 'focusin'
+  | 'focusout'
+
+type ChatDebugEvent = {
+  id: string
+  timestamp: string
+  name: ChatDebugEventName
+  summary: string
+}
+
+const EMPTY_CHAT_DEBUG_SNAPSHOT: ChatDebugSnapshot = {
+  pathname: '',
+  threadId: '',
+  windowInnerHeight: null,
+  visualViewportHeight: null,
+  visualViewportOffsetTop: null,
+  chatAppHeight: null,
+  pageScrollY: null,
+  scrollTop: null,
+  scrollHeight: null,
+  scrollClientHeight: null,
+  composerTop: null,
+  composerBottom: null,
+  composerHeight: null,
+  mainBottom: null,
+  composerBottomToViewportBottom: null,
+}
+
+function formatChatDebugNumber(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return 'null'
+  }
+
+  return `${Math.round(value)}`
+}
+
+function formatChatDebugText(value: string | null) {
+  return value && value.length > 0 ? value : 'null'
+}
+
+function formatChatDebugTimestamp(date = new Date()) {
+  return `${date.toLocaleTimeString('en-GB', { hour12: false })}.${date.getMilliseconds().toString().padStart(3, '0')}`
+}
+
+function areChatDebugSnapshotsEqual(left: ChatDebugSnapshot, right: ChatDebugSnapshot) {
+  return left.pathname === right.pathname &&
+    left.threadId === right.threadId &&
+    left.windowInnerHeight === right.windowInnerHeight &&
+    left.visualViewportHeight === right.visualViewportHeight &&
+    left.visualViewportOffsetTop === right.visualViewportOffsetTop &&
+    left.chatAppHeight === right.chatAppHeight &&
+    left.pageScrollY === right.pageScrollY &&
+    left.scrollTop === right.scrollTop &&
+    left.scrollHeight === right.scrollHeight &&
+    left.scrollClientHeight === right.scrollClientHeight &&
+    left.composerTop === right.composerTop &&
+    left.composerBottom === right.composerBottom &&
+    left.composerHeight === right.composerHeight &&
+    left.mainBottom === right.mainBottom &&
+    left.composerBottomToViewportBottom === right.composerBottomToViewportBottom
+}
+
+function ChatDebugHud({
+  enabled,
+  pathname,
+  threadId,
+}: {
+  enabled: boolean
+  pathname: string
+  threadId: string
+}) {
+  const [snapshot, setSnapshot] = useState<ChatDebugSnapshot>(EMPTY_CHAT_DEBUG_SNAPSHOT)
+  const [events, setEvents] = useState<ChatDebugEvent[]>([])
+  const scrollContainerRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !enabled) {
+      return
+    }
+
+    let animationFrameId: number | null = null
+    let intervalId: number | null = null
+
+    const measure = () => {
+      const main = document.querySelector<HTMLElement>('[data-chat-debug-main="true"]')
+      const scrollContainer = document.querySelector<HTMLElement>('[data-chat-scroll-container="true"]')
+      const composer = document.querySelector<HTMLElement>('[data-chat-composer-wrapper="true"]')
+      const visualViewport = window.visualViewport
+      const mainRect = main?.getBoundingClientRect() ?? null
+      const composerRect = composer?.getBoundingClientRect() ?? null
+      const viewportBottom = visualViewport
+        ? visualViewport.offsetTop + visualViewport.height
+        : window.innerHeight
+      const rootComputedStyle = getComputedStyle(document.documentElement)
+      const mainComputedStyle = main ? getComputedStyle(main) : null
+      const chatAppHeight = mainComputedStyle?.getPropertyValue('--chat-app-height').trim() ||
+        rootComputedStyle.getPropertyValue('--chat-app-height').trim() ||
+        null
+      const nextSnapshot: ChatDebugSnapshot = {
+        pathname,
+        threadId,
+        windowInnerHeight: window.innerHeight,
+        visualViewportHeight: visualViewport?.height ?? null,
+        visualViewportOffsetTop: visualViewport?.offsetTop ?? null,
+        chatAppHeight,
+        pageScrollY: window.scrollY,
+        scrollTop: scrollContainer?.scrollTop ?? null,
+        scrollHeight: scrollContainer?.scrollHeight ?? null,
+        scrollClientHeight: scrollContainer?.clientHeight ?? null,
+        composerTop: composerRect?.top ?? null,
+        composerBottom: composerRect?.bottom ?? null,
+        composerHeight: composerRect?.height ?? null,
+        mainBottom: mainRect?.bottom ?? null,
+        composerBottomToViewportBottom: composerRect ? viewportBottom - composerRect.bottom : null,
+      }
+
+      setSnapshot((currentSnapshot) => (
+        areChatDebugSnapshotsEqual(currentSnapshot, nextSnapshot) ? currentSnapshot : nextSnapshot
+      ))
+    }
+
+    const scheduleMeasure = () => {
+      if (animationFrameId !== null) {
+        return
+      }
+
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = null
+        measure()
+      })
+    }
+
+    const pushEvent = (name: ChatDebugEventName, summary: string) => {
+      setEvents((currentEvents) => [
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: formatChatDebugTimestamp(),
+          name,
+          summary,
+        },
+        ...currentEvents,
+      ].slice(0, CHAT_DEBUG_EVENT_LIMIT))
+    }
+
+    const handleScroll = () => {
+      const scrollContainer = scrollContainerRef.current
+      pushEvent(
+        'scroll',
+        scrollContainer ? `pageY:${Math.round(window.scrollY)} chatTop:${Math.round(scrollContainer.scrollTop)}` : `pageY:${Math.round(window.scrollY)}`
+      )
+      scheduleMeasure()
+    }
+
+    const handleVisualViewportResize = () => {
+      const visualViewport = window.visualViewport
+      pushEvent(
+        'vv-resize',
+        `h:${visualViewport ? Math.round(visualViewport.height) : 'null'} top:${visualViewport ? Math.round(visualViewport.offsetTop) : 'null'}`
+      )
+      scheduleMeasure()
+    }
+
+    const handleVisualViewportScroll = () => {
+      const visualViewport = window.visualViewport
+      pushEvent(
+        'vv-scroll',
+        `h:${visualViewport ? Math.round(visualViewport.height) : 'null'} top:${visualViewport ? Math.round(visualViewport.offsetTop) : 'null'}`
+      )
+      scheduleMeasure()
+    }
+
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null
+      pushEvent('focusin', target?.tagName?.toLowerCase() ?? 'unknown')
+      scheduleMeasure()
+    }
+
+    const handleFocusOut = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null
+      pushEvent('focusout', target?.tagName?.toLowerCase() ?? 'unknown')
+      scheduleMeasure()
+    }
+
+    const syncScrollContainerListener = () => {
+      const nextScrollContainer = document.querySelector<HTMLElement>('[data-chat-scroll-container="true"]')
+      if (scrollContainerRef.current === nextScrollContainer) {
+        return
+      }
+
+      scrollContainerRef.current?.removeEventListener('scroll', handleScroll)
+      scrollContainerRef.current = nextScrollContainer
+      scrollContainerRef.current?.addEventListener('scroll', handleScroll, { passive: true })
+    }
+
+    pushEvent('mount', threadId || 'missing-thread')
+    syncScrollContainerListener()
+    measure()
+
+    intervalId = window.setInterval(() => {
+      syncScrollContainerListener()
+      measure()
+    }, 500)
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.visualViewport?.addEventListener('resize', handleVisualViewportResize)
+    window.visualViewport?.addEventListener('scroll', handleVisualViewportScroll)
+    document.addEventListener('focusin', handleFocusIn)
+    document.addEventListener('focusout', handleFocusOut)
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+      }
+      if (intervalId !== null) {
+        window.clearInterval(intervalId)
+      }
+      window.removeEventListener('scroll', handleScroll)
+      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize)
+      window.visualViewport?.removeEventListener('scroll', handleVisualViewportScroll)
+      document.removeEventListener('focusin', handleFocusIn)
+      document.removeEventListener('focusout', handleFocusOut)
+      scrollContainerRef.current?.removeEventListener('scroll', handleScroll)
+      scrollContainerRef.current = null
+    }
+  }, [enabled, pathname, threadId])
+
+  if (!enabled) {
+    return null
+  }
+
+  const rows = [
+    ['pathname', pathname],
+    ['threadId', threadId || 'null'],
+    ['innerHeight', formatChatDebugNumber(snapshot.windowInnerHeight)],
+    ['vv.height', formatChatDebugNumber(snapshot.visualViewportHeight)],
+    ['vv.offsetTop', formatChatDebugNumber(snapshot.visualViewportOffsetTop)],
+    ['--chat-app-height', formatChatDebugText(snapshot.chatAppHeight)],
+    ['page.scrollY', formatChatDebugNumber(snapshot.pageScrollY)],
+    ['scrollTop', formatChatDebugNumber(snapshot.scrollTop)],
+    ['scrollHeight', formatChatDebugNumber(snapshot.scrollHeight)],
+    ['clientHeight', formatChatDebugNumber(snapshot.scrollClientHeight)],
+    ['composer.top', formatChatDebugNumber(snapshot.composerTop)],
+    ['composer.bottom', formatChatDebugNumber(snapshot.composerBottom)],
+    ['composer.height', formatChatDebugNumber(snapshot.composerHeight)],
+    ['main.bottom', formatChatDebugNumber(snapshot.mainBottom)],
+    ['composerBottomToViewportBottom', formatChatDebugNumber(snapshot.composerBottomToViewportBottom)],
+  ] as const
+
+  return (
+    <div className="pointer-events-none fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[2147483646] w-[min(19rem,calc(100vw-1rem))]">
+      <div className="pointer-events-auto max-h-[min(44svh,24rem)] overflow-hidden rounded-xl border border-white/10 bg-black/78 font-mono text-[10px] leading-tight text-white shadow-2xl backdrop-blur-md">
+        <div className="border-b border-white/10 px-2.5 py-2">
+          <p className="text-[10px] font-semibold tracking-[0.08em] text-white/85">CHAT DEBUG</p>
+          <p className="mt-1 truncate text-white/55">{pathname}</p>
+        </div>
+        <div className="max-h-[min(44svh,24rem)] overflow-y-auto px-2.5 py-2">
+          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+            {rows.map(([label, value]) => (
+              <div key={label} className="contents">
+                <span className="text-white/45">{label}</span>
+                <span className="truncate text-right text-white/92">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function normalizeMessageId(value: string | null) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
@@ -72,6 +362,7 @@ function ThreadOverlayHeader({
 
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
+  const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { isKeyboardOpen, isolatedViewportStyle } = useIsolatedViewportHeight()
@@ -81,13 +372,7 @@ export default function MessageThreadPage() {
   const pendingMarkThreadReadRef = useRef(false)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
   const targetMessageId = normalizeMessageId(searchParams.get('messageId'))
-  const isChatLayoutDebugEnabled = useMemo(() => {
-    if (searchParams.get('chatDebug') === '1') {
-      return true
-    }
-
-    return process.env.NEXT_PUBLIC_CHAT_LAYOUT_DEBUG === '1'
-  }, [searchParams])
+  const isChatLayoutDebugEnabled = searchParams.get('chatDebug') === '1'
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('')
@@ -100,7 +385,6 @@ export default function MessageThreadPage() {
   const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
-  const [chatLayoutDebugData, setChatLayoutDebugData] = useState<ChatLayoutDebugOverlayData>(EMPTY_CHAT_LAYOUT_DEBUG_DATA)
   const isThreadLayoutReady = !loading
   const readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
   const threadPushOptionLabels: Record<PushLevel, string> = {
@@ -232,10 +516,6 @@ export default function MessageThreadPage() {
   }, [currentUserId, error, loading, threadId])
 
   useEffect(() => {
-    setChatLayoutDebugData(EMPTY_CHAT_LAYOUT_DEBUG_DATA)
-  }, [isChatLayoutDebugEnabled, threadId])
-
-  useEffect(() => {
     if (!threadId || !currentUserId) {
       setThreadPushLevel('all')
       setIsLoadingThreadMuteState(false)
@@ -321,10 +601,6 @@ export default function MessageThreadPage() {
       setIsUpdatingThreadMute(false)
     }
   }, [isUpdatingThreadMute, threadId, threadPushLevel])
-
-  const handleChatLayoutDebugChange = useCallback((nextDebugData: ChatLayoutDebugOverlayData) => {
-    setChatLayoutDebugData(nextDebugData)
-  }, [])
 
   useEffect(() => {
     if (loading || error || !currentUserId || !threadId) {
@@ -427,34 +703,15 @@ export default function MessageThreadPage() {
     }
   }, [currentUserId, error, loading, threadId])
 
-  const chatLayoutDebugOverlay = isChatLayoutDebugEnabled ? (
-    <ChatLayoutDebugOverlay
-      threadId={threadId || null}
-      threadType={threadType}
-      isKeyboardOpen={isKeyboardOpen}
-      isThreadLayoutReady={isThreadLayoutReady}
-      chatSectionDataReady={chatLayoutDebugData.chatSectionDataReady}
-      loading={chatLayoutDebugData.loading}
-      messagesCount={chatLayoutDebugData.messagesCount}
-      pendingInitialScroll={chatLayoutDebugData.pendingInitialScroll}
-      pendingInitialSavedScrollRestore={chatLayoutDebugData.pendingInitialSavedScrollRestore}
-      hasDeferredInitialSettle={chatLayoutDebugData.hasDeferredInitialSettle}
-      isInitialBottomLockActive={chatLayoutDebugData.isInitialBottomLockActive}
-      isReadOnlyAnnouncement={isReadOnlyAnnouncement}
-      targetMessageId={targetMessageId}
-      snapshot={chatLayoutDebugData.snapshot}
-      events={chatLayoutDebugData.events}
-    />
-  ) : null
   if (!loading && (error || !currentUserId || !threadId)) {
     return (
       <main
         data-chat-isolated-route="true"
+        data-chat-debug-main="true"
         className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
         style={isolatedViewportStyle}
       >
-        {routeDebugMarker}
-        {chatLayoutDebugOverlay}
+        <ChatDebugHud enabled={isChatLayoutDebugEnabled} pathname={pathname} threadId={threadId} />
         <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
           <ThreadOverlayHeader />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
@@ -519,10 +776,11 @@ export default function MessageThreadPage() {
   return (
     <main
       data-chat-isolated-route="true"
+      data-chat-debug-main="true"
       className="relative flex flex-col overflow-hidden"
       style={isolatedViewportStyle}
     >
-      {chatLayoutDebugOverlay}
+      <ChatDebugHud enabled={isChatLayoutDebugEnabled} pathname={pathname} threadId={threadId} />
       <ThreadOverlayHeader rightSlot={headerRightSlot} />
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
         {threadMuteError ? (
@@ -541,9 +799,6 @@ export default function MessageThreadPage() {
             isAnnouncementChannel={isAnnouncementChannel}
             isReadOnlyAnnouncement={isReadOnlyAnnouncement}
             readOnlyAnnouncementMessage={readOnlyAnnouncementMessage}
-            chatLayoutDebugEnabled={isChatLayoutDebugEnabled}
-            chatLayoutDebugThreadType={threadType}
-            onChatLayoutDebugChange={handleChatLayoutDebugChange}
           />
         </div>
       </div>
