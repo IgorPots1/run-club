@@ -8,6 +8,14 @@ const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 80
 const KEYBOARD_CLOSE_HEIGHT_DELTA_PX = 40
 const KEYBOARD_OPEN_OFFSET_TOP_PX = 10
 const KEYBOARD_CLOSE_OFFSET_TOP_PX = 4
+type ViewportSyncSource =
+  | 'immediate'
+  | 'raf1'
+  | 'raf2'
+  | 'timeout80'
+  | 'vv-resize'
+  | 'vv-scroll'
+  | 'win-resize'
 
 export function useIsolatedViewportHeight() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
@@ -46,7 +54,7 @@ export function useIsolatedViewportHeight() {
     let nestedFrameId: number | null = null
     let timeoutId: number | null = null
 
-    function applyViewportHeight(source: string) {
+    function applyViewportHeight(source: ViewportSyncSource) {
       const visualViewport = window.visualViewport
       const viewportHeight = visualViewport?.height ?? window.innerHeight
       const viewportOffsetTop = visualViewport?.offsetTop ?? 0
@@ -106,7 +114,7 @@ export function useIsolatedViewportHeight() {
       }
     }
 
-    function syncViewportHeight(source: string) {
+    function syncViewportHeight(source: ViewportSyncSource) {
       applyViewportHeight(source)
       clearScheduledViewportSync()
 
@@ -127,17 +135,22 @@ export function useIsolatedViewportHeight() {
     const handleVisualViewportResize = () => {
       syncViewportHeight('vv-resize')
     }
+    const handleVisualViewportScroll = () => {
+      syncViewportHeight('vv-scroll')
+    }
     const handleWindowResize = () => {
       baselineViewportHeightRef.current = null
       syncViewportHeight('win-resize')
     }
 
     window.visualViewport?.addEventListener('resize', handleVisualViewportResize)
+    window.visualViewport?.addEventListener('scroll', handleVisualViewportScroll)
     window.addEventListener('resize', handleWindowResize)
 
     return () => {
       clearScheduledViewportSync()
       window.visualViewport?.removeEventListener('resize', handleVisualViewportResize)
+      window.visualViewport?.removeEventListener('scroll', handleVisualViewportScroll)
       window.removeEventListener('resize', handleWindowResize)
       baselineViewportHeightRef.current = null
       lastAppliedViewportHeightRef.current = null
