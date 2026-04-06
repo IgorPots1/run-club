@@ -476,6 +476,11 @@ function formatChatLayoutDebugNullableShortBoolean(value: boolean | null | undef
 
 const CHAT_LAYOUT_DEBUG_VISIBLE_EVENT_NAMES = new Set([
   'THREAD_MOUNT',
+  'THREAD_SWITCH',
+  'CHAT_LOADING_TRUE',
+  'CHAT_LOADING_FALSE',
+  'BOOTSTRAP_CACHED',
+  'BOOTSTRAP_COLD',
   'SCROLL',
   'RESTORE_START',
   'RESTORE_APPLY',
@@ -663,10 +668,13 @@ export function ChatLayoutDebugOverlay({
   events: ChatLayoutDebugOverlayEvent[]
 }) {
   const hudRows = [
+    ['loading', formatChatLayoutDebugNullableShortBoolean(loading)],
+    ['messages.length', formatChatLayoutDebugNullableCount(messagesCount)],
     ['innerHeight', formatChatLayoutDebugNumber(snapshot.windowInnerHeight)],
     ['vv.height', formatChatLayoutDebugNumber(snapshot.visualViewportHeight)],
     ['vv.offsetTop', formatChatLayoutDebugNumber(snapshot.visualViewportOffsetTop)],
     ['keyboardOpen', formatChatLayoutDebugNullableShortBoolean(isKeyboardOpen)],
+    ['threadReady', formatChatLayoutDebugNullableShortBoolean(isThreadLayoutReady)],
     ['scrollTop', formatChatLayoutDebugNumber(snapshot.scrollTop)],
     ['scrollHeight', formatChatLayoutDebugNumber(snapshot.scrollHeight)],
     ['clientHeight', formatChatLayoutDebugNumber(snapshot.scrollClientHeight)],
@@ -686,9 +694,7 @@ export function ChatLayoutDebugOverlay({
         <div className="border-b border-white/10 px-2.5 py-2 leading-tight">
           <p className="font-bold tracking-[0.08em] text-sky-200">CHAT DEBUG HUD</p>
           <p className="mt-1 truncate text-white/70">{threadId ?? 'missing-thread'} | {threadType ?? 'not-ready'}</p>
-          <p className="truncate text-white/55">
-            ready:{formatChatLayoutDebugNullableShortBoolean(chatSectionDataReady)} load:{formatChatLayoutDebugNullableShortBoolean(loading)} ro:{formatChatLayoutDebugNullableShortBoolean(isReadOnlyAnnouncement)}
-          </p>
+          <p className="truncate text-white/55">mounted:{formatChatLayoutDebugNullableShortBoolean(chatSectionDataReady)}</p>
           {targetMessageId ? (
             <p className="truncate text-white/55">target:{targetMessageId}</p>
           ) : null}
@@ -3971,7 +3977,7 @@ export default function ChatSection({
         summary,
       },
       ...currentEvents,
-    ].slice(0, 18))
+    ].slice(0, 20))
   }, [chatLayoutDebugEnabled])
   const captureChatLayoutDebugSnapshot = useCallback(() => {
     if (!chatLayoutDebugEnabled || typeof window === 'undefined') {
@@ -4299,6 +4305,9 @@ export default function ChatSection({
 
     pushChatLayoutDebugEvent(isInitialBottomLockActive ? 'BOTTOM_LOCK_ON' : 'BOTTOM_LOCK_OFF', {
       isInitialBottomLockActive,
+      top: scrollContainerRef.current?.scrollTop ?? null,
+      scrollHeight: scrollContainerRef.current?.scrollHeight ?? null,
+      clientHeight: scrollContainerRef.current?.clientHeight ?? null,
     })
     captureChatLayoutDebugSnapshot()
   }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, isInitialBottomLockActive, pushChatLayoutDebugEvent])
@@ -4600,6 +4609,7 @@ export default function ChatSection({
     pushChatLayoutDebugEvent('SCROLL_TO_BOTTOM', {
       behavior,
       source,
+      top: scrollContainer.scrollTop,
       scrollHeight: scrollContainer.scrollHeight,
       clientHeight: scrollContainer.clientHeight,
     })
@@ -4806,6 +4816,13 @@ export default function ChatSection({
     clearInitialBottomLockFrames()
     initialBottomLockProgrammaticFrameRef.current = window.requestAnimationFrame(() => {
       initialBottomLockProgrammaticFrameRef.current = null
+      pushChatLayoutDebugEvent('SCROLL_TO_BOTTOM', {
+        source,
+        phase: 'bottom-lock-anchor',
+        top: scrollContainerRef.current?.scrollTop ?? null,
+        scrollHeight: scrollContainerRef.current?.scrollHeight ?? null,
+        clientHeight: scrollContainerRef.current?.clientHeight ?? null,
+      })
       scrollPageToBottom('auto', source)
       initialBottomLockProgrammaticResetFrameRef.current = window.requestAnimationFrame(() => {
         initialBottomLockProgrammaticResetFrameRef.current = null
@@ -5184,6 +5201,10 @@ export default function ChatSection({
     pendingDeletedMessageIdsRef.current.clear()
 
     if (shouldApplyBootstrapFallback) {
+      pushChatLayoutDebugEvent('BOOTSTRAP_CACHED', {
+        messagesCount: cachedRecentMessages?.messages.length ?? 0,
+        hasSavedRestore: Boolean(initialSavedScrollRestoreRef.current),
+      })
       const nextMessages = applyPendingMediaTasksToMessages(
         cachedRecentMessages?.messages ?? []
       )
@@ -5551,6 +5572,11 @@ export default function ChatSection({
           initialMessages = await loadRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
         }
 
+        pushChatLayoutDebugEvent(hasCachedMessages ? 'BOOTSTRAP_CACHED' : 'BOOTSTRAP_COLD', {
+          messagesCount: initialMessages.length,
+          hasSavedRestore: Boolean(initialSavedScrollRestoreRef.current),
+        })
+
         if (!isMounted) {
           return
         }
@@ -5623,12 +5649,22 @@ export default function ChatSection({
     }
 
     if (!targetMessageId && initialSavedScrollRestoreRef.current) {
+      pushChatLayoutDebugEvent('RESTORE_START', {
+        phase: 'deferred-initial-settle',
+        savedScrollTop: initialSavedScrollRestoreRef.current.scrollTop,
+        anchorMessageId: initialSavedScrollRestoreRef.current.anchorMessageId,
+      })
       setPendingInitialSavedScrollRestore(true)
     } else {
+      pushChatLayoutDebugEvent('INITIAL_SCROLL_PENDING', {
+        phase: 'deferred-initial-settle',
+        messagesCount: messages.length,
+      })
       setPendingInitialScroll(true)
     }
     setHasDeferredInitialSettle(false)
   }, [
+    pushChatLayoutDebugEvent,
     hasDeferredInitialSettle,
     loading,
     messages.length,
@@ -5740,6 +5776,11 @@ export default function ChatSection({
     initialBottomLockNextSourceRef.current = 'initial-open'
     initialBottomLockLastGeometryRef.current = getInitialBottomLockGeometry()
     initialBottomLockStableSampleCountRef.current = 0
+    pushChatLayoutDebugEvent('INITIAL_SCROLL_START', {
+      top: scrollContainerRef.current?.scrollTop ?? null,
+      scrollHeight: scrollContainerRef.current?.scrollHeight ?? null,
+      clientHeight: scrollContainerRef.current?.clientHeight ?? null,
+    })
     setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
   }, [
@@ -5747,6 +5788,7 @@ export default function ChatSection({
     loading,
     messages.length,
     pendingInitialScroll,
+    pushChatLayoutDebugEvent,
   ])
 
   useLayoutEffect(() => {
