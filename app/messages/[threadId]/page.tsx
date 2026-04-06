@@ -43,14 +43,24 @@ function ThreadOverlayHeader({
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.25rem)]">
-      <div className="mx-auto flex min-h-11 max-w-3xl items-center justify-between gap-3">
+      <div className="mx-auto relative flex min-h-11 max-w-3xl items-center justify-between gap-3">
+        <div
+          aria-hidden="true"
+          className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1.625rem)] h-12 w-[min(18rem,calc(100%-7rem))] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.03] bg-[color:var(--background)]/22 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[color:var(--background)]/18"
+        />
         <div className="pointer-events-auto shrink-0">
-          <BackNavigationButton fallbackHref="/messages" variant="icon" />
+          <BackNavigationButton
+            fallbackHref="/messages"
+            variant="icon"
+            className="bg-[color:var(--surface)]/92 shadow-[0_8px_22px_rgba(15,23,42,0.08)] backdrop-blur-md dark:bg-[color:var(--surface)]/78"
+          />
         </div>
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
-          <p className="app-text-primary truncate px-2 text-center text-base font-medium">
-            Общение
-          </p>
+          <div className="flex justify-center px-2">
+            <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/[0.04] bg-[color:var(--background)]/46 px-3 py-1.5 text-center text-[15px] font-medium shadow-[0_4px_14px_rgba(15,23,42,0.05)] backdrop-blur-md dark:border-white/[0.08] dark:bg-[color:var(--background)]/30">
+              Общение
+            </p>
+          </div>
         </div>
         <div className="flex h-11 w-11 shrink-0 items-center justify-end">
           {rightSlot ? <div className="pointer-events-auto">{rightSlot}</div> : null}
@@ -418,12 +428,12 @@ export default function MessageThreadPage() {
         type="button"
         onClick={() => setIsHeaderMenuOpen((open) => !open)}
         disabled={isLoadingThreadMuteState || isUpdatingThreadMute}
-        className="app-text-primary inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/5 bg-[color:var(--surface)]/96 shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10"
+        className="app-text-primary inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.04] bg-[color:var(--surface)]/84 text-[18px] shadow-[0_6px_16px_rgba(15,23,42,0.06)] backdrop-blur-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.08] dark:bg-[color:var(--surface)]/68"
         aria-label="Действия чата"
         aria-expanded={isHeaderMenuOpen}
         aria-haspopup="menu"
       >
-        <span aria-hidden="true" className="text-xl leading-none">...</span>
+        <span aria-hidden="true" className="leading-none">...</span>
       </button>
       {isHeaderMenuOpen ? (
         <div
