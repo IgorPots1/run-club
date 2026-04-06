@@ -10,6 +10,8 @@ export const INBOX_APP_EVENT_TYPES = [
   'challenge.completed',
 ] as const
 
+export type InboxAppEventType = typeof INBOX_APP_EVENT_TYPES[number]
+
 type AppEventRow = {
   id: string
   type: string
@@ -45,14 +47,32 @@ type EventPayload = {
 
 export type InboxEventItem = {
   id: string
-  type: string
+  type: InboxAppEventType
   createdAt: string
   targetPath: string | null
+  entityId: string | null
   actorName: string | null
   actorAvatarUrl: string | null
   title: string
   body: string | null
 }
+
+export type GroupedRunLikeInboxItem = {
+  id: string
+  type: 'grouped_run_like'
+  createdAt: string
+  targetPath: string | null
+  entityId: string
+  actorCount: number
+  actorPreviewNames: string[]
+  actorPreviewAvatarUrls: string[]
+  title: string
+  body: string | null
+}
+
+export type InboxListItem =
+  | InboxEventItem
+  | GroupedRunLikeInboxItem
 
 function asRecord(value: unknown) {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null
@@ -137,9 +157,10 @@ function buildInboxEventItem(
 
   return {
     id: event.id,
-    type: event.type,
+    type: event.type as InboxAppEventType,
     createdAt: event.created_at,
     targetPath: event.target_path ?? payload.targetPath,
+    entityId: event.entity_id ?? null,
     actorName,
     actorAvatarUrl: actorProfile?.avatar_url ?? null,
     title: payload.preview.title ?? fallback.title,
@@ -147,7 +168,76 @@ function buildInboxEventItem(
   }
 }
 
-export async function loadInboxEventItems(userId: string, limit = 50): Promise<InboxEventItem[]> {
+function isGroupableRunLikeItem(item: InboxEventItem): item is InboxEventItem & {
+  type: 'run_like.created'
+  entityId: string
+} {
+  return item.type === 'run_like.created' && typeof item.entityId === 'string' && item.entityId.trim().length > 0
+}
+
+function buildGroupedRunLikeInboxItem(
+  items: Array<InboxEventItem & { type: 'run_like.created'; entityId: string }>
+): GroupedRunLikeInboxItem {
+  const newestItem = items[0]!
+
+  return {
+    id: `grouped-run-like:${newestItem.id}`,
+    type: 'grouped_run_like',
+    createdAt: newestItem.createdAt,
+    targetPath: newestItem.targetPath,
+    entityId: newestItem.entityId,
+    actorCount: items.length,
+    actorPreviewNames: items
+      .map((item) => item.actorName?.trim() ?? '')
+      .filter(Boolean)
+      .slice(0, 2),
+    actorPreviewAvatarUrls: items
+      .map((item) => item.actorAvatarUrl?.trim() ?? '')
+      .filter(Boolean)
+      .slice(0, 2),
+    title: newestItem.title,
+    body: newestItem.body,
+  }
+}
+
+function groupInboxItemsForDisplay(items: InboxEventItem[]): InboxListItem[] {
+  const groupedItems: InboxListItem[] = []
+
+  for (let index = 0; index < items.length; index += 1) {
+    const currentItem = items[index]
+
+    if (!isGroupableRunLikeItem(currentItem)) {
+      groupedItems.push(currentItem)
+      continue
+    }
+
+    const runLikeGroup = [currentItem]
+    let nextIndex = index + 1
+
+    while (nextIndex < items.length) {
+      const nextItem = items[nextIndex]
+
+      if (!isGroupableRunLikeItem(nextItem) || nextItem.entityId !== currentItem.entityId) {
+        break
+      }
+
+      runLikeGroup.push(nextItem)
+      nextIndex += 1
+    }
+
+    if (runLikeGroup.length >= 2) {
+      groupedItems.push(buildGroupedRunLikeInboxItem(runLikeGroup))
+      index = nextIndex - 1
+      continue
+    }
+
+    groupedItems.push(currentItem)
+  }
+
+  return groupedItems
+}
+
+export async function loadInboxEventItems(userId: string, limit = 50): Promise<InboxListItem[]> {
   const supabaseAdmin = createSupabaseAdminClient()
   const { data, error } = await supabaseAdmin
     .from('app_events')
@@ -195,7 +285,9 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
     }
   }
 
-  return rows.map((event) => buildInboxEventItem(event, actorProfilesById))
+  const items = rows.map((event) => buildInboxEventItem(event, actorProfilesById))
+
+  return groupInboxItemsForDisplay(items)
 }
 
 export async function getInboxUnreadCount(userId: string): Promise<number> {

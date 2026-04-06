@@ -1,7 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
-import { loadInboxEventItems, markInboxEventsAsRead } from '@/lib/app-events'
+import {
+  loadInboxEventItems,
+  markInboxEventsAsRead,
+  type InboxListItem,
+} from '@/lib/app-events'
 import { formatRunDateTimeLabel } from '@/lib/format'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -17,6 +21,20 @@ function getEventBadgeLabel(actorName: string | null, eventType: string) {
   }
 
   return 'R'
+}
+
+function formatGroupedRunLikeTitle(item: Extract<InboxListItem, { type: 'grouped_run_like' }>) {
+  const [firstActorName = 'Кто-то', secondActorName = 'кто-то'] = item.actorPreviewNames
+
+  if (item.actorCount <= 1) {
+    return item.title
+  }
+
+  if (item.actorCount === 2) {
+    return `${firstActorName} и ${secondActorName} лайкнули вашу пробежку`
+  }
+
+  return `${firstActorName}, ${secondActorName} и еще ${item.actorCount - 2} чел. лайкнули вашу пробежку`
 }
 
 export default async function ActivityInboxPage() {
@@ -61,27 +79,39 @@ export default async function ActivityInboxPage() {
       ) : (
         <div className="space-y-2">
           {events.map((event) => {
+            const actorName = event.type === 'grouped_run_like'
+              ? null
+              : event.actorName
+            const actorAvatarUrl = event.type === 'grouped_run_like'
+              ? event.actorPreviewAvatarUrls[0] ?? null
+              : event.actorAvatarUrl
+            const eventType = event.type === 'grouped_run_like'
+              ? 'run_like.created'
+              : event.type
+            const title = event.type === 'grouped_run_like'
+              ? formatGroupedRunLikeTitle(event)
+              : event.title
             const cardContent = (
               <div className="flex items-start gap-2">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
-                  {event.actorAvatarUrl ? (
+                  {actorAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={event.actorAvatarUrl}
+                      src={actorAvatarUrl}
                       alt=""
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <span>{getEventBadgeLabel(event.actorName, event.type)}</span>
+                    <span>{getEventBadgeLabel(actorName, eventType)}</span>
                   )}
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  {event.actorName ? (
-                    <p className="app-text-primary text-sm font-semibold leading-5">{event.actorName}</p>
+                  {actorName ? (
+                    <p className="app-text-primary text-sm font-semibold leading-5">{actorName}</p>
                   ) : null}
-                  <p className={`app-text-primary text-sm leading-5 ${event.actorName ? 'mt-px' : ''}`}>
-                    {event.title}
+                  <p className={`app-text-primary text-sm leading-5 ${actorName ? 'mt-px' : ''}`}>
+                    {title}
                   </p>
                   {event.body ? (
                     <p className="app-text-secondary mt-0.5 text-sm leading-5">{event.body}</p>
