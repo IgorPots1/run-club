@@ -69,11 +69,12 @@ type ChatSectionProps = {
   readOnlyAnnouncementMessage?: string
   chatLayoutDebugEnabled?: boolean
   chatLayoutDebugThreadType?: 'club' | 'direct_coach' | null
+  onChatLayoutDebugChange?: (debugData: ChatLayoutDebugOverlayData) => void
   title?: string
   description?: string
 }
 
-type ChatLayoutDebugSnapshot = {
+export type ChatLayoutDebugSnapshot = {
   windowInnerHeight: number | null
   visualViewportHeight: number | null
   visualViewportOffsetTop: number | null
@@ -88,14 +89,26 @@ type ChatLayoutDebugSnapshot = {
   scrollRectHeight: number | null
 }
 
-type ChatLayoutDebugOverlayEvent = {
+export type ChatLayoutDebugOverlayEvent = {
   id: string
   timestamp: string
   name: string
   summary: string
 }
 
-const EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT: ChatLayoutDebugSnapshot = {
+export type ChatLayoutDebugOverlayData = {
+  chatSectionDataReady: boolean
+  loading: boolean | null
+  messagesCount: number | null
+  pendingInitialScroll: boolean | null
+  pendingInitialSavedScrollRestore: boolean | null
+  hasDeferredInitialSettle: boolean | null
+  isInitialBottomLockActive: boolean | null
+  snapshot: ChatLayoutDebugSnapshot
+  events: ChatLayoutDebugOverlayEvent[]
+}
+
+export const EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT: ChatLayoutDebugSnapshot = {
   windowInnerHeight: null,
   visualViewportHeight: null,
   visualViewportOffsetTop: null,
@@ -108,6 +121,18 @@ const EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT: ChatLayoutDebugSnapshot = {
   scrollRectTop: null,
   scrollRectBottom: null,
   scrollRectHeight: null,
+}
+
+export const EMPTY_CHAT_LAYOUT_DEBUG_DATA: ChatLayoutDebugOverlayData = {
+  chatSectionDataReady: false,
+  loading: null,
+  messagesCount: null,
+  pendingInitialScroll: null,
+  pendingInitialSavedScrollRestore: null,
+  hasDeferredInitialSettle: null,
+  isInitialBottomLockActive: null,
+  snapshot: EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT,
+  events: [],
 }
 
 function getChatRestrictionErrorMessage(error: unknown, fallbackMessage: string) {
@@ -423,6 +448,22 @@ function formatChatLayoutDebugNumber(value: number | null | undefined) {
   return Number.isInteger(roundedValue) ? String(roundedValue) : roundedValue.toFixed(1)
 }
 
+function formatChatLayoutDebugNullableBoolean(value: boolean | null | undefined) {
+  if (value === null || typeof value === 'undefined') {
+    return 'not ready yet'
+  }
+
+  return value ? 'true' : 'false'
+}
+
+function formatChatLayoutDebugNullableCount(value: number | null | undefined) {
+  if (value === null || typeof value === 'undefined') {
+    return 'not ready yet'
+  }
+
+  return String(value)
+}
+
 function summarizeChatLayoutDebugPayload(payload: Record<string, unknown>) {
   const summary = Object.entries(payload)
     .map(([key, value]) => {
@@ -562,7 +603,7 @@ function ChatSendDebugPanel({
   )
 }
 
-function ChatLayoutDebugOverlay({
+export function ChatLayoutDebugOverlay({
   threadId,
   threadType,
   isKeyboardOpen,
@@ -582,14 +623,15 @@ function ChatLayoutDebugOverlay({
   threadType: 'club' | 'direct_coach' | null
   isKeyboardOpen: boolean
   isThreadLayoutReady: boolean
-  loading: boolean
-  messagesCount: number
-  pendingInitialScroll: boolean
-  pendingInitialSavedScrollRestore: boolean
-  hasDeferredInitialSettle: boolean
-  isInitialBottomLockActive: boolean
+  loading: boolean | null
+  messagesCount: number | null
+  pendingInitialScroll: boolean | null
+  pendingInitialSavedScrollRestore: boolean | null
+  hasDeferredInitialSettle: boolean | null
+  isInitialBottomLockActive: boolean | null
   isReadOnlyAnnouncement: boolean
   targetMessageId: string | null
+  chatSectionDataReady?: boolean
   snapshot: ChatLayoutDebugSnapshot
   events: ChatLayoutDebugOverlayEvent[]
 }) {
@@ -598,12 +640,13 @@ function ChatLayoutDebugOverlay({
     ['threadType', threadType ?? 'n/a'],
     ['isKeyboardOpen', isKeyboardOpen ? 'true' : 'false'],
     ['isThreadLayoutReady', isThreadLayoutReady ? 'true' : 'false'],
-    ['loading', loading ? 'true' : 'false'],
-    ['messages.length', String(messagesCount)],
-    ['pendingInitialScroll', pendingInitialScroll ? 'true' : 'false'],
-    ['pendingInitialSavedScrollRestore', pendingInitialSavedScrollRestore ? 'true' : 'false'],
-    ['hasDeferredInitialSettle', hasDeferredInitialSettle ? 'true' : 'false'],
-    ['isInitialBottomLockActive', isInitialBottomLockActive ? 'true' : 'false'],
+    ['chatSectionDataReady', formatChatLayoutDebugNullableBoolean(chatSectionDataReady)],
+    ['loading', formatChatLayoutDebugNullableBoolean(loading)],
+    ['messages.length', formatChatLayoutDebugNullableCount(messagesCount)],
+    ['pendingInitialScroll', formatChatLayoutDebugNullableBoolean(pendingInitialScroll)],
+    ['pendingInitialSavedScrollRestore', formatChatLayoutDebugNullableBoolean(pendingInitialSavedScrollRestore)],
+    ['hasDeferredInitialSettle', formatChatLayoutDebugNullableBoolean(hasDeferredInitialSettle)],
+    ['isInitialBottomLockActive', formatChatLayoutDebugNullableBoolean(isInitialBottomLockActive)],
     ['isReadOnlyAnnouncement', isReadOnlyAnnouncement ? 'true' : 'false'],
     ['targetMessageId', targetMessageId ?? 'n/a'],
   ] as const
@@ -626,6 +669,9 @@ function ChatLayoutDebugOverlay({
     <div className="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+4.25rem)] z-[125] md:left-auto md:right-4 md:w-[22rem]">
       <div className="pointer-events-auto overflow-hidden rounded-2xl border border-sky-400/70 bg-black/86 font-mono text-[11px] text-white shadow-2xl backdrop-blur-md">
         <div className="border-b border-white/10 px-3 py-2">
+          <p className="rounded-md border border-amber-300/70 bg-amber-300/15 px-2 py-1 text-[11px] font-bold tracking-[0.08em] text-amber-100">
+            CHAT DEBUG ACTIVE
+          </p>
           <p className="font-semibold tracking-[0.06em] text-sky-200">CHAT LAYOUT DEBUG</p>
           <p className="mt-1 text-[10px] text-white/65">
             URL `?chatDebug=1` enabled
@@ -3774,6 +3820,7 @@ export default function ChatSection({
   readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.',
   chatLayoutDebugEnabled = false,
   chatLayoutDebugThreadType = null,
+  onChatLayoutDebugChange,
   title,
   description,
 }: ChatSectionProps) {
@@ -4325,6 +4372,34 @@ export default function ChatSection({
       resizeObserver?.disconnect()
     }
   }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!onChatLayoutDebugChange) {
+      return
+    }
+
+    onChatLayoutDebugChange({
+      chatSectionDataReady: true,
+      loading,
+      messagesCount: messages.length,
+      pendingInitialScroll,
+      pendingInitialSavedScrollRestore,
+      hasDeferredInitialSettle,
+      isInitialBottomLockActive,
+      snapshot: chatLayoutDebugSnapshot,
+      events: chatLayoutDebugEvents,
+    })
+  }, [
+    chatLayoutDebugEvents,
+    chatLayoutDebugSnapshot,
+    hasDeferredInitialSettle,
+    isInitialBottomLockActive,
+    loading,
+    messages.length,
+    onChatLayoutDebugChange,
+    pendingInitialSavedScrollRestore,
+    pendingInitialScroll,
+  ])
 
   useEffect(() => {
     const latestDebugEvent = visibleChatSendDebugEvents[0]
@@ -8322,24 +8397,6 @@ export default function ChatSection({
               onCopy={() => {
                 void handleCopyChatSendDebug()
               }}
-            />
-          ) : null}
-          {chatLayoutDebugEnabled ? (
-            <ChatLayoutDebugOverlay
-              threadId={threadId}
-              threadType={chatLayoutDebugThreadType}
-              isKeyboardOpen={isKeyboardOpen}
-              isThreadLayoutReady={isThreadLayoutReady}
-              loading={loading}
-              messagesCount={messages.length}
-              pendingInitialScroll={pendingInitialScroll}
-              pendingInitialSavedScrollRestore={pendingInitialSavedScrollRestore}
-              hasDeferredInitialSettle={hasDeferredInitialSettle}
-              isInitialBottomLockActive={isInitialBottomLockActive}
-              isReadOnlyAnnouncement={isReadOnlyAnnouncement}
-              targetMessageId={targetMessageId}
-              snapshot={chatLayoutDebugSnapshot}
-              events={chatLayoutDebugEvents}
             />
           ) : null}
           {isReadOnlyAnnouncement ? renderReadOnlyAnnouncementBanner() : null}

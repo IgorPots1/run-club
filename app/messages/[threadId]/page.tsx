@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import ChatSection from '@/components/ChatSection'
+import ChatSection, {
+  ChatLayoutDebugOverlay,
+  EMPTY_CHAT_LAYOUT_DEBUG_DATA,
+  type ChatLayoutDebugOverlayData,
+} from '@/components/ChatSection'
 import BackNavigationButton from '@/components/BackNavigationButton'
 import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import { getBootstrapUser } from '@/lib/auth'
@@ -96,6 +100,7 @@ export default function MessageThreadPage() {
   const [isUpdatingThreadMute, setIsUpdatingThreadMute] = useState(false)
   const [threadMuteError, setThreadMuteError] = useState('')
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
+  const [chatLayoutDebugData, setChatLayoutDebugData] = useState<ChatLayoutDebugOverlayData>(EMPTY_CHAT_LAYOUT_DEBUG_DATA)
   const isThreadLayoutReady = !loading
   const readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
   const threadPushOptionLabels: Record<PushLevel, string> = {
@@ -227,6 +232,10 @@ export default function MessageThreadPage() {
   }, [currentUserId, error, loading, threadId])
 
   useEffect(() => {
+    setChatLayoutDebugData(EMPTY_CHAT_LAYOUT_DEBUG_DATA)
+  }, [isChatLayoutDebugEnabled, threadId])
+
+  useEffect(() => {
     if (!threadId || !currentUserId) {
       setThreadPushLevel('all')
       setIsLoadingThreadMuteState(false)
@@ -312,6 +321,10 @@ export default function MessageThreadPage() {
       setIsUpdatingThreadMute(false)
     }
   }, [isUpdatingThreadMute, threadId, threadPushLevel])
+
+  const handleChatLayoutDebugChange = useCallback((nextDebugData: ChatLayoutDebugOverlayData) => {
+    setChatLayoutDebugData(nextDebugData)
+  }, [])
 
   useEffect(() => {
     if (loading || error || !currentUserId || !threadId) {
@@ -414,6 +427,26 @@ export default function MessageThreadPage() {
     }
   }, [currentUserId, error, loading, threadId])
 
+  const chatLayoutDebugOverlay = isChatLayoutDebugEnabled ? (
+    <ChatLayoutDebugOverlay
+      threadId={threadId || null}
+      threadType={threadType}
+      isKeyboardOpen={isKeyboardOpen}
+      isThreadLayoutReady={isThreadLayoutReady}
+      chatSectionDataReady={chatLayoutDebugData.chatSectionDataReady}
+      loading={chatLayoutDebugData.loading}
+      messagesCount={chatLayoutDebugData.messagesCount}
+      pendingInitialScroll={chatLayoutDebugData.pendingInitialScroll}
+      pendingInitialSavedScrollRestore={chatLayoutDebugData.pendingInitialSavedScrollRestore}
+      hasDeferredInitialSettle={chatLayoutDebugData.hasDeferredInitialSettle}
+      isInitialBottomLockActive={chatLayoutDebugData.isInitialBottomLockActive}
+      isReadOnlyAnnouncement={isReadOnlyAnnouncement}
+      targetMessageId={targetMessageId}
+      snapshot={chatLayoutDebugData.snapshot}
+      events={chatLayoutDebugData.events}
+    />
+  ) : null
+
   if (!loading && (error || !currentUserId || !threadId)) {
     return (
       <main
@@ -421,6 +454,7 @@ export default function MessageThreadPage() {
         className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
         style={isolatedViewportStyle}
       >
+        {chatLayoutDebugOverlay}
         <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
           <ThreadOverlayHeader />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
@@ -488,6 +522,7 @@ export default function MessageThreadPage() {
       className="relative flex flex-col overflow-hidden"
       style={isolatedViewportStyle}
     >
+      {chatLayoutDebugOverlay}
       <ThreadOverlayHeader rightSlot={headerRightSlot} />
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
         {threadMuteError ? (
@@ -508,6 +543,7 @@ export default function MessageThreadPage() {
             readOnlyAnnouncementMessage={readOnlyAnnouncementMessage}
             chatLayoutDebugEnabled={isChatLayoutDebugEnabled}
             chatLayoutDebugThreadType={threadType}
+            onChatLayoutDebugChange={handleChatLayoutDebugChange}
           />
         </div>
       </div>
