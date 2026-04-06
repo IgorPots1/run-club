@@ -111,6 +111,8 @@ function FeedActionButton({
   disabled = false,
   actionDisabled = false,
 }: FeedActionButtonProps) {
+  const isActionBlocked = disabled || actionDisabled
+
   return (
     <div
       className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
@@ -119,9 +121,18 @@ function FeedActionButton({
     >
       <button
         type="button"
-        onClick={onClick}
-        disabled={disabled || actionDisabled}
-        className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={() => {
+          if (isActionBlocked) {
+            return
+          }
+
+          onClick()
+        }}
+        disabled={disabled}
+        aria-disabled={isActionBlocked ? true : undefined}
+        className={`inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+          actionDisabled && !disabled ? 'cursor-not-allowed' : ''
+        }`}
       >
         <span aria-hidden="true" className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
           {icon}
