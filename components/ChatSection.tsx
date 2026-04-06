@@ -67,8 +67,47 @@ type ChatSectionProps = {
   isAnnouncementChannel?: boolean
   isReadOnlyAnnouncement?: boolean
   readOnlyAnnouncementMessage?: string
+  chatLayoutDebugEnabled?: boolean
+  chatLayoutDebugThreadType?: 'club' | 'direct_coach' | null
   title?: string
   description?: string
+}
+
+type ChatLayoutDebugSnapshot = {
+  windowInnerHeight: number | null
+  visualViewportHeight: number | null
+  visualViewportOffsetTop: number | null
+  scrollTop: number | null
+  scrollHeight: number | null
+  scrollClientHeight: number | null
+  composerTop: number | null
+  composerBottom: number | null
+  composerHeight: number | null
+  scrollRectTop: number | null
+  scrollRectBottom: number | null
+  scrollRectHeight: number | null
+}
+
+type ChatLayoutDebugOverlayEvent = {
+  id: string
+  timestamp: string
+  name: string
+  summary: string
+}
+
+const EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT: ChatLayoutDebugSnapshot = {
+  windowInnerHeight: null,
+  visualViewportHeight: null,
+  visualViewportOffsetTop: null,
+  scrollTop: null,
+  scrollHeight: null,
+  scrollClientHeight: null,
+  composerTop: null,
+  composerBottom: null,
+  composerHeight: null,
+  scrollRectTop: null,
+  scrollRectBottom: null,
+  scrollRectHeight: null,
 }
 
 function getChatRestrictionErrorMessage(error: unknown, fallbackMessage: string) {
@@ -367,6 +406,55 @@ function formatChatSendDebugTimestamp(timestamp: string) {
   }
 }
 
+function formatChatLayoutDebugTimestamp(date = new Date()) {
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  const milliseconds = String(date.getMilliseconds()).padStart(3, '0')
+  return `${hours}:${minutes}:${seconds}.${milliseconds}`
+}
+
+function formatChatLayoutDebugNumber(value: number | null | undefined) {
+  if (!Number.isFinite(value)) {
+    return 'n/a'
+  }
+
+  const roundedValue = Math.round((value ?? 0) * 10) / 10
+  return Number.isInteger(roundedValue) ? String(roundedValue) : roundedValue.toFixed(1)
+}
+
+function summarizeChatLayoutDebugPayload(payload: Record<string, unknown>) {
+  const summary = Object.entries(payload)
+    .map(([key, value]) => {
+      const formattedValue = formatChatSendDebugValue(value)
+      return formattedValue ? `${key}=${formattedValue}` : null
+    })
+    .filter((item): item is string => Boolean(item))
+    .join(' | ')
+
+  return summary || 'no-payload'
+}
+
+function areChatLayoutDebugSnapshotsEqual(
+  left: ChatLayoutDebugSnapshot,
+  right: ChatLayoutDebugSnapshot
+) {
+  return (
+    left.windowInnerHeight === right.windowInnerHeight &&
+    left.visualViewportHeight === right.visualViewportHeight &&
+    left.visualViewportOffsetTop === right.visualViewportOffsetTop &&
+    left.scrollTop === right.scrollTop &&
+    left.scrollHeight === right.scrollHeight &&
+    left.scrollClientHeight === right.scrollClientHeight &&
+    left.composerTop === right.composerTop &&
+    left.composerBottom === right.composerBottom &&
+    left.composerHeight === right.composerHeight &&
+    left.scrollRectTop === right.scrollRectTop &&
+    left.scrollRectBottom === right.scrollRectBottom &&
+    left.scrollRectHeight === right.scrollRectHeight
+  )
+}
+
 function formatMessageReaderLastReadAt(timestamp: string | null) {
   if (!timestamp) {
     return ''
@@ -469,6 +557,120 @@ function ChatSendDebugPanel({
             )}
           </div>
         ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ChatLayoutDebugOverlay({
+  threadId,
+  threadType,
+  isKeyboardOpen,
+  isThreadLayoutReady,
+  loading,
+  messagesCount,
+  pendingInitialScroll,
+  pendingInitialSavedScrollRestore,
+  hasDeferredInitialSettle,
+  isInitialBottomLockActive,
+  isReadOnlyAnnouncement,
+  targetMessageId,
+  snapshot,
+  events,
+}: {
+  threadId: string | null
+  threadType: 'club' | 'direct_coach' | null
+  isKeyboardOpen: boolean
+  isThreadLayoutReady: boolean
+  loading: boolean
+  messagesCount: number
+  pendingInitialScroll: boolean
+  pendingInitialSavedScrollRestore: boolean
+  hasDeferredInitialSettle: boolean
+  isInitialBottomLockActive: boolean
+  isReadOnlyAnnouncement: boolean
+  targetMessageId: string | null
+  snapshot: ChatLayoutDebugSnapshot
+  events: ChatLayoutDebugOverlayEvent[]
+}) {
+  const stateRows = [
+    ['threadId', threadId ?? 'n/a'],
+    ['threadType', threadType ?? 'n/a'],
+    ['isKeyboardOpen', isKeyboardOpen ? 'true' : 'false'],
+    ['isThreadLayoutReady', isThreadLayoutReady ? 'true' : 'false'],
+    ['loading', loading ? 'true' : 'false'],
+    ['messages.length', String(messagesCount)],
+    ['pendingInitialScroll', pendingInitialScroll ? 'true' : 'false'],
+    ['pendingInitialSavedScrollRestore', pendingInitialSavedScrollRestore ? 'true' : 'false'],
+    ['hasDeferredInitialSettle', hasDeferredInitialSettle ? 'true' : 'false'],
+    ['isInitialBottomLockActive', isInitialBottomLockActive ? 'true' : 'false'],
+    ['isReadOnlyAnnouncement', isReadOnlyAnnouncement ? 'true' : 'false'],
+    ['targetMessageId', targetMessageId ?? 'n/a'],
+  ] as const
+  const geometryRows = [
+    ['window.innerHeight', formatChatLayoutDebugNumber(snapshot.windowInnerHeight)],
+    ['visualViewport.height', formatChatLayoutDebugNumber(snapshot.visualViewportHeight)],
+    ['visualViewport.offsetTop', formatChatLayoutDebugNumber(snapshot.visualViewportOffsetTop)],
+    ['scrollTop', formatChatLayoutDebugNumber(snapshot.scrollTop)],
+    ['scrollHeight', formatChatLayoutDebugNumber(snapshot.scrollHeight)],
+    ['scrollClientHeight', formatChatLayoutDebugNumber(snapshot.scrollClientHeight)],
+    ['composer.top', formatChatLayoutDebugNumber(snapshot.composerTop)],
+    ['composer.bottom', formatChatLayoutDebugNumber(snapshot.composerBottom)],
+    ['composer.height', formatChatLayoutDebugNumber(snapshot.composerHeight)],
+    ['scrollRect.top', formatChatLayoutDebugNumber(snapshot.scrollRectTop)],
+    ['scrollRect.bottom', formatChatLayoutDebugNumber(snapshot.scrollRectBottom)],
+    ['scrollRect.height', formatChatLayoutDebugNumber(snapshot.scrollRectHeight)],
+  ] as const
+
+  return (
+    <div className="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+4.25rem)] z-[125] md:left-auto md:right-4 md:w-[22rem]">
+      <div className="pointer-events-auto overflow-hidden rounded-2xl border border-sky-400/70 bg-black/86 font-mono text-[11px] text-white shadow-2xl backdrop-blur-md">
+        <div className="border-b border-white/10 px-3 py-2">
+          <p className="font-semibold tracking-[0.06em] text-sky-200">CHAT LAYOUT DEBUG</p>
+          <p className="mt-1 text-[10px] text-white/65">
+            URL `?chatDebug=1` enabled
+          </p>
+        </div>
+        <div className="max-h-[min(55svh,28rem)] overflow-y-auto px-3 py-2">
+          <div className="space-y-1.5">
+            {stateRows.map(([label, value]) => (
+              <div key={label} className="flex items-start justify-between gap-3">
+                <span className="text-white/65">{label}</span>
+                <span className="text-right text-white">{value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-white/55">Geometry</p>
+            <div className="space-y-1.5">
+              {geometryRows.map(([label, value]) => (
+                <div key={label} className="flex items-start justify-between gap-3">
+                  <span className="text-white/65">{label}</span>
+                  <span className="text-right text-white">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-white/55">Events</p>
+            <div className="space-y-2">
+              {events.length > 0 ? events.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-xl border border-white/8 bg-white/[0.04] px-2.5 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-sky-100">{event.name}</span>
+                    <span className="text-[10px] text-white/55">{event.timestamp}</span>
+                  </div>
+                  <p className="mt-1 break-words text-white/75">{event.summary}</p>
+                </div>
+              )) : (
+                <p className="text-white/55">No layout events yet</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -3570,6 +3772,8 @@ export default function ChatSection({
   isAnnouncementChannel = false,
   isReadOnlyAnnouncement = false,
   readOnlyAnnouncementMessage = 'Это канал с важной информацией. Публиковать сообщения может только тренер.',
+  chatLayoutDebugEnabled = false,
+  chatLayoutDebugThreadType = null,
   title,
   description,
 }: ChatSectionProps) {
@@ -3693,6 +3897,8 @@ export default function ChatSection({
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
+  const [chatLayoutDebugSnapshot, setChatLayoutDebugSnapshot] = useState<ChatLayoutDebugSnapshot>(EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT)
+  const [chatLayoutDebugEvents, setChatLayoutDebugEvents] = useState<ChatLayoutDebugOverlayEvent[]>([])
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
   const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
@@ -3705,6 +3911,51 @@ export default function ChatSection({
     () => filteredChatSendDebugEvents.slice(0, CHAT_SEND_DEBUG_VISIBLE_EVENT_LIMIT),
     [filteredChatSendDebugEvents]
   )
+  const pushChatLayoutDebugEvent = useCallback((name: string, payload: Record<string, unknown> = {}) => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    const summary = summarizeChatLayoutDebugPayload(payload)
+    setChatLayoutDebugEvents((currentEvents) => [
+      {
+        id: `${Date.now()}:${name}:${currentEvents.length}`,
+        timestamp: formatChatLayoutDebugTimestamp(),
+        name,
+        summary,
+      },
+      ...currentEvents,
+    ].slice(0, 30))
+  }, [chatLayoutDebugEnabled])
+  const captureChatLayoutDebugSnapshot = useCallback(() => {
+    if (!chatLayoutDebugEnabled || typeof window === 'undefined') {
+      return
+    }
+
+    const visualViewport = window.visualViewport
+    const scrollContainer = scrollContainerRef.current
+    const composerWrapper = composerWrapperRef.current
+    const scrollRect = scrollContainer?.getBoundingClientRect() ?? null
+    const composerRect = composerWrapper?.getBoundingClientRect() ?? null
+    const nextSnapshot: ChatLayoutDebugSnapshot = {
+      windowInnerHeight: window.innerHeight,
+      visualViewportHeight: visualViewport?.height ?? null,
+      visualViewportOffsetTop: visualViewport?.offsetTop ?? null,
+      scrollTop: scrollContainer?.scrollTop ?? null,
+      scrollHeight: scrollContainer?.scrollHeight ?? null,
+      scrollClientHeight: scrollContainer?.clientHeight ?? null,
+      composerTop: composerRect?.top ?? null,
+      composerBottom: composerRect?.bottom ?? null,
+      composerHeight: composerRect?.height ?? null,
+      scrollRectTop: scrollRect?.top ?? null,
+      scrollRectBottom: scrollRect?.bottom ?? null,
+      scrollRectHeight: scrollRect?.height ?? null,
+    }
+
+    setChatLayoutDebugSnapshot((currentSnapshot) => (
+      areChatLayoutDebugSnapshotsEqual(currentSnapshot, nextSnapshot) ? currentSnapshot : nextSnapshot
+    ))
+  }, [chatLayoutDebugEnabled])
   const isThreadOpenDebugActive = useCallback((nextThreadId: string | null | undefined = threadId) => (
     Boolean(nextThreadId) &&
     threadOpenDebugWindowRef.current.threadId === (nextThreadId ?? null) &&
@@ -3870,6 +4121,210 @@ export default function ChatSection({
 
     return unsubscribe
   }, [threadId])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      setChatLayoutDebugEvents([])
+      setChatLayoutDebugSnapshot(EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT)
+      return
+    }
+
+    pushChatLayoutDebugEvent('THREAD_MOUNT', {
+      threadId,
+      threadType: chatLayoutDebugThreadType,
+      targetMessageId,
+    })
+    if (targetMessageId) {
+      pushChatLayoutDebugEvent('TARGET_MESSAGE_PATH', {
+        targetMessageId,
+      })
+    }
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, chatLayoutDebugThreadType, pushChatLayoutDebugEvent, targetMessageId, threadId])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent('THREAD_SWITCH', {
+      threadId,
+      threadType: chatLayoutDebugThreadType,
+    })
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, chatLayoutDebugThreadType, pushChatLayoutDebugEvent, threadId])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(loading ? 'CHAT_LOADING_TRUE' : 'CHAT_LOADING_FALSE', {
+      loading,
+      messagesCount: messages.length,
+    })
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, loading, messages.length, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(
+      isThreadLayoutReady ? 'THREAD_READY_TRUE' : 'THREAD_READY_FALSE',
+      {
+        isThreadLayoutReady,
+        loading,
+      }
+    )
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, isThreadLayoutReady, loading, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(
+      isKeyboardOpen ? 'KEYBOARD_OPEN' : 'KEYBOARD_CLOSE',
+      {
+        isKeyboardOpen,
+      }
+    )
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, isKeyboardOpen, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(
+      pendingInitialScroll ? 'INITIAL_SCROLL_PENDING' : 'INITIAL_SCROLL_IDLE',
+      {
+        pendingInitialScroll,
+      }
+    )
+    if (pendingInitialScroll) {
+      pushChatLayoutDebugEvent('INITIAL_SCROLL_START', {
+        messagesCount: messages.length,
+      })
+    }
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, messages.length, pendingInitialScroll, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(
+      pendingInitialSavedScrollRestore ? 'INITIAL_SAVED_RESTORE_PENDING' : 'INITIAL_SAVED_RESTORE_IDLE',
+      {
+        pendingInitialSavedScrollRestore,
+      }
+    )
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, pendingInitialSavedScrollRestore, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(
+      hasDeferredInitialSettle ? 'DEFERRED_SETTLE_TRUE' : 'DEFERRED_SETTLE_FALSE',
+      {
+        hasDeferredInitialSettle,
+      }
+    )
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, hasDeferredInitialSettle, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled) {
+      return
+    }
+
+    pushChatLayoutDebugEvent(
+      isInitialBottomLockActive ? 'INITIAL_BOTTOM_LOCK_ON' : 'INITIAL_BOTTOM_LOCK_OFF',
+      {
+        isInitialBottomLockActive,
+      }
+    )
+    captureChatLayoutDebugSnapshot()
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, isInitialBottomLockActive, pushChatLayoutDebugEvent])
+
+  useEffect(() => {
+    if (!chatLayoutDebugEnabled || typeof window === 'undefined') {
+      return
+    }
+
+    captureChatLayoutDebugSnapshot()
+
+    let scrollLogThrottleTimeout: number | null = null
+    const scrollContainer = scrollContainerRef.current
+    const composerWrapper = composerWrapperRef.current
+    const handleViewportChange = () => {
+      captureChatLayoutDebugSnapshot()
+      pushChatLayoutDebugEvent('VIEWPORT_RESIZE', {
+        innerHeight: window.innerHeight,
+        visualViewportHeight: window.visualViewport?.height ?? null,
+        visualViewportOffsetTop: window.visualViewport?.offsetTop ?? null,
+      })
+    }
+    const handleScroll = () => {
+      captureChatLayoutDebugSnapshot()
+
+      if (scrollLogThrottleTimeout !== null) {
+        return
+      }
+
+      scrollLogThrottleTimeout = window.setTimeout(() => {
+        scrollLogThrottleTimeout = null
+      }, 120)
+      pushChatLayoutDebugEvent('SCROLL', {
+        scrollTop: scrollContainerRef.current?.scrollTop ?? null,
+        scrollHeight: scrollContainerRef.current?.scrollHeight ?? null,
+        clientHeight: scrollContainerRef.current?.clientHeight ?? null,
+      })
+    }
+
+    window.addEventListener('resize', handleViewportChange)
+    window.visualViewport?.addEventListener('resize', handleViewportChange)
+    window.visualViewport?.addEventListener('scroll', handleViewportChange)
+    scrollContainer?.addEventListener('scroll', handleScroll, { passive: true })
+
+    let resizeObserver: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        captureChatLayoutDebugSnapshot()
+        pushChatLayoutDebugEvent('COMPOSER_RECT_CHANGE', {
+          composerTop: composerWrapperRef.current?.getBoundingClientRect().top ?? null,
+          composerBottom: composerWrapperRef.current?.getBoundingClientRect().bottom ?? null,
+          composerHeight: composerWrapperRef.current?.getBoundingClientRect().height ?? null,
+        })
+      })
+      if (scrollContainer) {
+        resizeObserver.observe(scrollContainer)
+      }
+      if (composerWrapper) {
+        resizeObserver.observe(composerWrapper)
+      }
+    }
+
+    return () => {
+      if (scrollLogThrottleTimeout !== null) {
+        window.clearTimeout(scrollLogThrottleTimeout)
+      }
+      window.removeEventListener('resize', handleViewportChange)
+      window.visualViewport?.removeEventListener('resize', handleViewportChange)
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange)
+      scrollContainer?.removeEventListener('scroll', handleScroll)
+      resizeObserver?.disconnect()
+    }
+  }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, pushChatLayoutDebugEvent])
 
   useEffect(() => {
     const latestDebugEvent = visibleChatSendDebugEvents[0]
@@ -7867,6 +8322,24 @@ export default function ChatSection({
               onCopy={() => {
                 void handleCopyChatSendDebug()
               }}
+            />
+          ) : null}
+          {chatLayoutDebugEnabled ? (
+            <ChatLayoutDebugOverlay
+              threadId={threadId}
+              threadType={chatLayoutDebugThreadType}
+              isKeyboardOpen={isKeyboardOpen}
+              isThreadLayoutReady={isThreadLayoutReady}
+              loading={loading}
+              messagesCount={messages.length}
+              pendingInitialScroll={pendingInitialScroll}
+              pendingInitialSavedScrollRestore={pendingInitialSavedScrollRestore}
+              hasDeferredInitialSettle={hasDeferredInitialSettle}
+              isInitialBottomLockActive={isInitialBottomLockActive}
+              isReadOnlyAnnouncement={isReadOnlyAnnouncement}
+              targetMessageId={targetMessageId}
+              snapshot={chatLayoutDebugSnapshot}
+              events={chatLayoutDebugEvents}
             />
           ) : null}
           {isReadOnlyAnnouncement ? renderReadOnlyAnnouncementBanner() : null}

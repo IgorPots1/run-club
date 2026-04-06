@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import ChatSection from '@/components/ChatSection'
 import BackNavigationButton from '@/components/BackNavigationButton'
@@ -77,9 +77,17 @@ export default function MessageThreadPage() {
   const pendingMarkThreadReadRef = useRef(false)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
   const targetMessageId = normalizeMessageId(searchParams.get('messageId'))
+  const isChatLayoutDebugEnabled = useMemo(() => {
+    if (searchParams.get('chatDebug') === '1') {
+      return true
+    }
+
+    return process.env.NEXT_PUBLIC_CHAT_LAYOUT_DEBUG === '1'
+  }, [searchParams])
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('')
+  const [threadType, setThreadType] = useState<'club' | 'direct_coach' | null>(null)
   const [error, setError] = useState('')
   const [isAnnouncementChannel, setIsAnnouncementChannel] = useState(false)
   const [isReadOnlyAnnouncement, setIsReadOnlyAnnouncement] = useState(false)
@@ -128,11 +136,14 @@ export default function MessageThreadPage() {
         }
 
         if (!thread) {
+          setThreadType(null)
           setIsAnnouncementChannel(false)
           setIsReadOnlyAnnouncement(false)
           setError('Чат недоступен')
           return
         }
+
+        setThreadType(thread.type)
 
         if (thread.type === 'club') {
           const isImportantInfoThread = thread.channel_key === IMPORTANT_INFO_CHANNEL_KEY
@@ -176,6 +187,7 @@ export default function MessageThreadPage() {
         setError('')
       } catch {
         if (isMounted) {
+          setThreadType(null)
           setIsAnnouncementChannel(false)
           setIsReadOnlyAnnouncement(false)
           setError('Не удалось открыть чат')
@@ -190,6 +202,7 @@ export default function MessageThreadPage() {
     if (!threadId) {
       setLoading(false)
       setError('Некорректный чат')
+      setThreadType(null)
       return
     }
 
@@ -493,6 +506,8 @@ export default function MessageThreadPage() {
             isAnnouncementChannel={isAnnouncementChannel}
             isReadOnlyAnnouncement={isReadOnlyAnnouncement}
             readOnlyAnnouncementMessage={readOnlyAnnouncementMessage}
+            chatLayoutDebugEnabled={isChatLayoutDebugEnabled}
+            chatLayoutDebugThreadType={threadType}
           />
         </div>
       </div>
