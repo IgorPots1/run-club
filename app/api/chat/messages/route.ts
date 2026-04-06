@@ -665,7 +665,7 @@ export async function POST(request: Request) {
               throw new Error('empty_message')
             }
 
-            if (text.length > 500) {
+            if (text.length > 1000) {
               throw new Error('message_too_long')
             }
 

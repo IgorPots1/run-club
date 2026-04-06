@@ -7577,7 +7577,7 @@ export default function ChatSection({
 
     return (
       <div>
-        <section className="rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-3 py-2 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+        <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/90 px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
           <form onSubmit={handleSubmit}>
             <input
               ref={imageInputRef}
@@ -7718,7 +7718,7 @@ export default function ChatSection({
                 >
                   {uploadingImage ? '...' : '+'}
                 </button>
-                <div className="flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-3 dark:bg-white/[0.05]">
+                <div className="flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]">
                   <label htmlFor="chat-message" className="sr-only">
                     Сообщение
                   </label>
@@ -7734,7 +7734,7 @@ export default function ChatSection({
                     disabled={submitting || uploadingImage || uploadingVoice}
                     maxLength={CHAT_MESSAGE_MAX_LENGTH}
                     rows={1}
-                    className="min-h-11 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2.5 text-sm leading-5 outline-none placeholder:app-text-secondary"
+                    className="min-h-10 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2 text-sm leading-5 outline-none placeholder:app-text-secondary"
                   />
                 </div>
                 {shouldShowVoiceRecorderButton ? (
@@ -7760,14 +7760,7 @@ export default function ChatSection({
                 )}
               </div>
             )}
-            <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
-              <p className="app-text-secondary text-xs">
-                {trimmedDraftMessage.length}/{CHAT_MESSAGE_MAX_LENGTH}
-                {hasPendingImage ? ` • ${pendingImages.length}/${CHAT_MESSAGE_MAX_ATTACHMENTS} фото` : ''}
-                {isRecordingVoice || isStartingVoiceRecording ? ' + запись' : uploadingVoice ? ' + аудио' : ''}
-              </p>
-              {submitError ? <p className="text-xs text-red-600">{submitError}</p> : <span />}
-            </div>
+            {submitError ? <p className="mt-1 px-1 text-xs text-red-600">{submitError}</p> : null}
           </form>
         </section>
       </div>

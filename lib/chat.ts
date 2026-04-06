@@ -8,7 +8,7 @@ import {
 } from './chatSendDebug'
 import { markChatSendTimingPhase } from './chatSendTiming'
 
-export const CHAT_MESSAGE_MAX_LENGTH = 500
+export const CHAT_MESSAGE_MAX_LENGTH = 1000
 export const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 export const CHAT_MEDIA_BUCKET = 'chat-media'
 
