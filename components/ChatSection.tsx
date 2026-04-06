@@ -5070,7 +5070,7 @@ export default function ChatSection({
   }, [applyPendingMediaTasksToMessages, currentUserId, isThreadOpenDebugActive, keepLatestRenderedMessages, logThreadOpenMessageMutation, threadId])
 
   useEffect(() => {
-    if (loading || !isThreadLayoutReady || !hasDeferredInitialSettle) {
+    if (loading || !hasDeferredInitialSettle) {
       return
     }
 
@@ -5086,7 +5086,6 @@ export default function ChatSection({
     setHasDeferredInitialSettle(false)
   }, [
     hasDeferredInitialSettle,
-    isThreadLayoutReady,
     loading,
     messages.length,
     targetMessageId,
@@ -5098,10 +5097,6 @@ export default function ChatSection({
     }
 
     if (messages.length === 0) {
-      return
-    }
-
-    if (!isThreadLayoutReady) {
       return
     }
 
@@ -5161,7 +5156,6 @@ export default function ChatSection({
     })
   }, [
     isNearBottom,
-    isThreadLayoutReady,
     loading,
     messages.length,
     pendingInitialSavedScrollRestore,
@@ -5177,10 +5171,6 @@ export default function ChatSection({
       return
     }
 
-    if (!isThreadLayoutReady) {
-      return
-    }
-
     initialBottomLockUserCancelledRef.current = false
     initialBottomLockNextSourceRef.current = 'initial-open'
     initialBottomLockLastGeometryRef.current = getInitialBottomLockGeometry()
@@ -5189,7 +5179,6 @@ export default function ChatSection({
     setPendingInitialScroll(false)
   }, [
     getInitialBottomLockGeometry,
-    isThreadLayoutReady,
     loading,
     messages.length,
     pendingInitialScroll,
@@ -7934,15 +7923,17 @@ export default function ChatSection({
               )}
             </div>
           </div>
-          <div
-            ref={composerWrapperRef}
-            data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
-            className={`shrink-0 pt-1 ${
-              isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
-            }`}
-          >
-            {!isReadOnlyAnnouncement ? renderComposer() : null}
-          </div>
+          {!isReadOnlyAnnouncement ? (
+            <div
+              ref={composerWrapperRef}
+              data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
+              className={`shrink-0 pt-1 ${
+                isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+              }`}
+            >
+              {renderComposer()}
+            </div>
+          ) : null}
         </>
       </div>
       {selectedViewerState ? (
