@@ -6,7 +6,7 @@ import { normalizeChatMessagePushPriority, type PushPriority } from '@/lib/notif
 import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
 import { processAppEventPushDeliveries } from '@/lib/push/appEventPush'
 import { getProfileDisplayName } from '@/lib/profiles'
-import { decodeRequestUserId } from '@/lib/server/chatRequestAuth'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 type TextChatMessageRequestBody = {
@@ -548,10 +548,11 @@ async function runChatMessageFanout(message: InsertedChatMessageRow) {
 
 export async function POST(request: Request) {
   const routeStartedAt = Date.now()
-  const [body, userId] = await Promise.all([
+  const [body, auth] = await Promise.all([
     request.json().catch(() => null) as Promise<CreateChatMessageRequestBody | null>,
-    Promise.resolve(decodeRequestUserId(request)),
+    getAuthenticatedUser(),
   ])
+  const userId = auth.user?.id ?? null
 
   const kind = body?.kind === 'voice' ? 'voice' : 'text'
   const threadId = body?.threadId?.trim() || null

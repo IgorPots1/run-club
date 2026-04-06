@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { logChatSendDebug, logChatSendDebugError } from '@/lib/chatSendDebug'
-import { decodeRequestUserId } from '@/lib/server/chatRequestAuth'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 type ChatMessageAttachmentRequestBody = {
@@ -144,9 +144,12 @@ export async function POST(
   context: { params: Promise<{ messageId: string }> }
 ) {
   const routeStartedAt = Date.now()
-  const userId = decodeRequestUserId(request)
-  const body = await request.json().catch(() => null) as ChatMessageAttachmentRequestBody | null
-  const params = await context.params
+  const [auth, body, params] = await Promise.all([
+    getAuthenticatedUser(),
+    request.json().catch(() => null) as Promise<ChatMessageAttachmentRequestBody | null>,
+    context.params,
+  ])
+  const userId = auth.user?.id ?? null
   const messageId = params.messageId?.trim() ?? ''
   const threadId = body?.threadId?.trim() || null
   const sortOrder = typeof body?.sortOrder === 'number' ? Math.round(body.sortOrder) : -1
