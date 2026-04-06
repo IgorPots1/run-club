@@ -44,6 +44,10 @@ function ThreadOverlayHeader({
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.25rem)]">
       <div className="mx-auto relative flex min-h-11 max-w-3xl items-center justify-between gap-3">
+        <div
+          aria-hidden="true"
+          className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1.625rem)] h-10 w-[min(14rem,calc(100%-8rem))] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/40 backdrop-blur-sm dark:bg-white/10"
+        />
         <div className="pointer-events-auto shrink-0">
           <BackNavigationButton
             fallbackHref="/messages"
@@ -53,7 +57,7 @@ function ThreadOverlayHeader({
         </div>
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
           <div className="flex justify-center px-2">
-            <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/[0.06] bg-[color:var(--background)]/24 px-3 py-1 text-center text-[15px] font-medium dark:border-white/[0.1] dark:bg-[color:var(--background)]/12">
+            <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full bg-white/60 px-3 py-1 text-center text-[15px] font-medium shadow-[0_2px_8px_rgba(15,23,42,0.04)] dark:bg-white/16">
               Общение
             </p>
           </div>
