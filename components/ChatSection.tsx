@@ -8484,7 +8484,7 @@ export default function ChatSection({
           >
             <div
               ref={scrollContentRef}
-              className={`flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
+              className={`flex flex-1 flex-col justify-end pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
                 showTitle ? '' : 'pt-4'
               }`}
             >
