@@ -57,7 +57,7 @@ function ThreadOverlayHeader({
         </div>
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
           <div className="flex justify-center px-2">
-            <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full bg-white/60 px-3 py-1 text-center text-[15px] font-medium shadow-[0_2px_8px_rgba(15,23,42,0.04)] dark:bg-white/16">
+            <p className="app-text-primary max-w-full truncate px-3 py-1 text-center text-[15px] font-medium">
               Общение
             </p>
           </div>
