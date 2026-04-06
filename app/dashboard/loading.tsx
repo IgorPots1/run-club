@@ -4,12 +4,12 @@ export default function DashboardLoading() {
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <div className="mb-6 space-y-1">
-          <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
-          <div className="space-y-2">
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-2">
             <div className="skeleton-line h-6 w-40" />
             <div className="skeleton-line h-4 w-20" />
           </div>
+          <div className="skeleton-line h-11 w-11 rounded-full" />
         </div>
 
         <div className="mb-4">

@@ -1,11 +1,12 @@
 'use client'
 
-import { Activity, Target, Trophy } from 'lucide-react'
+import { Activity, Bell, Target, Trophy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
+import UnreadBadge from '@/components/chat/UnreadBadge'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
@@ -236,6 +237,7 @@ export default function DashboardPageClient({
   initialLevelProgress,
   initialActiveChallenges,
   initialAllChallengesCompleted,
+  initialInboxUnreadCount,
 }: {
   initialUser: DashboardInitialUser
   initialProfileSummary: DashboardInitialProfileSummary
@@ -243,6 +245,7 @@ export default function DashboardPageClient({
   initialLevelProgress: DashboardInitialLevelProgress
   initialActiveChallenges: DashboardActiveChallenge[]
   initialAllChallengesCompleted: boolean
+  initialInboxUnreadCount: number
 }) {
   const router = useRouter()
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
@@ -511,14 +514,22 @@ export default function DashboardPageClient({
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <div className="mb-6 space-y-1">
-          <h1 className="app-text-primary text-2xl font-bold">Главная</h1>
+        <div className="mb-6 flex items-start justify-between gap-3">
           <UserIdentitySummary
+            className="flex-1"
             loadingIdentity={false}
             loadingLevel={false}
             displayName={headerDisplayName}
             levelLabel={headerLevelLabel}
           />
+          <Link
+            href="/activity/inbox"
+            aria-label="Открыть входящие"
+            className="app-card relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border shadow-sm transition-transform hover:shadow-md active:scale-[0.98]"
+          >
+            <Bell className="h-5 w-5" strokeWidth={1.9} />
+            <UnreadBadge count={initialInboxUnreadCount} className="absolute -right-1 -top-1" />
+          </Link>
         </div>
         <div className="mb-4">
           <Link

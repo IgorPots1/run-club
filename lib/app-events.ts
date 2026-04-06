@@ -3,6 +3,13 @@ import 'server-only'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getProfileDisplayName } from '@/lib/profiles'
 
+export const INBOX_APP_EVENT_TYPES = [
+  'run_like.created',
+  'run_comment.created',
+  'run_comment.reply_created',
+  'challenge.completed',
+] as const
+
 type AppEventRow = {
   id: string
   type: string
@@ -12,6 +19,10 @@ type AppEventRow = {
   target_path: string | null
   payload: Record<string, unknown> | null
   created_at: string
+}
+
+type ActivityInboxReadStateRow = {
+  activity_inbox_last_read_at: string | null
 }
 
 type AppEventActorProfileRow = {
@@ -98,6 +109,32 @@ function getFallbackEventCopy(type: string) {
   }
 }
 
+function applyInboxEventFilters<T extends {
+  eq: (column: string, value: string) => T
+  in: (column: string, values: readonly string[]) => T
+}>(query: T, userId: string): T {
+  return query
+    .eq('target_user_id', userId)
+    .in('type', INBOX_APP_EVENT_TYPES)
+}
+
+async function getActivityInboxLastReadAt(
+  userId: string,
+  supabaseAdmin = createSupabaseAdminClient()
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('activity_inbox_last_read_at')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return ((data as ActivityInboxReadStateRow | null) ?? null)?.activity_inbox_last_read_at ?? null
+}
+
 function buildInboxEventItem(
   event: AppEventRow,
   actorProfilesById: Map<string, AppEventActorProfileRow>
@@ -121,10 +158,12 @@ function buildInboxEventItem(
 
 export async function loadInboxEventItems(userId: string, limit = 50): Promise<InboxEventItem[]> {
   const supabaseAdmin = createSupabaseAdminClient()
-  const { data, error } = await supabaseAdmin
-    .from('app_events')
-    .select('id, type, actor_user_id, entity_type, entity_id, target_path, payload, created_at')
-    .eq('target_user_id', userId)
+  const { data, error } = await applyInboxEventFilters(
+    supabaseAdmin
+      .from('app_events')
+      .select('id, type, actor_user_id, entity_type, entity_id, target_path, payload, created_at'),
+    userId
+  )
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -132,12 +171,7 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
     throw error
   }
 
-  const rows = ((data as AppEventRow[] | null) ?? []).filter((row) =>
-    row.type === 'run_like.created' ||
-    row.type === 'run_comment.created' ||
-    row.type === 'run_comment.reply_created' ||
-    row.type === 'challenge.completed'
-  )
+  const rows = (data as AppEventRow[] | null) ?? []
 
   const actorUserIds = Array.from(
     new Set(
@@ -172,4 +206,41 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
   }
 
   return rows.map((event) => buildInboxEventItem(event, actorProfilesById))
+}
+
+export async function getInboxUnreadCount(userId: string): Promise<number> {
+  const supabaseAdmin = createSupabaseAdminClient()
+  const lastReadAt = await getActivityInboxLastReadAt(userId, supabaseAdmin)
+  const unreadCountQuery = applyInboxEventFilters(
+    supabaseAdmin
+      .from('app_events')
+      .select('id', { count: 'exact', head: true }),
+    userId
+  )
+
+  if (lastReadAt) {
+    unreadCountQuery.gt('created_at', lastReadAt)
+  }
+
+  const { count, error } = await unreadCountQuery
+
+  if (error) {
+    throw error
+  }
+
+  return Math.max(0, Number(count ?? 0))
+}
+
+export async function markInboxEventsAsRead(userId: string): Promise<void> {
+  const supabaseAdmin = createSupabaseAdminClient()
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      activity_inbox_last_read_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+
+  if (error) {
+    throw error
+  }
 }

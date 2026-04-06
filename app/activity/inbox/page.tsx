@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import InnerPageHeader from '@/components/InnerPageHeader'
-import { loadInboxEventItems } from '@/lib/app-events'
+import { loadInboxEventItems, markInboxEventsAsRead } from '@/lib/app-events'
 import { formatRunDateTimeLabel } from '@/lib/format'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -26,16 +26,39 @@ export default async function ActivityInboxPage() {
     redirect('/login')
   }
 
+  let events = null as Awaited<ReturnType<typeof loadInboxEventItems>> | null
+  let loadFailed = false
+
   try {
-    const events = await loadInboxEventItems(user.id)
+    ;[events] = await Promise.all([
+      loadInboxEventItems(user.id),
+      // Do not block inbox rendering if the read cursor update fails.
+      markInboxEventsAsRead(user.id).catch((error) => {
+        console.error('Failed to mark inbox events as read', {
+          userId: user.id,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      }),
+    ])
+  } catch {
+    loadFailed = true
+  }
 
-    return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <InnerPageHeader title="Входящие" fallbackHref="/activity" />
+  return (
+    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+        <InnerPageHeader title="Входящие" fallbackHref="/activity" />
 
+        {loadFailed ? (
+          <div className="app-card mt-4 rounded-2xl border p-4 shadow-sm">
+            <p className="text-sm text-red-600">Не удалось загрузить входящие</p>
+            <Link href="/activity" className="app-button-secondary mt-4 inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm">
+              Вернуться в активность
+            </Link>
+          </div>
+        ) : (
           <div className="mt-4">
-            {events.length === 0 ? (
+            {!events || events.length === 0 ? (
               <div className="app-card rounded-2xl border p-5 text-center shadow-sm md:p-6">
                 <p className="app-text-secondary text-sm">Пока здесь пусто.</p>
                 <p className="app-text-secondary mt-2 text-sm">Когда кто-то отреагирует на ваши пробежки или выполнится челлендж, событие появится здесь.</p>
@@ -95,23 +118,8 @@ export default async function ActivityInboxPage() {
               </div>
             )}
           </div>
-        </div>
-      </main>
-    )
-  } catch {
-    return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <InnerPageHeader title="Входящие" fallbackHref="/activity" />
-
-          <div className="app-card mt-4 rounded-2xl border p-4 shadow-sm">
-            <p className="text-sm text-red-600">Не удалось загрузить входящие</p>
-            <Link href="/activity" className="app-button-secondary mt-4 inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm">
-              Вернуться в активность
-            </Link>
-          </div>
-        </div>
-      </main>
-    )
-  }
+        )}
+      </div>
+    </main>
+  )
 }
