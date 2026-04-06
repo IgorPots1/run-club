@@ -109,15 +109,6 @@ function getFallbackEventCopy(type: string) {
   }
 }
 
-function applyInboxEventFilters<T extends {
-  eq: (column: string, value: string) => T
-  in: (column: string, values: readonly string[]) => T
-}>(query: T, userId: string): T {
-  return query
-    .eq('target_user_id', userId)
-    .in('type', INBOX_APP_EVENT_TYPES)
-}
-
 async function getActivityInboxLastReadAt(
   userId: string,
   supabaseAdmin = createSupabaseAdminClient()
@@ -158,12 +149,11 @@ function buildInboxEventItem(
 
 export async function loadInboxEventItems(userId: string, limit = 50): Promise<InboxEventItem[]> {
   const supabaseAdmin = createSupabaseAdminClient()
-  const { data, error } = await applyInboxEventFilters(
-    supabaseAdmin
-      .from('app_events')
-      .select('id, type, actor_user_id, entity_type, entity_id, target_path, payload, created_at'),
-    userId
-  )
+  const { data, error } = await supabaseAdmin
+    .from('app_events')
+    .select('id, type, actor_user_id, entity_type, entity_id, target_path, payload, created_at')
+    .eq('target_user_id', userId)
+    .in('type', INBOX_APP_EVENT_TYPES)
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -211,12 +201,11 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
 export async function getInboxUnreadCount(userId: string): Promise<number> {
   const supabaseAdmin = createSupabaseAdminClient()
   const lastReadAt = await getActivityInboxLastReadAt(userId, supabaseAdmin)
-  const unreadCountQuery = applyInboxEventFilters(
-    supabaseAdmin
-      .from('app_events')
-      .select('id', { count: 'exact', head: true }),
-    userId
-  )
+  const unreadCountQuery = supabaseAdmin
+    .from('app_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('target_user_id', userId)
+    .in('type', INBOX_APP_EVENT_TYPES)
 
   if (lastReadAt) {
     unreadCountQuery.gt('created_at', lastReadAt)
