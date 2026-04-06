@@ -48,12 +48,12 @@ function ThreadOverlayHeader({
           <BackNavigationButton
             fallbackHref="/messages"
             variant="icon"
-            className="border-black/10 bg-transparent shadow-none dark:border-white/12"
+            className="border-black/10 bg-transparent shadow-none backdrop-blur-xl dark:border-white/12"
           />
         </div>
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
           <div className="flex justify-center px-2">
-            <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium dark:border-white/12">
+            <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium backdrop-blur-xl dark:border-white/12">
               Общение
             </p>
           </div>
@@ -424,7 +424,7 @@ export default function MessageThreadPage() {
         type="button"
         onClick={() => setIsHeaderMenuOpen((open) => !open)}
         disabled={isLoadingThreadMuteState || isUpdatingThreadMute}
-        className="app-text-primary inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-transparent text-[16px] leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/12"
+        className="app-text-primary inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-transparent text-[16px] leading-none shadow-none backdrop-blur-xl disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/12"
         aria-label="Действия чата"
         aria-expanded={isHeaderMenuOpen}
         aria-haspopup="menu"
