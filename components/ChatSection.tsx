@@ -3700,7 +3700,7 @@ const ChatMessageList = memo(function ChatMessageList({
   onMessageContextMenu: (message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => void
 }) {
   return (
-    <section className="flex flex-col px-0 pt-1">
+    <section className="mt-auto flex flex-col px-0 pt-1">
       <div className="flex flex-col">
         {messages.map((message, index) => {
           const isOwnMessage = currentUserId === message.userId
@@ -8484,7 +8484,7 @@ export default function ChatSection({
           >
             <div
               ref={scrollContentRef}
-              className={`flex ${error || messages.length === 0 ? 'flex-1 ' : ''}flex-col justify-end pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
+              className={`flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
                 showTitle ? '' : 'pt-4'
               }`}
             >
