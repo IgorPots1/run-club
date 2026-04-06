@@ -11,7 +11,7 @@ export default function ClubPage() {
   const [activeTab, setActiveTab] = useState<ClubTab>('challenges')
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-xl p-4 md:max-w-none">
         <h1 className="app-text-primary mb-4 text-2xl font-bold">Клуб</h1>
 

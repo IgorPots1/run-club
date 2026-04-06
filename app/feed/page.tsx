@@ -37,7 +37,7 @@ export default function FeedPage() {
   const emptyCtaLabel = currentUserId ? 'Добавить тренировку' : 'Войти'
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
         <InfiniteWorkoutFeed

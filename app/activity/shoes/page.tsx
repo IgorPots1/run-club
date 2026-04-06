@@ -25,7 +25,7 @@ export default async function ActivityShoesPage() {
   }
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <InnerPageHeader title="Кроссовки" fallbackHref="/activity" />
         <div className="mt-4">

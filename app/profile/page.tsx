@@ -1023,7 +1023,7 @@ function ProfilePageContent() {
 
   if (profileDataLoading) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+      <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
           <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
           <div className="mb-6 flex flex-col items-center gap-4">
@@ -1077,7 +1077,7 @@ function ProfilePageContent() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
       {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}

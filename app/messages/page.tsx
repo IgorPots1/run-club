@@ -894,7 +894,7 @@ export default function MessagesPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="min-h-screen">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4">
           <InnerPageHeader title="Сообщения" />
           <div className="space-y-3">
@@ -916,7 +916,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4">
         <InnerPageHeader title="Сообщения" />
 

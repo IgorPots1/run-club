@@ -365,7 +365,7 @@ export default function ActivityPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] pb-[calc(96px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-7xl md:px-8 md:py-6">
         <div className="mb-5 md:mb-8">
           <h1 className="app-text-primary text-2xl font-bold">Активность</h1>

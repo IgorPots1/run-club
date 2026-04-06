@@ -49,7 +49,7 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
     const latestWeek = await loadLatestFinalizedRaceWeek()
 
     return (
-      <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="min-h-screen">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
           <InnerPageHeader title="Итоги гонки" fallbackHref="/race" />
 
@@ -80,7 +80,7 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
   })
 
   return (
-    <main className="min-h-screen pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-0">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <InnerPageHeader title="Итоги гонки" fallbackHref="/race" />
 
