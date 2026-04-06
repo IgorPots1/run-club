@@ -73,7 +73,6 @@ export async function POST(request: Request) {
     const result = await syncStravaRuns(user.id, {
       mode: debugRunId ? 'backfill' : 'incremental',
       ...(debugRunId ? { debugRunId } : {}),
-      ...(debugMode && debugRunId ? { allowTargetedDebugOwnerBypass: true } : {}),
     })
 
     if (!result.ok) {
