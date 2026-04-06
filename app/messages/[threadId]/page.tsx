@@ -446,6 +446,18 @@ export default function MessageThreadPage() {
       events={chatLayoutDebugData.events}
     />
   ) : null
+  const routeDebugMarker = (
+    <div className="pointer-events-none fixed inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[2147483647] flex justify-center px-2">
+      <div className="w-full max-w-3xl rounded-3xl border-4 border-white bg-red-600 px-4 py-4 text-center text-white shadow-[0_24px_90px_rgba(220,38,38,0.82)] ring-4 ring-red-300/80">
+        <p className="text-[clamp(1.25rem,5.5vw,2.5rem)] font-black uppercase tracking-[0.12em]">
+          THREAD PAGE ROUTE MARKER
+        </p>
+        <p className="mt-2 font-mono text-[13px] font-bold sm:text-[15px]">
+          commit: bbd0b0c
+        </p>
+      </div>
+    </div>
+  )
   if (!loading && (error || !currentUserId || !threadId)) {
     return (
       <main
@@ -453,6 +465,7 @@ export default function MessageThreadPage() {
         className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
         style={isolatedViewportStyle}
       >
+        {routeDebugMarker}
         {chatLayoutDebugOverlay}
         <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
           <ThreadOverlayHeader />
@@ -521,6 +534,7 @@ export default function MessageThreadPage() {
       className="relative flex flex-col overflow-hidden"
       style={isolatedViewportStyle}
     >
+      {routeDebugMarker}
       {chatLayoutDebugOverlay}
       <ThreadOverlayHeader rightSlot={headerRightSlot} />
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
