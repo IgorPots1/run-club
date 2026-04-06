@@ -362,11 +362,11 @@ export default function InfiniteWorkoutFeed({
     }
 
     const unsubscribe = subscribeToRunLikes((payload: RunLikeRealtimePayload) => {
-      if (likeInFlightRef.current[payload.runId]) {
+      const activeUserId = currentUserIdRef.current
+      if (likeInFlightRef.current[payload.runId] && payload.userId === activeUserId) {
         return
       }
 
-      const activeUserId = currentUserIdRef.current
       const currentItem = itemsRef.current.find((item) => item.id === payload.runId)
 
       if (!currentItem) {
