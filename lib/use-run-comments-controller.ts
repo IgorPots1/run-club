@@ -339,6 +339,11 @@ export function useRunCommentsController({
         commentId,
         userId: currentUserId,
       })
+      const pendingLocalLikeEchoesRef = wasLiked
+        ? pendingLocalLikeDeleteEchoesRef
+        : pendingLocalLikeInsertEchoesRef
+
+      pendingLocalLikeEchoesRef.current.add(echoKey)
 
       try {
         const { error } = await toggleRunCommentLike(commentId, wasLiked)
@@ -346,13 +351,8 @@ export function useRunCommentsController({
         if (error) {
           throw error
         }
-
-        if (wasLiked) {
-          pendingLocalLikeDeleteEchoesRef.current.add(echoKey)
-        } else {
-          pendingLocalLikeInsertEchoesRef.current.add(echoKey)
-        }
       } catch {
+        pendingLocalLikeEchoesRef.current.delete(echoKey)
         commentsRef.current = previousComments
         setComments(previousComments)
       } finally {
