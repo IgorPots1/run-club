@@ -6,10 +6,6 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request))
-})
-
 function normalizeThreadId(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
@@ -173,12 +169,9 @@ async function resolveSuppressionState(threadId, priority) {
 }
 
 self.addEventListener('push', (event) => {
-  console.log('[sw] push_received')
-
   const payload = (() => {
     try {
       const nextPayload = event.data ? event.data.json() : {}
-      console.log('[sw] push_payload', nextPayload)
       return nextPayload
     } catch (error) {
       console.error('[sw] push_parse_error', {
@@ -208,12 +201,6 @@ self.addEventListener('push', (event) => {
       const suppressionState = await resolveSuppressionState(threadId, priority)
 
       if (!suppressionState.shouldShowNotification) {
-        console.log('[sw] suppress_notification', {
-          threadId,
-          priority,
-          reason: suppressionState.suppressionReason,
-        })
-
         suppressionState.visibleClients.forEach((client) => {
           postNavigateMessage(client, {
             type: 'PUSH_SUPPRESSED',
@@ -230,13 +217,6 @@ self.addEventListener('push', (event) => {
         return
       }
 
-      console.log('[sw] show_notification', {
-        title,
-        body,
-        threadUnreadCount,
-        badgeCount,
-      })
-
       await self.registration.showNotification(title, {
         body,
         tag,
@@ -252,8 +232,6 @@ self.addEventListener('push', (event) => {
           unreadScope,
         },
       })
-
-      console.log('[sw] show_notification_done')
     })()
   )
 })
@@ -268,11 +246,6 @@ self.addEventListener('notificationclick', (event) => {
     : undefined
   const url = resolveNotificationTargetUrl(event.notification.data?.targetUrl, threadId, messageId)
   const navigationKey = `${Date.now()}:${messageId || threadId || url}`
-
-  console.log('[sw] notification_click')
-  console.log('[sw] target_url', {
-    targetUrl: url,
-  })
 
   event.waitUntil(
     (async () => {
@@ -295,10 +268,6 @@ self.addEventListener('notificationclick', (event) => {
           try {
             const navigatedClient = await bestClient.navigate(url)
             await focusWindowClient(navigatedClient ?? bestClient)
-            console.log('[sw] focused_existing_client', {
-              targetUrl: url,
-              matchedExactly: false,
-            })
             return
           } catch {
             // Fall back to router-based in-app navigation below.
@@ -315,10 +284,6 @@ self.addEventListener('notificationclick', (event) => {
           navigationKey,
           source: 'notification-click',
         })
-        console.log('[sw] focused_existing_client', {
-          targetUrl: url,
-          matchedExactly: bestClient.url === url,
-        })
         return
       }
 
@@ -326,9 +291,6 @@ self.addEventListener('notificationclick', (event) => {
       if (openedClient) {
         await focusWindowClient(openedClient)
       }
-      console.log('[sw] opened_new_window', {
-        targetUrl: url,
-      })
     })()
   )
 })
