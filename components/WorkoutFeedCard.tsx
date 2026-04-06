@@ -42,6 +42,7 @@ type WorkoutFeedCardProps = {
   commentsCount?: number
   likedByMe: boolean
   isOwnRun?: boolean
+  isLikeInFlight?: boolean
   onToggleLike: (runId: string) => void
   onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
@@ -158,6 +159,7 @@ function WorkoutFeedCard({
   commentsCount = 0,
   likedByMe,
   isOwnRun = false,
+  isLikeInFlight = false,
   onToggleLike,
   onOpenLikes,
   onCommentClick,
@@ -225,6 +227,7 @@ function WorkoutFeedCard({
   const paceLabel = normalizePaceLabel(pace)
   const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
   const movingTimeLabel = movingTime?.trim() || '—'
+  const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
   const stravaBadge = externalSource === 'strava' ? (
     <div className="flex items-center gap-2 whitespace-nowrap">
       {showStravaHint ? (
@@ -499,13 +502,13 @@ function WorkoutFeedCard({
         <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <FeedActionButton
             count={likesCount}
-            active={likedByMe}
+            active={isHeartActive}
             disabled={!runId}
-            actionDisabled={isOwnRun}
+            actionDisabled={isOwnRun || isLikeInFlight}
             onClick={() => onToggleLike(runId)}
             onCountClick={() => onOpenLikes?.()}
             icon={
-              <Heart className="h-4 w-4" strokeWidth={1.9} fill={likedByMe ? 'currentColor' : 'none'} />
+              <Heart className="h-4 w-4" strokeWidth={1.9} fill={isHeartActive ? 'currentColor' : 'none'} />
             }
           />
           <FeedActionButton

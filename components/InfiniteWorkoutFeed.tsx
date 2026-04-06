@@ -65,9 +65,11 @@ export default function InfiniteWorkoutFeed({
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [nextOffset, setNextOffset] = useState(0)
+  const [likeInFlightByRunId, setLikeInFlightByRunId] = useState<Record<string, boolean>>({})
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedRunItem[]>([])
+  const likeInFlightRef = useRef<Record<string, boolean>>({})
   const likeRequestVersionByRunIdRef = useRef<Record<string, number>>({})
   const commentVisibilityByRunIdRef = useRef<Record<string, FeedCommentVisibilityById>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
@@ -109,6 +111,25 @@ export default function InfiniteWorkoutFeed({
 
       const next = { ...prev }
       delete next[runId]
+      return next
+    })
+  }, [])
+
+  const setLikeInFlight = useCallback((runId: string, inFlight: boolean) => {
+    likeInFlightRef.current[runId] = inFlight
+    setLikeInFlightByRunId((prev) => {
+      const isCurrentlyInFlight = prev[runId] === true
+      if (isCurrentlyInFlight === inFlight) {
+        return prev
+      }
+
+      const next = { ...prev }
+      if (inFlight) {
+        next[runId] = true
+      } else {
+        delete next[runId]
+      }
+
       return next
     })
   }, [])
@@ -259,9 +280,11 @@ export default function InfiniteWorkoutFeed({
     firstPageRequestKeyRef.current = feedQueryKey
     firstPageRequestPromiseRef.current = null
     commentVisibilityByRunIdRef.current = {}
+    likeInFlightRef.current = {}
     setItems([])
     setHasMore(true)
     setNextOffset(0)
+    setLikeInFlightByRunId({})
     setActiveLikesRun(null)
     void loadFirstPage()
   }, [enabled, feedQueryKey, loadFirstPage])
@@ -339,6 +362,10 @@ export default function InfiniteWorkoutFeed({
     }
 
     const unsubscribe = subscribeToRunLikes((payload: RunLikeRealtimePayload) => {
+      if (likeInFlightRef.current[payload.runId]) {
+        return
+      }
+
       const activeUserId = currentUserIdRef.current
       const currentItem = itemsRef.current.find((item) => item.id === payload.runId)
 
@@ -401,6 +428,7 @@ export default function InfiniteWorkoutFeed({
 
     const currentItem = itemsRef.current.find((item) => item.id === runId)
     if (!currentItem) return
+    if (likeInFlightRef.current[runId]) return
     if (currentItem.user_id === activeUserId) return
 
     const wasLiked = currentItem.likedByMe
@@ -409,6 +437,8 @@ export default function InfiniteWorkoutFeed({
     likeRequestVersionByRunIdRef.current[runId] = nextRequestVersion
 
     try {
+      setLikeInFlight(runId, true)
+
       const nextItems = previousItems.map((item) =>
         item.id === runId
           ? {
@@ -443,11 +473,15 @@ export default function InfiniteWorkoutFeed({
           itemsRef.current = previousItems
           setItems(previousItems)
         })
+        .finally(() => {
+          setLikeInFlight(runId, false)
+        })
     } catch {
+      setLikeInFlight(runId, false)
       itemsRef.current = previousItems
       setItems(previousItems)
     }
-  }, [clearRunLikesCache, router])
+  }, [clearRunLikesCache, router, setLikeInFlight])
 
   const loadLikedUsersForRun = useCallback(async (runId: string, force = false) => {
     if (!runId) {
@@ -568,6 +602,7 @@ export default function InfiniteWorkoutFeed({
               commentsCount={item.commentsCount}
               likedByMe={item.likedByMe}
               isOwnRun={item.user_id === currentUserId}
+              isLikeInFlight={Boolean(likeInFlightByRunId[item.id])}
               photos={item.photos}
               onToggleLike={handleLikeToggle}
               onOpenLikes={() => handleOpenLikes(item)}
