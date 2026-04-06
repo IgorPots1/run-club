@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ChatSection, {
   ChatLayoutDebugOverlay,
   EMPTY_CHAT_LAYOUT_DEBUG_DATA,
@@ -72,6 +72,7 @@ function ThreadOverlayHeader({
 
 export default function MessageThreadPage() {
   const params = useParams<{ threadId: string }>()
+  const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { isKeyboardOpen, isolatedViewportStyle } = useIsolatedViewportHeight()
@@ -81,13 +82,15 @@ export default function MessageThreadPage() {
   const pendingMarkThreadReadRef = useRef(false)
   const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
   const targetMessageId = normalizeMessageId(searchParams.get('messageId'))
+  const isRouteChatDebugEnabled = searchParams.get('chatDebug') === '1'
+  const searchString = searchParams.toString()
   const isChatLayoutDebugEnabled = useMemo(() => {
-    if (searchParams.get('chatDebug') === '1') {
+    if (isRouteChatDebugEnabled) {
       return true
     }
 
     return process.env.NEXT_PUBLIC_CHAT_LAYOUT_DEBUG === '1'
-  }, [searchParams])
+  }, [isRouteChatDebugEnabled])
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [threadTitle, setThreadTitle] = useState('')
@@ -446,6 +449,28 @@ export default function MessageThreadPage() {
       events={chatLayoutDebugData.events}
     />
   ) : null
+  const routeLevelDebugMarker = isRouteChatDebugEnabled ? (
+    <>
+      <div className="pointer-events-none fixed inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[2147483647] flex justify-center px-2">
+        <div className="w-full max-w-2xl rounded-2xl border-4 border-white bg-red-600 px-4 py-3 text-center text-white shadow-[0_20px_80px_rgba(220,38,38,0.75)] ring-4 ring-red-300/70">
+          <p className="text-[clamp(1.1rem,4.5vw,2rem)] font-black uppercase tracking-[0.1em]">
+            CHAT DEBUG MODE ACTIVE
+          </p>
+          <div className="mt-2 space-y-1 text-left font-mono text-[12px] font-bold sm:text-[13px]">
+            <p>{`threadId: ${threadId || 'missing'}`}</p>
+            <p>{`threadType: ${threadType ?? 'not-ready-yet'}`}</p>
+            <p>{`pathname: ${pathname || '/messages/[threadId]'}`}</p>
+            <p>{`search: ${searchString ? `?${searchString}` : '(empty)'}`}</p>
+            <p>{`pageLoading: ${loading ? 'true' : 'false'}`}</p>
+            <p>{`pageError: ${error || 'none'}`}</p>
+          </div>
+        </div>
+      </div>
+      <div className="pointer-events-none fixed bottom-3 right-3 z-[2147483647] rounded-full border-2 border-white bg-red-600 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(220,38,38,0.7)]">
+        CHAT DEBUG ON
+      </div>
+    </>
+  ) : null
 
   if (!loading && (error || !currentUserId || !threadId)) {
     return (
@@ -454,6 +479,7 @@ export default function MessageThreadPage() {
         className="min-h-screen px-4 pb-4 pt-[env(safe-area-inset-top)]"
         style={isolatedViewportStyle}
       >
+        {routeLevelDebugMarker}
         {chatLayoutDebugOverlay}
         <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
           <ThreadOverlayHeader />
@@ -522,6 +548,7 @@ export default function MessageThreadPage() {
       className="relative flex flex-col overflow-hidden"
       style={isolatedViewportStyle}
     >
+      {routeLevelDebugMarker}
       {chatLayoutDebugOverlay}
       <ThreadOverlayHeader rightSlot={headerRightSlot} />
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
