@@ -616,6 +616,7 @@ export function ChatLayoutDebugOverlay({
   isInitialBottomLockActive,
   isReadOnlyAnnouncement,
   targetMessageId,
+  chatSectionDataReady,
   snapshot,
   events,
 }: {
