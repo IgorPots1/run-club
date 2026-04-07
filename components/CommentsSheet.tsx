@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeight'
 import type { RunCommentItem } from '@/lib/run-comments'
 
 type CommentsSheetProps = {
@@ -147,6 +148,7 @@ export default function CommentsSheet({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const previousSubmittingRef = useRef(false)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
+  const { isolatedViewportStyle } = useIsolatedViewportHeight()
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
     if (scrollContainerRef.current) {
@@ -205,7 +207,6 @@ export default function CommentsSheet({
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      focusComposer()
       scrollToBottom('auto')
     })
 
@@ -298,7 +299,13 @@ export default function CommentsSheet({
         className="absolute inset-0"
         onClick={onClose}
       />
-      <section className="app-card relative flex h-[min(78vh,42rem)] w-full flex-col rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl">
+      <section
+        className="app-card relative flex w-full flex-col rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl"
+        style={{
+          height: isolatedViewportStyle.height,
+          maxHeight: '42rem',
+        }}
+      >
         <div className="px-4 pt-4">
           <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
           <div className="flex items-center justify-between gap-3">
@@ -389,9 +396,8 @@ export default function CommentsSheet({
               }}
               placeholder="Сообщение"
               disabled={submitting}
-              autoFocus
               enterKeyHint="send"
-              className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-5"
+              className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-base leading-5 sm:text-sm"
             />
             <button
               type="submit"
