@@ -13,6 +13,7 @@ export type RaceEvent = {
   name: string
   race_date: string
   linked_run_id: string | null
+  distance_meters?: number | null
   result_time_seconds?: number | null
   created_at: string
   linked_run?: RaceEventLinkedRunSummary | null
@@ -32,6 +33,7 @@ export type RaceEventMutationInput = {
   name: string
   raceDate: string
   linkedRunId?: string | null
+  distanceMeters?: number | null
   resultTimeSeconds?: number | null
 }
 

@@ -6,6 +6,7 @@ type RaceEventRequestBody = {
   name?: string | null
   raceDate?: string | null
   linkedRunId?: string | null
+  distanceMeters?: number | null
   resultTimeSeconds?: number | null
 }
 
@@ -15,6 +16,7 @@ const RACE_EVENT_SELECT = `
   name,
   race_date,
   linked_run_id,
+  distance_meters,
   result_time_seconds,
   created_at,
   linked_run:runs!race_events_linked_run_id_fkey (
@@ -100,6 +102,10 @@ export async function POST(request: Request) {
   const name = body?.name?.trim() ?? ''
   const raceDate = body?.raceDate?.trim() ?? ''
   const linkedRunId = body?.linkedRunId?.trim() || null
+  const distanceMeters =
+    typeof body?.distanceMeters === 'number' && Number.isFinite(body.distanceMeters) && body.distanceMeters >= 0
+      ? Math.round(body.distanceMeters)
+      : null
   const resultTimeSeconds =
     typeof body?.resultTimeSeconds === 'number' && Number.isFinite(body.resultTimeSeconds) && body.resultTimeSeconds >= 0
       ? Math.round(body.resultTimeSeconds)
@@ -145,6 +151,7 @@ export async function POST(request: Request) {
       name,
       race_date: raceDate,
       linked_run_id: linkedRunId,
+      distance_meters: distanceMeters,
       result_time_seconds: resultTimeSeconds,
     })
     .select(RACE_EVENT_SELECT)

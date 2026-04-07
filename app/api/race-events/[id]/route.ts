@@ -6,6 +6,7 @@ type RaceEventRequestBody = {
   name?: string | null
   raceDate?: string | null
   linkedRunId?: string | null
+  distanceMeters?: number | null
   resultTimeSeconds?: number | null
 }
 
@@ -15,6 +16,7 @@ const RACE_EVENT_SELECT = `
   name,
   race_date,
   linked_run_id,
+  distance_meters,
   result_time_seconds,
   created_at,
   linked_run:runs!race_events_linked_run_id_fkey (
@@ -34,7 +36,7 @@ async function loadOwnedRaceEvent(
 ) {
   return supabaseAdmin
     .from('race_events')
-    .select('id, user_id, result_time_seconds')
+    .select('id, user_id, distance_meters, result_time_seconds')
     .eq('id', raceEventId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -107,6 +109,16 @@ export async function PATCH(
   const name = body?.name?.trim() ?? ''
   const raceDate = body?.raceDate?.trim() ?? ''
   const linkedRunId = body?.linkedRunId?.trim() || null
+  const distanceMeters =
+    body && Object.prototype.hasOwnProperty.call(body, 'distanceMeters')
+      ? (
+        typeof body.distanceMeters === 'number' &&
+        Number.isFinite(body.distanceMeters) &&
+        body.distanceMeters >= 0
+          ? Math.round(body.distanceMeters)
+          : null
+      )
+      : (existingRaceEvent?.distance_meters ?? null)
   const resultTimeSeconds =
     body && Object.prototype.hasOwnProperty.call(body, 'resultTimeSeconds')
       ? (
@@ -156,6 +168,7 @@ export async function PATCH(
       name,
       race_date: raceDate,
       linked_run_id: linkedRunId,
+      distance_meters: distanceMeters,
       result_time_seconds: resultTimeSeconds,
     })
     .eq('id', raceEventId)
