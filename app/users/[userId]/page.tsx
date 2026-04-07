@@ -40,15 +40,15 @@ function formatDateKey(date: Date) {
 }
 
 function buildRecent7DayActivity(runs: PublicRunStatRow[], now = new Date()) {
-  const runsCountByDate = runs.reduce<Record<string, number>>((counts, run) => {
+  const distanceByDate = runs.reduce<Record<string, number>>((totals, run) => {
     const createdAt = new Date(run.created_at)
     if (Number.isNaN(createdAt.getTime())) {
-      return counts
+      return totals
     }
 
     const dateKey = formatDateKey(createdAt)
-    counts[dateKey] = (counts[dateKey] ?? 0) + 1
-    return counts
+    totals[dateKey] = (totals[dateKey] ?? 0) + Math.max(0, Number(run.distance_km ?? 0))
+    return totals
   }, {})
 
   const today = new Date(now)
@@ -60,16 +60,30 @@ function buildRecent7DayActivity(runs: PublicRunStatRow[], now = new Date()) {
     const weekdayIndex = date.getDay()
     const normalizedWeekdayIndex = weekdayIndex === 0 ? 6 : weekdayIndex - 1
     const dateKey = formatDateKey(date)
-    const runsCount = runsCountByDate[dateKey] ?? 0
+    const distanceKm = distanceByDate[dateKey] ?? 0
 
     return {
       dateKey,
       weekdayLabel: WEEKDAY_LABELS[normalizedWeekdayIndex] ?? '',
-      runsCount,
-      isActive: runsCount > 0,
+      distanceKm,
+      isActive: distanceKm > 0,
       isToday: index === 6,
     }
   })
+}
+
+function formatRecentDayDistanceLabel(distanceKm: number) {
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+    return ''
+  }
+
+  const roundedDistance = Math.round(distanceKm)
+
+  if (roundedDistance > 99) {
+    return '99+'
+  }
+
+  return String(roundedDistance)
 }
 
 function formatClubJoinedLabel(dateString: string | null | undefined) {
@@ -197,49 +211,33 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                 <div className="app-surface-muted mt-3 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
                   <div className="grid grid-cols-7 gap-2">
                     {recent7DayActivity.map((day) => {
+                      const distanceLabel = formatRecentDayDistanceLabel(day.distanceKm)
                       return (
                         <div
                           key={day.dateKey}
                           className="flex min-w-0 flex-col items-center gap-1.5"
-                          aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${day.runsCount} пробежек`}
+                          aria-label={`${day.isToday ? 'Сегодня' : day.dateKey}: ${distanceLabel ? `${distanceLabel} км` : 'без пробежки'}`}
                         >
                           <span className="app-text-muted text-[11px] font-medium leading-none">
                             {day.weekdayLabel}
                           </span>
                           <span
-                            className={`flex h-11 w-full items-end rounded-lg border p-1 ${
+                            className={`flex h-11 w-11 items-center justify-center rounded-full text-[11px] font-semibold leading-none transition-colors ${
+                              day.isActive
+                                ? 'app-accent-bg text-white'
+                                : 'bg-black/[0.04] text-black/35 dark:bg-white/[0.06] dark:text-white/35'
+                            } ${
                               day.isToday
-                                ? 'border-black/15 bg-black/[0.04] dark:border-white/15 dark:bg-white/[0.06]'
-                                : 'border-black/[0.04] bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.04]'
+                                ? 'ring-1 ring-black/12 dark:ring-white/18'
+                                : 'ring-1 ring-black/5 dark:ring-white/10'
                             }`}
-                            aria-hidden="true"
                           >
-                            <span
-                              className={`block w-full rounded-md transition-colors ${
-                                day.isActive
-                                  ? 'app-accent-bg h-[60%] opacity-90'
-                                  : 'h-[18%] bg-black/[0.08] dark:bg-white/[0.10]'
-                              }`}
-                            />
+                            {distanceLabel}
                           </span>
                         </div>
                       )
                     })}
                   </div>
-                </div>
-              </div>
-              <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
-                <div className="app-surface-muted rounded-2xl px-3 py-2.5 ring-1 ring-black/5 dark:ring-white/10">
-                  <p className="app-text-primary text-[1.15rem] font-semibold leading-none sm:text-[1.3rem]">
-                    {formatDistanceKm(activity7Days.totalDistanceKm)} км
-                  </p>
-                  <p className="app-text-secondary mt-1.5 text-sm">Пробег</p>
-                </div>
-                <div className="app-surface-muted rounded-2xl px-3 py-2.5 ring-1 ring-black/5 dark:ring-white/10">
-                  <p className="app-text-primary text-[1.15rem] font-semibold leading-none sm:text-[1.3rem]">
-                    {activity7Days.runsCount}
-                  </p>
-                  <p className="app-text-secondary mt-1.5 text-sm">Пробежки</p>
                 </div>
               </div>
             </div>
