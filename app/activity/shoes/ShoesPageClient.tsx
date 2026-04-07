@@ -224,7 +224,6 @@ function ShoeFormSheet({
   editing,
   submitting,
   canSubmit,
-  selectedSummaryLabel,
   catalogBrands,
   selectedBrandId,
   selectedModelId,
@@ -232,7 +231,7 @@ function ShoeFormSheet({
   selectedBrand,
   selectedCatalogModel,
   selectedVersion,
-  isLegacyModelSelection,
+  selectedLegacyModelLabel,
   customName,
   nickname,
   distanceKmInput,
@@ -255,7 +254,6 @@ function ShoeFormSheet({
   editing: boolean
   submitting: boolean
   canSubmit: boolean
-  selectedSummaryLabel: string
   catalogBrands: ShoeCatalogBrand[]
   selectedBrandId: string
   selectedModelId: string
@@ -263,7 +261,7 @@ function ShoeFormSheet({
   selectedBrand: ShoeCatalogBrand | null
   selectedCatalogModel: ShoeCatalogModel | null
   selectedVersion: ShoeCatalogVersion | null
-  isLegacyModelSelection: boolean
+  selectedLegacyModelLabel: string | null
   customName: string
   nickname: string
   distanceKmInput: string
@@ -308,6 +306,14 @@ function ShoeFormSheet({
   )
   const [catalogSearchInput, setCatalogSearchInput] = useState('')
   const [debouncedCatalogSearchInput, setDebouncedCatalogSearchInput] = useState('')
+  const normalizedCustomName = toNullableTrimmedText(customName)
+  const hasSelectedCatalogShoe = Boolean(selectedVersion)
+  const hasLegacySelectedShoe = Boolean(selectedLegacyModelLabel && !selectedVersion)
+  const selectedShoeName = selectedVersion?.fullName ?? selectedLegacyModelLabel ?? ''
+  const [selectionMode, setSelectionMode] = useState<'search' | 'browse' | 'manual'>(() =>
+    normalizedCustomName && !hasSelectedCatalogShoe && !hasLegacySelectedShoe ? 'manual' : 'search'
+  )
+  const [showAdditional, setShowAdditional] = useState(false)
   const catalogSearchResults = useMemo<CatalogSearchResult[]>(
     () =>
       catalogBrands.flatMap((brand) =>
@@ -342,6 +348,10 @@ function ShoeFormSheet({
 
     return catalogSearchResults.filter((result) => result.searchText.includes(normalizedCatalogSearchQuery))
   }, [catalogSearchResults, normalizedCatalogSearchQuery])
+  const isManualFlow = selectionMode === 'manual'
+  const isSelectionStep = !isManualFlow && !hasSelectedCatalogShoe && !hasLegacySelectedShoe
+  const isSearchStep = isSelectionStep && selectionMode === 'search'
+  const isBrowseStep = isSelectionStep && selectionMode === 'browse'
 
   useEffect(() => {
     if (!open) {
@@ -379,6 +389,27 @@ function ShoeFormSheet({
     return null
   }
 
+  function resetToSearchSelection() {
+    onBrandChange('')
+    setCatalogSearchInput('')
+    setDebouncedCatalogSearchInput('')
+    setSelectionMode('search')
+  }
+
+  function startBrowseFlow() {
+    onBrandChange('')
+    setCatalogSearchInput('')
+    setDebouncedCatalogSearchInput('')
+    setSelectionMode('browse')
+  }
+
+  function startManualFlow() {
+    onBrandChange('')
+    setCatalogSearchInput('')
+    setDebouncedCatalogSearchInput('')
+    setSelectionMode('manual')
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4">
       <button
@@ -396,7 +427,11 @@ function ShoeFormSheet({
               {editing ? 'Редактировать пару' : 'Добавить пару'}
             </h2>
             <p className="app-text-secondary mt-1 text-sm">
-              Выбери бренд, модель и версию из каталога или задай свое название вручную.
+              {isManualFlow
+                ? 'Добавь пару вручную и укажи текущий пробег.'
+                : isSelectionStep
+                  ? 'Сначала найди пару, затем укажи пробег и сохрани.'
+                  : 'Проверь выбранную пару, укажи пробег и сохрани.'}
             </p>
           </div>
           <button
@@ -412,68 +447,61 @@ function ShoeFormSheet({
 
         <form onSubmit={onSubmit} className="mt-4 min-h-0 flex-1 overflow-y-auto pb-1">
           <div className="space-y-4">
-            <div className="space-y-3 rounded-2xl border p-4">
-              <div>
-                <p className="app-text-primary text-sm font-medium">Каталог</p>
-                <p className="app-text-secondary mt-1 text-xs">{selectedSummaryLabel}</p>
-              </div>
-
-              <div>
-                <label htmlFor="shoe-catalog-search" className="app-text-secondary mb-1 block text-sm">
-                  Поиск по каталогу
-                </label>
-                <div className="relative">
-                  <Search
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 app-text-secondary"
-                    strokeWidth={1.9}
-                  />
-                  <input
-                    id="shoe-catalog-search"
-                    type="text"
-                    value={catalogSearchInput}
-                    onChange={(event) => setCatalogSearchInput(event.target.value)}
-                    placeholder="Например: Nike Pegasus 41"
-                    disabled={submitting}
-                    className="app-input min-h-11 w-full rounded-xl border py-2 pl-10 pr-10"
-                  />
-                  {catalogSearchInput ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCatalogSearchInput('')
-                        setDebouncedCatalogSearchInput('')
-                      }}
+            {isSearchStep ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border p-4">
+                  <label htmlFor="shoe-catalog-search" className="app-text-secondary mb-1 block text-sm">
+                    Найти модель
+                  </label>
+                  <div className="relative">
+                    <Search
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 app-text-secondary"
+                      strokeWidth={1.9}
+                    />
+                    <input
+                      id="shoe-catalog-search"
+                      type="text"
+                      value={catalogSearchInput}
+                      onChange={(event) => setCatalogSearchInput(event.target.value)}
+                      placeholder="Например: Nike Pegasus 40"
                       disabled={submitting}
-                      className="app-text-secondary absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Сбросить
-                    </button>
-                  ) : null}
-                </div>
-                <p className="app-text-secondary mt-2 text-xs">
-                  Ищи по бренду, модели или версии. Если поле пустое, можно выбрать пару вручную ниже.
-                </p>
-              </div>
-
-              {normalizedCatalogSearchQuery ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="app-text-primary text-sm font-medium">Результаты поиска</p>
-                    <p className="app-text-secondary text-xs">
-                      {isCatalogSearchPending ? 'Ищем...' : `${filteredCatalogSearchResults.length} вариантов`}
-                    </p>
+                      className="app-input min-h-11 w-full rounded-xl border py-2 pl-10 pr-10"
+                    />
+                    {catalogSearchInput ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCatalogSearchInput('')
+                          setDebouncedCatalogSearchInput('')
+                        }}
+                        disabled={submitting}
+                        className="app-text-secondary absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Сбросить
+                      </button>
+                    ) : null}
                   </div>
+                  <p className="app-text-secondary mt-2 text-xs">
+                    Ищи по бренду, модели или версии.
+                  </p>
+                </div>
 
-                  {isCatalogSearchPending ? (
-                    <div className="app-surface-muted rounded-2xl border border-dashed px-3 py-3 text-sm app-text-secondary">
-                      Обновляем результаты...
+                {normalizedCatalogSearchQuery ? (
+                  <div className="overflow-hidden rounded-2xl border">
+                    <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                      <p className="app-text-primary text-sm font-medium">Результаты</p>
+                      <p className="app-text-secondary text-xs">
+                        {isCatalogSearchPending ? 'Ищем...' : `${filteredCatalogSearchResults.length} вариантов`}
+                      </p>
                     </div>
-                  ) : filteredCatalogSearchResults.length > 0 ? (
-                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-                      {filteredCatalogSearchResults.map((result) => {
-                        const isSelected = selectedVersionId === result.versionId
 
-                        return (
+                    {isCatalogSearchPending ? (
+                      <div className="app-surface-muted px-4 py-4 text-sm app-text-secondary">
+                        Обновляем результаты...
+                      </div>
+                    ) : filteredCatalogSearchResults.length > 0 ? (
+                      <div className="max-h-72 overflow-y-auto">
+                        {filteredCatalogSearchResults.map((result, index) => (
                           <button
                             key={result.versionId}
                             type="button"
@@ -487,156 +515,279 @@ function ShoeFormSheet({
                               setDebouncedCatalogSearchInput('')
                             }}
                             disabled={submitting}
-                            className={`w-full rounded-2xl border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                              isSelected ? 'app-button-primary shadow-sm' : 'app-surface-muted'
-                            }`}
+                            className={`w-full px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                              index > 0 ? 'border-t border-black/[0.05] dark:border-white/[0.08]' : ''
+                            } hover:bg-black/[0.03] dark:hover:bg-white/[0.03]`}
                           >
-                            <p className="text-sm font-medium">{result.fullName}</p>
-                            <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
-                              {result.brandName} • {result.modelName}
-                              {result.versionName ? ` • ${result.versionName}` : ''}
-                            </p>
-                            <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
-                              {result.isCurrent ? 'Текущая версия каталога' : 'Версия из актуального каталога'}
+                            <p className="app-text-primary text-sm font-medium">{result.fullName}</p>
+                            <p className="app-text-secondary mt-1 text-xs">
+                              {result.brandName} · {result.modelName}
+                              {result.versionName ? ` · ${result.versionName}` : ''}
                             </p>
                           </button>
-                        )
-                      })}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="app-surface-muted px-4 py-4 text-sm app-text-secondary">
+                        Ничего не нашли. Попробуй другой запрос или выбери модель вручную.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="app-surface-muted rounded-2xl border border-dashed px-4 py-4 text-sm app-text-secondary">
+                    Начни вводить название модели, чтобы увидеть подходящие варианты.
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={startBrowseFlow}
+                    disabled={submitting}
+                    className="app-button-secondary inline-flex min-h-11 w-full items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Выбрать вручную
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startManualFlow}
+                    disabled={submitting}
+                    className="app-text-secondary inline-flex min-h-10 w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Не нашли? Добавить вручную
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {isBrowseStep ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="app-text-primary text-sm font-medium">Выбор вручную</p>
+                      <p className="app-text-secondary mt-1 text-xs">
+                        Выбери бренд, модель и версию по шагам.
+                      </p>
                     </div>
-                  ) : (
-                    <div className="app-surface-muted rounded-2xl border border-dashed px-3 py-3 text-sm app-text-secondary">
-                      Ничего не нашли. Попробуй другой запрос или выбери бренд, модель и версию вручную.
+                    <button
+                      type="button"
+                      onClick={resetToSearchSelection}
+                      disabled={submitting}
+                      className="app-text-secondary text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Назад
+                    </button>
+                  </div>
+                </div>
+
+                <CatalogSelectField
+                  id="shoe-brand-select"
+                  label="Бренд"
+                  value={selectedBrandId}
+                  placeholder="Выбери бренд"
+                  options={brandOptions}
+                  disabled={submitting}
+                  onChange={onBrandChange}
+                />
+
+                <CatalogSelectField
+                  id="shoe-model-select"
+                  label="Модель"
+                  value={selectedModelId}
+                  placeholder={selectedBrand ? 'Выбери модель' : 'Сначала выбери бренд'}
+                  options={modelOptions}
+                  disabled={submitting || !selectedBrand}
+                  onChange={onCatalogModelChange}
+                />
+
+                <CatalogSelectField
+                  id="shoe-version-select"
+                  label="Версия"
+                  value={selectedVersionId}
+                  placeholder={selectedCatalogModel ? 'Выбери версию' : 'Сначала выбери модель'}
+                  options={versionOptions}
+                  disabled={submitting || !selectedCatalogModel}
+                  onChange={onVersionChange}
+                />
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={startManualFlow}
+                    disabled={submitting}
+                    className="app-text-secondary inline-flex min-h-10 w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Не нашли? Добавить вручную
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!isSelectionStep && !isManualFlow ? (
+              <>
+                <div className="rounded-2xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="app-text-secondary text-xs font-medium uppercase tracking-wide">Выбрана пара</p>
+                      <p className="app-text-primary mt-1 break-words text-base font-semibold">{selectedShoeName}</p>
+                      {hasLegacySelectedShoe ? (
+                        <p className="app-text-secondary mt-2 text-xs">
+                          Старая запись без версии каталога. При желании можно выбрать пару заново.
+                        </p>
+                      ) : null}
                     </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={resetToSearchSelection}
+                      disabled={submitting}
+                      className="app-text-secondary shrink-0 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Изменить
+                    </button>
+                  </div>
                 </div>
-              ) : null}
 
-              <CatalogSelectField
-                id="shoe-brand-select"
-                label="Бренд"
-                value={selectedBrandId}
-                placeholder="Выбери бренд"
-                options={brandOptions}
-                disabled={submitting}
-                onChange={onBrandChange}
-              />
-
-              <CatalogSelectField
-                id="shoe-model-select"
-                label="Модель"
-                value={selectedModelId}
-                placeholder={selectedBrand ? 'Выбери модель' : 'Сначала выбери бренд'}
-                options={modelOptions}
-                disabled={submitting || !selectedBrand}
-                onChange={onCatalogModelChange}
-              />
-
-              <CatalogSelectField
-                id="shoe-version-select"
-                label="Версия"
-                value={selectedVersionId}
-                placeholder={selectedCatalogModel ? 'Выбери версию' : 'Сначала выбери модель'}
-                options={versionOptions}
-                disabled={submitting || !selectedCatalogModel}
-                onChange={onVersionChange}
-              />
-
-              {selectedVersion ? (
-                <div className="app-surface-muted rounded-2xl border px-3 py-3 text-sm">
-                  <p className="font-medium">{selectedVersion.fullName}</p>
-                  <p className="app-text-secondary mt-1">
-                    {selectedVersion.isCurrent ? 'Текущая версия каталога' : 'Версия из актуального каталога'}
-                  </p>
+                <div>
+                  <label htmlFor="shoe-distance-km" className="app-text-secondary mb-1 block text-sm">
+                    Пробег, км
+                  </label>
+                  <input
+                    id="shoe-distance-km"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={distanceKmInput}
+                    onChange={(event) => onDistanceChange(event.target.value)}
+                    disabled={submitting}
+                    className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
+                  />
                 </div>
-              ) : null}
+              </>
+            ) : null}
 
-              {isLegacyModelSelection ? (
-                <div className="rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 text-sm text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
-                  Эта пара была сохранена по старой схеме. Чтобы перевести ее на новый каталог, выбери бренд, модель и версию.
+            {isManualFlow ? (
+              <>
+                <div className="rounded-2xl border p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="app-text-primary text-sm font-medium">Добавить вручную</p>
+                      <p className="app-text-secondary mt-1 text-xs">
+                        Укажи название пары и текущий пробег.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetToSearchSelection}
+                      disabled={submitting}
+                      className="app-text-secondary text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Назад
+                    </button>
+                  </div>
                 </div>
-              ) : null}
-            </div>
 
-            <div className="app-surface-muted rounded-2xl border border-dashed p-4">
-              <label htmlFor="shoe-custom-name" className="app-text-secondary mb-1 block text-sm">
-                Свое название
-              </label>
-              <input
-                id="shoe-custom-name"
-                type="text"
-                placeholder="Например: Старые темповые"
-                value={customName}
-                onChange={(event) => onCustomNameChange(event.target.value)}
-                disabled={submitting}
-                className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
-              />
-              <p className="app-text-secondary mt-2 text-xs">
-                Используй это поле, если нужной пары нет в каталоге.
-              </p>
-            </div>
+                <div>
+                  <label htmlFor="shoe-custom-name" className="app-text-secondary mb-1 block text-sm">
+                    Название
+                  </label>
+                  <input
+                    id="shoe-custom-name"
+                    type="text"
+                    placeholder="Например: Старые темповые"
+                    value={customName}
+                    onChange={(event) => {
+                      setSelectionMode('manual')
+                      onCustomNameChange(event.target.value)
+                    }}
+                    disabled={submitting}
+                    className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
+                  />
+                </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="shoe-nickname" className="app-text-secondary mb-1 block text-sm">
-                  Никнейм пары
-                </label>
-                <input
-                  id="shoe-nickname"
-                  type="text"
-                  placeholder="Необязательно"
-                  value={nickname}
-                  onChange={(event) => onNicknameChange(event.target.value)}
-                  disabled={submitting}
-                  className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
-                />
+                <div>
+                  <label htmlFor="shoe-distance-km" className="app-text-secondary mb-1 block text-sm">
+                    Пробег, км
+                  </label>
+                  <input
+                    id="shoe-distance-km"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={distanceKmInput}
+                    onChange={(event) => onDistanceChange(event.target.value)}
+                    disabled={submitting}
+                    className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {!isSelectionStep ? (
+              <div className="overflow-hidden rounded-2xl border">
+                <button
+                  type="button"
+                  onClick={() => setShowAdditional((currentValue) => !currentValue)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                >
+                  <div>
+                    <p className="app-text-primary text-sm font-medium">Дополнительно</p>
+                    <p className="app-text-secondary mt-1 text-xs">
+                      Никнейм, ресурс пары и статус активности
+                    </p>
+                  </div>
+                  <span className="app-text-secondary text-sm font-medium">
+                    {showAdditional ? 'Скрыть' : 'Показать'}
+                  </span>
+                </button>
+
+                {showAdditional ? (
+                  <div className="space-y-4 border-t px-4 py-4">
+                    <div>
+                      <label htmlFor="shoe-nickname" className="app-text-secondary mb-1 block text-sm">
+                        Никнейм пары
+                      </label>
+                      <input
+                        id="shoe-nickname"
+                        type="text"
+                        placeholder="Необязательно"
+                        value={nickname}
+                        onChange={(event) => onNicknameChange(event.target.value)}
+                        disabled={submitting}
+                        className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="shoe-max-distance-km" className="app-text-secondary mb-1 block text-sm">
+                        Ресурс пары, км
+                      </label>
+                      <input
+                        id="shoe-max-distance-km"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="800"
+                        value={maxDistanceKmInput}
+                        onChange={(event) => onMaxDistanceChange(event.target.value)}
+                        disabled={submitting}
+                        className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
+                      />
+                      <p className="app-text-secondary mt-2 text-xs">
+                        Если не указывать отдельно, используем стандартные 800 км.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3">
+                      <div>
+                        <p className="app-text-primary text-sm font-medium">Активная пара</p>
+                        <p className="app-text-secondary mt-1 text-xs">Показываем статус сразу на карточке.</p>
+                      </div>
+                      <ActiveSwitch checked={isActive} onCheckedChange={onActiveChange} disabled={submitting} />
+                    </div>
+                  </div>
+                ) : null}
               </div>
-
-              <div>
-                <label htmlFor="shoe-distance-km" className="app-text-secondary mb-1 block text-sm">
-                  Пробег, км
-                </label>
-                <input
-                  id="shoe-distance-km"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={distanceKmInput}
-                  onChange={(event) => onDistanceChange(event.target.value)}
-                  disabled={submitting}
-                  className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
-                />
-                <p className="app-text-secondary mt-2 text-xs">
-                  Можно вводить дробные значения, например 42.2.
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="shoe-max-distance-km" className="app-text-secondary mb-1 block text-sm">
-                Ресурс пары, км
-              </label>
-              <input
-                id="shoe-max-distance-km"
-                type="text"
-                inputMode="decimal"
-                placeholder="800"
-                value={maxDistanceKmInput}
-                onChange={(event) => onMaxDistanceChange(event.target.value)}
-                disabled={submitting}
-                className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
-              />
-              <p className="app-text-secondary mt-2 text-xs">
-                Если не указывать отдельно, используем стандартные 800 км.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3">
-              <div>
-                <p className="app-text-primary text-sm font-medium">Активная пара</p>
-                <p className="app-text-secondary mt-1 text-xs">Показываем статус сразу на карточке.</p>
-              </div>
-              <ActiveSwitch checked={isActive} onCheckedChange={onActiveChange} disabled={submitting} />
-            </div>
+            ) : null}
 
             {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           </div>
@@ -650,15 +801,17 @@ function ShoeFormSheet({
             >
               Отмена
             </button>
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                canSubmit ? 'app-button-primary shadow-sm' : 'app-button-secondary text-[var(--text-muted)]'
-              }`}
-            >
-              {submitting ? 'Сохраняем...' : editing ? 'Сохранить изменения' : 'Добавить кроссовки'}
-            </button>
+            {!isSelectionStep ? (
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className={`inline-flex min-h-11 items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  canSubmit ? 'app-button-primary shadow-sm' : 'app-button-secondary text-[var(--text-muted)]'
+                }`}
+              >
+                {submitting ? 'Сохраняем...' : 'Сохранить'}
+              </button>
+            ) : null}
           </div>
         </form>
       </section>
@@ -812,30 +965,6 @@ export default function ShoesPageClient({
     dedupingInterval: 15000,
     focusThrottleInterval: 15000,
   })
-
-  const selectedSummaryLabel = useMemo(() => {
-    if (selectedVersion) {
-      return `Выбрана версия: ${selectedVersion.fullName}`
-    }
-
-    if (selectedCatalogModel && selectedBrand) {
-      return `Выбрана модель: ${selectedBrand.name} ${selectedCatalogModel.name}`
-    }
-
-    if (selectedBrand) {
-      return `Выбран бренд: ${selectedBrand.name}`
-    }
-
-    if (selectedLegacyModelLabel) {
-      return `Старая пара: ${selectedLegacyModelLabel}`
-    }
-
-    if (toNullableTrimmedText(customName)) {
-      return 'Сохранится как своя пара'
-    }
-
-    return 'Выбери бренд, модель и версию или укажи свое название'
-  }, [customName, selectedBrand, selectedCatalogModel, selectedLegacyModelLabel, selectedVersion])
 
   const editingShoe = useMemo(
     () => shoes?.find((shoe) => shoe.id === editingShoeId) ?? null,
@@ -1173,7 +1302,6 @@ export default function ShoesPageClient({
         editing={Boolean(editingShoeId)}
         submitting={submitting}
         canSubmit={canSubmit}
-        selectedSummaryLabel={selectedSummaryLabel}
         catalogBrands={initialCatalog}
         selectedBrandId={selectedBrandId}
         selectedModelId={selectedCatalogModelId}
@@ -1181,7 +1309,7 @@ export default function ShoesPageClient({
         selectedBrand={selectedBrand}
         selectedCatalogModel={selectedCatalogModel}
         selectedVersion={selectedVersion}
-        isLegacyModelSelection={Boolean(selectedLegacyModelLabel && !selectedVersion)}
+        selectedLegacyModelLabel={selectedLegacyModelLabel}
         customName={customName}
         nickname={nickname}
         distanceKmInput={distanceKmInput}
