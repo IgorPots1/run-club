@@ -196,22 +196,6 @@ function normalizeRunDetailSeriesPoints(value: unknown): RunDetailSeriesPoint[] 
   return points.length > 0 ? points : null
 }
 
-function StravaIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className="block h-[14px] w-[14px] shrink-0 text-[#FC4C02]"
-    >
-      <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
-      <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
-    </svg>
-  )
-}
-
 function formatDurationLabel(totalSeconds: number) {
   const safeSeconds = Math.max(0, Math.round(totalSeconds))
   const hours = Math.floor(safeSeconds / 3600)
@@ -1555,12 +1539,6 @@ export default function RunDetailsPage() {
             <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
               {formatRunTimestampLabel(run.created_at, run.external_source)}
             </p>
-            {run.external_source === 'strava' ? (
-              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium">
-                <StravaIcon />
-                Strava
-              </span>
-            ) : null}
             {isOwner && !isEditingDetails ? (
               <button
                 type="button"

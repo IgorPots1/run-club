@@ -52,22 +52,6 @@ const DEFAULT_WORKOUT_NAME = 'Бег'
 const RUNS_REFETCH_THROTTLE_MS = 8000
 const CALENDAR_WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
-function StravaIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className="block h-4 w-4 shrink-0 text-[#FC4C02]"
-    >
-      <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
-      <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
-    </svg>
-  )
-}
-
 function formatDurationMinutesLabel(totalMinutes: number) {
   if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
     return '0 мин'
@@ -525,7 +509,6 @@ export default function RunsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
-  const [activeStravaHintRunId, setActiveStravaHintRunId] = useState<string | null>(null)
   const lastRunsFetchAtRef = useRef(0)
   const runsRequestPromiseRef = useRef<Promise<void> | null>(null)
   const suppressNextRunsUpdatedRefreshRef = useRef(false)
@@ -797,20 +780,6 @@ export default function RunsPage() {
   }, [xpToast])
 
   useEffect(() => {
-    if (!activeStravaHintRunId) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setActiveStravaHintRunId(null)
-    }, 2200)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [activeStravaHintRunId])
-
-  useEffect(() => {
     if (!user) return
 
     const currentUser = user
@@ -965,9 +934,6 @@ export default function RunsPage() {
       }
 
       setRuns((prev) => prev.filter((r) => r.id !== id))
-      if (activeStravaHintRunId === id) {
-        setActiveStravaHintRunId(null)
-      }
       suppressNextRunsUpdatedRefreshRef.current = true
       dispatchRunsUpdatedEvent()
     } catch {
@@ -1214,25 +1180,6 @@ export default function RunsPage() {
                   <span>{deletingRunIds.includes(run.id) ? 'Удаляем...' : 'Удалить'}</span>
                 </button>
               </div>
-              {run.external_source === 'strava' ? (
-                <>
-                  {activeStravaHintRunId === run.id ? (
-                    <div className="app-text-secondary absolute bottom-12 right-4 z-10 rounded-full border bg-white/95 px-3 py-1.5 text-xs shadow-sm dark:bg-black/90">
-                      Импортировано из Strava
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    aria-label="Показать источник Strava"
-                    onClick={() =>
-                      setActiveStravaHintRunId((current) => (current === run.id ? null : run.id))
-                    }
-                    className="absolute bottom-4 right-4 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white/80 dark:bg-black/20"
-                  >
-                    <StravaIcon />
-                  </button>
-                </>
-              ) : null}
             </div>
           ))
         )}

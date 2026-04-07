@@ -99,7 +99,7 @@ function FeedActionButton({
 
   return (
     <div
-      className={`inline-flex min-h-11 w-full items-center justify-between gap-1.5 rounded-full px-1 py-1 text-sm leading-none sm:w-auto sm:justify-start ${
+      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
         active ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
       }`}
     >
@@ -126,7 +126,7 @@ function FeedActionButton({
         type="button"
         onClick={onCountClick ?? onClick}
         disabled={disabled}
-        className="inline-flex min-h-9 min-w-0 flex-1 items-center justify-end rounded-full px-2 text-right text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none sm:justify-center sm:text-center"
+        className="inline-flex min-h-9 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {count}
       </button>
@@ -463,7 +463,7 @@ function WorkoutFeedCard({
       ) : null}
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <FeedActionButton
             count={likesCount}
             active={isHeartActive}

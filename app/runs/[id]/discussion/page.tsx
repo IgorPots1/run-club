@@ -140,22 +140,6 @@ function formatPaceLabel(distanceKm: number | null, totalDurationSeconds: number
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
 }
 
-function StravaIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className="block h-[14px] w-[14px] shrink-0 text-[#FC4C02]"
-    >
-      <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
-      <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
-    </svg>
-  )
-}
-
 function normalizeCommentTarget(value: string | null) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
@@ -614,22 +598,13 @@ export default function RunDiscussionPage() {
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium">
-        <span className="app-text-primary">{distanceLabel}</span>
+        <span className="app-text-primary break-words">{distanceLabel}</span>
         <span className="app-text-secondary">•</span>
-        <span className="app-text-primary">{paceLabel}</span>
+        <span className="app-text-primary break-words">{paceLabel}</span>
         <span className="app-text-secondary">•</span>
-        <span className="app-text-primary">{durationLabel}</span>
+        <span className="app-text-primary break-words">{durationLabel}</span>
         <span className="app-text-secondary">•</span>
-        <span className="app-text-secondary">⚡ +{Math.max(0, Math.round(run.xp ?? 0))} XP</span>
-        {run.external_source === 'strava' ? (
-          <>
-            <span className="app-text-secondary">•</span>
-            <span className="app-text-secondary inline-flex items-center gap-1">
-              <StravaIcon />
-              <span>Strava</span>
-            </span>
-          </>
-        ) : null}
+        <span className="app-text-secondary break-words">⚡ +{Math.max(0, Math.round(run.xp ?? 0))} XP</span>
       </div>
     </section>
   )
