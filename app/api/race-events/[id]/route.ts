@@ -10,6 +10,7 @@ type RaceEventRequestBody = {
   linkedRunId?: string | null
   distanceMeters?: number | null
   resultTimeSeconds?: number | null
+  targetTimeSeconds?: number | null
 }
 
 function hasRaceCompletionSignal(raceEvent: {
@@ -30,6 +31,7 @@ const RACE_EVENT_SELECT = `
   linked_run_id,
   distance_meters,
   result_time_seconds,
+  target_time_seconds,
   created_at,
   linked_run:runs!race_events_linked_run_id_fkey (
     id,
@@ -187,6 +189,16 @@ export async function PATCH(
           : null
       )
       : (existingRaceEvent?.result_time_seconds ?? null)
+  const targetTimeSeconds =
+    body && Object.prototype.hasOwnProperty.call(body, 'targetTimeSeconds')
+      ? (
+        typeof body.targetTimeSeconds === 'number' &&
+        Number.isFinite(body.targetTimeSeconds) &&
+        body.targetTimeSeconds >= 0
+          ? Math.round(body.targetTimeSeconds)
+          : null
+      )
+      : (existingRaceEvent?.target_time_seconds ?? null)
 
   if (!name || !raceDate) {
     return NextResponse.json(
@@ -228,6 +240,7 @@ export async function PATCH(
       linked_run_id: linkedRunId,
       distance_meters: distanceMeters,
       result_time_seconds: resultTimeSeconds,
+      target_time_seconds: targetTimeSeconds,
     })
     .eq('id', raceEventId)
     .eq('user_id', user.id)
@@ -258,7 +271,9 @@ export async function PATCH(
             raceEventId: data.id,
             raceName: data.name,
             raceDate: data.race_date,
+            distanceMeters: data.distance_meters,
             resultTimeSeconds: data.result_time_seconds,
+            targetTimeSeconds: data.target_time_seconds,
             linkedRun: linkedRun ? {
               id: linkedRun.id,
               name: linkedRun.name,

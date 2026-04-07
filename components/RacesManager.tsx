@@ -11,9 +11,11 @@ import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import {
   createRaceEvent,
   deleteRaceEvent,
+  formatClock,
   getPersonalRecordRaceEventIds,
   isRaceEventUpcoming,
   loadRaceEvents,
+  parseClockInput,
   updateRaceEvent,
   type RaceEvent,
   type RaceEventLinkedRunSummary,
@@ -195,50 +197,6 @@ function parseDistanceKmInput(rawValue: string) {
   }
 }
 
-function formatResultTimeClock(totalSeconds: number | null | undefined) {
-  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
-    return null
-  }
-
-  const normalizedSeconds = Math.round(totalSeconds ?? 0)
-  const hours = Math.floor(normalizedSeconds / 3600)
-  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
-  const seconds = normalizedSeconds % 60
-
-  return [
-    String(hours).padStart(2, '0'),
-    String(minutes).padStart(2, '0'),
-    String(seconds).padStart(2, '0'),
-  ].join(':')
-}
-
-function parseResultTimeClock(value: string) {
-  const normalizedValue = value.trim()
-
-  if (!normalizedValue) {
-    return { value: null, isValid: true }
-  }
-
-  const match = normalizedValue.match(/^(\d+):([0-5]\d):([0-5]\d)$/)
-
-  if (!match) {
-    return { value: null, isValid: false }
-  }
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  const seconds = Number(match[3])
-
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
-    return { value: null, isValid: false }
-  }
-
-  return {
-    value: (hours * 3600) + (minutes * 60) + seconds,
-    isValid: true,
-  }
-}
-
 function getRaceEventDisplayTimeSeconds(raceEvent: RaceEvent) {
   const linkedRun = getRaceEventLinkedRun(raceEvent)
 
@@ -300,7 +258,9 @@ function RaceEventCard({
   const linkedRunLabel = getRaceEventLinkedRunLabel(raceEvent)
   const displayDistance = getRaceEventDisplayDistanceLabel(raceEvent)
   const displayTime = getRaceEventDisplayTimeSeconds(raceEvent)
-  const displayTimeLabel = formatResultTimeClock(displayTime?.seconds)
+  const displayTimeLabel = formatClock(displayTime?.seconds)
+  const targetTimeLabel = formatClock(raceEvent.target_time_seconds)
+  const isUpcoming = isRaceEventUpcoming(raceEvent)
 
   return (
     <div
@@ -372,6 +332,11 @@ function RaceEventCard({
           {!raceEvent.linked_run_id && displayTimeLabel ? (
             <p className="app-text-primary mt-2 text-sm font-medium">
               Результат: {displayTimeLabel}
+            </p>
+          ) : null}
+          {isUpcoming && targetTimeLabel ? (
+            <p className="app-text-primary mt-2 text-sm font-medium">
+              Цель: {targetTimeLabel}
             </p>
           ) : null}
           {!raceEvent.linked_run_id && candidateRuns.length > 0 ? (
@@ -462,6 +427,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   const [raceEventDate, setRaceEventDate] = useState('')
   const [distanceInput, setDistanceInput] = useState('')
   const [resultTimeInput, setResultTimeInput] = useState('')
+  const [targetTimeInput, setTargetTimeInput] = useState('')
   const [selectedLinkedRunId, setSelectedLinkedRunId] = useState('')
   const [formSuggestedRunId, setFormSuggestedRunId] = useState('')
   const [suggestedRunIdsByRaceEvent, setSuggestedRunIdsByRaceEvent] = useState<Record<string, string>>({})
@@ -614,6 +580,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     setRaceEventDate('')
     setDistanceInput('')
     setResultTimeInput('')
+    setTargetTimeInput('')
     setSelectedLinkedRunId('')
     setFormSuggestedRunId('')
     setRaceEventsError('')
@@ -629,7 +596,8 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     const normalizedName = raceEventName.trim() || DEFAULT_RACE_EVENT_NAME
     const normalizedRaceDate = raceEventDate.trim()
     const normalizedDistance = parseDistanceKmInput(distanceInput)
-    const normalizedResultTime = parseResultTimeClock(resultTimeInput)
+    const normalizedResultTime = parseClockInput(resultTimeInput)
+    const normalizedTargetTime = parseClockInput(targetTimeInput)
     const normalizedLinkedRunId = selectedLinkedRunId.trim() || null
 
     if (!normalizedRaceDate) {
@@ -647,6 +615,11 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       return
     }
 
+    if (!normalizedTargetTime.isValid) {
+      setRaceEventsError('Укажите целевое время в формате чч:мм:сс')
+      return
+    }
+
     setSubmittingRaceEvent(true)
     setRaceEventsError('')
 
@@ -657,6 +630,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
           raceDate: normalizedRaceDate,
           distanceMeters: normalizedDistance.value,
           resultTimeSeconds: normalizedResultTime.value,
+          targetTimeSeconds: normalizedTargetTime.value,
           linkedRunId: normalizedLinkedRunId,
         })
         : await createRaceEvent({
@@ -664,6 +638,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
           raceDate: normalizedRaceDate,
           distanceMeters: normalizedDistance.value,
           resultTimeSeconds: normalizedResultTime.value,
+          targetTimeSeconds: normalizedTargetTime.value,
           linkedRunId: normalizedLinkedRunId,
         })
 
@@ -679,7 +654,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     } finally {
       setSubmittingRaceEvent(false)
     }
-  }, [distanceInput, editingRaceEventId, raceEventDate, raceEventName, resetRaceEventForm, resultTimeInput, selectedLinkedRunId, submittingRaceEvent, upsertRaceEvent])
+  }, [distanceInput, editingRaceEventId, raceEventDate, raceEventName, resetRaceEventForm, resultTimeInput, selectedLinkedRunId, submittingRaceEvent, targetTimeInput, upsertRaceEvent])
 
   const handleStartEditingRaceEvent = useCallback((raceEvent: RaceEvent) => {
     setOpenRaceEventMenuId(null)
@@ -687,7 +662,8 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     setRaceEventName(raceEvent.name)
     setRaceEventDate(raceEvent.race_date)
     setDistanceInput(formatManualDistanceKm(raceEvent.distance_meters)?.replace(' km', '') ?? '')
-    setResultTimeInput(formatResultTimeClock(raceEvent.result_time_seconds) ?? '')
+    setResultTimeInput(formatClock(raceEvent.result_time_seconds) ?? '')
+    setTargetTimeInput(formatClock(raceEvent.target_time_seconds) ?? '')
     setSelectedLinkedRunId(raceEvent.linked_run_id ?? '')
     setFormSuggestedRunId('')
     setRaceEventsError('')
@@ -865,6 +841,24 @@ export default function RacesManager({ userId }: RacesManagerProps) {
             />
             <p className="app-text-secondary mt-2 text-xs">
               Формат: чч:мм:сс. Если привязана тренировка, на карточке будет показано время из нее.
+            </p>
+          </div>
+          <div>
+            <label htmlFor="race-event-target-time" className="app-text-secondary mb-1 block text-sm">
+              Цель на старт
+            </label>
+            <input
+              id="race-event-target-time"
+              type="text"
+              inputMode="numeric"
+              value={targetTimeInput}
+              onChange={(event) => setTargetTimeInput(event.target.value)}
+              placeholder="Например: 01:45:00"
+              disabled={submittingRaceEvent}
+              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+            />
+            <p className="app-text-secondary mt-2 text-xs">
+              Необязательно. Для будущих стартов покажем это время как цель.
             </p>
           </div>
           <div>

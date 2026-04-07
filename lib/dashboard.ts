@@ -92,6 +92,7 @@ export type FeedRaceEventItem = {
   raceDate: string | null
   distanceMeters: number | null
   resultTimeSeconds: number | null
+  targetTimeSeconds: number | null
   isPersonalRecord: boolean
   created_at: string
   displayName: string
@@ -582,6 +583,7 @@ export async function loadFeedRuns(
           ? Math.round(Number(linkedRunMovingTimeSeconds ?? 0))
           : null
       )
+    const targetTimeSeconds = parseFiniteNumber(context?.targetTimeSeconds)
 
     return [{
       kind: 'race_event' as const,
@@ -593,6 +595,7 @@ export async function loadFeedRuns(
       raceDate,
       distanceMeters,
       resultTimeSeconds,
+      targetTimeSeconds,
       isPersonalRecord: false,
       created_at: event.created_at,
       displayName: getProfileDisplayName(profile, 'Бегун'),

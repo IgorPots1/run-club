@@ -159,6 +159,8 @@ export function buildRaceEventCreatedEvent(input: {
   raceEventId: string
   raceName?: string | null
   raceDate: string
+  distanceMeters?: number | null
+  targetTimeSeconds?: number | null
 }): CreateAppEventInput {
   return {
     type: 'race_event.created',
@@ -181,6 +183,14 @@ export function buildRaceEventCreatedEvent(input: {
         raceEventId: input.raceEventId,
         raceName: getRaceLabel(input.raceName),
         raceDate: input.raceDate,
+        distanceMeters:
+          Number.isFinite(input.distanceMeters) && (input.distanceMeters ?? 0) > 0
+            ? Math.round(input.distanceMeters ?? 0)
+            : null,
+        targetTimeSeconds:
+          Number.isFinite(input.targetTimeSeconds) && (input.targetTimeSeconds ?? 0) >= 0
+            ? Math.round(input.targetTimeSeconds ?? 0)
+            : null,
       },
     },
   }
@@ -191,7 +201,9 @@ export function buildRaceEventCompletedEvent(input: {
   raceEventId: string
   raceName?: string | null
   raceDate: string
+  distanceMeters?: number | null
   resultTimeSeconds?: number | null
+  targetTimeSeconds?: number | null
   linkedRun?: {
     id: string
     name?: string | null
@@ -225,9 +237,17 @@ export function buildRaceEventCompletedEvent(input: {
         raceEventId: input.raceEventId,
         raceName: getRaceLabel(input.raceName),
         raceDate: input.raceDate,
+        distanceMeters:
+          Number.isFinite(input.distanceMeters) && (input.distanceMeters ?? 0) > 0
+            ? Math.round(input.distanceMeters ?? 0)
+            : null,
         resultTimeSeconds:
           Number.isFinite(input.resultTimeSeconds) && (input.resultTimeSeconds ?? 0) >= 0
             ? Math.round(input.resultTimeSeconds ?? 0)
+            : null,
+        targetTimeSeconds:
+          Number.isFinite(input.targetTimeSeconds) && (input.targetTimeSeconds ?? 0) >= 0
+            ? Math.round(input.targetTimeSeconds ?? 0)
             : null,
         linkedRunId: input.linkedRun?.id ?? null,
         linkedRunName: trimToNull(input.linkedRun?.name) ?? trimToNull(input.linkedRun?.title),

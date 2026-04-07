@@ -15,11 +15,56 @@ export type RaceEvent = {
   linked_run_id: string | null
   distance_meters?: number | null
   result_time_seconds?: number | null
+  target_time_seconds?: number | null
   created_at: string
   linked_run?: RaceEventLinkedRunSummary | null
 }
 
 const PERSONAL_RECORD_DISTANCE_TOLERANCE = 0.02
+
+export function formatClock(totalSeconds: number | null | undefined) {
+  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
+    return null
+  }
+
+  const normalizedSeconds = Math.round(totalSeconds ?? 0)
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  return [
+    String(hours).padStart(2, '0'),
+    String(minutes).padStart(2, '0'),
+    String(seconds).padStart(2, '0'),
+  ].join(':')
+}
+
+export function parseClockInput(value: string) {
+  const normalizedValue = value.trim()
+
+  if (!normalizedValue) {
+    return { value: null, isValid: true }
+  }
+
+  const match = normalizedValue.match(/^(\d+):([0-5]\d):([0-5]\d)$/)
+
+  if (!match) {
+    return { value: null, isValid: false }
+  }
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3])
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+    return { value: null, isValid: false }
+  }
+
+  return {
+    value: (hours * 3600) + (minutes * 60) + seconds,
+    isValid: true,
+  }
+}
 
 export function isRaceEventUpcoming(raceEvent: Pick<RaceEvent, 'race_date' | 'linked_run_id'>) {
   const today = new Date().toISOString().slice(0, 10)
@@ -116,6 +161,7 @@ export type RaceEventMutationInput = {
   linkedRunId?: string | null
   distanceMeters?: number | null
   resultTimeSeconds?: number | null
+  targetTimeSeconds?: number | null
 }
 
 type RaceEventsResponse =

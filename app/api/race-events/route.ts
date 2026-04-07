@@ -10,6 +10,7 @@ type RaceEventRequestBody = {
   linkedRunId?: string | null
   distanceMeters?: number | null
   resultTimeSeconds?: number | null
+  targetTimeSeconds?: number | null
 }
 
 const RACE_EVENT_SELECT = `
@@ -20,6 +21,7 @@ const RACE_EVENT_SELECT = `
   linked_run_id,
   distance_meters,
   result_time_seconds,
+  target_time_seconds,
   created_at,
   linked_run:runs!race_events_linked_run_id_fkey (
     id,
@@ -112,6 +114,10 @@ export async function POST(request: Request) {
     typeof body?.resultTimeSeconds === 'number' && Number.isFinite(body.resultTimeSeconds) && body.resultTimeSeconds >= 0
       ? Math.round(body.resultTimeSeconds)
       : null
+  const targetTimeSeconds =
+    typeof body?.targetTimeSeconds === 'number' && Number.isFinite(body.targetTimeSeconds) && body.targetTimeSeconds >= 0
+      ? Math.round(body.targetTimeSeconds)
+      : null
 
   if (!name || !raceDate) {
     return NextResponse.json(
@@ -155,6 +161,7 @@ export async function POST(request: Request) {
       linked_run_id: linkedRunId,
       distance_meters: distanceMeters,
       result_time_seconds: resultTimeSeconds,
+      target_time_seconds: targetTimeSeconds,
     })
     .select(RACE_EVENT_SELECT)
     .single()
@@ -177,6 +184,8 @@ export async function POST(request: Request) {
           raceEventId: data.id,
           raceName: data.name,
           raceDate: data.race_date,
+          distanceMeters: data.distance_meters,
+          targetTimeSeconds: data.target_time_seconds,
         })
       )
     } catch (error) {
