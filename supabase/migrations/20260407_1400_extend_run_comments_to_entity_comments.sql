@@ -343,7 +343,9 @@ $$;
 revoke all on function public.get_entity_comments_with_meta(text, uuid, uuid) from public;
 grant execute on function public.get_entity_comments_with_meta(text, uuid, uuid) to authenticated;
 
-create or replace function public.get_run_comments_with_meta(
+drop function if exists public.get_run_comments_with_meta(uuid, uuid);
+
+create function public.get_run_comments_with_meta(
   p_run_id uuid,
   p_viewer_user_id uuid
 )

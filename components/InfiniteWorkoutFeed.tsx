@@ -160,6 +160,11 @@ export default function InfiniteWorkoutFeed({
 
   const applyRealtimeComment = useCallback((commentRow: RunCommentRealtimeRow) => {
     const runId = commentRow.run_id
+
+    if (!runId) {
+      return
+    }
+
     const hasLoadedRun = itemsRef.current.some((item) => item.id === runId)
 
     if (!hasLoadedRun) {
