@@ -98,7 +98,7 @@ export default function ActivityDistanceChart({
                 Number.isFinite(day)
                 && (day === 1 || day === totalDays || index % step === 0)
               ))
-              .map(({ day }) => day)
+              .map(({ day }) => String(day))
           ))
         })()
       : undefined
