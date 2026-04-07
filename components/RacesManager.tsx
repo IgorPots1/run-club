@@ -23,6 +23,7 @@ type RacesManagerProps = {
 
 type RaceEventCardProps = {
   raceEvent: RaceEvent
+  isPersonalRecord: boolean
   candidateRuns: ActivityRunRow[]
   selectedSuggestedRunId: string
   isMenuOpen: boolean
@@ -39,6 +40,7 @@ type RaceEventCardProps = {
 const DEFAULT_WORKOUT_NAME = 'Бег'
 const DEFAULT_RACE_EVENT_NAME = 'Новый старт'
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const PERSONAL_RECORD_DISTANCE_TOLERANCE = 0.02
 
 function formatRaceDateLabel(dateValue: string) {
   const parsedDate = new Date(`${dateValue}T12:00:00`)
@@ -278,8 +280,88 @@ function getRaceEventDisplayDistanceLabel(raceEvent: RaceEvent) {
   return null
 }
 
+function isRaceEventEligibleForPersonalRecord(raceEvent: RaceEvent) {
+  return (
+    Number.isFinite(raceEvent.distance_meters) &&
+    (raceEvent.distance_meters ?? 0) > 0 &&
+    Number.isFinite(raceEvent.result_time_seconds) &&
+    (raceEvent.result_time_seconds ?? 0) >= 0
+  )
+}
+
+function isWithinDistanceTolerance(distanceMeters: number, referenceDistanceMeters: number) {
+  if (distanceMeters <= 0 || referenceDistanceMeters <= 0) {
+    return false
+  }
+
+  return Math.abs(distanceMeters - referenceDistanceMeters) <= (referenceDistanceMeters * PERSONAL_RECORD_DISTANCE_TOLERANCE)
+}
+
+function getPersonalRecordRaceEventIds(raceEvents: RaceEvent[]) {
+  const eligibleRaceEvents = raceEvents
+    .filter(isRaceEventEligibleForPersonalRecord)
+    .sort((left, right) => {
+      const distanceDiff = Number(left.distance_meters ?? 0) - Number(right.distance_meters ?? 0)
+
+      if (distanceDiff !== 0) {
+        return distanceDiff
+      }
+
+      const dateDiff = left.race_date.localeCompare(right.race_date)
+
+      if (dateDiff !== 0) {
+        return dateDiff
+      }
+
+      return left.created_at.localeCompare(right.created_at)
+    })
+
+  const groupedRaceEvents: Array<{
+    raceEvents: RaceEvent[]
+    totalDistanceMeters: number
+  }> = []
+
+  for (const raceEvent of eligibleRaceEvents) {
+    const distanceMeters = Number(raceEvent.distance_meters ?? 0)
+    const lastGroup = groupedRaceEvents[groupedRaceEvents.length - 1]
+    const groupReferenceDistanceMeters = lastGroup
+      ? lastGroup.totalDistanceMeters / lastGroup.raceEvents.length
+      : null
+
+    if (
+      lastGroup &&
+      groupReferenceDistanceMeters != null &&
+      isWithinDistanceTolerance(distanceMeters, groupReferenceDistanceMeters)
+    ) {
+      lastGroup.raceEvents.push(raceEvent)
+      lastGroup.totalDistanceMeters += distanceMeters
+      continue
+    }
+
+    groupedRaceEvents.push({
+      raceEvents: [raceEvent],
+      totalDistanceMeters: distanceMeters,
+    })
+  }
+
+  const personalRecordRaceEventIds = new Set<string>()
+
+  for (const group of groupedRaceEvents) {
+    const bestTimeSeconds = Math.min(...group.raceEvents.map((raceEvent) => Number(raceEvent.result_time_seconds ?? 0)))
+
+    for (const raceEvent of group.raceEvents) {
+      if (Number(raceEvent.result_time_seconds ?? 0) === bestTimeSeconds) {
+        personalRecordRaceEventIds.add(raceEvent.id)
+      }
+    }
+  }
+
+  return personalRecordRaceEventIds
+}
+
 function RaceEventCard({
   raceEvent,
+  isPersonalRecord,
   candidateRuns,
   selectedSuggestedRunId,
   isMenuOpen,
@@ -301,7 +383,14 @@ function RaceEventCard({
     <div className="rounded-2xl border px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="app-text-primary text-sm font-semibold">{raceEvent.name}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="app-text-primary text-sm font-semibold">{raceEvent.name}</p>
+            {isPersonalRecord ? (
+              <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
+                PR
+              </span>
+            ) : null}
+          </div>
           <p className="app-text-secondary mt-1 text-sm">
             {formatRaceDateLabel(raceEvent.race_date)}
           </p>
@@ -482,6 +571,10 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       .filter((raceEvent) => !isRaceEventUpcoming(raceEvent))
       .sort((left, right) => right.race_date.localeCompare(left.race_date))
   ), [raceEvents])
+  const personalRecordRaceEventIds = useMemo(
+    () => getPersonalRecordRaceEventIds(raceEvents ?? []),
+    [raceEvents]
+  )
   const deletingActiveRaceEvent = pendingDeleteRaceEvent ? deletingRaceEventId === pendingDeleteRaceEvent.id : false
 
   useEffect(() => {
@@ -922,6 +1015,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                     <RaceEventCard
                       key={raceEvent.id}
                       raceEvent={raceEvent}
+                      isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
                       candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
                       selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
                       isMenuOpen={openRaceEventMenuId === raceEvent.id}
@@ -959,6 +1053,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                     <RaceEventCard
                       key={raceEvent.id}
                       raceEvent={raceEvent}
+                      isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
                       candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
                       selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
                       isMenuOpen={openRaceEventMenuId === raceEvent.id}
