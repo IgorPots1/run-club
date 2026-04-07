@@ -8,7 +8,7 @@ import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import ProfileWeeklyVolumeTrendChart from '@/components/ProfileWeeklyVolumeTrendChart'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { buildActivityWindowStats, buildRollingWeeklyDistanceChart } from '@/lib/activity'
-import { formatDistanceKm, formatDurationCompact } from '@/lib/format'
+import { formatAveragePace, formatDistanceKm, formatDurationCompact } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
@@ -173,9 +173,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       value: formatDurationCompact(activity30Days.totalMovingTimeSeconds),
     },
     {
-      id: 'active-days',
-      label: 'Активные дни',
-      value: String(activity30Days.activeDaysCount),
+      id: 'average-pace',
+      label: 'Средний темп',
+      value: formatAveragePace(activity30Days.totalMovingTimeSeconds, activity30Days.totalDistanceKm),
     },
   ]
 

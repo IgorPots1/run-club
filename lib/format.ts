@@ -2,6 +2,22 @@ export function formatDistanceKm(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
+export function formatAveragePace(totalMovingTimeSeconds: number, totalDistanceKm: number) {
+  if (!Number.isFinite(totalMovingTimeSeconds) || totalMovingTimeSeconds <= 0) {
+    return '—'
+  }
+
+  if (!Number.isFinite(totalDistanceKm) || totalDistanceKm <= 0) {
+    return '—'
+  }
+
+  const paceSeconds = Math.round(totalMovingTimeSeconds / totalDistanceKm)
+  const minutes = Math.floor(paceSeconds / 60)
+  const seconds = paceSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')} /км`
+}
+
 const RUSSIAN_SHORT_MONTH_LABELS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'] as const
 
 function parseRunDate(dateString: string) {

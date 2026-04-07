@@ -19,7 +19,13 @@ import {
   type ActivityPeriod,
 } from '@/lib/activity'
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
-import { formatDistanceKm, formatDurationCompact, formatRunSourceLabel, formatRunTimestampLabel } from '@/lib/format'
+import {
+  formatAveragePace,
+  formatDistanceKm,
+  formatDurationCompact,
+  formatRunSourceLabel,
+  formatRunTimestampLabel,
+} from '@/lib/format'
 import { deleteRun } from '@/lib/runs'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
@@ -327,9 +333,9 @@ export default function ActivityPage() {
         value: formatDurationCompact(summary.totalMovingTimeSeconds),
       },
       {
-        id: 'active-days',
-        label: 'Активные дни',
-        value: String(summary.activeDaysCount),
+        id: 'average-pace',
+        label: 'Средний темп',
+        value: formatAveragePace(summary.totalMovingTimeSeconds, summary.totalDistance),
       },
     ],
     [summary]
