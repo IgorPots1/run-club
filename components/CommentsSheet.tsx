@@ -142,11 +142,21 @@ export default function CommentsSheet({
 }: CommentsSheetProps) {
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
+  const [effectiveViewportHeight, setEffectiveViewportHeight] = useState<number | null>(() =>
+    typeof window === 'undefined' ? null : window.innerHeight
+  )
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const previousSubmittingRef = useRef(false)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
+  const sheetStyle = useMemo(
+    () =>
+      effectiveViewportHeight === null
+        ? undefined
+        : { maxHeight: `${Math.min(effectiveViewportHeight, 672)}px` },
+    [effectiveViewportHeight]
+  )
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
     if (scrollContainerRef.current) {
@@ -241,6 +251,33 @@ export default function CommentsSheet({
   }, [comments.length, loading, open])
 
   useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    function syncEffectiveViewportHeight() {
+      const visualViewport = window.visualViewport
+      const nextEffectiveViewportHeight = Math.round(
+        (visualViewport?.height ?? window.innerHeight) + (visualViewport?.offsetTop ?? 0)
+      )
+
+      setEffectiveViewportHeight((currentHeight) =>
+        currentHeight === nextEffectiveViewportHeight ? currentHeight : nextEffectiveViewportHeight
+      )
+    }
+
+    syncEffectiveViewportHeight()
+
+    window.visualViewport?.addEventListener('resize', syncEffectiveViewportHeight)
+    window.visualViewport?.addEventListener('scroll', syncEffectiveViewportHeight)
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', syncEffectiveViewportHeight)
+      window.visualViewport?.removeEventListener('scroll', syncEffectiveViewportHeight)
+    }
+  }, [open])
+
+  useEffect(() => {
     const textarea = textareaRef.current
 
     if (!textarea) {
@@ -284,7 +321,10 @@ export default function CommentsSheet({
         className="absolute inset-0"
         onClick={onClose}
       />
-      <section className="app-card relative flex max-h-[min(78svh,42rem)] min-h-0 w-full flex-col overflow-hidden rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl">
+      <section
+        className="app-card relative flex min-h-0 w-full flex-col overflow-hidden rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl"
+        style={sheetStyle}
+      >
         <div className="shrink-0 px-4 pt-4">
           <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
           <div className="flex items-center justify-between gap-3">
