@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMedia'
-import { formatDistanceKm, formatRunSourceLabel, formatRunTimestampLabel } from '@/lib/format'
+import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 
 type WorkoutFeedCardMediaSlide =
@@ -65,15 +65,6 @@ function normalizePaceLabel(pace: string | number | null | undefined) {
 
 function buildDisplayTitle(rawTitle: string | null) {
   return (rawTitle?.trim() || 'Тренировка').replace(/(\d+)\.0(\s*км\b)/g, '$1$2')
-}
-
-function toNullableTrimmedText(value: string | null | undefined) {
-  if (typeof value !== 'string') {
-    return null
-  }
-
-  const trimmedValue = value.trim()
-  return trimmedValue.length > 0 ? trimmedValue : null
 }
 
 type FeedActionButtonProps = {
@@ -139,7 +130,6 @@ function WorkoutFeedCard({
   rawTitle,
   city = null,
   country = null,
-  description = null,
   externalSource = null,
   distanceKm,
   pace,
@@ -163,12 +153,10 @@ function WorkoutFeedCard({
 }: WorkoutFeedCardProps) {
   const router = useRouter()
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [activeMediaIndex, setActiveMediaIndex] = useState(0)
   const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
-  const normalizedDescription = toNullableTrimmedText(description)
   const previewPhoto = photos[0] ?? null
   const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
@@ -221,7 +209,6 @@ function WorkoutFeedCard({
   const paceLabel = normalizePaceLabel(pace)
   const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
   const movingTimeLabel = movingTime?.trim() || '—'
-  const sourceLabel = formatRunSourceLabel(externalSource)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
@@ -284,50 +271,16 @@ function WorkoutFeedCard({
       </div>
 
       <div className="mt-3">
-        <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
+        <p className="app-text-secondary text-sm">
+          {formatRunTimestampLabel(createdAt, externalSource)}
+        </p>
+        <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
-        <div className="app-text-primary mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
-          <span>{distanceLabel}</span>
-          <span className="app-text-secondary">•</span>
-          <span>{movingTimeLabel}</span>
-          <span className="app-text-secondary">•</span>
-          <span>{paceWithUnit}</span>
-        </div>
-        <div className="app-text-secondary mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <span>{formatRunTimestampLabel(createdAt, externalSource)}</span>
-          <span>•</span>
-          <span>⚡ +{xp} XP</span>
-          {sourceLabel ? (
-            <>
-              <span>•</span>
-              <span>{sourceLabel}</span>
-            </>
-          ) : null}
-        </div>
         {locationLabel ? (
           <p className="app-text-secondary mt-1.5 break-words text-sm">
             {locationLabel}
           </p>
-        ) : null}
-        {normalizedDescription ? (
-          <div className="mt-1.5">
-            <p
-              className={`app-text-secondary break-words text-sm leading-5 ${
-                expanded ? '' : 'line-clamp-2'
-              }`}
-            >
-              {normalizedDescription}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setExpanded((prev) => !prev)}
-              className="app-text-muted mt-0.5 text-xs font-medium"
-            >
-              {expanded ? 'Скрыть' : 'Читать'}
-            </button>
-          </div>
         ) : null}
       </div>
 
@@ -468,9 +421,17 @@ function WorkoutFeedCard({
         </button>
       ) : null}
 
+      <div className="app-text-primary mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
+        <span>{distanceLabel}</span>
+        <span className="app-text-secondary">•</span>
+        <span>{paceWithUnit}</span>
+        <span className="app-text-secondary">•</span>
+        <span>{movingTimeLabel}</span>
+      </div>
+
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-4">
+          <div className="flex min-w-0 shrink items-center gap-2 sm:gap-4">
             <FeedActionButton
               count={likesCount}
               active={isHeartActive}
@@ -488,6 +449,9 @@ function WorkoutFeedCard({
               onClick={() => onCommentClick?.(runId)}
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
+          </div>
+          <div className="app-text-secondary shrink-0 text-right text-sm font-semibold whitespace-nowrap">
+            ⚡ +{xp} XP
           </div>
         </div>
       </div>

@@ -27,6 +27,8 @@ export type ActivityWindowRun = {
 export type ActivityChartPoint = {
   label: string
   distance: number
+  date?: string
+  moving_time_seconds?: number | null
 }
 
 export type ActivityTrendPoint = ActivityChartPoint & {
@@ -206,6 +208,17 @@ function buildDistanceMapByKey(runs: Array<{ distance: number; createdAt: Date }
   }, {})
 }
 
+function buildMovingTimeMapByKey(
+  runs: Array<{ movingTimeSeconds: number; createdAt: Date }>,
+  keyBuilder: (date: Date) => number
+) {
+  return runs.reduce<Record<number, number>>((totals, run) => {
+    const key = keyBuilder(run.createdAt)
+    totals[key] = (totals[key] ?? 0) + Math.max(0, run.movingTimeSeconds)
+    return totals
+  }, {})
+}
+
 export async function loadActivityRuns(userId: string) {
   const { data, error } = await supabase
     .from('runs')
@@ -258,6 +271,10 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
         distance: filteredRuns
           .filter((run) => isSameDay(run.createdAt, day))
           .reduce((sum, run) => sum + run.distance, 0),
+        date: `${formatDateKey(day)}T12:00:00`,
+        moving_time_seconds: filteredRuns
+          .filter((run) => isSameDay(run.createdAt, day))
+          .reduce((sum, run) => sum + run.movingTimeSeconds, 0),
       })),
     }
   }
@@ -268,6 +285,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     const end = range?.end ?? endOfMonth(now)
     const filteredRuns = normalizedRuns.filter((run) => run.createdAt >= start && run.createdAt < end)
     const distanceByDay = buildDistanceMapByKey(filteredRuns, (date) => date.getDate())
+    const movingTimeByDay = buildMovingTimeMapByKey(filteredRuns, (date) => date.getDate())
     const totalDaysInMonth = getDaysInMonth(start)
     const daysInMonth = Array.from({ length: totalDaysInMonth }, (_, index) => index + 1)
 
@@ -280,6 +298,8 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       chartData: daysInMonth.map((day) => ({
         label: String(day),
         distance: distanceByDay[day] ?? 0,
+        date: `${formatDateKey(new Date(start.getFullYear(), start.getMonth(), day))}T12:00:00`,
+        moving_time_seconds: movingTimeByDay[day] ?? 0,
       })),
     }
   }
