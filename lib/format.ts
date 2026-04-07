@@ -70,6 +70,18 @@ export function formatRunTimestampLabel(dateString: string, externalSource?: str
   return formatRunDateLabel(dateString)
 }
 
+export function formatRunSourceLabel(externalSource?: string | null) {
+  if (!externalSource) {
+    return ''
+  }
+
+  if (externalSource === 'strava') {
+    return 'Strava'
+  }
+
+  return externalSource.trim()
+}
+
 export function formatChatThreadActivityLabel(dateString: string) {
   const messageDate = parseRunDate(dateString)
 

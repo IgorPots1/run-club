@@ -19,7 +19,7 @@ import {
   type ActivityPeriod,
 } from '@/lib/activity'
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
-import { formatDistanceKm, formatDurationCompact, formatRunTimestampLabel } from '@/lib/format'
+import { formatDistanceKm, formatDurationCompact, formatRunSourceLabel, formatRunTimestampLabel } from '@/lib/format'
 import { deleteRun } from '@/lib/runs'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
@@ -137,6 +137,20 @@ function formatRunPace(run: Pick<ActivityRunRow, 'distance_km' | 'duration_minut
   const distanceValue = Number(run.distance_km ?? 0)
 
   return formatPaceLabel(totalSeconds, distanceValue)
+}
+
+function formatRunMetaLabel(run: Pick<ActivityRunRow, 'created_at' | 'external_source' | 'xp'>) {
+  const parts = [
+    formatRunTimestampLabel(run.created_at, run.external_source),
+    `⚡ +${Math.max(0, Math.round(Number(run.xp ?? 0)))} XP`,
+  ]
+  const sourceLabel = formatRunSourceLabel(run.external_source)
+
+  if (sourceLabel) {
+    parts.push(sourceLabel)
+  }
+
+  return parts.join(' • ')
 }
 
 function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type' | 'badge_code'>) {
@@ -661,14 +675,14 @@ export default function ActivityPage() {
                 {filteredRuns.map((run) => (
                   <div
                     key={run.id}
-                    className="compact-run-card app-card overflow-hidden rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md"
+                    className="compact-run-card app-card overflow-hidden rounded-2xl border border-black/5 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:border-white/10"
                   >
-                    <div className="compact-run-card-layout flex flex-col gap-3 sm:flex-row sm:items-start">
+                    <div className="compact-run-card-layout flex flex-col gap-4 sm:flex-row sm:items-start">
                       <Link href={`/runs/${run.id}`} className="min-w-0 flex-1">
-                        <p className="app-text-primary break-words text-base font-semibold">
+                        <p className="app-text-primary break-words text-[15px] font-semibold leading-5">
                           {getRunDisplayName(run)}
                         </p>
-                        <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold">
+                        <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
                           <span className="break-words">{formatDistanceKmLabel(run)} км</span>
                           <span className="app-text-secondary">•</span>
                           <span className="break-words">{formatRunDurationLabel(run)}</span>
@@ -679,12 +693,9 @@ export default function ActivityPage() {
                             </>
                           ) : null}
                         </div>
-                        <p className="compact-run-card-secondary compact-run-card-meta app-text-muted mt-1 text-sm">
-                          {formatRunTimestampLabel(run.created_at, run.external_source)}
+                        <p className="compact-run-card-secondary compact-run-card-meta app-text-secondary mt-1.5 break-words text-sm">
+                          {formatRunMetaLabel(run)}
                         </p>
-                        <div className="compact-run-card-like">
-                          <p className="app-text-secondary break-words text-sm">⚡ +{Math.max(0, Math.round(Number(run.xp ?? 0)))} XP</p>
-                        </div>
                       </Link>
                       {run.user_id === user.id ? (
                         <button

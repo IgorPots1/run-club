@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMedia'
-import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { formatDistanceKm, formatRunSourceLabel, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 
 type WorkoutFeedCardMediaSlide =
@@ -221,6 +221,7 @@ function WorkoutFeedCard({
   const paceLabel = normalizePaceLabel(pace)
   const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
   const movingTimeLabel = movingTime?.trim() || '—'
+  const sourceLabel = formatRunSourceLabel(externalSource)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
@@ -280,22 +281,37 @@ function WorkoutFeedCard({
             size="sm"
           />
         </div>
-        <p className="app-text-secondary min-w-0 text-left text-xs sm:w-auto sm:text-right sm:text-sm">
-          {formatRunTimestampLabel(createdAt, externalSource)}
-        </p>
       </div>
 
       <div className="mt-3">
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
+        <div className="app-text-primary mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
+          <span>{distanceLabel}</span>
+          <span className="app-text-secondary">•</span>
+          <span>{movingTimeLabel}</span>
+          <span className="app-text-secondary">•</span>
+          <span>{paceWithUnit}</span>
+        </div>
+        <div className="app-text-secondary mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span>{formatRunTimestampLabel(createdAt, externalSource)}</span>
+          <span>•</span>
+          <span>⚡ +{xp} XP</span>
+          {sourceLabel ? (
+            <>
+              <span>•</span>
+              <span>{sourceLabel}</span>
+            </>
+          ) : null}
+        </div>
         {locationLabel ? (
-          <p className="app-text-secondary mt-1 break-words text-sm">
+          <p className="app-text-secondary mt-1.5 break-words text-sm">
             {locationLabel}
           </p>
         ) : null}
         {normalizedDescription ? (
-          <div className="mt-1">
+          <div className="mt-1.5">
             <p
               className={`app-text-secondary break-words text-sm leading-5 ${
                 expanded ? '' : 'line-clamp-2'
@@ -314,16 +330,6 @@ function WorkoutFeedCard({
           </div>
         ) : null}
       </div>
-
-      {!showMapPreview ? (
-        <div className="app-text-primary mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold leading-tight">
-          <span className="font-semibold">{distanceLabel}</span>
-          <span className="app-text-secondary">•</span>
-          <span className="font-semibold">{paceWithUnit}</span>
-          <span className="app-text-secondary">•</span>
-          <span className="font-semibold">{movingTimeLabel}</span>
-        </div>
-      ) : null}
 
       {shouldRenderMediaCarousel && mapPreviewUrl ? (
         <div className="mt-2" onClick={(event) => event.stopPropagation()}>
@@ -483,9 +489,6 @@ function WorkoutFeedCard({
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
           </div>
-          <p className="app-text-secondary min-w-0 flex-1 overflow-hidden text-right text-xs font-medium [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:1]">
-            ⚡ +{xp} XP
-          </p>
         </div>
       </div>
 
