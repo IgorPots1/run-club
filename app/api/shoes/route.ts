@@ -5,6 +5,7 @@ import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 type CreateUserShoeRequestBody = {
   shoeModelId?: string | null
+  shoeVersionId?: string | null
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters?: number | null
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
 
   const input: UserShoeInput = {
     shoeModelId: body?.shoeModelId ?? null,
+    shoeVersionId: body?.shoeVersionId ?? null,
     customName: body?.customName ?? null,
     nickname: body?.nickname ?? null,
     currentDistanceMeters: Number(body?.currentDistanceMeters ?? 0),
@@ -111,7 +113,7 @@ export async function POST(request: Request) {
   } catch (createError) {
     const errorMessage = createError instanceof Error ? createError.message : 'user_shoe_create_failed'
     const status = (
-      errorMessage === 'shoe_model_id_or_custom_name_required' ||
+      errorMessage === 'shoe_version_id_or_shoe_model_id_or_custom_name_required' ||
       errorMessage === 'current_distance_meters_must_be_non_negative' ||
       errorMessage === 'max_distance_meters_must_be_positive' ||
       errorMessage === 'is_active_must_be_boolean'

@@ -29,14 +29,18 @@ type UserShoeDbRow = {
 
 type ShoeBrandDbRow = {
   id: string
+  slug: string | null
   name: string | null
+  is_active: boolean | null
 }
 
 type ShoeCatalogModelDbRow = {
   id: string
   brand_id: string | null
+  slug: string | null
   name: string | null
   category: string | null
+  is_active: boolean | null
 }
 
 type ShoeVersionDbRow = {
@@ -45,6 +49,8 @@ type ShoeVersionDbRow = {
   version_name: string | null
   full_name: string | null
   image_url: string | null
+  is_current: boolean | null
+  is_searchable: boolean | null
 }
 
 export type ShoeModel = {
@@ -82,12 +88,14 @@ export type UserShoeRecord = {
   photoUrl: string | null
   isActive: boolean
   shoeModelId: string | null
+  shoeVersionId: string | null
   model: UserShoeModelInfo | null
   createdAt: string
 }
 
 export type UserShoeInput = {
   shoeModelId?: string | null
+  shoeVersionId?: string | null
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters: number
@@ -98,6 +106,7 @@ export type UserShoeInput = {
 
 type NormalizedUserShoeInput = {
   shoeModelId: string | null
+  shoeVersionId: string | null
   customName: string | null
   nickname: string | null
   currentDistanceMeters: number
@@ -106,11 +115,33 @@ type NormalizedUserShoeInput = {
   isActive: boolean
 }
 
+export type ShoeCatalogVersion = {
+  id: string
+  version: string
+  fullName: string
+  imageUrl: string | null
+  isCurrent: boolean
+}
+
+export type ShoeCatalogModel = {
+  id: string
+  slug: string
+  name: string
+  versions: ShoeCatalogVersion[]
+}
+
+export type ShoeCatalogBrand = {
+  id: string
+  slug: string
+  name: string
+  models: ShoeCatalogModel[]
+}
+
 const SHOE_MODEL_SELECT =
   'id, brand, model, version, full_name, image_url, category, is_popular'
-const SHOE_VERSION_SELECT = 'id, model_id, version_name, full_name, image_url'
-const SHOE_CATALOG_MODEL_SELECT = 'id, brand_id, name, category'
-const SHOE_BRAND_SELECT = 'id, name'
+const SHOE_VERSION_SELECT = 'id, model_id, version_name, full_name, image_url, is_current, is_searchable'
+const SHOE_CATALOG_MODEL_SELECT = 'id, brand_id, slug, name, category, is_active'
+const SHOE_BRAND_SELECT = 'id, slug, name, is_active'
 const USER_SHOE_SELECT =
   'id, user_id, shoe_model_id, shoe_version_id, custom_name, nickname, current_distance_meters, max_distance_meters, photo_url, is_active, created_at'
 export const DEFAULT_MAX_DISTANCE_METERS = 800000
@@ -265,6 +296,16 @@ function mapCatalogShoeVersion(params: {
   }
 }
 
+function mapShoeCatalogVersion(row: ShoeVersionDbRow): ShoeCatalogVersion {
+  return {
+    id: row.id,
+    version: row.version_name?.trim() || '',
+    fullName: row.full_name?.trim() || '',
+    imageUrl: toNullableTrimmedText(row.image_url),
+    isCurrent: Boolean(row.is_current),
+  }
+}
+
 function toUserShoeModelInfo(model: ShoeModel, id: string = model.id): UserShoeModelInfo {
   return {
     id,
@@ -355,6 +396,7 @@ function mapUserShoe(
     photoUrl: toNullableTrimmedText(row.photo_url),
     isActive: Boolean(row.is_active),
     shoeModelId: row.shoe_model_id,
+    shoeVersionId: row.shoe_version_id,
     model: model ? toUserShoeModelInfo(model, row.shoe_model_id ?? row.shoe_version_id ?? model.id) : null,
     createdAt: row.created_at,
   }
@@ -362,6 +404,7 @@ function mapUserShoe(
 
 function normalizeUserShoeInput(input: UserShoeInput): NormalizedUserShoeInput {
   const shoeModelId = toNullableTrimmedText(input.shoeModelId)
+  const shoeVersionId = toNullableTrimmedText(input.shoeVersionId)
   const customName = toNullableTrimmedText(input.customName)
   const nickname = toNullableTrimmedText(input.nickname)
   const photoUrl = toNullableTrimmedText(input.photoUrl)
@@ -371,8 +414,8 @@ function normalizeUserShoeInput(input: UserShoeInput): NormalizedUserShoeInput {
       ? DEFAULT_MAX_DISTANCE_METERS
       : Number(input.maxDistanceMeters)
 
-  if (!shoeModelId && !customName) {
-    throw new Error('shoe_model_id_or_custom_name_required')
+  if (!shoeModelId && !shoeVersionId && !customName) {
+    throw new Error('shoe_version_id_or_shoe_model_id_or_custom_name_required')
   }
 
   if (!Number.isFinite(currentDistanceMeters) || currentDistanceMeters < 0) {
@@ -389,6 +432,7 @@ function normalizeUserShoeInput(input: UserShoeInput): NormalizedUserShoeInput {
 
   return {
     shoeModelId,
+    shoeVersionId,
     customName,
     nickname,
     currentDistanceMeters: Math.trunc(currentDistanceMeters),
@@ -501,6 +545,84 @@ async function loadShoeVersionsByIds(shoeVersionIds: string[]) {
       return [model.id, model] as const
     })
   ) as Record<string, ShoeModel>
+}
+
+export async function listShoeCatalog(): Promise<ShoeCatalogBrand[]> {
+  const supabase = await createSupabaseServerClient()
+  const [brandResult, modelResult, versionResult] = await Promise.all([
+    supabase
+      .from('shoe_brands')
+      .select(SHOE_BRAND_SELECT)
+      .eq('is_active', true)
+      .order('name', { ascending: true }),
+    supabase
+      .from('shoe_models_catalog')
+      .select(SHOE_CATALOG_MODEL_SELECT)
+      .eq('is_active', true)
+      .order('name', { ascending: true }),
+    supabase
+      .from('shoe_versions')
+      .select(SHOE_VERSION_SELECT)
+      .eq('is_searchable', true)
+      .order('is_current', { ascending: false })
+      .order('full_name', { ascending: true }),
+  ])
+
+  if (brandResult.error || modelResult.error || versionResult.error) {
+    throw new Error('Не удалось загрузить каталог кроссовок')
+  }
+
+  const brands = ((brandResult.data as ShoeBrandDbRow[] | null) ?? []).filter((brand) => Boolean(brand.id))
+  const models = ((modelResult.data as ShoeCatalogModelDbRow[] | null) ?? []).filter(
+    (model) => Boolean(model.id) && Boolean(model.brand_id)
+  )
+  const versions = ((versionResult.data as ShoeVersionDbRow[] | null) ?? []).filter(
+    (version) => Boolean(version.id) && Boolean(version.model_id)
+  )
+
+  const versionsByModelId = new Map<string, ShoeCatalogVersion[]>()
+
+  for (const version of versions) {
+    if (!version.model_id) {
+      continue
+    }
+
+    const currentVersions = versionsByModelId.get(version.model_id) ?? []
+    currentVersions.push(mapShoeCatalogVersion(version))
+    versionsByModelId.set(version.model_id, currentVersions)
+  }
+
+  const modelsByBrandId = new Map<string, ShoeCatalogModel[]>()
+
+  for (const model of models) {
+    if (!model.brand_id) {
+      continue
+    }
+
+    const mappedModel: ShoeCatalogModel = {
+      id: model.id,
+      slug: model.slug?.trim() || '',
+      name: model.name?.trim() || '',
+      versions: versionsByModelId.get(model.id) ?? [],
+    }
+
+    if (mappedModel.versions.length === 0) {
+      continue
+    }
+
+    const currentModels = modelsByBrandId.get(model.brand_id) ?? []
+    currentModels.push(mappedModel)
+    modelsByBrandId.set(model.brand_id, currentModels)
+  }
+
+  return brands
+    .map((brand) => ({
+      id: brand.id,
+      slug: brand.slug?.trim() || '',
+      name: brand.name?.trim() || '',
+      models: modelsByBrandId.get(brand.id) ?? [],
+    }))
+    .filter((brand) => brand.models.length > 0)
 }
 
 export async function listPopularShoeModels(): Promise<ShoeModel[]> {
@@ -642,6 +764,7 @@ export async function createUserShoe(userId: string, input: UserShoeInput): Prom
     .insert({
       user_id: userId,
       shoe_model_id: normalizedInput.shoeModelId,
+      shoe_version_id: normalizedInput.shoeVersionId,
       custom_name: normalizedInput.customName,
       nickname: normalizedInput.nickname,
       current_distance_meters: normalizedInput.currentDistanceMeters,
@@ -676,6 +799,7 @@ export async function updateUserShoe(
     .from('user_shoes')
     .update({
       shoe_model_id: normalizedInput.shoeModelId,
+      shoe_version_id: normalizedInput.shoeVersionId,
       custom_name: normalizedInput.customName,
       nickname: normalizedInput.nickname,
       current_distance_meters: normalizedInput.currentDistanceMeters,

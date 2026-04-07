@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import ShoesPageClient from './ShoesPageClient'
-import { listPopularShoeModels, listUserShoes } from '@/lib/shoes'
+import { listShoeCatalog, listUserShoes } from '@/lib/shoes'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 export default async function ActivityShoesPage() {
@@ -12,13 +12,13 @@ export default async function ActivityShoesPage() {
   }
 
   let initialShoes = [] as Awaited<ReturnType<typeof listUserShoes>>
-  let initialPopularModels = [] as Awaited<ReturnType<typeof listPopularShoeModels>>
+  let initialCatalog = [] as Awaited<ReturnType<typeof listShoeCatalog>>
   let loadFailed = false
 
   try {
-    ;[initialShoes, initialPopularModels] = await Promise.all([
+    ;[initialShoes, initialCatalog] = await Promise.all([
       listUserShoes(user.id),
-      listPopularShoeModels(),
+      listShoeCatalog(),
     ])
   } catch {
     loadFailed = true
@@ -36,7 +36,7 @@ export default async function ActivityShoesPage() {
           ) : (
             <ShoesPageClient
               initialShoes={initialShoes}
-              initialPopularModels={initialPopularModels}
+              initialCatalog={initialCatalog}
             />
           )}
         </div>

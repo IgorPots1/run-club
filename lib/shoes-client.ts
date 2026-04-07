@@ -9,6 +9,28 @@ export type ShoeModel = {
   isPopular: boolean
 }
 
+export type ShoeCatalogVersion = {
+  id: string
+  version: string
+  fullName: string
+  imageUrl: string | null
+  isCurrent: boolean
+}
+
+export type ShoeCatalogModel = {
+  id: string
+  slug: string
+  name: string
+  versions: ShoeCatalogVersion[]
+}
+
+export type ShoeCatalogBrand = {
+  id: string
+  slug: string
+  name: string
+  models: ShoeCatalogModel[]
+}
+
 export type UserShoeModelInfo = {
   id: string
   brand: string
@@ -33,12 +55,14 @@ export type UserShoeRecord = {
   photoUrl: string | null
   isActive: boolean
   shoeModelId: string | null
+  shoeVersionId: string | null
   model: UserShoeModelInfo | null
   createdAt: string
 }
 
 export type CreateUserShoeInput = {
   shoeModelId?: string | null
+  shoeVersionId?: string | null
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters: number
@@ -48,6 +72,7 @@ export type CreateUserShoeInput = {
 
 export type UpdateUserShoeInput = {
   shoeModelId?: string | null
+  shoeVersionId?: string | null
   customName?: string | null
   nickname?: string | null
   currentDistanceMeters: number
@@ -80,6 +105,16 @@ type SearchShoeModelsResponse =
   | {
       ok: true
       models: ShoeModel[]
+    }
+  | {
+      ok: false
+      error?: string
+    }
+
+type ShoeCatalogResponse =
+  | {
+      ok: true
+      catalog: ShoeCatalogBrand[]
     }
   | {
       ok: false
@@ -166,6 +201,26 @@ export async function searchShoeModels(query: string): Promise<ShoeModel[]> {
   }
 
   return Array.isArray(payload.models) ? payload.models : []
+}
+
+export async function loadShoeCatalog(): Promise<ShoeCatalogBrand[]> {
+  const response = await fetch('/api/shoes/models/catalog', {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  const payload = await response.json().catch(() => null) as ShoeCatalogResponse | null
+
+  if (!response.ok || !payload?.ok) {
+    throw new Error(
+      payload && 'error' in payload && typeof payload.error === 'string'
+        ? payload.error
+        : 'Не удалось загрузить каталог кроссовок'
+    )
+  }
+
+  return Array.isArray(payload.catalog) ? payload.catalog : []
 }
 
 export async function createUserShoe(input: CreateUserShoeInput): Promise<UserShoeRecord> {

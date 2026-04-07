@@ -1,21 +1,23 @@
 'use client'
 
-import { Footprints, LoaderCircle, PencilLine, Search, X } from 'lucide-react'
+import type { FormEvent } from 'react'
+import { Footprints, PencilLine, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { formatShoeDistanceMetersAsKm, getShoeWearUi } from '@/lib/shoe-wear-ui'
 import {
   createUserShoe,
   loadUserShoes,
-  searchShoeModels,
   updateUserShoe,
-  type ShoeModel,
+  type ShoeCatalogBrand,
+  type ShoeCatalogModel,
+  type ShoeCatalogVersion,
   type UserShoeRecord,
 } from '@/lib/shoes-client'
 
 type ShoesPageClientProps = {
   initialShoes: UserShoeRecord[]
-  initialPopularModels: ShoeModel[]
+  initialCatalog: ShoeCatalogBrand[]
 }
 
 function toNullableTrimmedText(value: string) {
@@ -144,29 +146,43 @@ function ActiveSwitch({
   )
 }
 
-function ShoeModelOption({
-  model,
-  selected,
-  onSelect,
+function CatalogSelectField({
+  id,
+  label,
+  value,
+  placeholder,
+  options,
+  disabled = false,
+  onChange,
 }: {
-  model: ShoeModel
-  selected: boolean
-  onSelect: (model: ShoeModel) => void
+  id: string
+  label: string
+  value: string
+  placeholder: string
+  options: Array<{ value: string; label: string }>
+  disabled?: boolean
+  onChange: (value: string) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(model)}
-      className={`w-full rounded-2xl border p-3 text-left transition-colors ${
-        selected ? 'app-button-primary shadow-sm' : 'app-card app-surface-muted'
-      }`}
-    >
-      <p className="text-sm font-semibold">{model.fullName}</p>
-      <p className={`mt-1 text-xs ${selected ? 'text-white/85' : 'app-text-secondary'}`}>
-        {model.brand}
-        {model.category ? ` • ${model.category}` : ''}
-      </p>
-    </button>
+    <div>
+      <label htmlFor={id} className="app-text-secondary mb-1 block text-sm">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className="app-input min-h-11 w-full rounded-xl border px-3 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
   )
 }
 
@@ -196,23 +212,26 @@ function ShoeFormSheet({
   editing,
   submitting,
   canSubmit,
-  selectedModeLabel,
-  trimmedQuery,
-  modelQuery,
-  modelResults,
-  loadingModelResults,
-  selectedModel,
+  selectedSummaryLabel,
+  catalogBrands,
+  selectedBrandId,
+  selectedModelId,
+  selectedVersionId,
+  selectedBrand,
+  selectedCatalogModel,
+  selectedVersion,
+  isLegacyModelSelection,
   customName,
   nickname,
   distanceKmInput,
   maxDistanceKmInput,
   isActive,
   formError,
-  searchError,
   onClose,
   onSubmit,
-  onModelQueryChange,
-  onSelectModel,
+  onBrandChange,
+  onCatalogModelChange,
+  onVersionChange,
   onCustomNameChange,
   onNicknameChange,
   onDistanceChange,
@@ -223,29 +242,57 @@ function ShoeFormSheet({
   editing: boolean
   submitting: boolean
   canSubmit: boolean
-  selectedModeLabel: string
-  trimmedQuery: string
-  modelQuery: string
-  modelResults: ShoeModel[]
-  loadingModelResults: boolean
-  selectedModel: ShoeModel | null
+  selectedSummaryLabel: string
+  catalogBrands: ShoeCatalogBrand[]
+  selectedBrandId: string
+  selectedModelId: string
+  selectedVersionId: string
+  selectedBrand: ShoeCatalogBrand | null
+  selectedCatalogModel: ShoeCatalogModel | null
+  selectedVersion: ShoeCatalogVersion | null
+  isLegacyModelSelection: boolean
   customName: string
   nickname: string
   distanceKmInput: string
   maxDistanceKmInput: string
   isActive: boolean
   formError: string
-  searchError: string
   onClose: () => void
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
-  onModelQueryChange: (value: string) => void
-  onSelectModel: (model: ShoeModel) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onBrandChange: (value: string) => void
+  onCatalogModelChange: (value: string) => void
+  onVersionChange: (value: string) => void
   onCustomNameChange: (value: string) => void
   onNicknameChange: (value: string) => void
   onDistanceChange: (value: string) => void
   onMaxDistanceChange: (value: string) => void
   onActiveChange: (value: boolean) => void
 }) {
+  const brandOptions = useMemo(
+    () =>
+      catalogBrands.map((brand) => ({
+        value: brand.id,
+        label: brand.name,
+      })),
+    [catalogBrands]
+  )
+  const modelOptions = useMemo(
+    () =>
+      (selectedBrand?.models ?? []).map((model) => ({
+        value: model.id,
+        label: model.name,
+      })),
+    [selectedBrand]
+  )
+  const versionOptions = useMemo(
+    () =>
+      (selectedCatalogModel?.versions ?? []).map((version) => ({
+        value: version.id,
+        label: version.fullName,
+      })),
+    [selectedCatalogModel]
+  )
+
   useEffect(() => {
     if (!open) {
       return
@@ -289,7 +336,7 @@ function ShoeFormSheet({
               {editing ? 'Редактировать пару' : 'Добавить пару'}
             </h2>
             <p className="app-text-secondary mt-1 text-sm">
-              Выбери модель из каталога или задай свое название вручную.
+              Выбери бренд, модель и версию из каталога или задай свое название вручную.
             </p>
           </div>
           <button
@@ -305,55 +352,56 @@ function ShoeFormSheet({
 
         <form onSubmit={onSubmit} className="mt-4 min-h-0 flex-1 overflow-y-auto pb-1">
           <div className="space-y-4">
-            <div>
-              <label htmlFor="shoe-model-search" className="app-text-secondary mb-1 block text-sm">
-                Поиск модели
-              </label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 app-text-secondary" strokeWidth={1.9} />
-                <input
-                  id="shoe-model-search"
-                  type="text"
-                  placeholder="Например: Pegasus, Boston, Novablast"
-                  value={modelQuery}
-                  onChange={(event) => onModelQueryChange(event.target.value)}
-                  disabled={submitting}
-                  className="app-input min-h-11 w-full rounded-xl border py-2 pl-10 pr-3"
-                />
+            <div className="space-y-3 rounded-2xl border p-4">
+              <div>
+                <p className="app-text-primary text-sm font-medium">Каталог</p>
+                <p className="app-text-secondary mt-1 text-xs">{selectedSummaryLabel}</p>
               </div>
-              <p className="app-text-secondary mt-2 text-xs">{selectedModeLabel}</p>
-            </div>
 
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="app-text-secondary text-sm">
-                  {trimmedQuery ? 'Результаты поиска' : 'Популярные модели'}
-                </p>
-                {loadingModelResults ? (
-                  <span className="app-text-secondary inline-flex items-center gap-1 text-xs">
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={1.9} />
-                    Поиск...
-                  </span>
-                ) : null}
-              </div>
-              {searchError ? (
-                <p className="text-sm text-red-600">{searchError}</p>
-              ) : modelResults.length === 0 ? (
-                <div className="app-surface-muted rounded-2xl border border-dashed p-4 text-sm app-text-secondary">
-                  Ничего не найдено. Можно ввести свое название ниже.
+              <CatalogSelectField
+                id="shoe-brand-select"
+                label="Бренд"
+                value={selectedBrandId}
+                placeholder="Выбери бренд"
+                options={brandOptions}
+                disabled={submitting}
+                onChange={onBrandChange}
+              />
+
+              <CatalogSelectField
+                id="shoe-model-select"
+                label="Модель"
+                value={selectedModelId}
+                placeholder={selectedBrand ? 'Выбери модель' : 'Сначала выбери бренд'}
+                options={modelOptions}
+                disabled={submitting || !selectedBrand}
+                onChange={onCatalogModelChange}
+              />
+
+              <CatalogSelectField
+                id="shoe-version-select"
+                label="Версия"
+                value={selectedVersionId}
+                placeholder={selectedCatalogModel ? 'Выбери версию' : 'Сначала выбери модель'}
+                options={versionOptions}
+                disabled={submitting || !selectedCatalogModel}
+                onChange={onVersionChange}
+              />
+
+              {selectedVersion ? (
+                <div className="app-surface-muted rounded-2xl border px-3 py-3 text-sm">
+                  <p className="font-medium">{selectedVersion.fullName}</p>
+                  <p className="app-text-secondary mt-1">
+                    {selectedVersion.isCurrent ? 'Текущая версия каталога' : 'Версия из актуального каталога'}
+                  </p>
                 </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {modelResults.map((model) => (
-                    <ShoeModelOption
-                      key={model.id}
-                      model={model}
-                      selected={selectedModel?.id === model.id}
-                      onSelect={onSelectModel}
-                    />
-                  ))}
+              ) : null}
+
+              {isLegacyModelSelection ? (
+                <div className="rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 text-sm text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+                  Эта пара была сохранена по старой схеме. Чтобы перевести ее на новый каталог, выбери бренд, модель и версию.
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="app-surface-muted rounded-2xl border border-dashed p-4">
@@ -370,7 +418,7 @@ function ShoeFormSheet({
                 className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
               />
               <p className="app-text-secondary mt-2 text-xs">
-                Используй это поле, если пары нет в списке моделей.
+                Используй это поле, если нужной пары нет в каталоге.
               </p>
             </div>
 
@@ -567,15 +615,15 @@ function ShoeGarageCard({
 
 export default function ShoesPageClient({
   initialShoes,
-  initialPopularModels,
+  initialCatalog,
 }: ShoesPageClientProps) {
   const [editingShoeId, setEditingShoeId] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
-  const [modelQuery, setModelQuery] = useState('')
-  const [modelResults, setModelResults] = useState<ShoeModel[]>(initialPopularModels)
-  const [loadingModelResults, setLoadingModelResults] = useState(false)
-  const [selectedModel, setSelectedModel] = useState<ShoeModel | null>(null)
+  const [selectedLegacyModelLabel, setSelectedLegacyModelLabel] = useState<string | null>(null)
+  const [selectedBrandId, setSelectedBrandId] = useState('')
+  const [selectedCatalogModelId, setSelectedCatalogModelId] = useState('')
+  const [selectedVersionId, setSelectedVersionId] = useState('')
   const [customName, setCustomName] = useState('')
   const [nickname, setNickname] = useState('')
   const [distanceKmInput, setDistanceKmInput] = useState('')
@@ -584,18 +632,28 @@ export default function ShoesPageClient({
   const [submitting, setSubmitting] = useState(false)
   const [statusUpdatingShoeId, setStatusUpdatingShoeId] = useState<string | null>(null)
   const [formError, setFormError] = useState('')
-  const [searchError, setSearchError] = useState('')
   const [listActionError, setListActionError] = useState('')
-  const trimmedQuery = modelQuery.trim()
   const parsedDistanceKm = parseDistanceKmInput(distanceKmInput)
   const parsedMaxDistanceKm = parseDistanceKmInput(maxDistanceKmInput)
+  const selectedBrand = useMemo(
+    () => initialCatalog.find((brand) => brand.id === selectedBrandId) ?? null,
+    [initialCatalog, selectedBrandId]
+  )
+  const selectedCatalogModel = useMemo(
+    () => selectedBrand?.models.find((model) => model.id === selectedCatalogModelId) ?? null,
+    [selectedBrand, selectedCatalogModelId]
+  )
+  const selectedVersion = useMemo(
+    () => selectedCatalogModel?.versions.find((version) => version.id === selectedVersionId) ?? null,
+    [selectedCatalogModel, selectedVersionId]
+  )
   const canSubmit =
     !submitting &&
     parsedDistanceKm !== null &&
     parsedDistanceKm >= 0 &&
     parsedMaxDistanceKm !== null &&
     parsedMaxDistanceKm > 0 &&
-    (Boolean(selectedModel) || Boolean(toNullableTrimmedText(customName)))
+    (Boolean(selectedVersion) || Boolean(selectedLegacyModelLabel) || Boolean(toNullableTrimmedText(customName)))
 
   const {
     data: shoes,
@@ -611,62 +669,29 @@ export default function ShoesPageClient({
     focusThrottleInterval: 15000,
   })
 
-  useEffect(() => {
-    let isActiveRequest = true
-
-    if (!trimmedQuery) {
-      setLoadingModelResults(false)
-      setSearchError('')
-      setModelResults(initialPopularModels)
-      return () => {
-        isActiveRequest = false
-      }
+  const selectedSummaryLabel = useMemo(() => {
+    if (selectedVersion) {
+      return `Выбрана версия: ${selectedVersion.fullName}`
     }
 
-    setLoadingModelResults(true)
-    setSearchError('')
-
-    const timeoutId = window.setTimeout(() => {
-      void searchShoeModels(trimmedQuery)
-        .then((models) => {
-          if (!isActiveRequest) {
-            return
-          }
-
-          setModelResults(models)
-        })
-        .catch(() => {
-          if (!isActiveRequest) {
-            return
-          }
-
-          setSearchError('Не удалось загрузить модели')
-          setModelResults([])
-        })
-        .finally(() => {
-          if (isActiveRequest) {
-            setLoadingModelResults(false)
-          }
-        })
-    }, 250)
-
-    return () => {
-      isActiveRequest = false
-      window.clearTimeout(timeoutId)
+    if (selectedCatalogModel && selectedBrand) {
+      return `Выбрана модель: ${selectedBrand.name} ${selectedCatalogModel.name}`
     }
-  }, [initialPopularModels, trimmedQuery])
 
-  const selectedModeLabel = useMemo(() => {
-    if (selectedModel) {
-      return `Выбрана модель: ${selectedModel.fullName}`
+    if (selectedBrand) {
+      return `Выбран бренд: ${selectedBrand.name}`
+    }
+
+    if (selectedLegacyModelLabel) {
+      return `Старая пара: ${selectedLegacyModelLabel}`
     }
 
     if (toNullableTrimmedText(customName)) {
       return 'Сохранится как своя пара'
     }
 
-    return 'Выбери модель или укажи свое название'
-  }, [customName, selectedModel])
+    return 'Выбери бренд, модель и версию или укажи свое название'
+  }, [customName, selectedBrand, selectedCatalogModel, selectedLegacyModelLabel, selectedVersion])
 
   const editingShoe = useMemo(
     () => shoes?.find((shoe) => shoe.id === editingShoeId) ?? null,
@@ -737,9 +762,10 @@ export default function ShoesPageClient({
   function resetForm() {
     setEditingShoeId(null)
     setFormOpen(false)
-    setSelectedModel(null)
-    setModelQuery('')
-    setModelResults(initialPopularModels)
+    setSelectedLegacyModelLabel(null)
+    setSelectedBrandId('')
+    setSelectedCatalogModelId('')
+    setSelectedVersionId('')
     setCustomName('')
     setNickname('')
     setDistanceKmInput('')
@@ -751,22 +777,30 @@ export default function ShoesPageClient({
   function handleStartEditingShoe(shoe: UserShoeRecord) {
     setFormOpen(true)
     setEditingShoeId(shoe.id)
-    setSelectedModel(
-      shoe.model
-        ? {
-            ...shoe.model,
-            isPopular: false,
-          }
-        : null
-    )
-    setModelQuery('')
-    setModelResults(initialPopularModels)
+    setSelectedLegacyModelLabel(shoe.shoeVersionId ? null : shoe.model?.fullName ?? null)
+    setSelectedBrandId('')
+    setSelectedCatalogModelId('')
+    setSelectedVersionId(shoe.shoeVersionId ?? '')
     setCustomName(shoe.customName ?? '')
     setNickname(shoe.nickname ?? '')
     setDistanceKmInput(formatShoeDistanceMetersAsKm(shoe.currentDistanceMeters))
     setMaxDistanceKmInput(formatShoeDistanceMetersAsKm(shoe.maxDistanceMeters))
     setIsActive(shoe.isActive)
     setFormError('')
+
+    if (shoe.shoeVersionId) {
+      for (const brand of initialCatalog) {
+        const matchingModel = brand.models.find((model) =>
+          model.versions.some((version) => version.id === shoe.shoeVersionId)
+        )
+
+        if (matchingModel) {
+          setSelectedBrandId(brand.id)
+          setSelectedCatalogModelId(matchingModel.id)
+          break
+        }
+      }
+    }
   }
 
   async function handleSetArchivedState(shoe: UserShoeRecord, nextIsActive: boolean) {
@@ -779,7 +813,8 @@ export default function ShoesPageClient({
 
     try {
       const updatedShoe = await updateUserShoe(shoe.id, {
-        shoeModelId: shoe.shoeModelId,
+        shoeModelId: shoe.shoeVersionId ? null : shoe.shoeModelId,
+        shoeVersionId: shoe.shoeVersionId,
         customName: shoe.model ? null : shoe.customName,
         nickname: shoe.nickname,
         currentDistanceMeters: shoe.currentDistanceMeters,
@@ -803,7 +838,7 @@ export default function ShoesPageClient({
     }
   }
 
-  async function handleCreateShoe(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCreateShoe(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (submitting) {
@@ -812,8 +847,8 @@ export default function ShoesPageClient({
 
     const normalizedCustomName = toNullableTrimmedText(customName)
 
-    if (!selectedModel && !normalizedCustomName) {
-      setFormError('Выбери модель или укажи свое название')
+    if (!selectedVersion && !selectedLegacyModelLabel && !normalizedCustomName) {
+      setFormError('Выбери версию из каталога или укажи свое название')
       return
     }
 
@@ -832,8 +867,9 @@ export default function ShoesPageClient({
 
     try {
       const payload = {
-        shoeModelId: selectedModel?.id ?? null,
-        customName: selectedModel ? null : normalizedCustomName,
+        shoeModelId: selectedVersion ? null : editingShoe?.shoeVersionId ? null : editingShoe?.shoeModelId ?? null,
+        shoeVersionId: selectedVersion?.id ?? null,
+        customName: selectedVersion || selectedLegacyModelLabel ? null : normalizedCustomName,
         nickname: toNullableTrimmedText(nickname),
         currentDistanceMeters: Math.round(parsedDistanceKm * 1000),
         maxDistanceMeters: Math.round(parsedMaxDistanceKm * 1000),
@@ -992,31 +1028,51 @@ export default function ShoesPageClient({
         editing={Boolean(editingShoeId)}
         submitting={submitting}
         canSubmit={canSubmit}
-        selectedModeLabel={selectedModeLabel}
-        trimmedQuery={trimmedQuery}
-        modelQuery={modelQuery}
-        modelResults={modelResults}
-        loadingModelResults={loadingModelResults}
-        selectedModel={selectedModel}
+        selectedSummaryLabel={selectedSummaryLabel}
+        catalogBrands={initialCatalog}
+        selectedBrandId={selectedBrandId}
+        selectedModelId={selectedCatalogModelId}
+        selectedVersionId={selectedVersionId}
+        selectedBrand={selectedBrand}
+        selectedCatalogModel={selectedCatalogModel}
+        selectedVersion={selectedVersion}
+        isLegacyModelSelection={Boolean(selectedLegacyModelLabel && !selectedVersion)}
         customName={customName}
         nickname={nickname}
         distanceKmInput={distanceKmInput}
         maxDistanceKmInput={maxDistanceKmInput}
         isActive={isActive}
         formError={formError}
-        searchError={searchError}
         onClose={resetForm}
         onSubmit={handleCreateShoe}
-        onModelQueryChange={setModelQuery}
-        onSelectModel={(nextModel) => {
-          setSelectedModel(nextModel)
+        onBrandChange={(brandId) => {
+          setSelectedBrandId(brandId)
+          setSelectedCatalogModelId('')
+          setSelectedVersionId('')
+          setSelectedLegacyModelLabel(null)
+          setCustomName('')
+          setFormError('')
+        }}
+        onCatalogModelChange={(modelId) => {
+          setSelectedCatalogModelId(modelId)
+          setSelectedVersionId('')
+          setSelectedLegacyModelLabel(null)
+          setCustomName('')
+          setFormError('')
+        }}
+        onVersionChange={(versionId) => {
+          setSelectedVersionId(versionId)
+          setSelectedLegacyModelLabel(null)
           setCustomName('')
           setFormError('')
         }}
         onCustomNameChange={(value) => {
           setCustomName(value)
           if (value.trim()) {
-            setSelectedModel(null)
+            setSelectedBrandId('')
+            setSelectedCatalogModelId('')
+            setSelectedVersionId('')
+            setSelectedLegacyModelLabel(null)
           }
         }}
         onNicknameChange={setNickname}
