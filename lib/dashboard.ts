@@ -50,6 +50,32 @@ type AppEventFeedRow = {
   created_at: string
 }
 
+type FeedRaceEventCurrentRow = {
+  id: string
+  user_id: string
+  name: string
+  race_date: string
+  linked_run_id: string | null
+  distance_meters: number | null
+  result_time_seconds: number | null
+  target_time_seconds: number | null
+  linked_run: {
+    id: string
+    name: string | null
+    title?: string | null
+    distance_km?: number | null
+    moving_time_seconds?: number | null
+    created_at?: string | null
+  } | Array<{
+    id: string
+    name: string | null
+    title?: string | null
+    distance_km?: number | null
+    moving_time_seconds?: number | null
+    created_at?: string | null
+  }> | null
+}
+
 export type FeedRunPhoto = {
   id: string
   public_url: string
@@ -172,6 +198,19 @@ function asRecord(value: unknown) {
 
 function getContextRecord(payload: Record<string, unknown> | null | undefined) {
   return asRecord(payload?.context)
+}
+
+function getFeedLinkedRun(
+  linkedRun:
+    | FeedRaceEventCurrentRow['linked_run']
+    | null
+    | undefined
+) {
+  if (Array.isArray(linkedRun)) {
+    return linkedRun[0] ?? null
+  }
+
+  return linkedRun ?? null
 }
 
 function parseFiniteNumber(value: unknown) {
@@ -463,6 +502,11 @@ export async function loadFeedRuns(
 
   const pageRuns = (runs as RunRow[] | null) ?? []
   const pageRaceEvents = (appEvents as AppEventFeedRow[] | null) ?? []
+  const editableRaceEventIds = currentUserId
+    ? pageRaceEvents
+        .filter((event) => event.actor_user_id === currentUserId && Boolean(event.entity_id))
+        .map((event) => event.entity_id as string)
+    : []
   const userIds = Array.from(new Set([
     ...pageRuns.map((run) => run.user_id),
     ...pageRaceEvents.map((event) => event.actor_user_id).filter((value): value is string => Boolean(value)),
@@ -473,6 +517,7 @@ export async function loadFeedRuns(
     profileById,
     likesSummary,
     photosResult,
+    currentRaceEventsResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
@@ -485,6 +530,30 @@ export async function loadFeedRuns(
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: true })
           .order('id', { ascending: true }),
+    editableRaceEventIds.length === 0
+      ? Promise.resolve({ data: [] as FeedRaceEventCurrentRow[], error: null })
+      : supabase
+          .from('race_events')
+          .select(`
+            id,
+            user_id,
+            name,
+            race_date,
+            linked_run_id,
+            distance_meters,
+            result_time_seconds,
+            target_time_seconds,
+            linked_run:runs!race_events_linked_run_id_fkey (
+              id,
+              name,
+              title,
+              distance_km,
+              moving_time_seconds,
+              created_at
+            )
+          `)
+          .in('id', editableRaceEventIds)
+          .eq('user_id', currentUserId),
   ])
 
   const photosByRunId = ((photosResult.data as RunPhotoRow[] | null) ?? []).reduce<Record<string, FeedRunPhoto[]>>(
@@ -514,6 +583,12 @@ export async function loadFeedRuns(
     },
     {}
   )
+  const currentRaceEventById = Object.fromEntries(
+    (((currentRaceEventsResult.data as FeedRaceEventCurrentRow[] | null) ?? []).map((raceEvent) => [
+      raceEvent.id,
+      raceEvent,
+    ]))
+  ) as Record<string, FeedRaceEventCurrentRow>
 
   const runItems: FeedItem[] = pageRuns.map((run) => {
       const profile = profileById[run.user_id]
@@ -552,38 +627,45 @@ export async function loadFeedRuns(
 
     const profile = profileById[event.actor_user_id]
     const context = getContextRecord(event.payload)
-    const raceName = typeof context?.raceName === 'string' && context.raceName.trim()
-      ? context.raceName.trim()
-      : 'Старт'
-    const raceDate = typeof context?.raceDate === 'string' && context.raceDate.trim()
-      ? context.raceDate.trim()
-      : null
-    const linkedRunId = typeof context?.linkedRunId === 'string' && context.linkedRunId.trim()
-      ? context.linkedRunId.trim()
-      : null
-    const linkedRunName = typeof context?.linkedRunName === 'string' && context.linkedRunName.trim()
-      ? context.linkedRunName.trim()
-      : null
-    const linkedRunCreatedAt = typeof context?.linkedRunCreatedAt === 'string' && context.linkedRunCreatedAt.trim()
-      ? context.linkedRunCreatedAt.trim()
-      : null
-    const linkedRunDistanceKm = parseFiniteNumber(context?.linkedRunDistanceKm)
-    const linkedRunMovingTimeSeconds = parseFiniteNumber(context?.linkedRunMovingTimeSeconds)
+    const currentRaceEvent = currentRaceEventById[event.entity_id]
+    const currentLinkedRun = getFeedLinkedRun(currentRaceEvent?.linked_run)
+    const raceName = currentRaceEvent?.name?.trim()
+      || (typeof context?.raceName === 'string' && context.raceName.trim() ? context.raceName.trim() : '')
+      || 'Старт'
+    const raceDate = currentRaceEvent?.race_date?.trim()
+      || (typeof context?.raceDate === 'string' && context.raceDate.trim() ? context.raceDate.trim() : null)
+    const linkedRunId = currentRaceEvent?.linked_run_id?.trim()
+      || (typeof context?.linkedRunId === 'string' && context.linkedRunId.trim() ? context.linkedRunId.trim() : null)
+    const linkedRunName = currentLinkedRun?.name?.trim()
+      || currentLinkedRun?.title?.trim()
+      || (typeof context?.linkedRunName === 'string' && context.linkedRunName.trim() ? context.linkedRunName.trim() : null)
+    const linkedRunCreatedAt =
+      (typeof currentLinkedRun?.created_at === 'string' && currentLinkedRun.created_at.trim()
+        ? currentLinkedRun.created_at.trim()
+        : null)
+      || (typeof context?.linkedRunCreatedAt === 'string' && context.linkedRunCreatedAt.trim() ? context.linkedRunCreatedAt.trim() : null)
+    const linkedRunDistanceKm =
+      parseFiniteNumber(currentLinkedRun?.distance_km) ?? parseFiniteNumber(context?.linkedRunDistanceKm)
+    const linkedRunMovingTimeSeconds =
+      parseFiniteNumber(currentLinkedRun?.moving_time_seconds) ?? parseFiniteNumber(context?.linkedRunMovingTimeSeconds)
     const distanceMeters =
-      parseFiniteNumber(context?.distanceMeters)
+      parseFiniteNumber(currentRaceEvent?.distance_meters)
+      ?? parseFiniteNumber(context?.distanceMeters)
       ?? (
         Number.isFinite(linkedRunDistanceKm) && (linkedRunDistanceKm ?? 0) > 0
           ? Math.round(Number(linkedRunDistanceKm ?? 0) * 1000)
           : null
       )
     const resultTimeSeconds =
-      parseFiniteNumber(context?.resultTimeSeconds)
+      parseFiniteNumber(currentRaceEvent?.result_time_seconds)
+      ?? parseFiniteNumber(context?.resultTimeSeconds)
       ?? (
         Number.isFinite(linkedRunMovingTimeSeconds) && (linkedRunMovingTimeSeconds ?? 0) >= 0
           ? Math.round(Number(linkedRunMovingTimeSeconds ?? 0))
           : null
       )
-    const targetTimeSeconds = parseFiniteNumber(context?.targetTimeSeconds)
+    const targetTimeSeconds =
+      parseFiniteNumber(currentRaceEvent?.target_time_seconds) ?? parseFiniteNumber(context?.targetTimeSeconds)
 
     return [{
       kind: 'race_event' as const,

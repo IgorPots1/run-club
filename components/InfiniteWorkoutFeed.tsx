@@ -110,7 +110,7 @@ function getRaceStatusLabel(raceDate: string | null) {
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  return raceDate > today ? 'Предстоит' : 'Завершен'
+  return raceDate > today ? 'Предстоящий старт' : 'Завершен'
 }
 
 function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
@@ -121,8 +121,6 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
   const distanceLabel = getRaceDistanceLabel(item.distanceMeters)
   const statusLabel = getRaceStatusLabel(item.raceDate)
   const isUpcoming = Boolean(item.raceDate && item.raceDate > new Date().toISOString().slice(0, 10))
-  const primaryLabel = isUpcoming ? (targetLabel ?? 'Цель не задана') : (resultLabel ?? 'Результат не указан')
-  const primaryCaption = isUpcoming ? 'Цель' : 'Результат'
 
   return (
     <Link href={`/races/${item.raceEventId}`} className="block">
@@ -144,17 +142,15 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
         <div className="mt-4 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
-            {statusLabel ? (
-              <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
-                {statusLabel}
-              </span>
-            ) : null}
             {item.isPersonalRecord ? (
               <span className="inline-flex shrink-0 items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
                 PR
               </span>
             ) : null}
           </div>
+          {isUpcoming && statusLabel ? (
+            <p className="app-text-muted mt-1 text-[11px] font-medium uppercase tracking-wide">{statusLabel}</p>
+          ) : null}
           <p className="app-text-secondary mt-1 break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
         </div>
 
@@ -172,18 +168,17 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
                 <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
               </div>
             ) : null}
-            {!targetLabel && !distanceLabel ? (
-              <p className="app-text-secondary text-sm">Подробности старта можно добавить позже.</p>
-            ) : null}
           </div>
         ) : (
           <div className="mt-4 min-w-0 space-y-2.5">
-            <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-              <p className="app-text-primary text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[32px]">
-                {primaryLabel}
-              </p>
-              <p className="app-text-secondary pb-0.5 text-sm">{primaryCaption}</p>
-            </div>
+            {resultLabel ? (
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                <p className="app-text-primary text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[32px]">
+                  {resultLabel}
+                </p>
+                <p className="app-text-secondary pb-0.5 text-sm">Результат</p>
+              </div>
+            ) : null}
             {distanceLabel ? (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                 <span className="app-text-secondary">Дистанция</span>

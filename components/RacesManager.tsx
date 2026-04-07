@@ -9,6 +9,7 @@ import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import RaceEventFormSheet from '@/components/RaceEventFormSheet'
 import { loadActivityRuns, type ActivityRunRow } from '@/lib/activity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import {
   createRaceEvent,
   deleteRaceEvent,
@@ -201,7 +202,7 @@ function RaceEventCard({
   const displayTimeLabel = formatClock(displayTime?.seconds)
   const targetTimeLabel = formatClock(raceEvent.target_time_seconds)
   const isUpcoming = isRaceEventUpcoming(raceEvent)
-  const statusLabel = raceEvent.linked_run_id ? 'Тренировка привязана' : 'Без привязанной тренировки'
+  const hasUpcomingSummary = Boolean(displayDistance || targetTimeLabel)
 
   return (
     <div
@@ -239,23 +240,24 @@ function RaceEventCard({
           <p className="app-text-secondary mt-1 break-words text-sm">
             {formatRaceDateLabel(raceEvent.race_date)}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-            {isUpcoming ? (
+          {!isUpcoming || hasUpcomingSummary ? (
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              {isUpcoming ? (
               <>
-                <span className="app-text-secondary break-words">{statusLabel}</span>
-                {displayDistance ? <span className="app-text-secondary">•</span> : null}
                 {displayDistance ? (
                   <span className="app-text-primary break-words">
                     {displayDistance.label}
                     {displayDistance.source === 'linked_run' ? ' • из тренировки' : ''}
                   </span>
                 ) : null}
-                {(displayDistance || targetTimeLabel) ? <span className="app-text-secondary">•</span> : null}
-                <span className={`${targetTimeLabel ? 'app-text-primary font-medium' : 'app-text-secondary'} break-words`}>
-                  {targetTimeLabel ? `Цель: ${targetTimeLabel}` : 'Цель не задана'}
-                </span>
+                {displayDistance && targetTimeLabel ? <span className="app-text-secondary">•</span> : null}
+                {targetTimeLabel ? (
+                  <span className="app-text-primary break-words font-medium">
+                    Цель: {targetTimeLabel}
+                  </span>
+                ) : null}
               </>
-            ) : (
+              ) : (
               <>
                 <span className="app-text-primary break-words font-semibold">
                   {displayTimeLabel ? `Результат: ${displayTimeLabel}` : 'Результат не указан'}
@@ -268,8 +270,9 @@ function RaceEventCard({
                   </span>
                 ) : null}
               </>
-            )}
-          </div>
+              )}
+            </div>
+          ) : null}
           {raceEvent.linked_run_id && linkedRunLabel ? (
             <div className="mt-2">
               <p className="app-text-secondary break-words text-xs">
@@ -614,6 +617,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       }
 
       await upsertRaceEvent(mutation.data)
+      dispatchRunsUpdatedEvent()
       resetRaceEventForm()
     } catch {
       setRaceEventsError(editingRaceEventId ? 'Не удалось обновить старт' : 'Не удалось создать старт')
@@ -659,6 +663,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       }
 
       await upsertRaceEvent(mutation.data)
+      dispatchRunsUpdatedEvent()
     } catch {
       setRaceEventsError('Не удалось привязать тренировку')
     } finally {
@@ -688,6 +693,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       }
 
       await upsertRaceEvent(mutation.data)
+      dispatchRunsUpdatedEvent()
 
       if (editingRaceEventId === raceEvent.id) {
         setSelectedLinkedRunId('')
@@ -719,6 +725,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
         (currentRaceEvents) => (currentRaceEvents ?? []).filter((raceEvent) => raceEvent.id !== pendingDeleteRaceEvent.id),
         { revalidate: false }
       )
+      dispatchRunsUpdatedEvent()
 
       if (editingRaceEventId === pendingDeleteRaceEvent.id) {
         resetRaceEventForm()
