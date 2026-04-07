@@ -142,7 +142,6 @@ export default function CommentsSheet({
 }: CommentsSheetProps) {
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
 
@@ -244,10 +243,7 @@ export default function CommentsSheet({
           </div>
         </div>
 
-        <div
-          ref={scrollContainerRef}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-4 scroll-smooth [overscroll-behavior-y:contain]"
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-4 [overscroll-behavior-y:contain]">
           {loading ? (
             <div className="space-y-4">
               <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
@@ -300,6 +296,7 @@ export default function CommentsSheet({
         <form
           onSubmit={handleSubmit}
           className="shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
+          style={{ willChange: 'transform' }}
         >
           <div className="flex items-end gap-2">
             <label htmlFor="feed-run-comment" className="sr-only">Сообщение</label>
