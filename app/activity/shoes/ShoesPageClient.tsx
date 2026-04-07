@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { Footprints, PencilLine, X } from 'lucide-react'
+import { Footprints, PencilLine, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { formatShoeDistanceMetersAsKm, getShoeWearUi } from '@/lib/shoe-wear-ui'
@@ -118,6 +118,22 @@ function getInitials(label: string) {
   return parts.map((part) => part.charAt(0).toUpperCase()).join('')
 }
 
+function normalizeCatalogSearchText(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+}
+
+type CatalogSearchResult = {
+  brandId: string
+  brandName: string
+  modelId: string
+  modelName: string
+  versionId: string
+  versionName: string
+  fullName: string
+  isCurrent: boolean
+  searchText: string
+}
+
 function ActiveSwitch({
   checked,
   onCheckedChange,
@@ -231,6 +247,7 @@ function ShoeFormSheet({
   onSubmit,
   onBrandChange,
   onCatalogModelChange,
+  onCatalogSearchSelect,
   onVersionChange,
   onCustomNameChange,
   onNicknameChange,
@@ -261,6 +278,7 @@ function ShoeFormSheet({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onBrandChange: (value: string) => void
   onCatalogModelChange: (value: string) => void
+  onCatalogSearchSelect: (value: { brandId: string; modelId: string; versionId: string }) => void
   onVersionChange: (value: string) => void
   onCustomNameChange: (value: string) => void
   onNicknameChange: (value: string) => void
@@ -292,6 +310,42 @@ function ShoeFormSheet({
       })),
     [selectedCatalogModel]
   )
+  const [catalogSearchInput, setCatalogSearchInput] = useState('')
+  const [debouncedCatalogSearchInput, setDebouncedCatalogSearchInput] = useState('')
+  const catalogSearchResults = useMemo(
+    () =>
+      catalogBrands.flatMap((brand) =>
+        brand.models.flatMap((model) =>
+          model.versions.map((version) => ({
+            brandId: brand.id,
+            brandName: brand.name,
+            modelId: model.id,
+            modelName: model.name,
+            versionId: version.id,
+            versionName: version.version,
+            fullName: version.fullName,
+            isCurrent: version.isCurrent,
+            searchText: normalizeCatalogSearchText(
+              [brand.name, model.name, version.version, version.fullName].filter(Boolean).join(' ')
+            ),
+          }))
+        )
+      ),
+    [catalogBrands]
+  )
+  const normalizedCatalogSearchQuery = useMemo(
+    () => normalizeCatalogSearchText(debouncedCatalogSearchInput),
+    [debouncedCatalogSearchInput]
+  )
+  const isCatalogSearchPending =
+    normalizeCatalogSearchText(catalogSearchInput) !== normalizedCatalogSearchQuery
+  const filteredCatalogSearchResults = useMemo(() => {
+    if (!normalizedCatalogSearchQuery) {
+      return []
+    }
+
+    return catalogSearchResults.filter((result) => result.searchText.includes(normalizedCatalogSearchQuery))
+  }, [catalogSearchResults, normalizedCatalogSearchQuery])
 
   useEffect(() => {
     if (!open) {
@@ -314,6 +368,25 @@ function ShoeFormSheet({
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose, open, submitting])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedCatalogSearchInput(catalogSearchInput)
+    }, 180)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [catalogSearchInput])
+
+  useEffect(() => {
+    if (open) {
+      return
+    }
+
+    setCatalogSearchInput('')
+    setDebouncedCatalogSearchInput('')
+  }, [open])
 
   if (!open) {
     return null
@@ -357,6 +430,99 @@ function ShoeFormSheet({
                 <p className="app-text-primary text-sm font-medium">Каталог</p>
                 <p className="app-text-secondary mt-1 text-xs">{selectedSummaryLabel}</p>
               </div>
+
+              <div>
+                <label htmlFor="shoe-catalog-search" className="app-text-secondary mb-1 block text-sm">
+                  Поиск по каталогу
+                </label>
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 app-text-secondary"
+                    strokeWidth={1.9}
+                  />
+                  <input
+                    id="shoe-catalog-search"
+                    type="text"
+                    value={catalogSearchInput}
+                    onChange={(event) => setCatalogSearchInput(event.target.value)}
+                    placeholder="Например: Nike Pegasus 41"
+                    disabled={submitting}
+                    className="app-input min-h-11 w-full rounded-xl border py-2 pl-10 pr-10"
+                  />
+                  {catalogSearchInput ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCatalogSearchInput('')
+                        setDebouncedCatalogSearchInput('')
+                      }}
+                      disabled={submitting}
+                      className="app-text-secondary absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Сбросить
+                    </button>
+                  ) : null}
+                </div>
+                <p className="app-text-secondary mt-2 text-xs">
+                  Ищи по бренду, модели или версии. Если поле пустое, можно выбрать пару вручную ниже.
+                </p>
+              </div>
+
+              {normalizedCatalogSearchQuery ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="app-text-primary text-sm font-medium">Результаты поиска</p>
+                    <p className="app-text-secondary text-xs">
+                      {isCatalogSearchPending ? 'Ищем...' : `${filteredCatalogSearchResults.length} вариантов`}
+                    </p>
+                  </div>
+
+                  {isCatalogSearchPending ? (
+                    <div className="app-surface-muted rounded-2xl border border-dashed px-3 py-3 text-sm app-text-secondary">
+                      Обновляем результаты...
+                    </div>
+                  ) : filteredCatalogSearchResults.length > 0 ? (
+                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                      {filteredCatalogSearchResults.map((result) => {
+                        const isSelected = selectedVersionId === result.versionId
+
+                        return (
+                          <button
+                            key={result.versionId}
+                            type="button"
+                            onClick={() => {
+                              onCatalogSearchSelect({
+                                brandId: result.brandId,
+                                modelId: result.modelId,
+                                versionId: result.versionId,
+                              })
+                              setCatalogSearchInput('')
+                              setDebouncedCatalogSearchInput('')
+                            }}
+                            disabled={submitting}
+                            className={`w-full rounded-2xl border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                              isSelected ? 'app-button-primary shadow-sm' : 'app-surface-muted'
+                            }`}
+                          >
+                            <p className="text-sm font-medium">{result.fullName}</p>
+                            <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
+                              {result.brandName} -> {result.modelName}
+                              {result.versionName ? ` -> ${result.versionName}` : ''}
+                            </p>
+                            <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
+                              {result.isCurrent ? 'Текущая версия каталога' : 'Версия из актуального каталога'}
+                            </p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="app-surface-muted rounded-2xl border border-dashed px-3 py-3 text-sm app-text-secondary">
+                      Ничего не нашли. Попробуй другой запрос или выбери бренд, модель и версию вручную.
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               <CatalogSelectField
                 id="shoe-brand-select"
@@ -1056,6 +1222,14 @@ export default function ShoesPageClient({
         onCatalogModelChange={(modelId) => {
           setSelectedCatalogModelId(modelId)
           setSelectedVersionId('')
+          setSelectedLegacyModelLabel(null)
+          setCustomName('')
+          setFormError('')
+        }}
+        onCatalogSearchSelect={({ brandId, modelId, versionId }) => {
+          setSelectedBrandId(brandId)
+          setSelectedCatalogModelId(modelId)
+          setSelectedVersionId(versionId)
           setSelectedLegacyModelLabel(null)
           setCustomName('')
           setFormError('')
