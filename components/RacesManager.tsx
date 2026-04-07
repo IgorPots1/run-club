@@ -1,6 +1,7 @@
 'use client'
 
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ArrowUpRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
@@ -189,9 +190,18 @@ function RaceEventCard({
               : 'Пока нет привязанной тренировки'}
           </p>
           {raceEvent.linked_run_id && linkedRunLabel ? (
-            <p className="app-text-secondary mt-1 text-xs">
-              {linkedRunLabel}
-            </p>
+            <div className="mt-1">
+              <p className="app-text-secondary text-xs">
+                {linkedRunLabel}
+              </p>
+              <Link
+                href={`/runs/${raceEvent.linked_run_id}`}
+                className="app-button-secondary mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
+              >
+                <span>Открыть тренировку</span>
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </div>
           ) : null}
           {!raceEvent.linked_run_id && candidateRuns.length > 0 ? (
             <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
