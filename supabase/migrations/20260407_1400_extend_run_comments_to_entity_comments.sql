@@ -223,6 +223,37 @@ check (
   or (entity_type = 'race' and run_id is null)
 );
 
+drop policy if exists "Authenticated users can read run comment likes" on public.run_comment_likes;
+create policy "Authenticated users can read run comment likes"
+on public.run_comment_likes
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.run_comments
+    where run_comments.id = run_comment_likes.comment_id
+      and (
+        (
+          run_comments.entity_type = 'run'
+          and exists (
+            select 1
+            from public.runs
+            where runs.id = run_comments.entity_id
+          )
+        )
+        or (
+          run_comments.entity_type = 'race'
+          and exists (
+            select 1
+            from public.race_events
+            where race_events.id = run_comments.entity_id
+          )
+        )
+      )
+  )
+);
+
 create index if not exists run_comment_likes_entity_type_entity_id_created_at_idx
 on public.run_comment_likes (entity_type, entity_id, created_at desc);
 
