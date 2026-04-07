@@ -10,6 +10,7 @@ export type ActivityRunRow = {
   distance_km: number | null
   duration_minutes?: number | null
   duration_seconds?: number | null
+  moving_time_seconds?: number | null
   xp?: number | null
   created_at: string
   external_source?: string | null
@@ -182,7 +183,7 @@ function buildDistanceMapByKey(runs: Array<{ distance: number; createdAt: Date }
 export async function loadActivityRuns(userId: string) {
   const { data, error } = await supabase
     .from('runs')
-    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, xp, created_at, external_source')
+    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, moving_time_seconds, xp, created_at, external_source')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 

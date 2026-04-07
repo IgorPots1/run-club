@@ -160,6 +160,70 @@ function getCandidateRunLabel(run: ActivityRunRow) {
   return `${formatRunTimestampLabel(run.created_at, run.external_source)} • ${getRunDisplayName(run)} • ${formatDistanceKmLabel(run)} км`
 }
 
+function formatResultTimeClock(totalSeconds: number | null | undefined) {
+  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
+    return null
+  }
+
+  const normalizedSeconds = Math.round(totalSeconds ?? 0)
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  return [
+    String(hours).padStart(2, '0'),
+    String(minutes).padStart(2, '0'),
+    String(seconds).padStart(2, '0'),
+  ].join(':')
+}
+
+function parseResultTimeClock(value: string) {
+  const normalizedValue = value.trim()
+
+  if (!normalizedValue) {
+    return { value: null, isValid: true }
+  }
+
+  const match = normalizedValue.match(/^(\d+):([0-5]\d):([0-5]\d)$/)
+
+  if (!match) {
+    return { value: null, isValid: false }
+  }
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3])
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+    return { value: null, isValid: false }
+  }
+
+  return {
+    value: (hours * 3600) + (minutes * 60) + seconds,
+    isValid: true,
+  }
+}
+
+function getRaceEventDisplayTimeSeconds(raceEvent: RaceEvent) {
+  const linkedRun = getRaceEventLinkedRun(raceEvent)
+
+  if (Number.isFinite(linkedRun?.moving_time_seconds) && (linkedRun?.moving_time_seconds ?? 0) >= 0) {
+    return {
+      seconds: Math.round(linkedRun?.moving_time_seconds ?? 0),
+      source: 'linked_run' as const,
+    }
+  }
+
+  if (Number.isFinite(raceEvent.result_time_seconds) && (raceEvent.result_time_seconds ?? 0) >= 0) {
+    return {
+      seconds: Math.round(raceEvent.result_time_seconds ?? 0),
+      source: 'manual' as const,
+    }
+  }
+
+  return null
+}
+
 function RaceEventCard({
   raceEvent,
   candidateRuns,
@@ -175,6 +239,8 @@ function RaceEventCard({
   onUnlink,
 }: RaceEventCardProps) {
   const linkedRunLabel = getRaceEventLinkedRunLabel(raceEvent)
+  const displayTime = getRaceEventDisplayTimeSeconds(raceEvent)
+  const displayTimeLabel = formatResultTimeClock(displayTime?.seconds)
 
   return (
     <div className="rounded-2xl border px-4 py-3">
@@ -194,6 +260,12 @@ function RaceEventCard({
               <p className="app-text-secondary text-xs">
                 {linkedRunLabel}
               </p>
+              {displayTimeLabel ? (
+                <p className="app-text-primary mt-2 text-sm font-medium">
+                  Результат: {displayTimeLabel}
+                  {displayTime?.source === 'linked_run' ? ' • из тренировки' : ''}
+                </p>
+              ) : null}
               <Link
                 href={`/runs/${raceEvent.linked_run_id}`}
                 className="app-button-secondary mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
@@ -202,6 +274,11 @@ function RaceEventCard({
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </div>
+          ) : null}
+          {!raceEvent.linked_run_id && displayTimeLabel ? (
+            <p className="app-text-primary mt-2 text-sm font-medium">
+              Результат: {displayTimeLabel}
+            </p>
           ) : null}
           {!raceEvent.linked_run_id && candidateRuns.length > 0 ? (
             <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
@@ -288,6 +365,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   const [openRaceEventMenuId, setOpenRaceEventMenuId] = useState<string | null>(null)
   const [raceEventName, setRaceEventName] = useState('')
   const [raceEventDate, setRaceEventDate] = useState('')
+  const [resultTimeInput, setResultTimeInput] = useState('')
   const [selectedLinkedRunId, setSelectedLinkedRunId] = useState('')
   const [formSuggestedRunId, setFormSuggestedRunId] = useState('')
   const [suggestedRunIdsByRaceEvent, setSuggestedRunIdsByRaceEvent] = useState<Record<string, string>>({})
@@ -434,6 +512,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     setOpenRaceEventMenuId(null)
     setRaceEventName('')
     setRaceEventDate('')
+    setResultTimeInput('')
     setSelectedLinkedRunId('')
     setFormSuggestedRunId('')
     setRaceEventsError('')
@@ -448,10 +527,16 @@ export default function RacesManager({ userId }: RacesManagerProps) {
 
     const normalizedName = raceEventName.trim() || DEFAULT_RACE_EVENT_NAME
     const normalizedRaceDate = raceEventDate.trim()
+    const normalizedResultTime = parseResultTimeClock(resultTimeInput)
     const normalizedLinkedRunId = selectedLinkedRunId.trim() || null
 
     if (!normalizedRaceDate) {
       setRaceEventsError('Укажите дату старта')
+      return
+    }
+
+    if (!normalizedResultTime.isValid) {
+      setRaceEventsError('Укажите время в формате чч:мм:сс')
       return
     }
 
@@ -463,11 +548,13 @@ export default function RacesManager({ userId }: RacesManagerProps) {
         ? await updateRaceEvent(editingRaceEventId, {
           name: normalizedName,
           raceDate: normalizedRaceDate,
+          resultTimeSeconds: normalizedResultTime.value,
           linkedRunId: normalizedLinkedRunId,
         })
         : await createRaceEvent({
           name: normalizedName,
           raceDate: normalizedRaceDate,
+          resultTimeSeconds: normalizedResultTime.value,
           linkedRunId: normalizedLinkedRunId,
         })
 
@@ -483,13 +570,14 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     } finally {
       setSubmittingRaceEvent(false)
     }
-  }, [editingRaceEventId, raceEventDate, raceEventName, resetRaceEventForm, selectedLinkedRunId, submittingRaceEvent, upsertRaceEvent])
+  }, [editingRaceEventId, raceEventDate, raceEventName, resetRaceEventForm, resultTimeInput, selectedLinkedRunId, submittingRaceEvent, upsertRaceEvent])
 
   const handleStartEditingRaceEvent = useCallback((raceEvent: RaceEvent) => {
     setOpenRaceEventMenuId(null)
     setEditingRaceEventId(raceEvent.id)
     setRaceEventName(raceEvent.name)
     setRaceEventDate(raceEvent.race_date)
+    setResultTimeInput(formatResultTimeClock(raceEvent.result_time_seconds) ?? '')
     setSelectedLinkedRunId(raceEvent.linked_run_id ?? '')
     setFormSuggestedRunId('')
     setRaceEventsError('')
@@ -632,6 +720,24 @@ export default function RacesManager({ userId }: RacesManagerProps) {
               disabled={submittingRaceEvent}
               className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
             />
+          </div>
+          <div>
+            <label htmlFor="race-event-result-time" className="app-text-secondary mb-1 block text-sm">
+              Результат
+            </label>
+            <input
+              id="race-event-result-time"
+              type="text"
+              inputMode="numeric"
+              value={resultTimeInput}
+              onChange={(event) => setResultTimeInput(event.target.value)}
+              placeholder="Например: 03:15:42"
+              disabled={submittingRaceEvent}
+              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+            />
+            <p className="app-text-secondary mt-2 text-xs">
+              Формат: чч:мм:сс. Если привязана тренировка, на карточке будет показано время из нее.
+            </p>
           </div>
           <div>
             <label htmlFor="race-event-linked-run" className="app-text-secondary mb-1 block text-sm">
