@@ -78,15 +78,11 @@ function getWearBadgeClassName(wearStatus: 'fresh' | 'warning' | 'critical') {
 }
 
 function getShoeCardClassName(wearStatus: 'fresh' | 'warning' | 'critical') {
-  if (wearStatus === 'warning') {
-    return 'app-card border-amber-300/70 bg-amber-50/60 dark:border-amber-300/20 dark:bg-amber-300/5'
-  }
-
   if (wearStatus === 'critical') {
-    return 'app-card border-rose-300/70 bg-rose-50/70 shadow-[0_10px_30px_-20px_rgba(244,63,94,0.55)] dark:border-rose-300/20 dark:bg-rose-300/5'
+    return 'app-card border border-rose-300/40 shadow-sm ring-1 ring-rose-300/20 dark:border-rose-300/15 dark:ring-rose-300/10'
   }
 
-  return 'app-card'
+  return 'app-card border border-black/[0.05] shadow-sm ring-1 ring-black/5 dark:border-white/[0.08] dark:ring-white/10'
 }
 
 function getPairsLabel(count: number) {
@@ -685,86 +681,77 @@ function ShoeGarageCard({
   onEdit: (shoe: UserShoeRecord) => void
   onSetArchivedState: (shoe: UserShoeRecord, nextIsActive: boolean) => void
 }) {
-  const stateLabel = archived ? 'В архиве' : 'Активные'
-  const stateClassName = archived
-    ? 'rounded-full border border-black/[0.07] bg-black/[0.04] px-2.5 py-1 text-xs font-semibold text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/75'
-    : 'rounded-full border border-emerald-300/70 bg-emerald-100/80 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
   const wearUi = getShoeWearUi({
     currentDistanceMeters: shoe.currentDistanceMeters,
     maxDistanceMeters: shoe.maxDistanceMeters,
   })
+  const isStatusUpdating = statusUpdatingShoeId === shoe.id
+  const remainingDistanceLabel =
+    wearUi.usagePercent <= 100
+      ? `Осталось ~${formatShoeDistanceMetersAsKm(Math.max(0, wearUi.maxDistanceMeters - wearUi.currentDistanceMeters))} км`
+      : 'Пробег превысил ресурс'
 
   return (
     <div
-      className={`${archived ? 'app-card opacity-90' : getShoeCardClassName(wearUi.status)} flex items-start gap-3 rounded-2xl border p-4 shadow-sm`}
+      className={`${getShoeCardClassName(wearUi.status)} rounded-2xl p-4 ${archived ? 'opacity-90' : ''}`}
     >
-      <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="app-text-primary break-words text-base font-semibold">
-              {shoe.displayName}
-            </p>
-            {shoe.nickname ? (
-              <p className="app-text-secondary mt-1 text-sm">{shoe.nickname}</p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+      <div className="flex items-start gap-3">
+        <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="app-text-primary break-words text-base font-semibold">
+                {shoe.displayName}
+              </p>
+              {shoe.nickname ? (
+                <p className="app-text-secondary mt-1 text-sm">{shoe.nickname}</p>
+              ) : null}
+              {archived ? (
+                <p className="app-text-muted mt-1 text-xs font-medium">В архиве</p>
+              ) : null}
+            </div>
             <span
-              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
+              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
             >
               {wearUi.label}
             </span>
-            <span className={stateClassName}>
-              {stateLabel}
-            </span>
           </div>
         </div>
+      </div>
 
-        <div className="app-text-secondary mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-          <p>{wearUi.distanceLabel}</p>
-          {shoe.model?.brand ? <p>• {shoe.model.brand}</p> : null}
-          {shoe.model?.category ? <p>• {shoe.model.category}</p> : null}
+      <div className="mt-4 rounded-xl border border-black/[0.05] bg-black/[0.02] px-3.5 py-3 dark:border-white/[0.07] dark:bg-white/[0.03]">
+        <div className="flex items-start justify-between gap-3">
+          <p className="app-text-primary text-sm font-medium">{wearUi.distanceLabel}</p>
+          <p className="app-text-secondary text-right text-xs">{remainingDistanceLabel}</p>
         </div>
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+          <div
+            className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(wearUi.status)}`}
+            style={{ width: `${getWearProgressFillPercent(wearUi.usagePercent)}%` }}
+          />
+        </div>
+      </div>
 
-        <div className="mt-3">
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
-            <div
-              className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(wearUi.status)}`}
-              style={{ width: `${getWearProgressFillPercent(wearUi.usagePercent)}%` }}
-            />
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-3 text-xs">
-            <p className="app-text-secondary">
-              {wearUi.usagePercent <= 100
-                ? `Осталось ~${formatShoeDistanceMetersAsKm(Math.max(0, wearUi.maxDistanceMeters - wearUi.currentDistanceMeters))} км`
-                : 'Пробег превысил ресурс'}
-            </p>
-            <p className="app-text-muted">{Math.round(wearUi.usagePercent)}%</p>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => onSetArchivedState(shoe, archived)}
-            disabled={statusUpdatingShoeId === shoe.id || submitting}
-            className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {statusUpdatingShoeId === shoe.id
-              ? archived ? 'Возвращаем...' : 'Переносим...'
-              : archived ? 'Вернуть в активные' : 'В архив'}
-          </button>
-          <button
-            type="button"
-            onClick={() => onEdit(shoe)}
-            disabled={statusUpdatingShoeId === shoe.id}
-            className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <PencilLine className="h-4 w-4" strokeWidth={1.9} />
-            Изменить
-          </button>
-        </div>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => onSetArchivedState(shoe, archived)}
+          disabled={isStatusUpdating || submitting}
+          className="app-text-secondary inline-flex min-h-10 items-center rounded-lg px-1 py-2 text-sm font-medium transition-colors hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isStatusUpdating
+            ? archived ? 'Возвращаем...' : 'Переносим...'
+            : archived ? 'Вернуть в активные' : 'В архив'}
+        </button>
+        <button
+          type="button"
+          onClick={() => onEdit(shoe)}
+          disabled={isStatusUpdating}
+          className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <PencilLine className="h-4 w-4" strokeWidth={1.9} />
+          Изменить
+        </button>
       </div>
     </div>
   )
