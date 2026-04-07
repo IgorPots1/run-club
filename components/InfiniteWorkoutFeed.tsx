@@ -7,6 +7,7 @@ import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedItem, type FeedRunItem, type FeedRaceEventItem } from '@/lib/dashboard'
+import { getRaceDistanceLabel, renderRaceResultShareCard } from '@/lib/race-result-share'
 import {
   countVisibleRunCommentRecords,
   loadRunCommentVisibilitySummaryForRunIds,
@@ -105,10 +106,95 @@ function formatLinkedRunPreview(item: FeedRaceEventItem) {
   return [runName, distanceLabel, timeLabel].filter(Boolean).join(' • ')
 }
 
+function formatLinkedRunPace(item: FeedRaceEventItem) {
+  if (!item.linkedRun) {
+    return null
+  }
+
+  const distanceKm = Number(item.linkedRun.distanceKm ?? 0)
+  const movingTimeSeconds = Number(item.linkedRun.movingTimeSeconds ?? 0)
+
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0 || !Number.isFinite(movingTimeSeconds) || movingTimeSeconds <= 0) {
+    return null
+  }
+
+  const paceSeconds = Math.round(movingTimeSeconds / distanceKm)
+  const minutes = Math.floor(paceSeconds / 60)
+  const seconds = paceSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')} /км`
+}
+
+function getRaceStatusLabel(raceDate: string | null) {
+  if (!raceDate) {
+    return null
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  return raceDate > today ? 'Предстоит' : 'Завершен'
+}
+
 function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
   const router = useRouter()
   const resultLabel = formatResultTimeClock(item.resultTimeSeconds)
   const linkedRunPreview = formatLinkedRunPreview(item)
+  const linkedRunPace = formatLinkedRunPace(item)
+  const distanceLabel = getRaceDistanceLabel(item.distanceMeters)
+  const statusLabel = getRaceStatusLabel(item.raceDate)
+  const [shareInFlight, setShareInFlight] = useState(false)
+  const [shareError, setShareError] = useState('')
+
+  const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+
+    if (shareInFlight) {
+      return
+    }
+
+    try {
+      setShareInFlight(true)
+      setShareError('')
+
+      const { blob, fileName } = await renderRaceResultShareCard({
+        raceName: item.raceName,
+        resultTime: resultLabel,
+        distanceLabel,
+        isPersonalRecord: item.isPersonalRecord,
+        displayName: item.displayName,
+        avatarUrl: item.avatar_url,
+      })
+
+      const file = new File([blob], fileName, { type: blob.type })
+      const shareData: ShareData = {
+        title: item.raceName,
+        text: resultLabel
+          ? `${item.displayName}: ${item.raceName} • ${resultLabel}`
+          : `${item.displayName}: ${item.raceName}`,
+        files: [file],
+      }
+
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(shareData))) {
+        await navigator.share(shareData)
+        return
+      }
+
+      const objectUrl = URL.createObjectURL(blob)
+      try {
+        const anchor = document.createElement('a')
+        anchor.href = objectUrl
+        anchor.download = fileName
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
+    } catch {
+      setShareError('Не удалось подготовить карточку')
+    } finally {
+      setShareInFlight(false)
+    }
+  }, [distanceLabel, item.avatar_url, item.displayName, item.isPersonalRecord, item.raceName, resultLabel, shareInFlight])
 
   return (
     <div
@@ -136,26 +222,75 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
           href={`/users/${item.user_id}`}
           size="sm"
         />
-        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
-          {formatRunTimestampLabel(item.created_at, null)}
-        </p>
+        <div className="flex flex-col items-end gap-2">
+          {statusLabel ? (
+            <span className="app-text-secondary inline-flex rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
+              {statusLabel}
+            </span>
+          ) : null}
+          <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
+            {formatRunTimestampLabel(item.created_at, null)}
+          </p>
+        </div>
       </div>
 
-      <div className="mt-3">
-        <p className="app-text-primary break-words text-[15px] font-semibold leading-5">{item.raceName}</p>
+      <div className="mt-4 text-center">
+        <div className="flex items-center justify-center gap-2">
+          <p className="app-text-primary break-words text-[17px] font-semibold leading-6">{item.raceName}</p>
+          {item.isPersonalRecord ? (
+            <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
+              PR
+            </span>
+          ) : null}
+        </div>
         <p className="app-text-secondary mt-1 text-sm">{formatRaceDateLabel(item.raceDate)}</p>
-        <p className="app-text-secondary mt-2 text-sm">
-          {item.type === 'race_event.created' ? 'Добавил новый старт' : 'Завершил старт'}
-        </p>
-        {resultLabel ? (
-          <p className="app-text-primary mt-2 text-sm font-medium">Результат: {resultLabel}</p>
-        ) : null}
       </div>
 
-      {item.type === 'race_event.completed' && item.linkedRun ? (
-        <div className="mt-3 rounded-2xl border px-3 py-3">
+      <div className="mt-5 rounded-[24px] bg-black/[0.03] px-4 py-6 text-center dark:bg-white/[0.04]">
+        {resultLabel ? (
+          <p className="app-text-primary text-[32px] font-semibold leading-none tracking-[-0.03em] sm:text-[38px]">
+            {resultLabel}
+          </p>
+        ) : (
+          <p className="app-text-primary text-lg font-semibold">Старт без результата</p>
+        )}
+        <p className="app-text-secondary mt-3 text-sm">Результат</p>
+        {distanceLabel ? (
+          <p className="app-text-primary mt-3 text-base font-medium">{distanceLabel}</p>
+        ) : (
+          <p className="app-text-secondary mt-3 text-sm">Дистанция не указана</p>
+        )}
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          type="button"
+          className="app-button-secondary inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={handleShare}
+          disabled={shareInFlight}
+        >
+          {shareInFlight ? 'Готовим...' : 'Поделиться'}
+        </button>
+        <Link
+          href={`/races/${item.raceEventId}`}
+          className="app-button-secondary inline-flex min-h-10 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium"
+          onClick={(event) => event.stopPropagation()}
+        >
+          Открыть
+        </Link>
+      </div>
+
+      {shareError ? (
+        <p className="mt-2 text-sm text-red-600">{shareError}</p>
+      ) : null}
+
+      {item.linkedRun ? (
+        <div className="mt-4 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
           <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
           <p className="app-text-secondary mt-1 text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
+          {linkedRunPace ? (
+            <p className="app-text-secondary mt-1 text-xs">{linkedRunPace}</p>
+          ) : null}
           <Link
             href={`/runs/${item.linkedRun.id}`}
             className="app-button-secondary mt-3 inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm font-medium"

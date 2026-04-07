@@ -1,5 +1,6 @@
 import type { DashboardOverview } from './dashboard-overview'
 import { getProfileDisplayName } from './profiles'
+import { getPersonalRecordRaceEventIds } from './race-events'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
 
@@ -89,7 +90,9 @@ export type FeedRaceEventItem = {
   raceEventId: string
   raceName: string
   raceDate: string | null
+  distanceMeters: number | null
   resultTimeSeconds: number | null
+  isPersonalRecord: boolean
   created_at: string
   displayName: string
   avatar_url: string | null
@@ -541,7 +544,7 @@ export async function loadFeedRuns(
       }
     })
 
-  const raceEventItems: FeedItem[] = pageRaceEvents.flatMap((event) => {
+  const raceEventItemsRaw = pageRaceEvents.flatMap((event) => {
     if (!event.actor_user_id || !event.entity_id) {
       return []
     }
@@ -563,6 +566,22 @@ export async function loadFeedRuns(
     const linkedRunCreatedAt = typeof context?.linkedRunCreatedAt === 'string' && context.linkedRunCreatedAt.trim()
       ? context.linkedRunCreatedAt.trim()
       : null
+    const linkedRunDistanceKm = parseFiniteNumber(context?.linkedRunDistanceKm)
+    const linkedRunMovingTimeSeconds = parseFiniteNumber(context?.linkedRunMovingTimeSeconds)
+    const distanceMeters =
+      parseFiniteNumber(context?.distanceMeters)
+      ?? (
+        Number.isFinite(linkedRunDistanceKm) && (linkedRunDistanceKm ?? 0) > 0
+          ? Math.round(Number(linkedRunDistanceKm ?? 0) * 1000)
+          : null
+      )
+    const resultTimeSeconds =
+      parseFiniteNumber(context?.resultTimeSeconds)
+      ?? (
+        Number.isFinite(linkedRunMovingTimeSeconds) && (linkedRunMovingTimeSeconds ?? 0) >= 0
+          ? Math.round(Number(linkedRunMovingTimeSeconds ?? 0))
+          : null
+      )
 
     return [{
       kind: 'race_event' as const,
@@ -572,7 +591,9 @@ export async function loadFeedRuns(
       raceEventId: event.entity_id,
       raceName,
       raceDate,
-      resultTimeSeconds: parseFiniteNumber(context?.resultTimeSeconds),
+      distanceMeters,
+      resultTimeSeconds,
+      isPersonalRecord: false,
       created_at: event.created_at,
       displayName: getProfileDisplayName(profile, 'Бегун'),
       avatar_url: profile?.avatar_url ?? null,
@@ -580,12 +601,31 @@ export async function loadFeedRuns(
       linkedRun: linkedRunId ? {
         id: linkedRunId,
         name: linkedRunName,
-        distanceKm: parseFiniteNumber(context?.linkedRunDistanceKm),
-        movingTimeSeconds: parseFiniteNumber(context?.linkedRunMovingTimeSeconds),
+        distanceKm: linkedRunDistanceKm,
+        movingTimeSeconds: linkedRunMovingTimeSeconds,
         createdAt: linkedRunCreatedAt,
       } : null,
     }]
   })
+
+  const personalRecordRaceEventIds = getPersonalRecordRaceEventIds(
+    raceEventItemsRaw.map((item) => ({
+      id: item.id,
+      user_id: item.user_id,
+      name: item.raceName,
+      race_date: item.raceDate ?? '',
+      linked_run_id: item.linkedRun?.id ?? null,
+      distance_meters: item.distanceMeters,
+      result_time_seconds: item.resultTimeSeconds,
+      created_at: item.created_at,
+      linked_run: null,
+    }))
+  )
+
+  const raceEventItems: FeedItem[] = raceEventItemsRaw.map((item) => ({
+    ...item,
+    isPersonalRecord: personalRecordRaceEventIds.has(item.id),
+  }))
 
   const combinedItems = [...runItems, ...raceEventItems]
     .sort(compareFeedItemsByCreatedAt)
