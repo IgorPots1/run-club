@@ -248,11 +248,6 @@ export default function ActivityDistanceChart({
     activeBarIndex === null || !data[activeBarIndex]
       ? null
       : { ...data[activeBarIndex], index: activeBarIndex }
-  const tooltipPayload = activePoint
-    ? [{
-        payload: activePoint,
-      }]
-    : undefined
   const dayTapTargetsStyle =
     mode === 'week' || mode === 'month' || mode === 'rolling30'
       ? {
@@ -282,17 +277,11 @@ export default function ActivityDistanceChart({
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
             <Tooltip
               active={showTooltip && activePoint !== null}
+              defaultIndex={activeBarIndex ?? undefined}
               cursor={false}
               position={{ x: 8, y: 8 }}
               wrapperStyle={{ pointerEvents: 'none', zIndex: 20 }}
-              content={() => (
-                <ActivityChartTooltip
-                  active={showTooltip && activePoint !== null}
-                  payload={tooltipPayload}
-                  label={activePoint?.label}
-                  mode={mode}
-                />
-              )}
+              content={<ActivityChartTooltip mode={mode} />}
             />
             <XAxis
               dataKey="label"
