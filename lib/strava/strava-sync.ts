@@ -118,6 +118,12 @@ type MissingHeartrateBackfillRunRow = {
   external_id: string | null
 }
 
+type AutoLinkRaceEventCandidateRow = {
+  id: string
+  race_date: string
+  distance_meters: number | null
+}
+
 type StravaImportOutcome = 'imported' | 'updated' | 'skipped_existing' | 'skipped_invalid'
 
 type StravaImportResult = {
@@ -1585,6 +1591,137 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
   }
 }
 
+function getDateValueFromIsoString(value: string) {
+  const parsedDate = new Date(value)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null
+  }
+
+  return parsedDate.toISOString().slice(0, 10)
+}
+
+function shiftDateValue(dateValue: string, days: number) {
+  const parsedDate = new Date(`${dateValue}T12:00:00Z`)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null
+  }
+
+  parsedDate.setUTCDate(parsedDate.getUTCDate() + days)
+  return parsedDate.toISOString().slice(0, 10)
+}
+
+function getDateDistanceDays(leftDateValue: string, rightDateValue: string) {
+  const leftDate = new Date(`${leftDateValue}T12:00:00Z`)
+  const rightDate = new Date(`${rightDateValue}T12:00:00Z`)
+
+  if (Number.isNaN(leftDate.getTime()) || Number.isNaN(rightDate.getTime())) {
+    return Number.POSITIVE_INFINITY
+  }
+
+  return Math.round(Math.abs(leftDate.getTime() - rightDate.getTime()) / (24 * 60 * 60 * 1000))
+}
+
+async function autoLinkRunToRaceEvent(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  runId: string
+  runCreatedAt: string
+  runDistanceMeters: number
+}) {
+  const runDateValue = getDateValueFromIsoString(params.runCreatedAt)
+
+  if (!runDateValue || !Number.isFinite(params.runDistanceMeters) || params.runDistanceMeters <= 0) {
+    return
+  }
+
+  const lowerBoundDate = shiftDateValue(runDateValue, -1)
+  const upperBoundDate = shiftDateValue(runDateValue, 1)
+
+  if (!lowerBoundDate || !upperBoundDate) {
+    return
+  }
+
+  try {
+    const { data, error } = await params.supabase
+      .from('race_events')
+      .select('id, race_date, distance_meters')
+      .eq('user_id', params.userId)
+      .is('linked_run_id', null)
+      .not('distance_meters', 'is', null)
+      .gte('race_date', lowerBoundDate)
+      .lte('race_date', upperBoundDate)
+
+    if (error) {
+      console.warn('Race event auto-link lookup failed', {
+        userId: params.userId,
+        runId: params.runId,
+        error: error.message,
+      })
+      return
+    }
+
+    const eligibleCandidates = ((data as AutoLinkRaceEventCandidateRow[] | null) ?? [])
+      .filter((candidate) => Number.isFinite(candidate.distance_meters) && (candidate.distance_meters ?? 0) > 0)
+      .map((candidate) => {
+        const raceDistanceMeters = Math.round(candidate.distance_meters ?? 0)
+        const distanceDifferenceMeters = Math.abs(params.runDistanceMeters - raceDistanceMeters)
+        const allowedDifferenceMeters = Math.max(1, Math.min(Math.round(raceDistanceMeters * 0.1), 1500))
+
+        return {
+          candidate,
+          distanceDifferenceMeters,
+          dateDifferenceDays: getDateDistanceDays(candidate.race_date, runDateValue),
+          allowedDifferenceMeters,
+        }
+      })
+      .filter((candidate) => candidate.distanceDifferenceMeters <= candidate.allowedDifferenceMeters)
+      .sort((left, right) => {
+        if (left.distanceDifferenceMeters !== right.distanceDifferenceMeters) {
+          return left.distanceDifferenceMeters - right.distanceDifferenceMeters
+        }
+
+        return left.dateDifferenceDays - right.dateDifferenceDays
+      })
+
+    const bestCandidate = eligibleCandidates[0]
+    const secondCandidate = eligibleCandidates[1]
+
+    if (!bestCandidate) {
+      return
+    }
+
+    if (secondCandidate && secondCandidate.distanceDifferenceMeters === bestCandidate.distanceDifferenceMeters) {
+      return
+    }
+
+    const { error: updateError } = await params.supabase
+      .from('race_events')
+      .update({
+        linked_run_id: params.runId,
+      })
+      .eq('id', bestCandidate.candidate.id)
+      .eq('user_id', params.userId)
+      .is('linked_run_id', null)
+
+    if (updateError) {
+      console.warn('Race event auto-link update failed', {
+        userId: params.userId,
+        runId: params.runId,
+        raceEventId: bestCandidate.candidate.id,
+        error: updateError.message,
+      })
+    }
+  } catch (error) {
+    console.warn('Race event auto-link unexpected failure', {
+      userId: params.userId,
+      runId: params.runId,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+  }
+}
+
 function findLikelyInvalidIntegerField(payload: StravaRunInsertPayload) {
   const integerFields: Array<
     keyof Pick<
@@ -2036,6 +2173,16 @@ export async function importStravaActivityForUser(
       )
     }
 
+    if (insertedRun?.id) {
+      await autoLinkRunToRaceEvent({
+        supabase,
+        userId,
+        runId: insertedRun.id,
+        runCreatedAt: payload.created_at,
+        runDistanceMeters: payload.distance_meters,
+      })
+    }
+
     return {
       status: 'imported',
       activityId: payload.external_id,
@@ -2084,6 +2231,14 @@ export async function importStravaActivityForUser(
   })
 
   if (!options.updateExisting && !requiresOwnerRepair) {
+    await autoLinkRunToRaceEvent({
+      supabase,
+      userId,
+      runId: existingRunIdForSupplementalSync,
+      runCreatedAt: payload.created_at,
+      runDistanceMeters: payload.distance_meters,
+    })
+
     await syncRunSupplementalStravaDataIfAvailable(
       supabase,
       existingRunIdForSupplementalSync,
@@ -2257,6 +2412,14 @@ export async function importStravaActivityForUser(
       reason: 'missing_access_token',
     })
   }
+
+  await autoLinkRunToRaceEvent({
+    supabase,
+    userId,
+    runId: existingRunIdForSupplementalSync,
+    runCreatedAt: payload.created_at,
+    runDistanceMeters: payload.distance_meters,
+  })
 
   return {
     status: 'updated',
