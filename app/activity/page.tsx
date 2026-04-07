@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import ActivityDistanceChart from '@/components/ActivityDistanceChart'
+import ActivitySummaryGrid from '@/components/ActivitySummaryGrid'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import { getBootstrapUser } from '@/lib/auth'
 import { isRaceEventUpcoming, loadRaceEvents } from '@/lib/race-events'
@@ -18,7 +19,7 @@ import {
   type ActivityPeriod,
 } from '@/lib/activity'
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
-import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { formatDistanceKm, formatDurationCompact, formatRunTimestampLabel } from '@/lib/format'
 import { deleteRun } from '@/lib/runs'
 import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 
@@ -294,6 +295,31 @@ export default function ActivityPage() {
         : 'Дистанция по дням'
   const shouldRenderEmptyState = summary.chartData.length === 0
   const deletingActiveRun = pendingDeleteRun ? deletingRunIds.includes(pendingDeleteRun.id) : false
+  const summaryMetrics = useMemo(
+    () => [
+      {
+        id: 'distance',
+        label: 'Дистанция',
+        value: `${formatDistance(summary.totalDistance)} км`,
+      },
+      {
+        id: 'runs',
+        label: 'Пробежки',
+        value: String(summary.totalWorkouts),
+      },
+      {
+        id: 'moving-time',
+        label: 'В движении',
+        value: formatDurationCompact(summary.totalMovingTimeSeconds),
+      },
+      {
+        id: 'active-days',
+        label: 'Активные дни',
+        value: String(summary.activeDaysCount),
+      },
+    ],
+    [summary]
+  )
   const upcomingRaceEventsCount = useMemo(
     () => (raceEvents ?? []).filter((raceEvent) => isRaceEventUpcoming(raceEvent)).length,
     [raceEvents]
@@ -498,17 +524,12 @@ export default function ActivityPage() {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 md:grid-cols-[320px_minmax(0,1fr)] md:items-start md:gap-5">
-              <div className="app-card min-w-0 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:sticky md:top-6 md:p-5">
-                <p className="app-text-secondary text-sm font-medium">Общая дистанция</p>
-                <p className="app-text-primary mt-2 break-words text-3xl font-bold tracking-tight md:mt-2.5 md:text-4xl">
-                  {formatDistance(summary.totalDistance)} км
-                </p>
-                <div className="mt-3.5 border-t pt-3 md:mt-4 md:pt-3.5">
-                  <p className="app-text-secondary text-sm">Тренировки</p>
-                  <p className="app-text-primary mt-1 text-2xl font-semibold">{summary.totalWorkouts}</p>
-                </div>
-              </div>
+            <div className="space-y-4 md:space-y-5">
+              <ActivitySummaryGrid
+                title="Сводка по периоду"
+                subtitle="Твои ключевые показатели за выбранный диапазон."
+                metrics={summaryMetrics}
+              />
 
               <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
                 <p className="app-text-secondary text-sm font-medium">{chartTitle}</p>

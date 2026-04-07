@@ -39,7 +39,7 @@ function WeeklyVolumeTooltip({
         <span className="app-text-primary font-medium">{point.rangeLabel}</span>
       </p>
       <p className="app-text-secondary mt-1 text-xs">
-        Пробег <span className="app-text-primary font-medium">{formatDistanceKm(point.distance)} км</span>
+        Дистанция <span className="app-text-primary font-medium">{formatDistanceKm(point.distance)} км</span>
       </p>
     </div>
   )
@@ -134,7 +134,7 @@ export default function ProfileWeeklyVolumeTrendChart({
         style={interactionStyle}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 6, right: 10, left: 4, bottom: 0 }}>
             <defs>
               <linearGradient id="profile-weekly-volume-fill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.18} />

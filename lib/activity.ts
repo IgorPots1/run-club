@@ -41,6 +41,8 @@ export type ActivityTrendPoint = ActivityChartPoint & {
 export type ActivitySummary = {
   totalDistance: number
   totalWorkouts: number
+  totalMovingTimeSeconds: number
+  activeDaysCount: number
   chartData: ActivityChartPoint[]
 }
 
@@ -63,6 +65,10 @@ function startOfMonth(date: Date) {
 
 function endOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 1)
+}
+
+function getDaysInMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
 }
 
 function startOfYear(date: Date) {
@@ -172,6 +178,16 @@ function sumDistance(runs: Array<{ distance: number }>) {
   return runs.reduce((sum, run) => sum + run.distance, 0)
 }
 
+function sumMovingTimeSeconds(
+  runs: Array<{ movingTimeSeconds: number }>
+) {
+  return runs.reduce((sum, run) => sum + Math.max(0, run.movingTimeSeconds), 0)
+}
+
+function countActiveDays(runs: Array<{ createdAt: Date }>) {
+  return new Set(runs.map((run) => formatDateKey(run.createdAt))).size
+}
+
 function buildDistanceMapByKey(runs: Array<{ distance: number; createdAt: Date }>, keyBuilder: (date: Date) => number) {
   return runs.reduce<Record<number, number>>((totals, run) => {
     const key = keyBuilder(run.createdAt)
@@ -207,6 +223,10 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
   const normalizedRuns = runs.map((run) => ({
     distance: getDistanceValue(run),
     createdAt: new Date(run.created_at),
+    movingTimeSeconds: Math.max(
+      0,
+      Number(run.moving_time_seconds ?? run.duration_seconds ?? Number(run.duration_minutes ?? 0) * 60)
+    ),
   }))
 
   if (period === 'week') {
@@ -219,6 +239,8 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     return {
       totalDistance: sumDistance(filteredRuns),
       totalWorkouts: filteredRuns.length,
+      totalMovingTimeSeconds: sumMovingTimeSeconds(filteredRuns),
+      activeDaysCount: countActiveDays(filteredRuns),
       chartData: days.map((day, index) => ({
         label: formatWeekdayLabel(index),
         distance: filteredRuns
@@ -234,15 +256,15 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     const end = range?.end ?? endOfMonth(now)
     const filteredRuns = normalizedRuns.filter((run) => run.createdAt >= start && run.createdAt < end)
     const distanceByDay = buildDistanceMapByKey(filteredRuns, (date) => date.getDate())
-    const daysWithWorkouts = Object.keys(distanceByDay)
-      .map((day) => Number(day))
-      .filter((day) => Number.isFinite(day))
-      .sort((left, right) => left - right)
+    const totalDaysInMonth = getDaysInMonth(start)
+    const daysInMonth = Array.from({ length: totalDaysInMonth }, (_, index) => index + 1)
 
     return {
       totalDistance: sumDistance(filteredRuns),
       totalWorkouts: filteredRuns.length,
-      chartData: daysWithWorkouts.map((day) => ({
+      totalMovingTimeSeconds: sumMovingTimeSeconds(filteredRuns),
+      activeDaysCount: countActiveDays(filteredRuns),
+      chartData: daysInMonth.map((day) => ({
         label: String(day),
         distance: distanceByDay[day] ?? 0,
       })),
@@ -260,6 +282,8 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     return {
       totalDistance: sumDistance(filteredRuns),
       totalWorkouts: filteredRuns.length,
+      totalMovingTimeSeconds: sumMovingTimeSeconds(filteredRuns),
+      activeDaysCount: countActiveDays(filteredRuns),
       chartData: months.map((month) => ({
         label: formatMonthLabel(month),
         distance: distanceByMonth[month.getMonth()] ?? 0,
@@ -271,6 +295,8 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     return {
       totalDistance: 0,
       totalWorkouts: 0,
+      totalMovingTimeSeconds: 0,
+      activeDaysCount: 0,
       chartData: [],
     }
   }
@@ -287,6 +313,8 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
   return {
     totalDistance: sumDistance(normalizedRuns),
     totalWorkouts: normalizedRuns.length,
+    totalMovingTimeSeconds: sumMovingTimeSeconds(normalizedRuns),
+    activeDaysCount: countActiveDays(normalizedRuns),
     chartData: years.map((year) => ({
       label: formatYearLabel(year),
       distance: distanceByYear[year.getFullYear()] ?? 0,

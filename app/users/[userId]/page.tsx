@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import ActivitySummaryGrid from '@/components/ActivitySummaryGrid'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import ProfileWeeklyVolumeTrendChart from '@/components/ProfileWeeklyVolumeTrendChart'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
@@ -152,10 +153,31 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     'Бегун'
   )
   const recent7DayActivity = buildRecent7DayActivity(publicRuns)
-  const activity7Days = buildActivityWindowStats(publicRuns, { days: 7 })
   const activity30Days = buildActivityWindowStats(publicRuns)
   const activity30DayChartData = buildRollingWeeklyDistanceChart(publicRuns, { weeks: 12 })
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
+  const activity30DayMetrics = [
+    {
+      id: 'distance',
+      label: 'Дистанция',
+      value: `${formatDistanceKm(activity30Days.totalDistanceKm)} км`,
+    },
+    {
+      id: 'runs',
+      label: 'Пробежки',
+      value: String(activity30Days.runsCount),
+    },
+    {
+      id: 'moving-time',
+      label: 'В движении',
+      value: formatDurationCompact(activity30Days.totalMovingTimeSeconds),
+    },
+    {
+      id: 'active-days',
+      label: 'Активные дни',
+      value: String(activity30Days.activeDaysCount),
+    },
+  ]
 
   return (
     <WorkoutDetailShell title="Профиль участника">
@@ -243,30 +265,15 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             </div>
           </div>
         </section>
-        <section className="app-card rounded-2xl border p-4 shadow-sm sm:p-5">
-          <h2 className="app-text-primary text-base font-semibold">Бег</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
-                {formatDistanceKm(activity30Days.totalDistanceKm)} км
-              </p>
-              <p className="app-text-secondary mt-1.5 text-sm">Пробег</p>
-            </div>
-            <div className="app-surface-muted flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
-                {activity30Days.runsCount}
-              </p>
-              <p className="app-text-secondary mt-1.5 text-sm">Пробежки</p>
-            </div>
-            <div className="app-surface-muted col-span-2 flex h-full flex-col rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-              <p className="app-text-primary text-lg font-semibold sm:text-[1.15rem]">
-                {formatDurationCompact(activity30Days.totalMovingTimeSeconds)}
-              </p>
-              <p className="app-text-secondary mt-1.5 text-sm">В движении</p>
-            </div>
-          </div>
+        <section className="space-y-3">
+          <ActivitySummaryGrid
+            title="Бег"
+            subtitle="Сводка за последние 30 дней."
+            metrics={activity30DayMetrics}
+            compact
+          />
           <div className="app-surface-muted mt-3 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-            <p className="app-text-secondary text-sm font-medium">Последние 12 недель</p>
+            <p className="app-text-secondary text-sm font-medium">Тренд дистанции за 12 недель</p>
             {activity30DayChartData.some((point) => point.distance > 0) ? (
               <div className="mt-3">
                 <ProfileWeeklyVolumeTrendChart
@@ -281,7 +288,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
           </div>
         </section>
         <div>
-          <h2 className="app-text-primary mb-3 text-lg font-semibold">Тренировки</h2>
+          <h2 className="app-text-primary mb-3 text-lg font-semibold">Последняя активность</h2>
           <InfiniteWorkoutFeed
             currentUserId={user.id}
             targetUserId={userId}
