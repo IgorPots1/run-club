@@ -23,7 +23,7 @@ export type RunShoeImpactState = {
 }
 
 export type RunShoeWearTrigger = {
-  threshold: 'warning' | 'replace'
+  threshold: 'warning' | 'critical'
   message: string
 } | null
 

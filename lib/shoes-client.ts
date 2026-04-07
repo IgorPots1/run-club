@@ -1,3 +1,5 @@
+import type { ShoeWearUiLabel, ShoeWearUiStatus } from './shoe-wear-ui'
+
 export type ShoeModel = {
   id: string
   brand: string
@@ -50,8 +52,8 @@ export type UserShoeRecord = {
   maxDistanceMeters: number
   usagePercent: number
   remainingDistanceMeters: number
-  wearStatus: 'fresh' | 'ok' | 'warning' | 'replace'
-  wearStatusLabel: 'Свежие' | 'Рабочие' | 'На исходе' | 'Под замену'
+  wearStatus: ShoeWearUiStatus
+  wearStatusLabel: ShoeWearUiLabel
   photoUrl: string | null
   isActive: boolean
   shoeModelId: string | null

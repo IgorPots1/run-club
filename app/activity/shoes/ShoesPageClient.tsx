@@ -312,7 +312,7 @@ function ShoeFormSheet({
   )
   const [catalogSearchInput, setCatalogSearchInput] = useState('')
   const [debouncedCatalogSearchInput, setDebouncedCatalogSearchInput] = useState('')
-  const catalogSearchResults = useMemo(
+  const catalogSearchResults = useMemo<CatalogSearchResult[]>(
     () =>
       catalogBrands.flatMap((brand) =>
         brand.models.flatMap((model) =>
@@ -378,15 +378,6 @@ function ShoeFormSheet({
       window.clearTimeout(timeoutId)
     }
   }, [catalogSearchInput])
-
-  useEffect(() => {
-    if (open) {
-      return
-    }
-
-    setCatalogSearchInput('')
-    setDebouncedCatalogSearchInput('')
-  }, [open])
 
   if (!open) {
     return null
@@ -506,8 +497,8 @@ function ShoeFormSheet({
                           >
                             <p className="text-sm font-medium">{result.fullName}</p>
                             <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
-                              {result.brandName} -> {result.modelName}
-                              {result.versionName ? ` -> ${result.versionName}` : ''}
+                              {result.brandName} • {result.modelName}
+                              {result.versionName ? ` • ${result.versionName}` : ''}
                             </p>
                             <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
                               {result.isCurrent ? 'Текущая версия каталога' : 'Версия из актуального каталога'}
@@ -893,7 +884,7 @@ export default function ShoesPageClient({
     }
 
     if (criticalCount > 0) {
-      nextLines.push(`${criticalCount} ${getPairsLabel(criticalCount)} в критическом износе`)
+      nextLines.push(`${criticalCount} ${getPairsLabel(criticalCount)} пора менять`)
     }
 
     return nextLines
@@ -1190,6 +1181,7 @@ export default function ShoesPageClient({
       </section>
 
       <ShoeFormSheet
+        key={editingShoeId ?? (formOpen ? 'new' : 'closed')}
         open={formOpen}
         editing={Boolean(editingShoeId)}
         submitting={submitting}

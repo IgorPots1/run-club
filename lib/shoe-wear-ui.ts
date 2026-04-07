@@ -1,4 +1,8 @@
+export const SHOE_WEAR_WARNING_THRESHOLD_PERCENT = 60
+export const SHOE_WEAR_CRITICAL_THRESHOLD_PERCENT = 85
+
 export type ShoeWearUiStatus = 'fresh' | 'warning' | 'critical'
+export type ShoeWearUiLabel = 'В ресурсе' | 'На исходе' | 'Пора менять'
 
 type ShoeWearUiInput = {
   currentDistanceMeters: number
@@ -16,14 +20,14 @@ export function getShoeWearUi(input: ShoeWearUiInput) {
   const usagePercent = (safeCurrentDistanceMeters / safeMaxDistanceMeters) * 100
 
   let status: ShoeWearUiStatus = 'fresh'
-  let label = 'Fresh'
+  let label: ShoeWearUiLabel = 'В ресурсе'
 
-  if (usagePercent > 85) {
+  if (usagePercent > SHOE_WEAR_CRITICAL_THRESHOLD_PERCENT) {
     status = 'critical'
-    label = 'Critical'
-  } else if (usagePercent >= 60) {
+    label = 'Пора менять'
+  } else if (usagePercent >= SHOE_WEAR_WARNING_THRESHOLD_PERCENT) {
     status = 'warning'
-    label = 'Warning'
+    label = 'На исходе'
   }
 
   return {

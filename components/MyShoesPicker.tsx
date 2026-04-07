@@ -115,7 +115,7 @@ export default function MyShoesPicker({
                     aria-hidden="true"
                   />
                   <p className={`text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
-                    {wearUi.distanceLabel}
+                    {wearUi.label} • {wearUi.distanceLabel}
                   </p>
                 </div>
                 <div className={`mt-2 h-1.5 w-full overflow-hidden rounded-full ${isSelected ? 'bg-white/20' : 'bg-black/[0.06] dark:bg-white/[0.08]'}`}>

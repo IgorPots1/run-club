@@ -1,5 +1,12 @@
 import 'server-only'
 
+import {
+  getShoeWearUi,
+  SHOE_WEAR_CRITICAL_THRESHOLD_PERCENT,
+  SHOE_WEAR_WARNING_THRESHOLD_PERCENT,
+  type ShoeWearUiLabel,
+  type ShoeWearUiStatus,
+} from './shoe-wear-ui'
 import { createSupabaseServerClient } from './supabase-server'
 
 type ShoeModelDbRow = {
@@ -83,8 +90,8 @@ export type UserShoeRecord = {
   maxDistanceMeters: number
   usagePercent: number
   remainingDistanceMeters: number
-  wearStatus: 'fresh' | 'ok' | 'warning' | 'replace'
-  wearStatusLabel: 'Свежие' | 'Рабочие' | 'На исходе' | 'Под замену'
+  wearStatus: ShoeWearUiStatus
+  wearStatusLabel: ShoeWearUiLabel
   photoUrl: string | null
   isActive: boolean
   shoeModelId: string | null
@@ -183,50 +190,24 @@ function buildSearchPattern(query: string) {
   return `%${query}%`
 }
 
-function getWearStatus(usagePercent: number) {
-  if (usagePercent < 50) {
-    return {
-      wearStatus: 'fresh' as const,
-      wearStatusLabel: 'Свежие' as const,
-    }
-  }
-
-  if (usagePercent < 80) {
-    return {
-      wearStatus: 'ok' as const,
-      wearStatusLabel: 'Рабочие' as const,
-    }
-  }
-
-  if (usagePercent < 100) {
-    return {
-      wearStatus: 'warning' as const,
-      wearStatusLabel: 'На исходе' as const,
-    }
-  }
-
-  return {
-    wearStatus: 'replace' as const,
-    wearStatusLabel: 'Под замену' as const,
-  }
-}
-
 export function getUserShoeUsageMetrics(input: {
   currentDistanceMeters: number
   maxDistanceMeters: number
 }) {
   const safeMaxDistanceMeters = Math.max(1, toSafeNonNegativeInteger(input.maxDistanceMeters))
   const safeCurrentDistanceMeters = toSafeNonNegativeInteger(input.currentDistanceMeters)
-  const usagePercent = (safeCurrentDistanceMeters / safeMaxDistanceMeters) * 100
+  const wearUi = getShoeWearUi({
+    currentDistanceMeters: safeCurrentDistanceMeters,
+    maxDistanceMeters: safeMaxDistanceMeters,
+  })
   const remainingDistanceMeters = safeMaxDistanceMeters - safeCurrentDistanceMeters
-  const wearStatus = getWearStatus(usagePercent)
 
   return {
     maxDistanceMeters: safeMaxDistanceMeters,
-    usagePercent,
+    usagePercent: wearUi.usagePercent,
     remainingDistanceMeters,
-    wearStatus: wearStatus.wearStatus,
-    wearStatusLabel: wearStatus.wearStatusLabel,
+    wearStatus: wearUi.status,
+    wearStatusLabel: wearUi.label,
   }
 }
 
@@ -236,14 +217,20 @@ export function getWearThresholdCrossing(params: {
 }) {
   const { previousUsagePercent, nextUsagePercent } = params
 
-  if (previousUsagePercent < 100 && nextUsagePercent >= 100) {
+  if (
+    previousUsagePercent <= SHOE_WEAR_CRITICAL_THRESHOLD_PERCENT &&
+    nextUsagePercent > SHOE_WEAR_CRITICAL_THRESHOLD_PERCENT
+  ) {
     return {
-      threshold: 'replace' as const,
-      message: 'Эта пара уже под замену',
+      threshold: 'critical' as const,
+      message: 'Эту пару уже пора менять',
     }
   }
 
-  if (previousUsagePercent < 80 && nextUsagePercent >= 80) {
+  if (
+    previousUsagePercent < SHOE_WEAR_WARNING_THRESHOLD_PERCENT &&
+    nextUsagePercent >= SHOE_WEAR_WARNING_THRESHOLD_PERCENT
+  ) {
     return {
       threshold: 'warning' as const,
       message: 'Эта пара уже на исходе',
