@@ -13,7 +13,9 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const { isFirstSession } = await getFirstSessionState(user.id)
+  const userId = user.id
+
+  const { isFirstSession } = await getFirstSessionState(userId)
 
   if (isFirstSession) {
     redirect('/onboarding')
@@ -21,14 +23,14 @@ export default async function DashboardPage() {
 
   async function loadInitialInboxUnreadCount() {
     try {
-      return await getInboxUnreadCount(user.id)
+      return await getInboxUnreadCount(userId)
     } catch {
       return 0
     }
   }
 
   const [overview, initialInboxUnreadCount] = await Promise.all([
-    loadDashboardOverviewServer(user.id),
+    loadDashboardOverviewServer(userId),
     loadInitialInboxUnreadCount(),
   ])
   const initialLevelProgress = getLevelProgressFromXP(overview.stats.totalXp)
@@ -36,7 +38,7 @@ export default async function DashboardPage() {
   return (
     <DashboardPageClient
       initialUser={{
-        id: user.id,
+        id: userId,
         email: user.email ?? null,
       }}
       initialProfileSummary={{
