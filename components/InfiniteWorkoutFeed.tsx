@@ -140,32 +140,29 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
         </div>
 
         <div className="mt-4 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
-            {item.isPersonalRecord ? (
-              <span className="inline-flex shrink-0 items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
-                PR
-              </span>
-            ) : null}
-          </div>
           {isUpcoming && statusLabel ? (
-            <p className="app-text-muted mt-1 text-[11px] font-medium uppercase tracking-wide">{statusLabel}</p>
+            <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{statusLabel}</p>
           ) : null}
-          <p className="app-text-secondary mt-1 break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
+            <p className="app-text-secondary shrink-0 text-right text-sm">
+              {formatRaceDateLabel(item.raceDate)}
+            </p>
+          </div>
         </div>
 
         {isUpcoming ? (
           <div className="mt-4 min-w-0 space-y-2">
-            {targetLabel ? (
-              <div className="app-surface-muted flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2.5 dark:bg-white/[0.04]">
-                <span className="app-text-secondary text-xs font-medium uppercase tracking-wide">Цель</span>
-                <span className="app-text-primary break-words text-sm font-semibold">{targetLabel}</span>
-              </div>
-            ) : null}
             {distanceLabel ? (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                 <span className="app-text-secondary">Дистанция</span>
                 <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
+              </div>
+            ) : null}
+            {targetLabel ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span className="app-text-secondary">Цель</span>
+                <span className="app-text-primary break-words font-medium">{targetLabel}</span>
               </div>
             ) : null}
           </div>
@@ -179,6 +176,7 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
                 <p className="app-text-secondary pb-0.5 text-sm">Результат</p>
               </div>
             ) : null}
+            <p className="app-text-secondary break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
             {distanceLabel ? (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                 <span className="app-text-secondary">Дистанция</span>
