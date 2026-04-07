@@ -642,7 +642,7 @@ export default function ActivityPage() {
                     key={run.id}
                     className="compact-run-card app-card overflow-hidden rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md"
                   >
-                    <div className="compact-run-card-layout flex items-start gap-3">
+                    <div className="compact-run-card-layout flex flex-col gap-3 sm:flex-row sm:items-start">
                       <Link href={`/runs/${run.id}`} className="min-w-0 flex-1">
                         <p className="app-text-primary break-words text-base font-semibold">
                           {getRunDisplayName(run)}
@@ -663,7 +663,7 @@ export default function ActivityPage() {
                           type="button"
                           onClick={() => handleRequestDelete(run)}
                           disabled={deletingRunIds.includes(run.id)}
-                          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-red-500/20 px-3 py-2 text-red-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25"
+                          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-500/20 px-3 py-2 text-red-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25 sm:min-w-11 sm:w-auto sm:shrink-0"
                           aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
                         >
                           {deletingRunIds.includes(run.id) ? (

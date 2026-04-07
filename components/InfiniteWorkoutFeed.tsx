@@ -235,8 +235,8 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
       </div>
 
       <div className="mt-4 text-center">
-        <div className="flex items-center justify-center gap-2">
-          <p className="app-text-primary break-words text-[17px] font-semibold leading-6">{item.raceName}</p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6">{item.raceName}</p>
           {item.isPersonalRecord ? (
             <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
               PR
@@ -262,10 +262,10 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
         )}
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
-          className="app-button-secondary inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-button-secondary inline-flex min-h-10 w-full items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
           onClick={handleShare}
           disabled={shareInFlight}
         >
@@ -273,7 +273,7 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
         </button>
         <Link
           href={`/races/${item.raceEventId}`}
-          className="app-button-secondary inline-flex min-h-10 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium"
+          className="app-button-secondary inline-flex min-h-10 w-full items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
           onClick={(event) => event.stopPropagation()}
         >
           Открыть

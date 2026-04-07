@@ -873,9 +873,9 @@ function ShoeGarageCard({
       </div>
 
       <div className="mt-4 rounded-xl border border-black/[0.05] bg-black/[0.02] px-3.5 py-3 dark:border-white/[0.07] dark:bg-white/[0.03]">
-        <div className="flex items-start justify-between gap-3">
-          <p className="app-text-primary text-sm font-medium">{wearUi.distanceLabel}</p>
-          <p className="app-text-secondary text-right text-xs">{remainingDistanceLabel}</p>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <p className="app-text-primary min-w-0 text-sm font-medium">{wearUi.distanceLabel}</p>
+          <p className="app-text-secondary min-w-0 text-xs sm:text-right">{remainingDistanceLabel}</p>
         </div>
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
           <div
@@ -885,12 +885,12 @@ function ShoeGarageCard({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
           onClick={() => onSetArchivedState(shoe, archived)}
           disabled={isStatusUpdating || submitting}
-          className="app-text-secondary inline-flex min-h-10 items-center rounded-lg px-1 py-2 text-sm font-medium transition-colors hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-text-secondary inline-flex min-h-10 w-full items-center justify-center rounded-lg px-1 py-2 text-sm font-medium transition-colors hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:justify-start"
         >
           {isStatusUpdating
             ? archived ? 'Возвращаем...' : 'Переносим...'
@@ -900,7 +900,7 @@ function ShoeGarageCard({
           type="button"
           onClick={() => onEdit(shoe)}
           disabled={isStatusUpdating}
-          className="app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-button-secondary inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           <PencilLine className="h-4 w-4" strokeWidth={1.9} />
           Изменить
@@ -1195,8 +1195,8 @@ export default function ShoesPageClient({
       ) : null}
 
       <section className="mt-5 md:mt-6">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h2 className="app-text-primary text-lg font-semibold">Мои кроссовки</h2>
             <p className="app-text-secondary mt-1 text-sm">
               Гараж ваших пар с пробегом и текущим состоянием.
@@ -1208,21 +1208,21 @@ export default function ShoesPageClient({
               resetForm()
               setFormOpen(true)
             }}
-            className="app-button-primary inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
+            className="app-button-primary inline-flex min-h-11 w-full items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium sm:w-auto sm:shrink-0"
           >
             Добавить пару
           </button>
         </div>
 
         <div className="mb-3 app-surface-muted rounded-2xl border px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="app-text-primary text-sm font-medium">Активные пары</p>
               <p className="app-text-secondary mt-1 text-xs">
                 {activeShoes.length} из {shoes?.length ?? 0} {getPairsLabel(shoes?.length ?? 0)}
               </p>
             </div>
-            <p className="app-text-secondary text-sm">{activeShoes.length} пар</p>
+            <p className="app-text-secondary shrink-0 text-sm">{activeShoes.length} пар</p>
           </div>
         </div>
 
