@@ -47,9 +47,6 @@ type RunDetailsRow = {
   title?: string | null
   description?: string | null
   shoe_id?: string | null
-  type?: 'training' | 'race' | null
-  race_name?: string | null
-  race_date?: string | null
   name_manually_edited?: boolean
   description_manually_edited?: boolean
   city?: string | null
@@ -123,7 +120,7 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, description, shoe_id, type, race_name, race_date, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, description, shoe_id, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
   'id, user_id, name, title, shoe_id, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
@@ -153,9 +150,6 @@ function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefin
     message.includes('calories') ||
     message.includes('average_cadence') ||
     message.includes('description') ||
-    message.includes('type') ||
-    message.includes('race_name') ||
-    message.includes('race_date') ||
     message.includes('name_manually_edited') ||
     message.includes('description_manually_edited') ||
     message.includes('city') ||
@@ -553,25 +547,15 @@ type RunEditDraft = {
   name: string
   description: string
   shoeId: string
-  type: 'training' | 'race'
-  raceName: string
-  raceDate: string
-}
-
-function normalizeRunType(value: string | null | undefined): 'training' | 'race' {
-  return value === 'race' ? 'race' : 'training'
 }
 
 function getRunEditDraft(
-  run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id' | 'type' | 'race_name' | 'race_date'> | null | undefined
+  run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id'> | null | undefined
 ): RunEditDraft {
   return {
     name: run?.name ?? '',
     description: run?.description ?? '',
     shoeId: run?.shoe_id ?? '',
-    type: normalizeRunType(run?.type),
-    raceName: run?.race_name ?? '',
-    raceDate: run?.race_date ?? '',
   }
 }
 
@@ -599,9 +583,6 @@ export default function RunDetailsPage() {
   const [editedName, setEditedName] = useState('')
   const [editedDescription, setEditedDescription] = useState('')
   const [editedShoeId, setEditedShoeId] = useState('')
-  const [editedRunType, setEditedRunType] = useState<'training' | 'race'>('training')
-  const [editedRaceName, setEditedRaceName] = useState('')
-  const [editedRaceDate, setEditedRaceDate] = useState('')
   const [saveDetailsError, setSaveDetailsError] = useState('')
   const [saveDetailsInfoMessage, setSaveDetailsInfoMessage] = useState('')
   const [savingDetails, setSavingDetails] = useState(false)
@@ -1036,9 +1017,6 @@ export default function RunDetailsPage() {
     setEditedName(nextDraft.name)
     setEditedDescription(nextDraft.description)
     setEditedShoeId(nextDraft.shoeId)
-    setEditedRunType(nextDraft.type)
-    setEditedRaceName(nextDraft.raceName)
-    setEditedRaceDate(nextDraft.raceDate)
   }, [isEditingDetails, run])
 
   useEffect(() => {
@@ -1213,21 +1191,13 @@ export default function RunDetailsPage() {
   const normalizedEditedName = toNullableTrimmedText(editedName)
   const normalizedEditedDescription = toNullableTrimmedText(editedDescription)
   const normalizedEditedShoeId = editedShoeId.trim() || null
-  const normalizedEditedRaceName = editedRunType === 'race' ? toNullableTrimmedText(editedRaceName) : null
-  const normalizedEditedRaceDate = editedRunType === 'race' ? editedRaceDate.trim() || null : null
   const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
   const hasShoeChanged = normalizedEditedShoeId !== (run?.shoe_id ?? null)
-  const hasTypeChanged = editedRunType !== (run?.type === 'race' ? 'race' : 'training')
-  const hasRaceNameChanged = normalizedEditedRaceName !== toNullableTrimmedText(run?.race_name)
-  const hasRaceDateChanged = normalizedEditedRaceDate !== (run?.race_date ?? null)
   const hasPendingDetailChanges =
     hasNameChanged ||
     hasDescriptionChanged ||
-    hasShoeChanged ||
-    hasTypeChanged ||
-    hasRaceNameChanged ||
-    hasRaceDateChanged
+    hasShoeChanged
   const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
   const isLikeActive = isOwner ? likesCount > 0 : likedByMe
 
@@ -1240,9 +1210,6 @@ export default function RunDetailsPage() {
     setEditedName(nextDraft.name)
     setEditedDescription(nextDraft.description)
     setEditedShoeId(nextDraft.shoeId)
-    setEditedRunType(nextDraft.type)
-    setEditedRaceName(nextDraft.raceName)
-    setEditedRaceDate(nextDraft.raceDate)
     setSaveDetailsError('')
     setSaveDetailsInfoMessage('')
     setIsEditingDetails(true)
@@ -1253,9 +1220,6 @@ export default function RunDetailsPage() {
     setEditedName(nextDraft.name)
     setEditedDescription(nextDraft.description)
     setEditedShoeId(nextDraft.shoeId)
-    setEditedRunType(nextDraft.type)
-    setEditedRaceName(nextDraft.raceName)
-    setEditedRaceDate(nextDraft.raceDate)
     setSaveDetailsError('')
     setSaveDetailsInfoMessage('')
     setIsEditingDetails(false)
@@ -1284,18 +1248,6 @@ export default function RunDetailsPage() {
       updates.shoe_id = normalizedEditedShoeId
     }
 
-    if (hasTypeChanged) {
-      updates.type = editedRunType
-    }
-
-    if (hasRaceNameChanged) {
-      updates.race_name = normalizedEditedRaceName
-    }
-
-    if (hasRaceDateChanged) {
-      updates.race_date = normalizedEditedRaceDate
-    }
-
     setSavingDetails(true)
     setSaveDetailsError('')
     setSaveDetailsInfoMessage('')
@@ -1315,15 +1267,6 @@ export default function RunDetailsPage() {
         shoeId: Object.prototype.hasOwnProperty.call(updates, 'shoe_id')
           ? (updates.shoe_id ?? null)
           : undefined,
-        type: Object.prototype.hasOwnProperty.call(updates, 'type')
-          ? (updates.type as 'training' | 'race')
-          : undefined,
-        raceName: Object.prototype.hasOwnProperty.call(updates, 'race_name')
-          ? (updates.race_name ?? null)
-          : undefined,
-        raceDate: Object.prototype.hasOwnProperty.call(updates, 'race_date')
-          ? (updates.race_date ?? null)
-          : undefined,
       })
 
       if (updateError) {
@@ -1335,9 +1278,6 @@ export default function RunDetailsPage() {
       setEditedName(nextName ?? '')
       setEditedDescription(nextDescription ?? '')
       setEditedShoeId(normalizedEditedShoeId ?? '')
-      setEditedRunType(editedRunType)
-      setEditedRaceName(normalizedEditedRaceName ?? '')
-      setEditedRaceDate(normalizedEditedRaceDate ?? '')
       setDescriptionExpanded(false)
       setIsEditingDetails(false)
       setSaveDetailsInfoMessage(shoeWearMessage ?? '')
@@ -1672,84 +1612,6 @@ export default function RunDetailsPage() {
             </div>
 
             <div>
-              <p className="app-text-secondary text-sm font-medium">Тип</p>
-              <div className="mt-1 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditedRunType('training')
-                    setEditedRaceName('')
-                    setEditedRaceDate('')
-                    setSaveDetailsError('')
-                    setSaveDetailsInfoMessage('')
-                  }}
-                  disabled={savingDetails}
-                  className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                    editedRunType === 'training' ? 'app-button-primary' : 'app-button-secondary'
-                  }`}
-                >
-                  Тренировка
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditedRunType('race')
-                    setEditedRaceDate((currentValue) => currentValue || run?.race_date || run?.created_at.slice(0, 10) || '')
-                    setSaveDetailsError('')
-                    setSaveDetailsInfoMessage('')
-                  }}
-                  disabled={savingDetails}
-                  className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                    editedRunType === 'race' ? 'app-button-primary' : 'app-button-secondary'
-                  }`}
-                >
-                  Забег
-                </button>
-              </div>
-            </div>
-
-            {editedRunType === 'race' ? (
-              <>
-                <div>
-                  <label htmlFor="run-race-name" className="app-text-secondary text-sm font-medium">
-                    Название забега
-                  </label>
-                  <input
-                    id="run-race-name"
-                    type="text"
-                    value={editedRaceName}
-                    onChange={(event) => {
-                      setEditedRaceName(event.target.value)
-                      setSaveDetailsError('')
-                      setSaveDetailsInfoMessage('')
-                    }}
-                    placeholder="Например: Московский марафон"
-                    disabled={savingDetails}
-                    className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="run-race-date" className="app-text-secondary text-sm font-medium">
-                    Дата забега
-                  </label>
-                  <input
-                    id="run-race-date"
-                    type="date"
-                    value={editedRaceDate}
-                    onChange={(event) => {
-                      setEditedRaceDate(event.target.value)
-                      setSaveDetailsError('')
-                      setSaveDetailsInfoMessage('')
-                    }}
-                    disabled={savingDetails}
-                    className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
-                  />
-                </div>
-              </>
-            ) : null}
-
-            <div>
               <label htmlFor="run-shoe" className="app-text-secondary text-sm font-medium">
                 Кроссовки
               </label>
@@ -1799,11 +1661,6 @@ export default function RunDetailsPage() {
         ) : (
           <>
             <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
-            {run.type === 'race' ? (
-              <p className="app-text-secondary mt-2 text-sm">
-                Старт{run.race_name?.trim() ? `: ${run.race_name.trim()}` : ''}
-              </p>
-            ) : null}
             {currentAssignedShoe ? (
               <p className="app-text-secondary mt-2 text-sm">
                 Кроссовки: {currentAssignedShoe.displayName}

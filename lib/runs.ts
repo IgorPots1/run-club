@@ -12,9 +12,6 @@ export type CreateRunInput = {
   averagePaceSeconds: number
   createdAt: string
   shoeId?: string | null
-  type?: 'training' | 'race'
-  raceName?: string | null
-  raceDate?: string | null
 }
 
 export type UpdateRunInput = {
@@ -23,9 +20,6 @@ export type UpdateRunInput = {
   nameManuallyEdited?: boolean
   descriptionManuallyEdited?: boolean
   shoeId?: string | null
-  type?: 'training' | 'race'
-  raceName?: string | null
-  raceDate?: string | null
 }
 
 type RunMutationResponse =

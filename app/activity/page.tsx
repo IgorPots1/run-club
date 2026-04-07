@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, LoaderCircle, Trash2, Trophy } from 'lucide-react'
+import { CheckCircle2, LoaderCircle, Pencil, Trash2, Trophy } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -8,6 +8,14 @@ import useSWR from 'swr'
 import ActivityDistanceChart from '@/components/ActivityDistanceChart'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import { getBootstrapUser } from '@/lib/auth'
+import {
+  createRaceEvent,
+  deleteRaceEvent,
+  loadRaceEvents,
+  updateRaceEvent,
+  type RaceEvent,
+  type RaceEventLinkedRunSummary,
+} from '@/lib/race-events'
 import type { User } from '@supabase/supabase-js'
 import {
   buildActivitySummary,
@@ -29,9 +37,24 @@ const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
 ]
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
+const DEFAULT_RACE_EVENT_NAME = 'Новый старт'
 
 function formatDistance(value: number) {
   return formatDistanceKm(value)
+}
+
+function formatRaceDateLabel(dateValue: string) {
+  const parsedDate = new Date(`${dateValue}T12:00:00`)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return dateValue
+  }
+
+  return parsedDate.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 function formatTwoDigits(value: number) {
@@ -137,6 +160,40 @@ function formatRunPace(run: Pick<ActivityRunRow, 'distance_km' | 'duration_minut
   return formatPaceLabel(totalSeconds, distanceValue)
 }
 
+function getRaceEventLinkedRun(raceEvent: Pick<RaceEvent, 'linked_run'>) {
+  const linkedRun = raceEvent.linked_run
+
+  if (Array.isArray(linkedRun)) {
+    return (linkedRun[0] ?? null) as RaceEventLinkedRunSummary | null
+  }
+
+  return (linkedRun ?? null) as RaceEventLinkedRunSummary | null
+}
+
+function getRaceEventLinkedRunLabel(raceEvent: RaceEvent) {
+  const linkedRun = getRaceEventLinkedRun(raceEvent)
+
+  if (!linkedRun) {
+    return null
+  }
+
+  const runName = linkedRun.name?.trim() || linkedRun.title?.trim() || DEFAULT_WORKOUT_NAME
+  const distanceKm = Number(linkedRun.distance_km ?? 0)
+  const distanceSuffix = distanceKm > 0 ? ` • ${formatDistanceKm(distanceKm)} км` : ''
+
+  return `${formatRunTimestampLabel(linkedRun.created_at, null)} • ${runName}${distanceSuffix}`
+}
+
+function isRaceEventUpcoming(raceEvent: Pick<RaceEvent, 'race_date' | 'linked_run_id'>) {
+  const today = new Date().toISOString().slice(0, 10)
+
+  if (raceEvent.race_date > today) {
+    return true
+  }
+
+  return !raceEvent.linked_run_id
+}
+
 function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type' | 'badge_code'>) {
   if (achievement.source_type === 'challenge') {
     return 'app-card rounded-2xl border border-emerald-300/60 bg-emerald-50/80 p-4 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10'
@@ -212,7 +269,15 @@ export default function ActivityPage() {
   const [period, setPeriod] = useState<ActivityPeriod>('week')
   const [actionError, setActionError] = useState('')
   const [pendingDeleteRun, setPendingDeleteRun] = useState<ActivityRunRow | null>(null)
+  const [pendingDeleteRaceEvent, setPendingDeleteRaceEvent] = useState<RaceEvent | null>(null)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
+  const [submittingRaceEvent, setSubmittingRaceEvent] = useState(false)
+  const [deletingRaceEventId, setDeletingRaceEventId] = useState<string | null>(null)
+  const [editingRaceEventId, setEditingRaceEventId] = useState<string | null>(null)
+  const [raceEventName, setRaceEventName] = useState('')
+  const [raceEventDate, setRaceEventDate] = useState('')
+  const [selectedLinkedRunId, setSelectedLinkedRunId] = useState('')
+  const [raceEventsError, setRaceEventsError] = useState('')
   const suppressNextRunsUpdatedRefreshRef = useRef(false)
 
   useEffect(() => {
@@ -268,9 +333,31 @@ export default function ActivityPage() {
       focusThrottleInterval: 60000,
     }
   )
+  const {
+    data: raceEvents,
+    error: raceEventsLoadError,
+    isLoading: isRaceEventsLoading,
+    mutate: mutateRaceEvents,
+  } = useSWR(
+    user ? (['race-events', user.id] as const) : null,
+    () => loadRaceEvents(),
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 15000,
+      focusThrottleInterval: 15000,
+    }
+  )
 
   const summary = useMemo(() => buildActivitySummary(runs ?? [], period), [runs, period])
   const filteredRuns = useMemo(() => getRunsForPeriod(runs ?? [], period), [runs, period])
+  const workoutOptions = useMemo(() => (
+    (runs ?? []).map((run) => ({
+      id: run.id,
+      label: `${formatRunTimestampLabel(run.created_at, run.external_source)} • ${getRunDisplayName(run)} • ${formatDistanceKmLabel(run)} км`,
+    }))
+  ), [runs])
   const chartTitle =
     period === 'year'
       ? 'Дистанция по месяцам'
@@ -279,6 +366,23 @@ export default function ActivityPage() {
         : 'Дистанция по дням'
   const shouldRenderEmptyState = summary.chartData.length === 0
   const deletingActiveRun = pendingDeleteRun ? deletingRunIds.includes(pendingDeleteRun.id) : false
+  const deletingActiveRaceEvent = pendingDeleteRaceEvent ? deletingRaceEventId === pendingDeleteRaceEvent.id : false
+  const upcomingRaceEvents = useMemo(() => (
+    (raceEvents ?? [])
+      .filter((raceEvent) => isRaceEventUpcoming(raceEvent))
+      .sort((left, right) => left.race_date.localeCompare(right.race_date))
+  ), [raceEvents])
+  const pastRaceEvents = useMemo(() => (
+    (raceEvents ?? [])
+      .filter((raceEvent) => !isRaceEventUpcoming(raceEvent))
+      .sort((left, right) => right.race_date.localeCompare(left.race_date))
+  ), [raceEvents])
+
+  useEffect(() => {
+    if (raceEventsLoadError) {
+      setRaceEventsError('Не удалось загрузить старты')
+    }
+  }, [raceEventsLoadError])
 
   useEffect(() => {
     if (!user) return
@@ -352,6 +456,112 @@ export default function ActivityPage() {
     }
   }, [deletingRunIds, mutate, pendingDeleteRun, user])
 
+  const resetRaceEventForm = useCallback(() => {
+    setEditingRaceEventId(null)
+    setRaceEventName('')
+    setRaceEventDate('')
+    setSelectedLinkedRunId('')
+    setRaceEventsError('')
+  }, [])
+
+  const handleSubmitRaceEvent = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!user || submittingRaceEvent) {
+      return
+    }
+
+    const normalizedName = raceEventName.trim() || DEFAULT_RACE_EVENT_NAME
+    const normalizedRaceDate = raceEventDate.trim()
+    const normalizedLinkedRunId = selectedLinkedRunId.trim() || null
+
+    if (!normalizedRaceDate) {
+      setRaceEventsError('Укажите дату старта')
+      return
+    }
+
+    setSubmittingRaceEvent(true)
+    setRaceEventsError('')
+
+    try {
+      const mutation = editingRaceEventId
+        ? await updateRaceEvent(editingRaceEventId, {
+          name: normalizedName,
+          raceDate: normalizedRaceDate,
+          linkedRunId: normalizedLinkedRunId,
+        })
+        : await createRaceEvent({
+          name: normalizedName,
+          raceDate: normalizedRaceDate,
+          linkedRunId: normalizedLinkedRunId,
+        })
+
+      if (mutation.error || !mutation.data) {
+        setRaceEventsError(editingRaceEventId ? 'Не удалось обновить старт' : 'Не удалось создать старт')
+        return
+      }
+
+      await mutateRaceEvents((currentRaceEvents) => {
+        const previousRaceEvents = currentRaceEvents ?? []
+
+        if (editingRaceEventId) {
+          return previousRaceEvents.map((raceEvent) => (
+            raceEvent.id === mutation.data!.id ? mutation.data! : raceEvent
+          ))
+        }
+
+        return [mutation.data!, ...previousRaceEvents]
+      }, { revalidate: false })
+
+      resetRaceEventForm()
+    } catch {
+      setRaceEventsError(editingRaceEventId ? 'Не удалось обновить старт' : 'Не удалось создать старт')
+    } finally {
+      setSubmittingRaceEvent(false)
+    }
+  }, [editingRaceEventId, mutateRaceEvents, raceEventDate, raceEventName, resetRaceEventForm, selectedLinkedRunId, submittingRaceEvent, user])
+
+  const handleStartEditingRaceEvent = useCallback((raceEvent: RaceEvent) => {
+    setEditingRaceEventId(raceEvent.id)
+    setRaceEventName(raceEvent.name)
+    setRaceEventDate(raceEvent.race_date)
+    setSelectedLinkedRunId(raceEvent.linked_run_id ?? '')
+    setRaceEventsError('')
+  }, [])
+
+  const handleConfirmDeleteRaceEvent = useCallback(async () => {
+    if (!pendingDeleteRaceEvent || deletingRaceEventId) {
+      return
+    }
+
+    setDeletingRaceEventId(pendingDeleteRaceEvent.id)
+    setRaceEventsError('')
+
+    try {
+      const { error: deleteError } = await deleteRaceEvent(pendingDeleteRaceEvent.id)
+
+      if (deleteError) {
+        setRaceEventsError('Не удалось удалить старт')
+        return
+      }
+
+      await mutateRaceEvents(
+        (currentRaceEvents) => (currentRaceEvents ?? []).filter((raceEvent) => raceEvent.id !== pendingDeleteRaceEvent.id),
+        { revalidate: false }
+      )
+
+      if (editingRaceEventId === pendingDeleteRaceEvent.id) {
+        resetRaceEventForm()
+      }
+
+      setPendingDeleteRaceEvent(null)
+    } catch {
+      setRaceEventsError('Не удалось удалить старт')
+    } finally {
+      setDeletingRaceEventId(null)
+    }
+  }, [deletingRaceEventId, editingRaceEventId, mutateRaceEvents, pendingDeleteRaceEvent, resetRaceEventForm])
+
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
   }
@@ -409,6 +619,196 @@ export default function ActivityPage() {
             </div>
           </div>
         </div>
+
+        <section className="app-card mb-5 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mb-8 md:p-5">
+          <div className="flex flex-col gap-1">
+            <h2 className="app-text-primary text-lg font-semibold">Старты</h2>
+            <p className="app-text-secondary text-sm">
+              Создавайте отдельные старты и при необходимости прикрепляйте к ним тренировку.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmitRaceEvent} className="mt-4 space-y-3">
+            <div>
+              <label htmlFor="race-event-name" className="app-text-secondary mb-1 block text-sm">
+                Название старта
+              </label>
+              <input
+                id="race-event-name"
+                type="text"
+                value={raceEventName}
+                onChange={(event) => setRaceEventName(event.target.value)}
+                placeholder="Например: Московский марафон"
+                disabled={submittingRaceEvent}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="race-event-date" className="app-text-secondary mb-1 block text-sm">
+                Дата старта
+              </label>
+              <input
+                id="race-event-date"
+                type="date"
+                value={raceEventDate}
+                onChange={(event) => setRaceEventDate(event.target.value)}
+                disabled={submittingRaceEvent}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="race-event-linked-run" className="app-text-secondary mb-1 block text-sm">
+                Привязать тренировку
+              </label>
+              <select
+                id="race-event-linked-run"
+                value={selectedLinkedRunId}
+                onChange={(event) => setSelectedLinkedRunId(event.target.value)}
+                disabled={submittingRaceEvent || !runs}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              >
+                <option value="">Без привязанной тренировки</option>
+                {workoutOptions.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {run.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {raceEventsError ? <p className="text-sm text-red-600">{raceEventsError}</p> : null}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="submit"
+                disabled={submittingRaceEvent}
+                className="app-button-primary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submittingRaceEvent
+                  ? (editingRaceEventId ? 'Сохраняем старт...' : 'Создаем старт...')
+                  : (editingRaceEventId ? 'Сохранить старт' : 'Добавить старт')}
+              </button>
+              {editingRaceEventId ? (
+                <button
+                  type="button"
+                  onClick={resetRaceEventForm}
+                  disabled={submittingRaceEvent}
+                  className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Отмена
+                </button>
+              ) : null}
+            </div>
+          </form>
+
+          {isRaceEventsLoading && !raceEvents ? (
+            <div className="mt-5 rounded-2xl border px-4 py-5">
+              <p className="app-text-secondary text-sm">Загружаем старты...</p>
+            </div>
+          ) : (
+            <div className="mt-5 space-y-5">
+              <div>
+                <h3 className="app-text-secondary text-xs font-medium uppercase tracking-[0.08em]">Предстоящие</h3>
+                {upcomingRaceEvents.length === 0 ? (
+                  <p className="app-text-secondary mt-2 text-sm">Нет предстоящих стартов.</p>
+                ) : (
+                  <div className="mt-2 space-y-3">
+                    {upcomingRaceEvents.map((raceEvent) => (
+                      <div key={raceEvent.id} className="rounded-2xl border px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="app-text-primary text-sm font-semibold">{raceEvent.name}</p>
+                            <p className="app-text-secondary mt-1 text-sm">
+                              {formatRaceDateLabel(raceEvent.race_date)}
+                            </p>
+                            <p className="app-text-secondary mt-2 text-sm">
+                              {raceEvent.linked_run_id
+                                ? 'Тренировка прикреплена'
+                                : 'Пока нет привязанной тренировки'}
+                            </p>
+                            {raceEvent.linked_run_id && getRaceEventLinkedRunLabel(raceEvent) ? (
+                              <p className="app-text-secondary mt-1 text-xs">
+                                {getRaceEventLinkedRunLabel(raceEvent)}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditingRaceEvent(raceEvent)}
+                              className="app-button-secondary inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border px-3 py-2"
+                              aria-label="Редактировать старт"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteRaceEvent(raceEvent)}
+                              disabled={deletingRaceEventId === raceEvent.id}
+                              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-red-500/20 px-3 py-2 text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label="Удалить старт"
+                            >
+                              <Trash2 className="h-4 w-4" strokeWidth={1.9} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 className="app-text-secondary text-xs font-medium uppercase tracking-[0.08em]">Прошедшие</h3>
+                {pastRaceEvents.length === 0 ? (
+                  <p className="app-text-secondary mt-2 text-sm">Нет прошедших стартов.</p>
+                ) : (
+                  <div className="mt-2 space-y-3">
+                    {pastRaceEvents.map((raceEvent) => (
+                      <div key={raceEvent.id} className="rounded-2xl border px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="app-text-primary text-sm font-semibold">{raceEvent.name}</p>
+                            <p className="app-text-secondary mt-1 text-sm">
+                              {formatRaceDateLabel(raceEvent.race_date)}
+                            </p>
+                            <p className="app-text-secondary mt-2 text-sm">
+                              {raceEvent.linked_run_id
+                                ? 'Тренировка прикреплена'
+                                : 'Пока нет привязанной тренировки'}
+                            </p>
+                            {raceEvent.linked_run_id && getRaceEventLinkedRunLabel(raceEvent) ? (
+                              <p className="app-text-secondary mt-1 text-xs">
+                                {getRaceEventLinkedRunLabel(raceEvent)}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditingRaceEvent(raceEvent)}
+                              className="app-button-secondary inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border px-3 py-2"
+                              aria-label="Редактировать старт"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteRaceEvent(raceEvent)}
+                              disabled={deletingRaceEventId === raceEvent.id}
+                              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-red-500/20 px-3 py-2 text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label="Удалить старт"
+                            >
+                              <Trash2 className="h-4 w-4" strokeWidth={1.9} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1 md:mb-8 md:flex-wrap md:gap-2.5 md:overflow-visible">
           {PERIOD_OPTIONS.map((option) => (
@@ -646,6 +1046,23 @@ export default function ActivityPage() {
         onCancel={() => {
           if (!deletingActiveRun) {
             setPendingDeleteRun(null)
+          }
+        }}
+      />
+      <ConfirmActionSheet
+        open={Boolean(pendingDeleteRaceEvent)}
+        title="Удалить старт?"
+        description="Это действие нельзя отменить."
+        confirmLabel={deletingActiveRaceEvent ? 'Удаляем...' : 'Удалить'}
+        cancelLabel="Отмена"
+        loading={deletingActiveRaceEvent}
+        destructive
+        onConfirm={() => {
+          void handleConfirmDeleteRaceEvent()
+        }}
+        onCancel={() => {
+          if (!deletingActiveRaceEvent) {
+            setPendingDeleteRaceEvent(null)
           }
         }}
       />

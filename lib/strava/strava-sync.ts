@@ -47,7 +47,6 @@ type StravaRunInsertPayload = {
   user_id: string
   name: string
   title: string
-  type: 'training'
   distance_km: number
   distance_meters: number
   duration_minutes: number
@@ -1557,7 +1556,6 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
     user_id: userId,
     name: normalizedName,
     title: normalizedName,
-    type: 'training',
     distance_km: distanceKm,
     distance_meters: distanceMeters,
     duration_minutes: toDurationMinutes(durationSeconds),

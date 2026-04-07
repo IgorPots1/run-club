@@ -18,9 +18,6 @@ type CreateRunRequestBody = {
   averagePaceSeconds?: number | null
   createdAt?: string | null
   shoeId?: string | null
-  type?: 'training' | 'race' | null
-  raceName?: string | null
-  raceDate?: string | null
 }
 
 export async function GET() {
@@ -88,11 +85,6 @@ export async function POST(request: Request) {
   const averagePaceSeconds = Math.max(0, Math.round(Number(body?.averagePaceSeconds ?? 0)))
   const createdAt = typeof body?.createdAt === 'string' ? body.createdAt : ''
   const shoeId = body?.shoeId?.trim() || null
-  const runType = body?.type === 'race' ? 'race' : 'training'
-  const raceName = runType === 'race' ? body?.raceName?.trim() || null : null
-  const raceDate = runType === 'race' && typeof body?.raceDate === 'string' && body.raceDate.trim()
-    ? body.raceDate.trim()
-    : null
 
   if (
     !Number.isFinite(distanceKm) ||
@@ -140,9 +132,6 @@ export async function POST(request: Request) {
     created_at: createdAt,
     xp: runXp.xp,
     shoe_id: shoeId,
-    type: runType,
-    race_name: raceName,
-    race_date: raceDate,
   }
 
   const { data: insertedRun, error: insertError } = await supabaseAdmin
