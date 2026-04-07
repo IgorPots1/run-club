@@ -20,6 +20,10 @@ function getEventBadgeLabel(actorName: string | null, eventType: string) {
     return 'C'
   }
 
+  if (eventType === 'race_event.created' || eventType === 'race_event.completed') {
+    return 'R'
+  }
+
   return 'R'
 }
 

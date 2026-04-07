@@ -3,9 +3,10 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
-import { loadFeedRuns, type FeedRunItem } from '@/lib/dashboard'
+import { loadFeedRuns, type FeedItem, type FeedRunItem, type FeedRaceEventItem } from '@/lib/dashboard'
 import {
   countVisibleRunCommentRecords,
   loadRunCommentVisibilitySummaryForRunIds,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
+import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getLevelFromXP } from '@/lib/xp'
 
 type InfiniteWorkoutFeedProps = {
@@ -43,6 +45,125 @@ function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) 
   return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
 }
 
+function mergeUniqueMixedFeedItems(existing: FeedItem[], incoming: FeedItem[]) {
+  const existingIds = new Set(existing.map((item) => item.id))
+  return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
+}
+
+function formatRaceDateLabel(dateValue: string | null) {
+  if (!dateValue) {
+    return 'Дата не указана'
+  }
+
+  const parsedDate = new Date(`${dateValue}T12:00:00`)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return dateValue
+  }
+
+  return parsedDate.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function formatResultTimeClock(totalSeconds: number | null | undefined) {
+  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
+    return null
+  }
+
+  const normalizedSeconds = Math.round(totalSeconds ?? 0)
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  return [
+    String(hours).padStart(2, '0'),
+    String(minutes).padStart(2, '0'),
+    String(seconds).padStart(2, '0'),
+  ].join(':')
+}
+
+function formatLinkedRunPreview(item: FeedRaceEventItem) {
+  if (!item.linkedRun) {
+    return null
+  }
+
+  const distanceLabel =
+    Number.isFinite(item.linkedRun.distanceKm) && (item.linkedRun.distanceKm ?? 0) > 0
+      ? `${formatDistanceKm(Number(item.linkedRun.distanceKm ?? 0))} км`
+      : null
+  const timeLabel = formatResultTimeClock(item.linkedRun.movingTimeSeconds)
+  const runName = item.linkedRun.name?.trim() || 'Тренировка'
+
+  return [runName, distanceLabel, timeLabel].filter(Boolean).join(' • ')
+}
+
+function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
+  const router = useRouter()
+  const resultLabel = formatResultTimeClock(item.resultTimeSeconds)
+  const linkedRunPreview = formatLinkedRunPreview(item)
+
+  return (
+    <div
+      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        router.push(`/races/${item.raceEventId}`)
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        event.preventDefault()
+        router.push(`/races/${item.raceEventId}`)
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <ParticipantIdentity
+          avatarUrl={item.avatar_url}
+          displayName={item.displayName}
+          level={getLevelFromXP(item.totalXp).level}
+          href={`/users/${item.user_id}`}
+          size="sm"
+        />
+        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
+          {formatRunTimestampLabel(item.created_at, null)}
+        </p>
+      </div>
+
+      <div className="mt-3">
+        <p className="app-text-primary break-words text-[15px] font-semibold leading-5">{item.raceName}</p>
+        <p className="app-text-secondary mt-1 text-sm">{formatRaceDateLabel(item.raceDate)}</p>
+        <p className="app-text-secondary mt-2 text-sm">
+          {item.type === 'race_event.created' ? 'Добавил новый старт' : 'Завершил старт'}
+        </p>
+        {resultLabel ? (
+          <p className="app-text-primary mt-2 text-sm font-medium">Результат: {resultLabel}</p>
+        ) : null}
+      </div>
+
+      {item.type === 'race_event.completed' && item.linkedRun ? (
+        <div className="mt-3 rounded-2xl border px-3 py-3">
+          <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
+          <p className="app-text-secondary mt-1 text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
+          <Link
+            href={`/runs/${item.linkedRun.id}`}
+            className="app-button-secondary mt-3 inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm font-medium"
+            onClick={(event) => event.stopPropagation()}
+          >
+            Открыть тренировку
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export default function InfiniteWorkoutFeed({
   currentUserId,
   enabled = true,
@@ -55,7 +176,7 @@ export default function InfiniteWorkoutFeed({
   onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
-  const [items, setItems] = useState<FeedRunItem[]>([])
+  const [items, setItems] = useState<FeedItem[]>([])
   const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, RunLikedUserItem[]>>({})
   const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
@@ -68,7 +189,7 @@ export default function InfiniteWorkoutFeed({
   const [likeInFlightByRunId, setLikeInFlightByRunId] = useState<Record<string, boolean>>({})
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
-  const itemsRef = useRef<FeedRunItem[]>([])
+  const itemsRef = useRef<FeedItem[]>([])
   const likeInFlightRef = useRef<Record<string, boolean>>({})
   const likeRequestVersionByRunIdRef = useRef<Record<string, number>>({})
   const commentVisibilityByRunIdRef = useRef<Record<string, FeedCommentVisibilityById>>({})
@@ -89,7 +210,9 @@ export default function InfiniteWorkoutFeed({
   }, [items])
 
   const updateRunItem = useCallback((runId: string, updater: (item: FeedRunItem) => FeedRunItem) => {
-    const nextItems = itemsRef.current.map((item) => (item.id === runId ? updater(item) : item))
+    const nextItems = itemsRef.current.map((item) => (
+      item.kind === 'run' && item.id === runId ? updater(item) : item
+    ))
     itemsRef.current = nextItems
     setItems(nextItems)
   }, [])
@@ -175,6 +298,8 @@ export default function InfiniteWorkoutFeed({
     commentVisibilityByRunIdRef.current[runId] = existingRunComments
     existingRunComments[commentRow.id] = {
       id: commentRow.id,
+      entityType: commentRow.entity_type,
+      entityId: commentRow.entity_id,
       runId: commentRow.run_id,
       parentId: commentRow.parent_id,
       createdAt: commentRow.created_at,
@@ -201,7 +326,10 @@ export default function InfiniteWorkoutFeed({
     const requestPromise = (async () => {
       try {
         const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
-        const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(page.items.map((item) => item.id))
+        const runIds = page.items
+          .filter((item): item is FeedItem & { kind: 'run' } => item.kind === 'run')
+          .map((item) => item.id)
+        const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
 
         if (firstPageRequestKeyRef.current !== requestKey) {
           return
@@ -249,15 +377,22 @@ export default function InfiniteWorkoutFeed({
 
     try {
       const page = await loadFeedRuns(currentUserId, nextOffset, pageSize, targetUserId)
-      const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(page.items.map((item) => item.id))
+      const runIds = page.items
+        .filter((item): item is FeedItem & { kind: 'run' } => item.kind === 'run')
+        .map((item) => item.id)
+      const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
 
       mergeRunCommentVisibility(commentSummary.visibilityByRunId)
-      setItems((prev) => mergeUniqueFeedItems(prev, page.items).map((item) => ({
-        ...item,
-        commentsCount: commentVisibilityByRunIdRef.current[item.id]
-          ? getVisibleRunCommentCount(item.id)
-          : (commentSummary.countsByRunId[item.id] ?? item.commentsCount),
-      })))
+      setItems((prev) => mergeUniqueMixedFeedItems(prev, page.items).map((item) => (
+        item.kind === 'run'
+          ? {
+              ...item,
+              commentsCount: commentVisibilityByRunIdRef.current[item.id]
+                ? getVisibleRunCommentCount(item.id)
+                : (commentSummary.countsByRunId[item.id] ?? item.commentsCount),
+            }
+          : item
+      )))
       setHasMore(page.hasMore)
       setNextOffset((prev) => prev + page.items.length)
     } catch {
@@ -372,7 +507,7 @@ export default function InfiniteWorkoutFeed({
         return
       }
 
-      const currentItem = itemsRef.current.find((item) => item.id === payload.runId)
+      const currentItem = itemsRef.current.find((item) => item.kind === 'run' && item.id === payload.runId)
 
       if (!currentItem) {
         return
@@ -431,7 +566,7 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    const currentItem = itemsRef.current.find((item) => item.id === runId)
+    const currentItem = itemsRef.current.find((item) => item.kind === 'run' && item.id === runId)
     if (!currentItem) return
     if (likeInFlightRef.current[runId]) return
     if (currentItem.user_id === activeUserId) return
@@ -445,7 +580,7 @@ export default function InfiniteWorkoutFeed({
       setLikeInFlight(runId, true)
 
       const nextItems = previousItems.map((item) =>
-        item.id === runId
+        item.kind === 'run' && item.id === runId
           ? {
               ...item,
               likedByMe: !wasLiked,
@@ -586,34 +721,38 @@ export default function InfiniteWorkoutFeed({
           </div>
         ) : (
           items.map((item) => (
-            <WorkoutFeedCard
-              key={item.id}
-              runId={item.id}
-              rawTitle={item.title}
-              city={item.city}
-              country={item.country}
-              description={item.description}
-              externalSource={item.external_source}
-              distanceKm={item.distance_km}
-              pace={item.pace}
-              movingTime={item.movingTime}
-              mapPolyline={item.map_polyline}
-              xp={item.xp}
-              createdAt={item.created_at}
-              displayName={item.displayName}
-              avatarUrl={item.avatar_url}
-              level={getLevelFromXP(item.totalXp).level}
-              likesCount={item.likesCount}
-              commentsCount={item.commentsCount}
-              likedByMe={item.likedByMe}
-              isOwnRun={item.user_id === currentUserId}
-              isLikeInFlight={Boolean(likeInFlightByRunId[item.id])}
-              photos={item.photos}
-              onToggleLike={handleLikeToggle}
-              onOpenLikes={() => handleOpenLikes(item)}
-              onCommentClick={handleCommentClick}
-              profileHref={`/users/${item.user_id}`}
-            />
+            item.kind === 'run' ? (
+              <WorkoutFeedCard
+                key={item.id}
+                runId={item.id}
+                rawTitle={item.title}
+                city={item.city}
+                country={item.country}
+                description={item.description}
+                externalSource={item.external_source}
+                distanceKm={item.distance_km}
+                pace={item.pace}
+                movingTime={item.movingTime}
+                mapPolyline={item.map_polyline}
+                xp={item.xp}
+                createdAt={item.created_at}
+                displayName={item.displayName}
+                avatarUrl={item.avatar_url}
+                level={getLevelFromXP(item.totalXp).level}
+                likesCount={item.likesCount}
+                commentsCount={item.commentsCount}
+                likedByMe={item.likedByMe}
+                isOwnRun={item.user_id === currentUserId}
+                isLikeInFlight={Boolean(likeInFlightByRunId[item.id])}
+                photos={item.photos}
+                onToggleLike={handleLikeToggle}
+                onOpenLikes={() => handleOpenLikes(item)}
+                onCommentClick={handleCommentClick}
+                profileHref={`/users/${item.user_id}`}
+              />
+            ) : (
+              <RaceFeedCard key={item.id} item={item} />
+            )
           ))
         )}
         {loadingMore ? (

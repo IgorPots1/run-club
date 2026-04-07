@@ -1,4 +1,6 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
+import { createAppEvent } from '@/lib/events/createAppEvent'
+import { buildRaceEventCreatedEvent } from '@/lib/events/returnTriggerEvents'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -166,6 +168,25 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+
+  after(async () => {
+    try {
+      await createAppEvent(
+        buildRaceEventCreatedEvent({
+          actorUserId: user.id,
+          raceEventId: data.id,
+          raceName: data.name,
+          raceDate: data.race_date,
+        })
+      )
+    } catch (error) {
+      console.error('Failed to create race_event.created app event', {
+        raceEventId: data.id,
+        actorUserId: user.id,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      })
+    }
+  })
 
   return NextResponse.json(
     {

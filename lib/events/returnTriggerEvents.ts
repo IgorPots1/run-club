@@ -28,6 +28,27 @@ function getRunLabel(runTitle: string | null | undefined) {
   return trimToNull(runTitle) ?? 'Пробежка'
 }
 
+function getRaceLabel(raceName: string | null | undefined) {
+  return trimToNull(raceName) ?? 'Старт'
+}
+
+function formatRaceResultTime(totalSeconds: number | null | undefined) {
+  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
+    return null
+  }
+
+  const normalizedSeconds = Math.round(totalSeconds ?? 0)
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  return [
+    String(hours).padStart(2, '0'),
+    String(minutes).padStart(2, '0'),
+    String(seconds).padStart(2, '0'),
+  ].join(':')
+}
+
 export function buildRunLikeCreatedEvent(input: {
   actorUserId: string
   targetUserId: string
@@ -128,6 +149,97 @@ export function buildRunCommentReplyCreatedEvent(input: {
         runId: input.runId,
         commentId: input.commentId,
         parentCommentId: input.parentCommentId,
+      },
+    },
+  }
+}
+
+export function buildRaceEventCreatedEvent(input: {
+  actorUserId: string
+  raceEventId: string
+  raceName?: string | null
+  raceDate: string
+}): CreateAppEventInput {
+  return {
+    type: 'race_event.created',
+    actorUserId: input.actorUserId,
+    targetUserId: null,
+    entityType: 'race_event',
+    entityId: input.raceEventId,
+    category: 'race',
+    channel: null,
+    priority: 'normal',
+    targetPath: `/races/${input.raceEventId}`,
+    payload: {
+      v: EVENT_PAYLOAD_VERSION,
+      targetPath: `/races/${input.raceEventId}`,
+      preview: {
+        title: 'Новый старт',
+        body: getRaceLabel(input.raceName),
+      },
+      context: {
+        raceEventId: input.raceEventId,
+        raceName: getRaceLabel(input.raceName),
+        raceDate: input.raceDate,
+      },
+    },
+  }
+}
+
+export function buildRaceEventCompletedEvent(input: {
+  actorUserId: string
+  raceEventId: string
+  raceName?: string | null
+  raceDate: string
+  resultTimeSeconds?: number | null
+  linkedRun?: {
+    id: string
+    name?: string | null
+    title?: string | null
+    distanceKm?: number | null
+    movingTimeSeconds?: number | null
+    createdAt?: string | null
+  } | null
+}): CreateAppEventInput {
+  const resultLabel = formatRaceResultTime(input.resultTimeSeconds)
+
+  return {
+    type: 'race_event.completed',
+    actorUserId: input.actorUserId,
+    targetUserId: null,
+    entityType: 'race_event',
+    entityId: input.raceEventId,
+    category: 'race',
+    channel: null,
+    priority: 'normal',
+    targetPath: `/races/${input.raceEventId}`,
+    dedupeKey: `race_event.completed:${input.raceEventId}`,
+    payload: {
+      v: EVENT_PAYLOAD_VERSION,
+      targetPath: `/races/${input.raceEventId}`,
+      preview: {
+        title: 'Старт завершен',
+        body: resultLabel ? `${getRaceLabel(input.raceName)} • ${resultLabel}` : getRaceLabel(input.raceName),
+      },
+      context: {
+        raceEventId: input.raceEventId,
+        raceName: getRaceLabel(input.raceName),
+        raceDate: input.raceDate,
+        resultTimeSeconds:
+          Number.isFinite(input.resultTimeSeconds) && (input.resultTimeSeconds ?? 0) >= 0
+            ? Math.round(input.resultTimeSeconds ?? 0)
+            : null,
+        linkedRunId: input.linkedRun?.id ?? null,
+        linkedRunName: trimToNull(input.linkedRun?.name) ?? trimToNull(input.linkedRun?.title),
+        linkedRunDistanceKm:
+          Number.isFinite(input.linkedRun?.distanceKm) && (input.linkedRun?.distanceKm ?? 0) > 0
+            ? Number(input.linkedRun?.distanceKm ?? 0)
+            : null,
+        linkedRunMovingTimeSeconds:
+          Number.isFinite(input.linkedRun?.movingTimeSeconds) && (input.linkedRun?.movingTimeSeconds ?? 0) >= 0
+            ? Math.round(input.linkedRun?.movingTimeSeconds ?? 0)
+            : null,
+        linkedRunCreatedAt: trimToNull(input.linkedRun?.createdAt) ?? null,
       },
     },
   }

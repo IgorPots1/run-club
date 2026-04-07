@@ -8,6 +8,8 @@ export const INBOX_APP_EVENT_TYPES = [
   'run_comment.created',
   'run_comment.reply_created',
   'challenge.completed',
+  'race_event.created',
+  'race_event.completed',
 ] as const
 
 export type InboxAppEventType = typeof INBOX_APP_EVENT_TYPES[number]
@@ -119,6 +121,16 @@ function getFallbackEventCopy(type: string) {
     case 'challenge.completed':
       return {
         title: 'Челлендж выполнен',
+        body: null,
+      }
+    case 'race_event.created':
+      return {
+        title: 'Новый старт',
+        body: null,
+      }
+    case 'race_event.completed':
+      return {
+        title: 'Старт завершен',
         body: null,
       }
     default:

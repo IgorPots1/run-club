@@ -40,6 +40,15 @@ type RunPhotoRow = {
   created_at?: string | null
 }
 
+type AppEventFeedRow = {
+  id: string
+  type: 'race_event.created' | 'race_event.completed'
+  actor_user_id: string | null
+  entity_id: string | null
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
 export type FeedRunPhoto = {
   id: string
   public_url: string
@@ -73,8 +82,33 @@ export type FeedRunItem = DashboardRunItem & {
   totalXp: number
 }
 
+export type FeedRaceEventItem = {
+  id: string
+  type: 'race_event.created' | 'race_event.completed'
+  user_id: string
+  raceEventId: string
+  raceName: string
+  raceDate: string | null
+  resultTimeSeconds: number | null
+  created_at: string
+  displayName: string
+  avatar_url: string | null
+  totalXp: number
+  linkedRun: {
+    id: string
+    name: string | null
+    distanceKm: number | null
+    movingTimeSeconds: number | null
+    createdAt: string | null
+  } | null
+}
+
+export type FeedItem =
+  | ({ kind: 'run' } & FeedRunItem)
+  | ({ kind: 'race_event' } & FeedRaceEventItem)
+
 export type FeedRunPage = {
-  items: FeedRunItem[]
+  items: FeedItem[]
   hasMore: boolean
 }
 
@@ -126,6 +160,32 @@ function toNullableTrimmedText(value: string | null | undefined) {
 
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : null
+}
+
+function asRecord(value: unknown) {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null
+}
+
+function getContextRecord(payload: Record<string, unknown> | null | undefined) {
+  return asRecord(payload?.context)
+}
+
+function parseFiniteNumber(value: unknown) {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numericValue) ? numericValue : null
+}
+
+function compareFeedItemsByCreatedAt(
+  left: FeedItem,
+  right: FeedItem
+) {
+  const createdAtComparison = right.created_at.localeCompare(left.created_at)
+
+  if (createdAtComparison !== 0) {
+    return createdAtComparison
+  }
+
+  return right.id.localeCompare(left.id)
 }
 
 function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
@@ -362,7 +422,8 @@ export async function loadFeedRuns(
   limit = 10,
   targetUserId?: string | null
 ): Promise<FeedRunPage> {
-  const end = start + limit - 1
+  const pageFetchSize = limit * 3
+  const end = start + pageFetchSize - 1
   let runsQuery = supabase
     .from('runs')
     .select('id, user_id, name, title, description, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, map_polyline, xp, created_at')
@@ -370,18 +431,38 @@ export async function loadFeedRuns(
     .order('id', { ascending: false })
     .range(start, end)
 
+  let raceEventsQuery = supabase
+    .from('app_events')
+    .select('id, type, actor_user_id, entity_id, payload, created_at')
+    .in('type', ['race_event.created', 'race_event.completed'])
+    .is('target_user_id', null)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .range(start, end)
+
   if (targetUserId) {
     runsQuery = runsQuery.eq('user_id', targetUserId)
+    raceEventsQuery = raceEventsQuery.eq('actor_user_id', targetUserId)
   }
 
-  const { data: runs, error: runsError } = await runsQuery
+  const [{ data: runs, error: runsError }, appEventsResult] = await Promise.all([
+    runsQuery,
+    currentUserId
+      ? raceEventsQuery
+      : Promise.resolve({ data: [] as AppEventFeedRow[], error: null }),
+  ])
+  const { data: appEvents, error: appEventsError } = appEventsResult
 
-  if (runsError) {
+  if (runsError || appEventsError) {
     throw new Error('Не удалось загрузить ленту')
   }
 
   const pageRuns = (runs as RunRow[] | null) ?? []
-  const userIds = Array.from(new Set(pageRuns.map((run) => run.user_id)))
+  const pageRaceEvents = (appEvents as AppEventFeedRow[] | null) ?? []
+  const userIds = Array.from(new Set([
+    ...pageRuns.map((run) => run.user_id),
+    ...pageRaceEvents.map((event) => event.actor_user_id).filter((value): value is string => Boolean(value)),
+  ]))
   const runIds = pageRuns.map((run) => run.id)
 
   const [
@@ -430,13 +511,13 @@ export async function loadFeedRuns(
     {}
   )
 
-  return {
-    items: pageRuns.map((run) => {
+  const runItems: FeedItem[] = pageRuns.map((run) => {
       const profile = profileById[run.user_id]
       const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
       const resolvedDurationSeconds = resolveDurationSeconds(run)
 
       return {
+        kind: 'run',
         id: run.id,
         user_id: run.user_id,
         title: mappedTitle,
@@ -458,7 +539,60 @@ export async function loadFeedRuns(
         likedByMe: likesSummary.likedRunIds.has(run.id),
         photos: photosByRunId[run.id] ?? [],
       }
-    }),
-    hasMore: pageRuns.length === limit,
+    })
+
+  const raceEventItems: FeedItem[] = pageRaceEvents.flatMap((event) => {
+    if (!event.actor_user_id || !event.entity_id) {
+      return []
+    }
+
+    const profile = profileById[event.actor_user_id]
+    const context = getContextRecord(event.payload)
+    const raceName = typeof context?.raceName === 'string' && context.raceName.trim()
+      ? context.raceName.trim()
+      : 'Старт'
+    const raceDate = typeof context?.raceDate === 'string' && context.raceDate.trim()
+      ? context.raceDate.trim()
+      : null
+    const linkedRunId = typeof context?.linkedRunId === 'string' && context.linkedRunId.trim()
+      ? context.linkedRunId.trim()
+      : null
+    const linkedRunName = typeof context?.linkedRunName === 'string' && context.linkedRunName.trim()
+      ? context.linkedRunName.trim()
+      : null
+    const linkedRunCreatedAt = typeof context?.linkedRunCreatedAt === 'string' && context.linkedRunCreatedAt.trim()
+      ? context.linkedRunCreatedAt.trim()
+      : null
+
+    return [{
+      kind: 'race_event' as const,
+      id: event.id,
+      type: event.type,
+      user_id: event.actor_user_id,
+      raceEventId: event.entity_id,
+      raceName,
+      raceDate,
+      resultTimeSeconds: parseFiniteNumber(context?.resultTimeSeconds),
+      created_at: event.created_at,
+      displayName: getProfileDisplayName(profile, 'Бегун'),
+      avatar_url: profile?.avatar_url ?? null,
+      totalXp: Number(profile?.total_xp ?? 0),
+      linkedRun: linkedRunId ? {
+        id: linkedRunId,
+        name: linkedRunName,
+        distanceKm: parseFiniteNumber(context?.linkedRunDistanceKm),
+        movingTimeSeconds: parseFiniteNumber(context?.linkedRunMovingTimeSeconds),
+        createdAt: linkedRunCreatedAt,
+      } : null,
+    }]
+  })
+
+  const combinedItems = [...runItems, ...raceEventItems]
+    .sort(compareFeedItemsByCreatedAt)
+    .slice(0, limit)
+
+  return {
+    items: combinedItems,
+    hasMore: (pageRuns.length + pageRaceEvents.length) > limit,
   }
 }

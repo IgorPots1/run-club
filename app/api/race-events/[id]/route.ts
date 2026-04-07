@@ -1,4 +1,6 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
+import { createAppEvent } from '@/lib/events/createAppEvent'
+import { buildRaceEventCompletedEvent } from '@/lib/events/returnTriggerEvents'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -8,6 +10,16 @@ type RaceEventRequestBody = {
   linkedRunId?: string | null
   distanceMeters?: number | null
   resultTimeSeconds?: number | null
+}
+
+function hasRaceCompletionSignal(raceEvent: {
+  linked_run_id?: string | null
+  result_time_seconds?: number | null
+}) {
+  return Boolean(
+    raceEvent.linked_run_id ||
+    (Number.isFinite(raceEvent.result_time_seconds) && (raceEvent.result_time_seconds ?? 0) >= 0)
+  )
 }
 
 const RACE_EVENT_SELECT = `
@@ -230,6 +242,41 @@ export async function PATCH(
       },
       { status: 500 }
     )
+  }
+
+  const hadCompletionSignal = hasRaceCompletionSignal(existingRaceEvent)
+  const hasCompletionSignal = hasRaceCompletionSignal(data)
+
+  if (!hadCompletionSignal && hasCompletionSignal) {
+    after(async () => {
+      try {
+        const linkedRun = Array.isArray(data.linked_run) ? (data.linked_run[0] ?? null) : (data.linked_run ?? null)
+
+        await createAppEvent(
+          buildRaceEventCompletedEvent({
+            actorUserId: user.id,
+            raceEventId: data.id,
+            raceName: data.name,
+            raceDate: data.race_date,
+            resultTimeSeconds: data.result_time_seconds,
+            linkedRun: linkedRun ? {
+              id: linkedRun.id,
+              name: linkedRun.name,
+              title: linkedRun.title,
+              distanceKm: linkedRun.distance_km,
+              movingTimeSeconds: linkedRun.moving_time_seconds,
+              createdAt: linkedRun.created_at,
+            } : null,
+          })
+        )
+      } catch (error) {
+        console.error('Failed to create race_event.completed app event', {
+          raceEventId: data.id,
+          actorUserId: user.id,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      }
+    })
   }
 
   return NextResponse.json({
