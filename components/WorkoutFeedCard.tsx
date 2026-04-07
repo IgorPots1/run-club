@@ -240,9 +240,9 @@ function WorkoutFeedCard({
   const movingTimeLabel = movingTime?.trim() || '—'
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
   const stravaBadge = externalSource === 'strava' ? (
-    <div className="flex items-center gap-2 whitespace-nowrap">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
       {showStravaHint ? (
-        <span className="app-text-muted text-[11px] font-medium">
+        <span className="app-text-muted min-w-0 break-words text-[11px] font-medium">
           Импортировано из Strava
         </span>
       ) : null}
@@ -250,7 +250,7 @@ function WorkoutFeedCard({
         type="button"
         aria-label="Показать источник Strava"
         onClick={() => setShowStravaHint((current) => !current)}
-        className="app-text-muted inline-flex min-h-8 items-center gap-1 rounded-full border border-black/5 bg-black/[0.02] px-2.5 py-1.5 text-[11px] font-medium dark:border-white/10 dark:bg-white/[0.04]"
+        className="app-text-muted inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full border border-black/5 bg-black/[0.02] px-2.5 py-1.5 text-[11px] font-medium dark:border-white/10 dark:bg-white/[0.04]"
       >
         <StravaIcon />
         <span>Strava</span>
@@ -510,7 +510,7 @@ function WorkoutFeedCard({
       ) : null}
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
-        <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-wrap items-center gap-4">
           <FeedActionButton
             count={likesCount}
             active={isHeartActive}
@@ -528,7 +528,9 @@ function WorkoutFeedCard({
             onClick={() => onCommentClick?.(runId)}
             icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
           />
-          <p className="app-text-secondary text-xs font-medium">⚡ +{xp} XP</p>
+        </div>
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="app-text-secondary min-w-0 text-xs font-medium">⚡ +{xp} XP</p>
           {stravaBadge}
         </div>
       </div>
