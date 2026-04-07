@@ -44,6 +44,19 @@ type ProfileFormState = {
   nickname: string
 }
 
+type ProfileRunRow = {
+  id: string
+  name: string | null
+  title?: string | null
+  type?: 'training' | 'race' | null
+  race_name?: string | null
+  race_date?: string | null
+  distance_km?: number | null
+  duration_seconds?: number | null
+  duration_minutes?: number | null
+  created_at: string
+}
+
 type StravaStatusResponse =
   | {
       ok: true
@@ -173,6 +186,28 @@ function SettingsRow({
   )
 }
 
+function getProfileRunDisplayName(run: Pick<ProfileRunRow, 'name' | 'title' | 'race_name' | 'type'>) {
+  if (run.type === 'race' && run.race_name?.trim()) {
+    return run.race_name.trim()
+  }
+
+  return run.name?.trim() || run.title?.trim() || 'Тренировка'
+}
+
+function isProfileRaceUpcoming(run: Pick<ProfileRunRow, 'race_date' | 'distance_km' | 'duration_seconds' | 'duration_minutes'>) {
+  const today = new Date().toISOString().slice(0, 10)
+  const hasCompletedMetrics =
+    (Number(run.distance_km ?? 0) > 0) ||
+    (Number(run.duration_seconds ?? 0) > 0) ||
+    (Number(run.duration_minutes ?? 0) > 0)
+
+  if (run.race_date && run.race_date > today) {
+    return true
+  }
+
+  return !hasCompletedMetrics
+}
+
 export default function ProfilePage() {
   return (
     <Suspense fallback={null}>
@@ -203,6 +238,7 @@ function ProfilePageContent() {
   const [totalXp, setTotalXp] = useState(0)
   const [totalKm, setTotalKm] = useState(0)
   const [runsCount, setRunsCount] = useState(0)
+  const [raceRuns, setRaceRuns] = useState<ProfileRunRow[]>([])
   const [showLevelOverview, setShowLevelOverview] = useState(false)
   const [stravaConnectionState, setStravaConnectionState] = useState<'connected' | 'reconnect_required' | 'disconnected'>('disconnected')
   const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
@@ -260,7 +296,7 @@ function ProfilePageContent() {
           .maybeSingle(),
         supabase
           .from('runs')
-          .select('distance_km')
+          .select('id, name, title, type, race_name, race_date, distance_km, duration_minutes, duration_seconds, created_at')
           .eq('user_id', currentUser.id),
       ])
 
@@ -282,6 +318,7 @@ function ProfilePageContent() {
         : profileFallback
 
       const safeRuns = runs ?? []
+      const safeRaceRuns = safeRuns.filter((run) => run.type === 'race')
 
       setProfile(nextProfile)
       setName(nextProfile.name ?? '')
@@ -294,6 +331,7 @@ function ProfilePageContent() {
       setTotalXp(Number(nextProfile.total_xp ?? 0))
       setTotalKm(safeRuns.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0))
       setRunsCount(safeRuns.length)
+      setRaceRuns(safeRaceRuns)
     } catch {
       if (isMounted) {
         setPageError('Не удалось загрузить профиль')
@@ -1020,6 +1058,20 @@ function ProfilePageContent() {
       ],
     },
   ]
+  const upcomingRaceRuns = raceRuns
+    .filter((run) => isProfileRaceUpcoming(run))
+    .sort((left, right) => {
+      const leftDate = left.race_date ?? left.created_at
+      const rightDate = right.race_date ?? right.created_at
+      return leftDate.localeCompare(rightDate)
+    })
+  const pastRaceRuns = raceRuns
+    .filter((run) => !isProfileRaceUpcoming(run))
+    .sort((left, right) => {
+      const leftDate = left.race_date ?? left.created_at
+      const rightDate = right.race_date ?? right.created_at
+      return rightDate.localeCompare(leftDate)
+    })
 
   if (profileDataLoading) {
     return (
@@ -1413,6 +1465,58 @@ function ProfilePageContent() {
               <span className="app-text-secondary min-w-0">Тренировки</span>
               <span className="app-text-primary shrink-0 text-right font-semibold">{runsCount}</span>
             </div>
+          </div>
+          <div className="app-card mt-6 rounded-2xl border p-4 shadow-sm">
+            <h2 className="app-text-primary text-xl font-semibold">Старты</h2>
+            {raceRuns.length === 0 ? (
+              <p className="app-text-secondary mt-3 text-sm">Пока нет стартов.</p>
+            ) : (
+              <div className="mt-4 space-y-5">
+                <div>
+                  <h3 className="app-text-secondary text-xs font-medium uppercase tracking-[0.08em]">Предстоящие</h3>
+                  {upcomingRaceRuns.length === 0 ? (
+                    <p className="app-text-secondary mt-2 text-sm">Нет предстоящих стартов.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {upcomingRaceRuns.map((run) => (
+                        <Link
+                          key={run.id}
+                          href={`/runs/${run.id}`}
+                          className="block rounded-2xl border px-4 py-3"
+                        >
+                          <p className="app-text-primary text-sm font-semibold">{getProfileRunDisplayName(run)}</p>
+                          <p className="app-text-secondary mt-1 text-sm">
+                            {run.race_date || 'Дата уточняется'}
+                          </p>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="app-text-secondary text-xs font-medium uppercase tracking-[0.08em]">Прошедшие</h3>
+                  {pastRaceRuns.length === 0 ? (
+                    <p className="app-text-secondary mt-2 text-sm">Нет завершенных стартов.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {pastRaceRuns.map((run) => (
+                        <Link
+                          key={run.id}
+                          href={`/runs/${run.id}`}
+                          className="block rounded-2xl border px-4 py-3"
+                        >
+                          <p className="app-text-primary text-sm font-semibold">{getProfileRunDisplayName(run)}</p>
+                          <p className="app-text-secondary mt-1 text-sm">
+                            {run.race_date || run.created_at.slice(0, 10)}
+                            {Number(run.distance_km ?? 0) > 0 ? ` • ${formatDistanceKm(Number(run.distance_km ?? 0))} км` : ''}
+                          </p>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div className="mb-8 mt-6">
             <button

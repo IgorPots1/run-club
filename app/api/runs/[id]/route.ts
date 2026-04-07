@@ -12,6 +12,9 @@ type RunMutationRow = {
   description_manually_edited: boolean | null
   shoe_id: string | null
   distance_meters: number | null
+  type?: 'training' | 'race' | null
+  race_name?: string | null
+  race_date?: string | null
 }
 
 type UpdateRunRequestBody = {
@@ -20,6 +23,9 @@ type UpdateRunRequestBody = {
   nameManuallyEdited?: boolean | null
   descriptionManuallyEdited?: boolean | null
   shoeId?: string | null
+  type?: 'training' | 'race' | null
+  raceName?: string | null
+  raceDate?: string | null
 }
 
 async function loadOwnedRun(
@@ -29,7 +35,7 @@ async function loadOwnedRun(
   const supabaseAdmin = createSupabaseAdminClient()
   const result = await supabaseAdmin
     .from('runs')
-    .select('id, user_id, name, description, name_manually_edited, description_manually_edited, shoe_id, distance_meters')
+    .select('id, user_id, name, description, name_manually_edited, description_manually_edited, shoe_id, distance_meters, type, race_name, race_date')
     .eq('id', runId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -101,6 +107,24 @@ export async function PATCH(
 
   if (body && 'shoeId' in body) {
     updates.shoe_id = body.shoeId?.trim() || null
+  }
+
+  if (body && 'type' in body) {
+    const nextType = body.type === 'race' ? 'race' : 'training'
+    updates.type = nextType
+
+    if (nextType === 'training') {
+      updates.race_name = null
+      updates.race_date = null
+    }
+  }
+
+  if (body && 'raceName' in body) {
+    updates.race_name = body.raceName?.trim() || null
+  }
+
+  if (body && 'raceDate' in body) {
+    updates.race_date = body.raceDate?.trim() || null
   }
 
   if (Object.keys(updates).length === 0) {

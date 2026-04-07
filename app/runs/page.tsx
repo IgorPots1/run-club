@@ -25,6 +25,9 @@ type Run = {
   user_id: string
   name: string | null
   title?: string | null
+  type?: 'training' | 'race' | null
+  race_name?: string | null
+  race_date?: string | null
   distance_km: number
   duration_minutes: number
   duration_seconds?: number | null
@@ -511,6 +514,8 @@ export default function RunsPage() {
   const [selectedShoeId, setSelectedShoeId] = useState<string>('')
   const [loadingShoes, setLoadingShoes] = useState(false)
   const [title, setTitle] = useState('')
+  const [runType, setRunType] = useState<'training' | 'race'>('training')
+  const [raceName, setRaceName] = useState('')
   const [runDate, setRunDate] = useState(getTodayDateValue())
   const [runDatePickerOpen, setRunDatePickerOpen] = useState(false)
   const [distanceInput, setDistanceInput] = useState('')
@@ -900,6 +905,9 @@ export default function RunsPage() {
         averagePaceSeconds,
         createdAt: createdAtDate.toISOString(),
         shoeId: selectedShoeId || null,
+        type: runType,
+        raceName: runType === 'race' ? raceName.trim() || null : null,
+        raceDate: runType === 'race' ? selectedDate : null,
       })
 
       if (createError) {
@@ -914,6 +922,8 @@ export default function RunsPage() {
       }
 
       setTitle('')
+      setRunType('training')
+      setRaceName('')
       setRunDate(getTodayDateValue())
       setDistanceInput('')
       setDurationHoursInput('0')
@@ -1000,6 +1010,31 @@ export default function RunsPage() {
       <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
       <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
+          <p className="app-text-secondary mb-2 block text-sm">Тип</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setRunType('training')}
+              disabled={submitting}
+              className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                runType === 'training' ? 'app-button-primary' : 'app-button-secondary'
+              }`}
+            >
+              Тренировка
+            </button>
+            <button
+              type="button"
+              onClick={() => setRunType('race')}
+              disabled={submitting}
+              className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                runType === 'race' ? 'app-button-primary' : 'app-button-secondary'
+              }`}
+            >
+              Забег
+            </button>
+          </div>
+        </div>
+        <div>
           <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки (необязательно)</label>
           <input
             id="title"
@@ -1011,6 +1046,20 @@ export default function RunsPage() {
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
         </div>
+        {runType === 'race' ? (
+          <div>
+            <label htmlFor="race_name" className="app-text-secondary block text-sm mb-1">Название забега (необязательно)</label>
+            <input
+              id="race_name"
+              type="text"
+              placeholder="Например: Московский марафон"
+              value={raceName}
+              onChange={(event) => setRaceName(event.target.value)}
+              disabled={submitting}
+              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+            />
+          </div>
+        ) : null}
         <div>
           <label htmlFor="run_date" className="app-text-secondary block text-sm mb-1">Дата тренировки</label>
           <button
