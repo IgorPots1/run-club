@@ -17,7 +17,6 @@ import {
   formatAveragePace,
   formatDistanceKm,
   formatDurationCompact,
-  formatRunDateLabel,
 } from '@/lib/format'
 
 type ActivityDistanceChartMode = ActivityPeriod | 'rolling30'
@@ -33,10 +32,16 @@ type ActivityDistanceChartProps = {
 
 type ActivityChartTooltipProps = {
   active?: boolean
-  payload?: Array<{ payload?: ActivityChartPoint }>
+  payload?: Array<{ payload?: ActivityTooltipPoint }>
   label?: string | number
   mode: ActivityDistanceChartMode
 }
+
+type ActivityTooltipPoint = ActivityChartPoint & Partial<{
+  axisLabel: string
+  rangeLabel: string
+  xKey: string
+}>
 
 type ChartConfig = {
   interval?: AxisInterval
@@ -55,12 +60,18 @@ function formatDistance(value: number) {
 }
 
 function formatTooltipDateLabel(
-  point: ActivityChartPoint,
+  point: ActivityTooltipPoint,
   mode: ActivityDistanceChartMode,
   label?: string | number
 ) {
-  if ((mode === 'week' || mode === 'month' || mode === 'rolling30') && point.date) {
-    return formatRunDateLabel(point.date)
+  if (mode === 'rolling30') {
+    if (typeof point.rangeLabel === 'string' && point.rangeLabel.trim()) {
+      return point.rangeLabel
+    }
+
+    if (typeof point.axisLabel === 'string' && point.axisLabel.trim()) {
+      return point.axisLabel
+    }
   }
 
   if (typeof label === 'string' || typeof label === 'number') {
@@ -271,12 +282,17 @@ export default function ActivityDistanceChart({
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
             <Tooltip
               active={showTooltip && activePoint !== null}
-              payload={tooltipPayload}
-              label={activePoint?.label}
               cursor={false}
               position={{ x: 8, y: 8 }}
               wrapperStyle={{ pointerEvents: 'none', zIndex: 20 }}
-              content={<ActivityChartTooltip mode={mode} />}
+              content={() => (
+                <ActivityChartTooltip
+                  active={showTooltip && activePoint !== null}
+                  payload={tooltipPayload}
+                  label={activePoint?.label}
+                  mode={mode}
+                />
+              )}
             />
             <XAxis
               dataKey="label"
@@ -344,7 +360,7 @@ export default function ActivityDistanceChart({
                 key={`${entry.label}-tap-${index}`}
                 type="button"
                 className="h-full min-h-0 w-full appearance-none bg-transparent p-0"
-                aria-label={`Показать активность за ${entry.date ? formatRunDateLabel(entry.date) : entry.label}: ${formatDistance(entry.distance)} км`}
+                aria-label={`Показать активность за ${formatTooltipDateLabel(entry, mode, entry.label)}: ${formatDistance(entry.distance)} км`}
                 onMouseEnter={() => {
                   setActiveBarIndex(index)
                 }}
