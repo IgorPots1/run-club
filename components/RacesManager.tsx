@@ -22,6 +22,7 @@ type RacesManagerProps = {
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
 const DEFAULT_RACE_EVENT_NAME = 'Новый старт'
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 function formatRaceDateLabel(dateValue: string) {
   const parsedDate = new Date(`${dateValue}T12:00:00`)
@@ -89,6 +90,60 @@ function getRaceEventLinkedRunLabel(raceEvent: RaceEvent) {
   return `${formatRunTimestampLabel(linkedRun.created_at, null)} • ${runName}${distanceSuffix}`
 }
 
+function getDateOnlyTimestamp(dateValue: string) {
+  if (!dateValue) {
+    return null
+  }
+
+  const [yearString, monthString, dayString] = dateValue.slice(0, 10).split('-')
+  const year = Number(yearString)
+  const month = Number(monthString)
+  const day = Number(dayString)
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+
+  const nextDate = new Date(year, month - 1, day, 12)
+
+  if (Number.isNaN(nextDate.getTime())) {
+    return null
+  }
+
+  return nextDate.getTime()
+}
+
+function getCandidateRunsForRaceDate(raceDate: string, runs: ActivityRunRow[]) {
+  const raceDateTimestamp = getDateOnlyTimestamp(raceDate)
+
+  if (raceDateTimestamp == null) {
+    return [] as ActivityRunRow[]
+  }
+
+  return runs
+    .map((run) => ({
+      run,
+      runDateTimestamp: getDateOnlyTimestamp(run.created_at),
+    }))
+    .filter((entry) => entry.runDateTimestamp != null)
+    .filter((entry) => Math.abs((entry.runDateTimestamp as number) - raceDateTimestamp) <= ONE_DAY_MS)
+    .sort((left, right) => {
+      const leftDiff = Math.abs((left.runDateTimestamp as number) - raceDateTimestamp)
+      const rightDiff = Math.abs((right.runDateTimestamp as number) - raceDateTimestamp)
+
+      if (leftDiff !== rightDiff) {
+        return leftDiff - rightDiff
+      }
+
+      return right.run.created_at.localeCompare(left.run.created_at)
+    })
+    .map((entry) => entry.run)
+}
+
+function getCandidateRunLabel(run: ActivityRunRow) {
+  return `${formatRunTimestampLabel(run.created_at, run.external_source)} • ${getRunDisplayName(run)} • ${formatDistanceKmLabel(run)} км`
+}
+
 export default function RacesManager({ userId }: RacesManagerProps) {
   const [pendingDeleteRaceEvent, setPendingDeleteRaceEvent] = useState<RaceEvent | null>(null)
   const [submittingRaceEvent, setSubmittingRaceEvent] = useState(false)
@@ -97,7 +152,10 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   const [raceEventName, setRaceEventName] = useState('')
   const [raceEventDate, setRaceEventDate] = useState('')
   const [selectedLinkedRunId, setSelectedLinkedRunId] = useState('')
+  const [formSuggestedRunId, setFormSuggestedRunId] = useState('')
+  const [suggestedRunIdsByRaceEvent, setSuggestedRunIdsByRaceEvent] = useState<Record<string, string>>({})
   const [raceEventsError, setRaceEventsError] = useState('')
+  const [linkingRaceEventId, setLinkingRaceEventId] = useState<string | null>(null)
   const { data: runs } = useSWR(
     ['activity-runs', userId] as const,
     ([, nextUserId]: readonly [string, string]) => loadActivityRuns(nextUserId),
@@ -128,9 +186,13 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   const workoutOptions = useMemo(() => (
     (runs ?? []).map((run) => ({
       id: run.id,
-      label: `${formatRunTimestampLabel(run.created_at, run.external_source)} • ${getRunDisplayName(run)} • ${formatDistanceKmLabel(run)} км`,
+      label: getCandidateRunLabel(run),
     }))
   ), [runs])
+  const formCandidateRuns = useMemo(
+    () => getCandidateRunsForRaceDate(raceEventDate, runs ?? []),
+    [raceEventDate, runs]
+  )
   const upcomingRaceEvents = useMemo(() => (
     (raceEvents ?? [])
       .filter((raceEvent) => isRaceEventUpcoming(raceEvent))
@@ -149,11 +211,58 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     }
   }, [raceEventsLoadError])
 
+  useEffect(() => {
+    if (selectedLinkedRunId) {
+      setFormSuggestedRunId('')
+      return
+    }
+
+    const bestCandidateRunId = formCandidateRuns[0]?.id ?? ''
+    setFormSuggestedRunId((currentValue) => {
+      if (!bestCandidateRunId) {
+        return ''
+      }
+
+      if (currentValue && formCandidateRuns.some((run) => run.id === currentValue)) {
+        return currentValue
+      }
+
+      return bestCandidateRunId
+    })
+  }, [formCandidateRuns, selectedLinkedRunId])
+
+  useEffect(() => {
+    setSuggestedRunIdsByRaceEvent((currentValue) => {
+      const nextValue: Record<string, string> = {}
+
+      for (const raceEvent of raceEvents ?? []) {
+        if (raceEvent.linked_run_id) {
+          continue
+        }
+
+        const candidateRuns = getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])
+        const currentCandidateId = currentValue[raceEvent.id]
+
+        if (currentCandidateId && candidateRuns.some((run) => run.id === currentCandidateId)) {
+          nextValue[raceEvent.id] = currentCandidateId
+          continue
+        }
+
+        if (candidateRuns[0]?.id) {
+          nextValue[raceEvent.id] = candidateRuns[0].id
+        }
+      }
+
+      return nextValue
+    })
+  }, [raceEvents, runs])
+
   const resetRaceEventForm = useCallback(() => {
     setEditingRaceEventId(null)
     setRaceEventName('')
     setRaceEventDate('')
     setSelectedLinkedRunId('')
+    setFormSuggestedRunId('')
     setRaceEventsError('')
   }, [])
 
@@ -219,8 +328,43 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     setRaceEventName(raceEvent.name)
     setRaceEventDate(raceEvent.race_date)
     setSelectedLinkedRunId(raceEvent.linked_run_id ?? '')
+    setFormSuggestedRunId('')
     setRaceEventsError('')
   }, [])
+
+  const handleConfirmSuggestedLink = useCallback(async (raceEvent: RaceEvent) => {
+    const suggestedRunId = suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''
+
+    if (!suggestedRunId || linkingRaceEventId) {
+      return
+    }
+
+    setLinkingRaceEventId(raceEvent.id)
+    setRaceEventsError('')
+
+    try {
+      const mutation = await updateRaceEvent(raceEvent.id, {
+        name: raceEvent.name,
+        raceDate: raceEvent.race_date,
+        linkedRunId: suggestedRunId,
+      })
+
+      if (mutation.error || !mutation.data) {
+        setRaceEventsError('Не удалось привязать тренировку')
+        return
+      }
+
+      await mutateRaceEvents((currentRaceEvents) => (
+        (currentRaceEvents ?? []).map((currentRaceEvent) => (
+          currentRaceEvent.id === mutation.data!.id ? mutation.data! : currentRaceEvent
+        ))
+      ), { revalidate: false })
+    } catch {
+      setRaceEventsError('Не удалось привязать тренировку')
+    } finally {
+      setLinkingRaceEventId(null)
+    }
+  }, [linkingRaceEventId, mutateRaceEvents, suggestedRunIdsByRaceEvent])
 
   const handleConfirmDeleteRaceEvent = useCallback(async () => {
     if (!pendingDeleteRaceEvent || deletingRaceEventId) {
@@ -312,6 +456,38 @@ export default function RacesManager({ userId }: RacesManagerProps) {
               ))}
             </select>
           </div>
+          {!selectedLinkedRunId && formCandidateRuns.length > 0 ? (
+            <div className="rounded-2xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
+              <p className="app-text-primary text-sm font-medium">Похоже, это был забег — привязать?</p>
+              <p className="app-text-secondary mt-1 text-sm">
+                {formCandidateRuns.length === 1
+                  ? getCandidateRunLabel(formCandidateRuns[0])
+                  : 'Найдено несколько тренировок рядом с датой старта.'}
+              </p>
+              {formCandidateRuns.length > 1 ? (
+                <select
+                  value={formSuggestedRunId}
+                  onChange={(event) => setFormSuggestedRunId(event.target.value)}
+                  className="app-input mt-3 min-h-11 w-full rounded-lg border px-3 py-2"
+                >
+                  {formCandidateRuns.map((run) => (
+                    <option key={run.id} value={run.id}>
+                      {getCandidateRunLabel(run)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLinkedRunId(formSuggestedRunId || formCandidateRuns[0]?.id || '')}
+                  className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
+                >
+                  Привязать выбранную тренировку
+                </button>
+              </div>
+            </div>
+          ) : null}
           {raceEventsError ? <p className="text-sm text-red-600">{raceEventsError}</p> : null}
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
@@ -368,6 +544,39 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                               {getRaceEventLinkedRunLabel(raceEvent)}
                             </p>
                           ) : null}
+                          {!raceEvent.linked_run_id && getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? []).length > 0 ? (
+                            <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
+                              <p className="app-text-primary text-sm font-medium">Похоже, это был забег — привязать?</p>
+                              {getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? []).length > 1 ? (
+                                <select
+                                  value={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
+                                  onChange={(event) => setSuggestedRunIdsByRaceEvent((currentValue) => ({
+                                    ...currentValue,
+                                    [raceEvent.id]: event.target.value,
+                                  }))}
+                                  className="app-input mt-3 min-h-11 w-full rounded-lg border px-3 py-2"
+                                >
+                                  {getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? []).map((run) => (
+                                    <option key={run.id} value={run.id}>
+                                      {getCandidateRunLabel(run)}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <p className="app-text-secondary mt-1 text-sm">
+                                  {getCandidateRunLabel(getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])[0])}
+                                </p>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleConfirmSuggestedLink(raceEvent)}
+                                disabled={linkingRaceEventId === raceEvent.id}
+                                className="app-button-secondary mt-3 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {linkingRaceEventId === raceEvent.id ? 'Привязываем...' : 'Привязать тренировку'}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex shrink-0 gap-2">
                           <button
@@ -418,6 +627,39 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                             <p className="app-text-secondary mt-1 text-xs">
                               {getRaceEventLinkedRunLabel(raceEvent)}
                             </p>
+                          ) : null}
+                          {!raceEvent.linked_run_id && getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? []).length > 0 ? (
+                            <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
+                              <p className="app-text-primary text-sm font-medium">Похоже, это был забег — привязать?</p>
+                              {getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? []).length > 1 ? (
+                                <select
+                                  value={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
+                                  onChange={(event) => setSuggestedRunIdsByRaceEvent((currentValue) => ({
+                                    ...currentValue,
+                                    [raceEvent.id]: event.target.value,
+                                  }))}
+                                  className="app-input mt-3 min-h-11 w-full rounded-lg border px-3 py-2"
+                                >
+                                  {getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? []).map((run) => (
+                                    <option key={run.id} value={run.id}>
+                                      {getCandidateRunLabel(run)}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <p className="app-text-secondary mt-1 text-sm">
+                                  {getCandidateRunLabel(getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])[0])}
+                                </p>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleConfirmSuggestedLink(raceEvent)}
+                                disabled={linkingRaceEventId === raceEvent.id}
+                                className="app-button-secondary mt-3 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {linkingRaceEventId === raceEvent.id ? 'Привязываем...' : 'Привязать тренировку'}
+                              </button>
+                            </div>
                           ) : null}
                         </div>
                         <div className="flex shrink-0 gap-2">
