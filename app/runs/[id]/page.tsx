@@ -549,14 +549,27 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
+type RunEditDraft = {
+  name: string
+  description: string
+  shoeId: string
+  type: 'training' | 'race'
+  raceName: string
+  raceDate: string
+}
+
+function normalizeRunType(value: string | null | undefined): 'training' | 'race' {
+  return value === 'race' ? 'race' : 'training'
+}
+
 function getRunEditDraft(
   run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id' | 'type' | 'race_name' | 'race_date'> | null | undefined
-) {
+): RunEditDraft {
   return {
     name: run?.name ?? '',
     description: run?.description ?? '',
     shoeId: run?.shoe_id ?? '',
-    type: run?.type === 'race' ? 'race' : 'training',
+    type: normalizeRunType(run?.type),
     raceName: run?.race_name ?? '',
     raceDate: run?.race_date ?? '',
   }
