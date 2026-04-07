@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { getShoeWearUi } from '@/lib/shoe-wear-ui'
 import type { UserShoeRecord } from '@/lib/shoes-client'
 
 type MyShoesPickerProps = {
@@ -72,6 +73,22 @@ export default function MyShoesPicker({
           shoes.map((shoe) => {
             const isSelected = selectedShoeId === shoe.id
             const metaLabel = getMetaLabel(shoe)
+            const wearUi = getShoeWearUi({
+              currentDistanceMeters: shoe.currentDistanceMeters,
+              maxDistanceMeters: shoe.maxDistanceMeters,
+            })
+            const wearBarClassName =
+              wearUi.status === 'critical'
+                ? 'bg-rose-500'
+                : wearUi.status === 'warning'
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
+            const wearDotClassName =
+              wearUi.status === 'critical'
+                ? 'bg-rose-500'
+                : wearUi.status === 'warning'
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
 
             return (
               <button
@@ -92,6 +109,21 @@ export default function MyShoesPicker({
                     {metaLabel}
                   </p>
                 ) : null}
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 shrink-0 rounded-full ${isSelected ? 'bg-white' : wearDotClassName}`}
+                    aria-hidden="true"
+                  />
+                  <p className={`text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
+                    {wearUi.distanceLabel}
+                  </p>
+                </div>
+                <div className={`mt-2 h-1.5 w-full overflow-hidden rounded-full ${isSelected ? 'bg-white/20' : 'bg-black/[0.06] dark:bg-white/[0.08]'}`}>
+                  <div
+                    className={`h-full rounded-full ${isSelected ? 'bg-white' : wearBarClassName}`}
+                    style={{ width: `${Math.min(100, Math.max(0, wearUi.usagePercent))}%` }}
+                  />
+                </div>
               </button>
             )
           })

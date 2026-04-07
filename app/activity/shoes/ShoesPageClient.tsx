@@ -3,6 +3,7 @@
 import { Footprints, LoaderCircle, PencilLine, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
+import { formatShoeDistanceMetersAsKm, getShoeWearUi } from '@/lib/shoe-wear-ui'
 import {
   createUserShoe,
   loadUserShoes,
@@ -42,14 +43,6 @@ function parseDistanceKmInput(rawValue: string) {
   return Number(parsedValue.toFixed(2))
 }
 
-function formatDistanceKmValue(value: number) {
-  return value.toFixed(2).replace(/\.?0+$/, '')
-}
-
-function formatDistanceMetersAsKm(value: number) {
-  return formatDistanceKmValue(Math.max(0, value) / 1000)
-}
-
 function getWearProgressFillPercent(usagePercent: number) {
   if (!Number.isFinite(usagePercent)) {
     return 0
@@ -58,13 +51,9 @@ function getWearProgressFillPercent(usagePercent: number) {
   return Math.min(100, Math.max(0, usagePercent))
 }
 
-function getWearBarClassName(wearStatus: UserShoeRecord['wearStatus']) {
+function getWearBarClassName(wearStatus: 'fresh' | 'warning' | 'critical') {
   if (wearStatus === 'fresh') {
     return 'from-emerald-500 to-emerald-400'
-  }
-
-  if (wearStatus === 'ok') {
-    return 'from-sky-500 to-cyan-400'
   }
 
   if (wearStatus === 'warning') {
@@ -74,13 +63,9 @@ function getWearBarClassName(wearStatus: UserShoeRecord['wearStatus']) {
   return 'from-rose-500 to-red-500'
 }
 
-function getWearBadgeClassName(wearStatus: UserShoeRecord['wearStatus']) {
+function getWearBadgeClassName(wearStatus: 'fresh' | 'warning' | 'critical') {
   if (wearStatus === 'fresh') {
     return 'border border-emerald-300/70 bg-emerald-100/85 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
-  }
-
-  if (wearStatus === 'ok') {
-    return 'border border-sky-300/70 bg-sky-100/85 text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-100'
   }
 
   if (wearStatus === 'warning') {
@@ -90,12 +75,12 @@ function getWearBadgeClassName(wearStatus: UserShoeRecord['wearStatus']) {
   return 'border border-rose-300/70 bg-rose-100/85 text-rose-700 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-100'
 }
 
-function getShoeCardClassName(wearStatus: UserShoeRecord['wearStatus']) {
+function getShoeCardClassName(wearStatus: 'fresh' | 'warning' | 'critical') {
   if (wearStatus === 'warning') {
     return 'app-card border-amber-300/70 bg-amber-50/60 dark:border-amber-300/20 dark:bg-amber-300/5'
   }
 
-  if (wearStatus === 'replace') {
+  if (wearStatus === 'critical') {
     return 'app-card border-rose-300/70 bg-rose-50/70 shadow-[0_10px_30px_-20px_rgba(244,63,94,0.55)] dark:border-rose-300/20 dark:bg-rose-300/5'
   }
 
@@ -499,10 +484,14 @@ function ShoeGarageCard({
   const stateClassName = archived
     ? 'rounded-full border border-black/[0.07] bg-black/[0.04] px-2.5 py-1 text-xs font-semibold text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/75'
     : 'rounded-full border border-emerald-300/70 bg-emerald-100/80 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
+  const wearUi = getShoeWearUi({
+    currentDistanceMeters: shoe.currentDistanceMeters,
+    maxDistanceMeters: shoe.maxDistanceMeters,
+  })
 
   return (
     <div
-      className={`${archived ? 'app-card opacity-90' : getShoeCardClassName(shoe.wearStatus)} flex items-start gap-3 rounded-2xl border p-4 shadow-sm`}
+      className={`${archived ? 'app-card opacity-90' : getShoeCardClassName(wearUi.status)} flex items-start gap-3 rounded-2xl border p-4 shadow-sm`}
     >
       <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
       <div className="min-w-0 flex-1">
@@ -517,9 +506,9 @@ function ShoeGarageCard({
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
             <span
-              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(shoe.wearStatus)}`}
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
             >
-              {shoe.wearStatusLabel}
+              {wearUi.label}
             </span>
             <span className={stateClassName}>
               {stateLabel}
@@ -528,9 +517,7 @@ function ShoeGarageCard({
         </div>
 
         <div className="app-text-secondary mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-          <p>
-            {formatDistanceMetersAsKm(shoe.currentDistanceMeters)} / {formatDistanceMetersAsKm(shoe.maxDistanceMeters)} км
-          </p>
+          <p>{wearUi.distanceLabel}</p>
           {shoe.model?.brand ? <p>• {shoe.model.brand}</p> : null}
           {shoe.model?.category ? <p>• {shoe.model.category}</p> : null}
         </div>
@@ -538,17 +525,17 @@ function ShoeGarageCard({
         <div className="mt-3">
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
             <div
-              className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(shoe.wearStatus)}`}
-              style={{ width: `${getWearProgressFillPercent(shoe.usagePercent)}%` }}
+              className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-300 ${getWearBarClassName(wearUi.status)}`}
+              style={{ width: `${getWearProgressFillPercent(wearUi.usagePercent)}%` }}
             />
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 text-xs">
             <p className="app-text-secondary">
-              {shoe.usagePercent < 100
-                ? `Осталось ~${formatDistanceMetersAsKm(Math.max(0, shoe.remainingDistanceMeters))} км`
-                : 'Пора менять'}
+              {wearUi.usagePercent <= 100
+                ? `Осталось ~${formatShoeDistanceMetersAsKm(Math.max(0, wearUi.maxDistanceMeters - wearUi.currentDistanceMeters))} км`
+                : 'Пробег превысил ресурс'}
             </p>
-            <p className="app-text-muted">{Math.round(shoe.usagePercent)}%</p>
+            <p className="app-text-muted">{Math.round(wearUi.usagePercent)}%</p>
           </div>
         </div>
 
@@ -694,16 +681,28 @@ export default function ShoesPageClient({
     [shoes]
   )
   const problematicSummaryLines = useMemo(() => {
-    const warningCount = activeShoes.filter((shoe) => shoe.wearStatus === 'warning').length
-    const replaceCount = activeShoes.filter((shoe) => shoe.wearStatus === 'replace').length
+    const warningCount = activeShoes.filter((shoe) => {
+      const wearUi = getShoeWearUi({
+        currentDistanceMeters: shoe.currentDistanceMeters,
+        maxDistanceMeters: shoe.maxDistanceMeters,
+      })
+      return wearUi.status === 'warning'
+    }).length
+    const criticalCount = activeShoes.filter((shoe) => {
+      const wearUi = getShoeWearUi({
+        currentDistanceMeters: shoe.currentDistanceMeters,
+        maxDistanceMeters: shoe.maxDistanceMeters,
+      })
+      return wearUi.status === 'critical'
+    }).length
     const nextLines: string[] = []
 
     if (warningCount > 0) {
       nextLines.push(`${warningCount} ${getPairsLabel(warningCount)} на исходе`)
     }
 
-    if (replaceCount > 0) {
-      nextLines.push(`${replaceCount} ${getPairsLabel(replaceCount)} под замену`)
+    if (criticalCount > 0) {
+      nextLines.push(`${criticalCount} ${getPairsLabel(criticalCount)} в критическом износе`)
     }
 
     return nextLines
@@ -764,8 +763,8 @@ export default function ShoesPageClient({
     setModelResults(initialPopularModels)
     setCustomName(shoe.customName ?? '')
     setNickname(shoe.nickname ?? '')
-    setDistanceKmInput(formatDistanceMetersAsKm(shoe.currentDistanceMeters))
-    setMaxDistanceKmInput(formatDistanceMetersAsKm(shoe.maxDistanceMeters))
+    setDistanceKmInput(formatShoeDistanceMetersAsKm(shoe.currentDistanceMeters))
+    setMaxDistanceKmInput(formatShoeDistanceMetersAsKm(shoe.maxDistanceMeters))
     setIsActive(shoe.isActive)
     setFormError('')
   }
