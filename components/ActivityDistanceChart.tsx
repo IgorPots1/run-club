@@ -72,6 +72,23 @@ export default function ActivityDistanceChart({
   }, [])
 
   const isVerySmallScreen = viewportWidth !== null && viewportWidth < 390
+  const monthTicks =
+    mode === 'month'
+      ? (() => {
+          const totalDays = data.length
+          const step = Math.max(1, Math.ceil(totalDays / 6))
+
+          return Array.from(new Set(
+            data
+              .map((entry, index) => ({ day: Number(entry.label), index }))
+              .filter(({ day, index }) => (
+                Number.isFinite(day)
+                && (day === 1 || day === totalDays || index % step === 0)
+              ))
+              .map(({ day }) => day)
+          ))
+        })()
+      : undefined
   const chartTickFontSize =
     mode === 'year'
       ? viewportWidth !== null && viewportWidth < 360
@@ -96,18 +113,30 @@ export default function ActivityDistanceChart({
           barSize: 18,
           maxBarSize: 24,
         }
-      : mode === 'month' || mode === 'rolling30'
+      : mode === 'month'
         ? {
-            interval: isVerySmallScreen && data.length > 10 ? 1 : 0,
-            minTickGap: isVerySmallScreen ? 12 : 10,
+            interval: 'preserveStartEnd',
+            minTickGap: isVerySmallScreen ? 16 : 14,
             tickMargin: 8,
             xPadding: { left: 4, right: 4 },
             yAxisWidth: 40,
             chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
-            barCategoryGap:
-              data.length <= 4 ? '34%' : data.length <= 8 ? '26%' : '18%',
-            barSize: data.length <= 4 ? 20 : 14,
-            maxBarSize: data.length <= 4 ? 28 : 22,
+            barCategoryGap: data.length <= 8 ? '26%' : '10%',
+            barSize: 8,
+            maxBarSize: 12,
+          }
+        : mode === 'rolling30'
+          ? {
+              interval: isVerySmallScreen && data.length > 10 ? 1 : 0,
+              minTickGap: isVerySmallScreen ? 12 : 10,
+              tickMargin: 8,
+              xPadding: { left: 4, right: 4 },
+              yAxisWidth: 40,
+              chartMargin: { top: 4, right: 6, left: 8, bottom: 0 },
+              barCategoryGap:
+                data.length <= 4 ? '34%' : data.length <= 8 ? '26%' : '18%',
+              barSize: data.length <= 4 ? 20 : 14,
+              maxBarSize: data.length <= 4 ? 28 : 22,
           }
         : mode === 'year'
           ? {
@@ -180,6 +209,7 @@ export default function ActivityDistanceChart({
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
             <XAxis
               dataKey="label"
+              ticks={mode === 'month' ? monthTicks : undefined}
               tickLine={false}
               axisLine={false}
               interval={chartConfig.interval}
