@@ -99,7 +99,7 @@ function FeedActionButton({
 
   return (
     <div
-      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
+      className={`inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
         active ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
       }`}
     >
@@ -126,7 +126,7 @@ function FeedActionButton({
         type="button"
         onClick={onCountClick ?? onClick}
         disabled={disabled}
-        className="inline-flex min-h-9 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-9 min-w-0 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {count}
       </button>
@@ -463,27 +463,29 @@ function WorkoutFeedCard({
       ) : null}
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
-        <div className="flex flex-wrap items-center gap-4">
-          <FeedActionButton
-            count={likesCount}
-            active={isHeartActive}
-            disabled={!runId}
-            actionDisabled={isOwnRun || isLikeInFlight}
-            onClick={() => onToggleLike(runId)}
-            onCountClick={() => onOpenLikes?.()}
-            icon={
-              <Heart className="h-4 w-4" strokeWidth={1.9} fill={isHeartActive ? 'currentColor' : 'none'} />
-            }
-          />
-          <FeedActionButton
-            count={commentsCount}
-            disabled={!runId}
-            onClick={() => onCommentClick?.(runId)}
-            icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
-          />
-        </div>
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          <p className="app-text-secondary min-w-0 break-words text-xs font-medium">⚡ +{xp} XP</p>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-4">
+            <FeedActionButton
+              count={likesCount}
+              active={isHeartActive}
+              disabled={!runId}
+              actionDisabled={isOwnRun || isLikeInFlight}
+              onClick={() => onToggleLike(runId)}
+              onCountClick={() => onOpenLikes?.()}
+              icon={
+                <Heart className="h-4 w-4" strokeWidth={1.9} fill={isHeartActive ? 'currentColor' : 'none'} />
+              }
+            />
+            <FeedActionButton
+              count={commentsCount}
+              disabled={!runId}
+              onClick={() => onCommentClick?.(runId)}
+              icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
+            />
+          </div>
+          <p className="app-text-secondary min-w-0 flex-1 overflow-hidden text-right text-xs font-medium [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:1]">
+            ⚡ +{xp} XP
+          </p>
         </div>
       </div>
 
