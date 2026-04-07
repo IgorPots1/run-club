@@ -41,6 +41,10 @@ type InfiniteWorkoutFeedProps = {
 type FeedCommentVisibilityById = Record<string, RunCommentVisibilityRecord>
 type RunFeedItem = Extract<FeedItem, { kind: 'run' }>
 
+function isRunFeedItem(item: FeedItem): item is RunFeedItem {
+  return item.kind === 'run'
+}
+
 function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
   const existingIds = new Set(existing.map((item) => item.id))
   return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
@@ -289,7 +293,7 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    const hasLoadedRun = itemsRef.current.some((item) => item.id === runId)
+    const hasLoadedRun = itemsRef.current.some((item) => item.kind === 'run' && item.id === runId)
 
     if (!hasLoadedRun) {
       return
@@ -328,7 +332,7 @@ export default function InfiniteWorkoutFeed({
       try {
         const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
         const runIds = page.items
-          .filter((item): item is FeedItem & { kind: 'run' } => item.kind === 'run')
+          .filter(isRunFeedItem)
           .map((item) => item.id)
         const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
 
@@ -383,7 +387,7 @@ export default function InfiniteWorkoutFeed({
     try {
       const page = await loadFeedRuns(currentUserId, nextOffset, pageSize, targetUserId)
       const runIds = page.items
-        .filter((item): item is FeedItem & { kind: 'run' } => item.kind === 'run')
+        .filter(isRunFeedItem)
         .map((item) => item.id)
       const commentSummary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
 
@@ -512,7 +516,9 @@ export default function InfiniteWorkoutFeed({
         return
       }
 
-      const currentItem = itemsRef.current.find((item) => item.kind === 'run' && item.id === payload.runId)
+      const currentItem = itemsRef.current.find(
+        (item): item is RunFeedItem => item.kind === 'run' && item.id === payload.runId
+      )
 
       if (!currentItem) {
         return
@@ -571,7 +577,9 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    const currentItem = itemsRef.current.find((item) => item.kind === 'run' && item.id === runId)
+    const currentItem = itemsRef.current.find(
+      (item): item is RunFeedItem => item.kind === 'run' && item.id === runId
+    )
     if (!currentItem) return
     if (likeInFlightRef.current[runId]) return
     if (currentItem.user_id === activeUserId) return
@@ -684,7 +692,7 @@ export default function InfiniteWorkoutFeed({
   const error = feedError
   const activeLikesRunId = activeLikesRun?.runId ?? ''
   const activeLikesItem = activeLikesRunId
-    ? items.find((item) => item.id === activeLikesRunId) ?? null
+    ? items.find((item): item is RunFeedItem => item.kind === 'run' && item.id === activeLikesRunId) ?? null
     : null
   const activeLikedUsers = activeLikesRunId ? likedUsersByRunId[activeLikesRunId] ?? [] : []
   const activeLikesError = activeLikesRunId ? likedUsersErrorByRunId[activeLikesRunId] ?? '' : ''
