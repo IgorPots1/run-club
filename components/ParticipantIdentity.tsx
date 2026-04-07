@@ -62,8 +62,8 @@ export default function ParticipantIdentity({
         <AvatarFallback size={size} />
       )}
       <div className="min-w-0">
-        <p className={`app-text-primary truncate font-semibold ${nameClass}`.trim()}>{displayName.trim() || 'Бегун'}</p>
-        <p className="app-text-secondary truncate text-sm">Уровень {level}</p>
+        <p className={`app-text-primary break-words font-semibold ${nameClass}`.trim()}>{displayName.trim() || 'Бегун'}</p>
+        <p className="app-text-secondary break-words text-sm">Уровень {level}</p>
       </div>
     </>
   )

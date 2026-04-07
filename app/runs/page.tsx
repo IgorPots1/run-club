@@ -1186,17 +1186,22 @@ export default function RunsPage() {
                   <p className="app-text-primary break-words text-base font-semibold">
                     {getRunDisplayName(run)}
                   </p>
-                  <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
-                    {formatDistanceKmLabel(run)} км • {formatRunDurationLabel(run)}
-                    {formatRunPace(run)
-                      ? ` • ${formatRunPace(run)}`
-                      : ''}
-                  </p>
+                  <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold">
+                    <span className="break-words">{formatDistanceKmLabel(run)} км</span>
+                    <span className="app-text-secondary">•</span>
+                    <span className="break-words">{formatRunDurationLabel(run)}</span>
+                    {formatRunPace(run) ? (
+                      <>
+                        <span className="app-text-secondary">•</span>
+                        <span className="break-words">{formatRunPace(run)}</span>
+                      </>
+                    ) : null}
+                  </div>
                   <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">
                     {formatRunTimestampLabel(run.created_at, run.external_source)}
                   </p>
                   <div className="compact-run-card-like">
-                    <p className="app-text-secondary text-sm">⚡ +{run.xp} XP</p>
+                    <p className="app-text-secondary break-words text-sm">⚡ +{run.xp} XP</p>
                   </div>
                 </div>
                 <button

@@ -82,8 +82,8 @@ export default function MyShoesPicker({
           }`}
         >
           <div className="min-w-0 flex-1">
-            <p className="app-text-primary text-sm font-semibold">Без кроссовок</p>
-            <p className="app-text-secondary mt-1 text-xs">Тренировка будет сохранена без пары</p>
+            <p className="app-text-primary break-words text-sm font-semibold">Без кроссовок</p>
+            <p className="app-text-secondary mt-1 break-words text-xs">Тренировка будет сохранена без пары</p>
           </div>
           <span className="flex h-5 w-5 shrink-0 items-center justify-center">
             {selectedShoeId === '' ? (
@@ -117,28 +117,28 @@ export default function MyShoesPicker({
                 onClick={() => onSelect(shoe.id)}
                 disabled={disabled}
                 aria-pressed={isSelected}
-                className={`flex w-full items-start justify-between gap-3 border-t border-black/[0.05] px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.08] ${
+                className={`flex w-full flex-wrap items-start justify-between gap-3 border-t border-black/[0.05] px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.08] ${
                   isSelected
                     ? 'bg-[var(--accent-soft)]/70'
                     : 'bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 }`}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="app-text-primary text-sm font-semibold">{shoe.displayName}</p>
+                  <p className="app-text-primary break-words text-sm font-semibold">{shoe.displayName}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                    <p className="app-text-secondary">{remainingDistanceLabel}</p>
+                    <p className="app-text-secondary break-words">{remainingDistanceLabel}</p>
                     <span className="app-text-muted">•</span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       <span
                         className={`h-2 w-2 shrink-0 rounded-full ${getWearDotClassName(wearUi.status)}`}
                         aria-hidden="true"
                       />
-                      <span className="app-text-secondary">{wearUi.label}</span>
+                      <span className="app-text-secondary break-words">{wearUi.label}</span>
                     </div>
                     {metaLabel ? (
                       <>
                         <span className="app-text-muted">•</span>
-                        <span className="app-text-secondary">{metaLabel}</span>
+                        <span className="app-text-secondary break-words">{metaLabel}</span>
                       </>
                     ) : null}
                   </div>
@@ -155,7 +155,7 @@ export default function MyShoesPicker({
       </div>
 
       <div className="mt-3 flex flex-col gap-2 border-t border-black/[0.05] pt-3 dark:border-white/[0.08]">
-        {hint ? <p className="app-text-secondary text-xs">{hint}</p> : null}
+        {hint ? <p className="app-text-secondary break-words text-xs">{hint}</p> : null}
         <Link
           href={addPairHref}
           className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"

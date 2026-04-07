@@ -20,7 +20,6 @@ import {
   type RaceEventLinkedRunSummary,
 } from '@/lib/race-events'
 import { countVisibleRunComments, loadRaceComments, type RunCommentItem } from '@/lib/run-comments'
-import { supabase } from '@/lib/supabase'
 import { useEntityCommentsController } from '@/lib/use-entity-comments-controller'
 import type { User } from '@supabase/supabase-js'
 
@@ -369,23 +368,23 @@ export default function RaceDiscussionPage() {
     </section>
   ) : (
     <section className="app-card rounded-2xl border p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="app-text-primary break-words text-base font-semibold">{raceEvent.name}</p>
-          <p className="app-text-secondary mt-1 text-sm">{formatRaceDateLabel(raceEvent.race_date)}</p>
+          <p className="app-text-secondary mt-1 break-words text-sm">{formatRaceDateLabel(raceEvent.race_date)}</p>
         </div>
-        <p className="app-text-secondary shrink-0 text-sm">{visibleCommentsCount} комм.</p>
+        <p className="app-text-secondary min-w-0 break-words text-sm">{visibleCommentsCount} комм.</p>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        {displayDistance ? <span className="app-text-primary">{displayDistance.label}</span> : null}
+        {displayDistance ? <span className="app-text-primary break-words">{displayDistance.label}</span> : null}
         {displayDistance && (isUpcoming ? targetLabel : resultLabel) ? <span className="app-text-secondary">•</span> : null}
         {isUpcoming ? (
-          <span className={targetLabel ? 'app-text-primary' : 'app-text-secondary'}>
+          <span className={`${targetLabel ? 'app-text-primary' : 'app-text-secondary'} break-words`}>
             {targetLabel ? `Цель: ${targetLabel}` : 'Цель не задана'}
           </span>
         ) : (
-          <span className={resultLabel ? 'app-text-primary' : 'app-text-secondary'}>
+          <span className={`${resultLabel ? 'app-text-primary' : 'app-text-secondary'} break-words`}>
             {resultLabel ? `Результат: ${resultLabel}` : 'Результат не указан'}
           </span>
         )}
@@ -394,10 +393,10 @@ export default function RaceDiscussionPage() {
       {linkedRun ? (
         <div className="mt-4 rounded-2xl border px-3 py-3">
           <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
-          <p className="app-text-secondary mt-1 text-sm">{getLinkedRunPreviewLabel(linkedRun)}</p>
+          <p className="app-text-secondary mt-1 break-words text-sm">{getLinkedRunPreviewLabel(linkedRun)}</p>
           <Link
             href={`/runs/${linkedRun.id}`}
-            className="app-button-secondary mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
+            className="app-button-secondary mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
           >
             <span>Открыть тренировку</span>
             <ArrowUpRight className="h-4 w-4" />
@@ -410,7 +409,7 @@ export default function RaceDiscussionPage() {
   const discussionComposer = (
     <form onSubmit={handleSubmit}>
       {replyTarget ? (
-        <div className="mb-2.5 flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-black/[0.02] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/5 bg-black/[0.02] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
           <p className="app-text-secondary min-w-0 text-xs font-medium">
             Ответ на <span className="app-text-primary">{replyTarget.displayName}</span>
           </p>
@@ -423,7 +422,7 @@ export default function RaceDiscussionPage() {
           </button>
         </div>
       ) : null}
-      <div className="flex items-end gap-2.5">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
         <label htmlFor="discussion-comment" className="sr-only">Сообщение</label>
         <textarea
           id="discussion-comment"
@@ -442,7 +441,7 @@ export default function RaceDiscussionPage() {
         <button
           type="submit"
           disabled={submitting || !trimmedDraft}
-          className="app-button-secondary min-h-12 shrink-0 self-end rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-button-secondary min-h-12 w-full shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {submitting ? (
             <span className="inline-flex items-center gap-1.5">

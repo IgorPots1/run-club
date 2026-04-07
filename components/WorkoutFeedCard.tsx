@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Heart, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
@@ -48,22 +48,6 @@ type WorkoutFeedCardProps = {
   onCommentClick?: (runId: string) => void
   profileHref?: string | null
   photos?: WorkoutMediaPhoto[]
-}
-
-function StravaIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className="block h-[18px] w-[18px] shrink-0 text-[#FC4C02]"
-    >
-      <path d="M15.39 1.5 9.45 13.17h3.51l2.43-4.79 2.43 4.79h3.5L15.39 1.5Z" />
-      <path d="M10 14.95 7.57 19.73h3.51L10 17.62l-1.08 2.11h3.51L10 14.95Z" />
-    </svg>
-  )
 }
 
 function formatDistanceLabel(distanceKm: number) {
@@ -115,7 +99,7 @@ function FeedActionButton({
 
   return (
     <div
-      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
+      className={`inline-flex min-h-11 w-full items-center justify-between gap-1.5 rounded-full px-1 py-1 text-sm leading-none sm:w-auto sm:justify-start ${
         active ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
       }`}
     >
@@ -130,7 +114,7 @@ function FeedActionButton({
         }}
         disabled={disabled}
         aria-disabled={isActionBlocked ? true : undefined}
-        className={`inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
           actionDisabled && !disabled ? 'cursor-not-allowed' : ''
         }`}
       >
@@ -142,7 +126,7 @@ function FeedActionButton({
         type="button"
         onClick={onCountClick ?? onClick}
         disabled={disabled}
-        className="inline-flex min-h-9 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-9 min-w-0 flex-1 items-center justify-end rounded-full px-2 text-right text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none sm:justify-center sm:text-center"
       >
         {count}
       </button>
@@ -179,7 +163,6 @@ function WorkoutFeedCard({
 }: WorkoutFeedCardProps) {
   const router = useRouter()
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
-  const [showStravaHint, setShowStravaHint] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [activeMediaIndex, setActiveMediaIndex] = useState(0)
@@ -239,38 +222,6 @@ function WorkoutFeedCard({
   const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
   const movingTimeLabel = movingTime?.trim() || '—'
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
-  const stravaBadge = externalSource === 'strava' ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
-      {showStravaHint ? (
-        <span className="app-text-muted min-w-0 break-words text-[11px] font-medium">
-          Импортировано из Strava
-        </span>
-      ) : null}
-      <button
-        type="button"
-        aria-label="Показать источник Strava"
-        onClick={() => setShowStravaHint((current) => !current)}
-        className="app-text-muted inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full border border-black/5 bg-black/[0.02] px-2.5 py-1.5 text-[11px] font-medium dark:border-white/10 dark:bg-white/[0.04]"
-      >
-        <StravaIcon />
-        <span>Strava</span>
-      </button>
-    </div>
-  ) : null
-
-  useEffect(() => {
-    if (!showStravaHint) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setShowStravaHint(false)
-    }, 2200)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [showStravaHint])
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
     const container = event.currentTarget
@@ -319,15 +270,17 @@ function WorkoutFeedCard({
         router.push(`/runs/${runId}`)
       }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <ParticipantIdentity
-          avatarUrl={avatarUrl}
-          displayName={displayName}
-          level={level}
-          href={profileHref}
-          size="sm"
-        />
-        <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <ParticipantIdentity
+            avatarUrl={avatarUrl}
+            displayName={displayName}
+            level={level}
+            href={profileHref}
+            size="sm"
+          />
+        </div>
+        <p className="app-text-secondary min-w-0 text-left text-xs sm:w-auto sm:text-right sm:text-sm">
           {formatRunTimestampLabel(createdAt, externalSource)}
         </p>
       </div>
@@ -337,7 +290,7 @@ function WorkoutFeedCard({
           {displayTitle}
         </p>
         {locationLabel ? (
-          <p className="app-text-secondary mt-1 text-sm">
+          <p className="app-text-secondary mt-1 break-words text-sm">
             {locationLabel}
           </p>
         ) : null}
@@ -510,7 +463,7 @@ function WorkoutFeedCard({
       ) : null}
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
           <FeedActionButton
             count={likesCount}
             active={isHeartActive}
@@ -530,8 +483,7 @@ function WorkoutFeedCard({
           />
         </div>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          <p className="app-text-secondary min-w-0 text-xs font-medium">⚡ +{xp} XP</p>
-          {stravaBadge}
+          <p className="app-text-secondary min-w-0 break-words text-xs font-medium">⚡ +{xp} XP</p>
         </div>
       </div>
 

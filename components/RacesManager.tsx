@@ -23,7 +23,6 @@ import {
   parseClockInput,
   updateRaceEvent,
   type RaceEvent,
-  type RaceEventLinkedRunSummary,
 } from '@/lib/race-events'
 
 type RacesManagerProps = {
@@ -226,43 +225,43 @@ function RaceEventCard({
       }}
       className="app-card cursor-pointer rounded-2xl border p-4 shadow-sm"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="app-text-primary text-base font-semibold">{raceEvent.name}</p>
+            <p className="app-text-primary break-words text-base font-semibold">{raceEvent.name}</p>
             {isPersonalRecord ? (
-              <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
+              <span className="inline-flex shrink-0 items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
                 PR
               </span>
             ) : null}
           </div>
-          <p className="app-text-secondary mt-1 text-sm">
+          <p className="app-text-secondary mt-1 break-words text-sm">
             {formatRaceDateLabel(raceEvent.race_date)}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             {isUpcoming ? (
               <>
-                <span className="app-text-secondary">{statusLabel}</span>
+                <span className="app-text-secondary break-words">{statusLabel}</span>
                 {displayDistance ? <span className="app-text-secondary">•</span> : null}
                 {displayDistance ? (
-                  <span className="app-text-primary">
+                  <span className="app-text-primary break-words">
                     {displayDistance.label}
                     {displayDistance.source === 'linked_run' ? ' • из тренировки' : ''}
                   </span>
                 ) : null}
                 {(displayDistance || targetTimeLabel) ? <span className="app-text-secondary">•</span> : null}
-                <span className={targetTimeLabel ? 'app-text-primary font-medium' : 'app-text-secondary'}>
+                <span className={`${targetTimeLabel ? 'app-text-primary font-medium' : 'app-text-secondary'} break-words`}>
                   {targetTimeLabel ? `Цель: ${targetTimeLabel}` : 'Цель не задана'}
                 </span>
               </>
             ) : (
               <>
-                <span className="app-text-primary font-semibold">
+                <span className="app-text-primary break-words font-semibold">
                   {displayTimeLabel ? `Результат: ${displayTimeLabel}` : 'Результат не указан'}
                 </span>
                 {displayDistance ? <span className="app-text-secondary">•</span> : null}
                 {displayDistance ? (
-                  <span className="app-text-secondary">
+                  <span className="app-text-secondary break-words">
                     {displayDistance.label}
                     {displayDistance.source === 'linked_run' ? ' • из тренировки' : ''}
                   </span>
@@ -272,12 +271,12 @@ function RaceEventCard({
           </div>
           {raceEvent.linked_run_id && linkedRunLabel ? (
             <div className="mt-2">
-              <p className="app-text-secondary text-xs">
+              <p className="app-text-secondary break-words text-xs">
                 {linkedRunLabel}
               </p>
               <Link
                 href={`/runs/${raceEvent.linked_run_id}`}
-                className="app-text-secondary mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg px-1 py-2 text-sm font-medium hover:text-[var(--text-primary)]"
+                className="app-text-secondary mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-1 py-2 text-sm font-medium hover:text-[var(--text-primary)] sm:w-auto sm:justify-start"
               >
                 <span>Открыть тренировку</span>
                 <ArrowUpRight className="h-4 w-4" />
@@ -308,7 +307,7 @@ function RaceEventCard({
                 type="button"
                 onClick={() => void onConfirmSuggestedLink(raceEvent)}
                 disabled={isLinking}
-                className="app-button-secondary mt-3 inline-flex min-h-10 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                className="app-button-secondary mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {isLinking ? 'Привязываем...' : 'Привязать тренировку'}
               </button>
@@ -725,7 +724,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                 {totalRaceEventsCount} всего • {upcomingRaceEvents.length} предстоящих • {pastRaceEvents.length} прошедших
               </p>
             </div>
-            <p className="app-text-secondary shrink-0 text-sm">{totalRaceEventsCount} стартов</p>
+            <p className="app-text-secondary min-w-0 break-words text-sm">{totalRaceEventsCount} стартов</p>
           </div>
         </div>
 

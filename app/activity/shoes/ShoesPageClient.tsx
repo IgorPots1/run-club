@@ -421,7 +421,7 @@ function ShoeFormSheet({
       />
       <section className="app-card relative flex max-h-[min(88svh,48rem)] w-full flex-col overflow-hidden rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-2xl md:rounded-3xl md:pb-4">
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="app-text-primary text-lg font-semibold">
               {editing ? 'Редактировать пару' : 'Добавить пару'}
@@ -488,7 +488,7 @@ function ShoeFormSheet({
 
                 {normalizedCatalogSearchQuery ? (
                   <div className="overflow-hidden rounded-2xl border">
-                    <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                       <p className="app-text-primary text-sm font-medium">Результаты</p>
                       <p className="app-text-secondary text-xs">
                         {isCatalogSearchPending ? 'Ищем...' : `${filteredCatalogSearchResults.length} вариантов`}
@@ -563,8 +563,8 @@ function ShoeFormSheet({
             {isBrowseStep ? (
               <div className="space-y-4">
                 <div className="rounded-2xl border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <p className="app-text-primary text-sm font-medium">Выбор вручную</p>
                       <p className="app-text-secondary mt-1 text-xs">
                         Выбери бренд, модель и версию по шагам.
@@ -627,7 +627,7 @@ function ShoeFormSheet({
             {!isSelectionStep && !isManualFlow ? (
               <>
                 <div className="rounded-2xl border p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="app-text-secondary text-xs font-medium uppercase tracking-wide">Выбрана пара</p>
                       <p className="app-text-primary mt-1 break-words text-base font-semibold">{selectedShoeName}</p>
@@ -641,7 +641,7 @@ function ShoeFormSheet({
                       type="button"
                       onClick={resetToSearchSelection}
                       disabled={submitting}
-                      className="app-text-secondary shrink-0 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                      className="app-text-secondary text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 sm:text-right"
                     >
                       Изменить
                     </button>
@@ -669,8 +669,8 @@ function ShoeFormSheet({
             {isManualFlow ? (
               <>
                 <div className="rounded-2xl border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <p className="app-text-primary text-sm font-medium">Добавить вручную</p>
                       <p className="app-text-secondary mt-1 text-xs">
                         Укажи название пары и текущий пробег.
@@ -728,9 +728,9 @@ function ShoeFormSheet({
                 <button
                   type="button"
                   onClick={() => setShowAdditional((currentValue) => !currentValue)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <p className="app-text-primary text-sm font-medium">Дополнительно</p>
                     <p className="app-text-secondary mt-1 text-xs">
                       Никнейм, ресурс пары и статус активности
@@ -777,8 +777,8 @@ function ShoeFormSheet({
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3">
-                      <div>
+                    <div className="flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
                         <p className="app-text-primary text-sm font-medium">Активная пара</p>
                         <p className="app-text-secondary mt-1 text-xs">Показываем статус сразу на карточке.</p>
                       </div>
@@ -848,11 +848,11 @@ function ShoeGarageCard({
     <div
       className={`${getShoeCardClassName(wearUi.status)} rounded-2xl p-4 ${archived ? 'opacity-90' : ''}`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <ShoeImage label={shoe.displayName} imageUrl={shoe.model?.imageUrl ?? null} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="min-w-0 flex-1">
               <p className="app-text-primary break-words text-base font-semibold">
                 {shoe.displayName}
               </p>
@@ -864,7 +864,7 @@ function ShoeGarageCard({
               ) : null}
             </div>
             <span
-              className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
+              className={`inline-flex max-w-full break-words rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
             >
               {wearUi.label}
             </span>
@@ -1222,7 +1222,7 @@ export default function ShoesPageClient({
                 {activeShoes.length} из {shoes?.length ?? 0} {getPairsLabel(shoes?.length ?? 0)}
               </p>
             </div>
-            <p className="app-text-secondary shrink-0 text-sm">{activeShoes.length} пар</p>
+            <p className="app-text-secondary min-w-0 break-words text-sm">{activeShoes.length} пар</p>
           </div>
         </div>
 
@@ -1267,10 +1267,10 @@ export default function ShoesPageClient({
                 <button
                   type="button"
                   onClick={() => setShowArchived((currentValue) => !currentValue)}
-                  className="app-card flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left shadow-sm"
+                  className="app-card flex w-full flex-col gap-2 rounded-2xl border px-4 py-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   <span className="app-text-primary text-base font-semibold">Архив</span>
-                  <span className="app-text-secondary text-sm">
+                  <span className="app-text-secondary break-words text-sm">
                     {archivedShoes.length} пар {showArchived ? '• скрыть' : '• показать'}
                   </span>
                 </button>

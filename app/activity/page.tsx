@@ -459,13 +459,13 @@ export default function ActivityPage() {
           </div>
         </section>
 
-        <div className="mb-5 flex gap-2 overflow-x-auto pb-1 md:mb-8 md:flex-wrap md:gap-2.5 md:overflow-visible">
+        <div className="mb-5 flex flex-wrap gap-2 md:mb-8 md:gap-2.5">
           {PERIOD_OPTIONS.map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => setPeriod(option.id)}
-              className={`min-h-11 shrink-0 rounded-full border px-4 py-2 text-sm font-medium md:min-w-30 ${
+              className={`min-h-11 rounded-full border px-4 py-2 text-sm font-medium ${
                 period === option.id ? 'app-button-primary' : 'app-button-secondary'
               }`}
             >
@@ -563,8 +563,8 @@ export default function ActivityPage() {
                       onClick={() => router.push(achievement.href!)}
                       className={`${getAchievementCardClass(achievement)} block w-full cursor-pointer text-left transition-transform transition-shadow hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
                           <div
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAchievementIconWrapperClass(achievement)}`}
                             aria-hidden="true"
@@ -582,7 +582,7 @@ export default function ActivityPage() {
                         </div>
                         {achievement.rank ? (
                           <p
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
+                            className={`max-w-full break-words rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
                           >
                             #{achievement.rank}
                           </p>
@@ -594,8 +594,8 @@ export default function ActivityPage() {
                       key={achievement.id}
                       className={getAchievementCardClass(achievement)}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
                           <div
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAchievementIconWrapperClass(achievement)}`}
                             aria-hidden="true"
@@ -613,7 +613,7 @@ export default function ActivityPage() {
                         </div>
                         {achievement.source_type === 'weekly_race' && achievement.rank ? (
                           <p
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
+                            className={`max-w-full break-words rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
                           >
                             #{achievement.rank}
                           </p>
@@ -647,15 +647,22 @@ export default function ActivityPage() {
                         <p className="app-text-primary break-words text-base font-semibold">
                           {getRunDisplayName(run)}
                         </p>
-                        <p className="compact-run-card-primary compact-run-card-title app-text-primary break-words text-base font-semibold">
-                          {formatDistanceKmLabel(run)} км • {formatRunDurationLabel(run)}
-                          {formatRunPace(run) ? ` • ${formatRunPace(run)}` : ''}
-                        </p>
+                        <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold">
+                          <span className="break-words">{formatDistanceKmLabel(run)} км</span>
+                          <span className="app-text-secondary">•</span>
+                          <span className="break-words">{formatRunDurationLabel(run)}</span>
+                          {formatRunPace(run) ? (
+                            <>
+                              <span className="app-text-secondary">•</span>
+                              <span className="break-words">{formatRunPace(run)}</span>
+                            </>
+                          ) : null}
+                        </div>
                         <p className="compact-run-card-secondary compact-run-card-meta app-text-muted mt-1 text-sm">
                           {formatRunTimestampLabel(run.created_at, run.external_source)}
                         </p>
                         <div className="compact-run-card-like">
-                          <p className="app-text-secondary text-sm">⚡ +{Math.max(0, Math.round(Number(run.xp ?? 0)))} XP</p>
+                          <p className="app-text-secondary break-words text-sm">⚡ +{Math.max(0, Math.round(Number(run.xp ?? 0)))} XP</p>
                         </div>
                       </Link>
                       {run.user_id === user.id ? (

@@ -47,11 +47,6 @@ function isRunFeedItem(item: FeedItem): item is RunFeedItem {
   return item.kind === 'run'
 }
 
-function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
-  const existingIds = new Set(existing.map((item) => item.id))
-  return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
-}
-
 function mergeUniqueMixedFeedItems(existing: FeedItem[], incoming: FeedItem[]) {
   const existingIds = new Set(existing.map((item) => item.id))
   return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
@@ -132,35 +127,37 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
   return (
     <Link href={`/races/${item.raceEventId}`} className="block">
       <article className="app-card relative overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10">
-        <div className="flex items-start justify-between gap-3">
-          <ParticipantIdentity
-            avatarUrl={item.avatar_url}
-            displayName={item.displayName}
-            level={getLevelFromXP(item.totalXp).level}
-            size="sm"
-          />
-          <div className="flex min-w-0 flex-col items-end gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <ParticipantIdentity
+              avatarUrl={item.avatar_url}
+              displayName={item.displayName}
+              level={getLevelFromXP(item.totalXp).level}
+              size="sm"
+            />
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
             {statusLabel ? (
-              <span className="app-text-secondary inline-flex rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
+              <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
                 {statusLabel}
               </span>
             ) : null}
-            <p className="app-text-secondary max-w-[6.5rem] shrink-0 text-right text-xs sm:max-w-none sm:text-sm">
+            <p className="app-text-secondary min-w-0 text-left text-xs sm:text-right sm:text-sm">
               {formatRunTimestampLabel(item.created_at, null)}
             </p>
           </div>
         </div>
 
-        <div className="mt-4 text-center">
-          <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-4 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
             {item.isPersonalRecord ? (
-              <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
+              <span className="inline-flex shrink-0 items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
                 PR
               </span>
             ) : null}
           </div>
-          <p className="app-text-secondary mt-1 text-sm">{formatRaceDateLabel(item.raceDate)}</p>
+          <p className="app-text-secondary mt-1 break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
         </div>
 
         <div className="mt-5 rounded-[24px] bg-black/[0.03] px-4 py-5 text-center dark:bg-white/[0.04]">
@@ -178,7 +175,7 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
             <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
             <p className="app-text-secondary mt-1 break-words text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
             {linkedRunPace ? (
-              <p className="app-text-secondary mt-1 text-xs">{linkedRunPace}</p>
+              <p className="app-text-secondary mt-1 break-words text-xs">{linkedRunPace}</p>
             ) : null}
           </div>
         ) : null}
@@ -330,7 +327,7 @@ export default function InfiniteWorkoutFeed({
     }
 
     syncRunCommentCount(runId)
-  }, [syncRunCommentCount, updateRunItem])
+  }, [syncRunCommentCount])
 
   const loadFirstPage = useCallback(async () => {
     if (
