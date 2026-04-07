@@ -1,17 +1,22 @@
 'use client'
 
-import { ArrowUpRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ArrowUpRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
+import RaceEventFormSheet from '@/components/RaceEventFormSheet'
 import { loadActivityRuns, type ActivityRunRow } from '@/lib/activity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import {
   createRaceEvent,
   deleteRaceEvent,
   formatClock,
+  formatRaceDateLabel,
+  getRaceEventDisplayDistanceLabel,
+  getRaceEventDisplayTimeSeconds,
+  getRaceEventLinkedRun,
   getPersonalRecordRaceEventIds,
   isRaceEventUpcoming,
   loadRaceEvents,
@@ -45,19 +50,6 @@ type RaceEventCardProps = {
 const DEFAULT_WORKOUT_NAME = 'Бег'
 const DEFAULT_RACE_EVENT_NAME = 'Новый старт'
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
-function formatRaceDateLabel(dateValue: string) {
-  const parsedDate = new Date(`${dateValue}T12:00:00`)
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return dateValue
-  }
-
-  return parsedDate.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
 
 function formatPreciseDistanceKm(value: number) {
   const fixed = value.toFixed(2)
@@ -85,16 +77,6 @@ function formatDistanceKmLabel(run: Pick<ActivityRunRow, 'distance_km' | 'extern
   }
 
   return formatDistanceKm(distanceValue)
-}
-
-function getRaceEventLinkedRun(raceEvent: Pick<RaceEvent, 'linked_run'>) {
-  const linkedRun = raceEvent.linked_run
-
-  if (Array.isArray(linkedRun)) {
-    return (linkedRun[0] ?? null) as RaceEventLinkedRunSummary | null
-  }
-
-  return (linkedRun ?? null) as RaceEventLinkedRunSummary | null
 }
 
 function getRaceEventLinkedRunLabel(raceEvent: RaceEvent) {
@@ -197,48 +179,6 @@ function parseDistanceKmInput(rawValue: string) {
   }
 }
 
-function getRaceEventDisplayTimeSeconds(raceEvent: RaceEvent) {
-  const linkedRun = getRaceEventLinkedRun(raceEvent)
-
-  if (Number.isFinite(linkedRun?.moving_time_seconds) && (linkedRun?.moving_time_seconds ?? 0) >= 0) {
-    return {
-      seconds: Math.round(linkedRun?.moving_time_seconds ?? 0),
-      source: 'linked_run' as const,
-    }
-  }
-
-  if (Number.isFinite(raceEvent.result_time_seconds) && (raceEvent.result_time_seconds ?? 0) >= 0) {
-    return {
-      seconds: Math.round(raceEvent.result_time_seconds ?? 0),
-      source: 'manual' as const,
-    }
-  }
-
-  return null
-}
-
-function getRaceEventDisplayDistanceLabel(raceEvent: RaceEvent) {
-  const linkedRun = getRaceEventLinkedRun(raceEvent)
-
-  if (Number.isFinite(linkedRun?.distance_km) && (linkedRun?.distance_km ?? 0) > 0) {
-    return {
-      label: `${Number(linkedRun?.distance_km ?? 0).toFixed(2).replace(/\.?0+$/, '')} km`,
-      source: 'linked_run' as const,
-    }
-  }
-
-  const manualDistanceLabel = formatManualDistanceKm(raceEvent.distance_meters)
-
-  if (manualDistanceLabel) {
-    return {
-      label: manualDistanceLabel,
-      source: 'manual' as const,
-    }
-  }
-
-  return null
-}
-
 function RaceEventCard({
   raceEvent,
   isPersonalRecord,
@@ -261,6 +201,7 @@ function RaceEventCard({
   const displayTimeLabel = formatClock(displayTime?.seconds)
   const targetTimeLabel = formatClock(raceEvent.target_time_seconds)
   const isUpcoming = isRaceEventUpcoming(raceEvent)
+  const statusLabel = raceEvent.linked_run_id ? 'Тренировка привязана' : 'Без привязанной тренировки'
 
   return (
     <div
@@ -283,12 +224,12 @@ function RaceEventCard({
         event.preventDefault()
         onOpen(raceEvent)
       }}
-      className="cursor-pointer rounded-2xl border px-4 py-3"
+      className="app-card cursor-pointer rounded-2xl border p-4 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="app-text-primary text-sm font-semibold">{raceEvent.name}</p>
+            <p className="app-text-primary text-base font-semibold">{raceEvent.name}</p>
             {isPersonalRecord ? (
               <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
                 PR
@@ -298,46 +239,50 @@ function RaceEventCard({
           <p className="app-text-secondary mt-1 text-sm">
             {formatRaceDateLabel(raceEvent.race_date)}
           </p>
-          <p className="app-text-secondary mt-2 text-sm">
-            {raceEvent.linked_run_id
-              ? 'Тренировка прикреплена'
-              : 'Пока нет привязанной тренировки'}
-          </p>
-          {displayDistance ? (
-            <p className="app-text-primary mt-2 text-sm font-medium">
-              Дистанция: {displayDistance.label}
-              {displayDistance.source === 'linked_run' ? ' • из тренировки' : ''}
-            </p>
-          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {isUpcoming ? (
+              <>
+                <span className="app-text-secondary">{statusLabel}</span>
+                {displayDistance ? <span className="app-text-secondary">•</span> : null}
+                {displayDistance ? (
+                  <span className="app-text-primary">
+                    {displayDistance.label}
+                    {displayDistance.source === 'linked_run' ? ' • из тренировки' : ''}
+                  </span>
+                ) : null}
+                {(displayDistance || targetTimeLabel) ? <span className="app-text-secondary">•</span> : null}
+                <span className={targetTimeLabel ? 'app-text-primary font-medium' : 'app-text-secondary'}>
+                  {targetTimeLabel ? `Цель: ${targetTimeLabel}` : 'Цель не задана'}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="app-text-primary font-semibold">
+                  {displayTimeLabel ? `Результат: ${displayTimeLabel}` : 'Результат не указан'}
+                </span>
+                {displayDistance ? <span className="app-text-secondary">•</span> : null}
+                {displayDistance ? (
+                  <span className="app-text-secondary">
+                    {displayDistance.label}
+                    {displayDistance.source === 'linked_run' ? ' • из тренировки' : ''}
+                  </span>
+                ) : null}
+              </>
+            )}
+          </div>
           {raceEvent.linked_run_id && linkedRunLabel ? (
-            <div className="mt-1">
+            <div className="mt-2">
               <p className="app-text-secondary text-xs">
                 {linkedRunLabel}
               </p>
-              {displayTimeLabel ? (
-                <p className="app-text-primary mt-2 text-sm font-medium">
-                  Результат: {displayTimeLabel}
-                  {displayTime?.source === 'linked_run' ? ' • из тренировки' : ''}
-                </p>
-              ) : null}
               <Link
                 href={`/runs/${raceEvent.linked_run_id}`}
-                className="app-button-secondary mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
+                className="app-text-secondary mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg px-1 py-2 text-sm font-medium hover:text-[var(--text-primary)]"
               >
                 <span>Открыть тренировку</span>
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </div>
-          ) : null}
-          {!raceEvent.linked_run_id && displayTimeLabel ? (
-            <p className="app-text-primary mt-2 text-sm font-medium">
-              Результат: {displayTimeLabel}
-            </p>
-          ) : null}
-          {isUpcoming && targetTimeLabel ? (
-            <p className="app-text-primary mt-2 text-sm font-medium">
-              Цель: {targetTimeLabel}
-            </p>
           ) : null}
           {!raceEvent.linked_run_id && candidateRuns.length > 0 ? (
             <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
@@ -363,7 +308,7 @@ function RaceEventCard({
                 type="button"
                 onClick={() => void onConfirmSuggestedLink(raceEvent)}
                 disabled={isLinking}
-                className="app-button-secondary mt-3 inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                className="app-button-secondary mt-3 inline-flex min-h-10 items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isLinking ? 'Привязываем...' : 'Привязать тренировку'}
               </button>
@@ -422,6 +367,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   const [submittingRaceEvent, setSubmittingRaceEvent] = useState(false)
   const [deletingRaceEventId, setDeletingRaceEventId] = useState<string | null>(null)
   const [editingRaceEventId, setEditingRaceEventId] = useState<string | null>(null)
+  const [isFormOpen, setIsFormOpen] = useState(false)
   const [openRaceEventMenuId, setOpenRaceEventMenuId] = useState<string | null>(null)
   const [raceEventName, setRaceEventName] = useState('')
   const [raceEventDate, setRaceEventDate] = useState('')
@@ -487,6 +433,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     [raceEvents]
   )
   const deletingActiveRaceEvent = pendingDeleteRaceEvent ? deletingRaceEventId === pendingDeleteRaceEvent.id : false
+  const totalRaceEventsCount = (raceEvents ?? []).length
 
   useEffect(() => {
     if (raceEventsLoadError) {
@@ -575,6 +522,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
 
   const resetRaceEventForm = useCallback(() => {
     setEditingRaceEventId(null)
+    setIsFormOpen(false)
     setOpenRaceEventMenuId(null)
     setRaceEventName('')
     setRaceEventDate('')
@@ -658,6 +606,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
 
   const handleStartEditingRaceEvent = useCallback((raceEvent: RaceEvent) => {
     setOpenRaceEventMenuId(null)
+    setIsFormOpen(true)
     setEditingRaceEventId(raceEvent.id)
     setRaceEventName(raceEvent.name)
     setRaceEventDate(raceEvent.race_date)
@@ -767,267 +716,169 @@ export default function RacesManager({ userId }: RacesManagerProps) {
 
   return (
     <>
-      <section className="app-card rounded-2xl border p-4 shadow-sm">
-        <div className="flex flex-col gap-1">
-          <h2 className="app-text-primary text-lg font-semibold">
-            {editingRaceEventId ? 'Редактировать старт' : 'Новый старт'}
-          </h2>
-          <p className="app-text-secondary text-sm">
-            {editingRaceEventId
-              ? 'Измените название, дату старта и привязанную тренировку.'
-              : 'Создавайте отдельные старты и при необходимости прикрепляйте к ним тренировку.'}
-          </p>
+      <section className="space-y-5">
+        <div className="app-surface-muted rounded-2xl border px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="app-text-primary text-sm font-medium">Мои старты</p>
+              <p className="app-text-secondary mt-1 text-xs">
+                {totalRaceEventsCount} всего • {upcomingRaceEvents.length} предстоящих • {pastRaceEvents.length} прошедших
+              </p>
+            </div>
+            <p className="app-text-secondary shrink-0 text-sm">{totalRaceEventsCount} стартов</p>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmitRaceEvent} className="mt-4 space-y-3">
-          <div>
-            <label htmlFor="race-event-name" className="app-text-secondary mb-1 block text-sm">
-              Название старта
-            </label>
-            <input
-              id="race-event-name"
-              type="text"
-              value={raceEventName}
-              onChange={(event) => setRaceEventName(event.target.value)}
-              placeholder="Например: Московский марафон"
-              disabled={submittingRaceEvent}
-              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-            />
-          </div>
-          <div>
-            <label htmlFor="race-event-date" className="app-text-secondary mb-1 block text-sm">
-              Дата старта
-            </label>
-            <input
-              id="race-event-date"
-              type="date"
-              value={raceEventDate}
-              onChange={(event) => setRaceEventDate(event.target.value)}
-              disabled={submittingRaceEvent}
-              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-            />
-          </div>
-          <div>
-            <label htmlFor="race-event-distance" className="app-text-secondary mb-1 block text-sm">
-              Дистанция
-            </label>
-            <input
-              id="race-event-distance"
-              type="text"
-              inputMode="decimal"
-              value={distanceInput}
-              onChange={(event) => setDistanceInput(event.target.value)}
-              placeholder="Например: 5, 10, 21.1, 42.2"
-              disabled={submittingRaceEvent}
-              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-            />
-            <p className="app-text-secondary mt-2 text-xs">
-              Введите дистанцию в километрах. Если привязана тренировка, на карточке будет показана дистанция из нее.
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="app-text-primary text-lg font-semibold">Старты</h2>
+            <p className="app-text-secondary mt-1 text-sm">
+              Календарь будущих стартов, результаты и связь с тренировками.
             </p>
           </div>
-          <div>
-            <label htmlFor="race-event-result-time" className="app-text-secondary mb-1 block text-sm">
-              Результат
-            </label>
-            <input
-              id="race-event-result-time"
-              type="text"
-              inputMode="numeric"
-              value={resultTimeInput}
-              onChange={(event) => setResultTimeInput(event.target.value)}
-              placeholder="Например: 03:15:42"
-              disabled={submittingRaceEvent}
-              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-            />
-            <p className="app-text-secondary mt-2 text-xs">
-              Формат: чч:мм:сс. Если привязана тренировка, на карточке будет показано время из нее.
-            </p>
-          </div>
-          <div>
-            <label htmlFor="race-event-target-time" className="app-text-secondary mb-1 block text-sm">
-              Цель на старт
-            </label>
-            <input
-              id="race-event-target-time"
-              type="text"
-              inputMode="numeric"
-              value={targetTimeInput}
-              onChange={(event) => setTargetTimeInput(event.target.value)}
-              placeholder="Например: 01:45:00"
-              disabled={submittingRaceEvent}
-              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-            />
-            <p className="app-text-secondary mt-2 text-xs">
-              Необязательно. Для будущих стартов покажем это время как цель.
-            </p>
-          </div>
-          <div>
-            <label htmlFor="race-event-linked-run" className="app-text-secondary mb-1 block text-sm">
-              Привязать тренировку
-            </label>
-            <select
-              id="race-event-linked-run"
-              value={selectedLinkedRunId}
-              onChange={(event) => setSelectedLinkedRunId(event.target.value)}
-              disabled={submittingRaceEvent || !runs}
-              className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-            >
-              <option value="">Без привязанной тренировки</option>
-              {workoutOptions.map((run) => (
-                <option key={run.id} value={run.id}>
-                  {run.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {!selectedLinkedRunId && formCandidateRuns.length > 0 ? (
-            <div className="rounded-2xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
-              <p className="app-text-primary text-sm font-medium">Похоже, это был забег — привязать?</p>
-              <p className="app-text-secondary mt-1 text-sm">
-                {formCandidateRuns.length === 1
-                  ? getCandidateRunLabel(formCandidateRuns[0])
-                  : 'Найдено несколько тренировок рядом с датой старта.'}
-              </p>
-              {formCandidateRuns.length > 1 ? (
-                <select
-                  value={formSuggestedRunId}
-                  onChange={(event) => setFormSuggestedRunId(event.target.value)}
-                  className="app-input mt-3 min-h-11 w-full rounded-lg border px-3 py-2"
-                >
-                  {formCandidateRuns.map((run) => (
-                    <option key={run.id} value={run.id}>
-                      {getCandidateRunLabel(run)}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => setSelectedLinkedRunId(formSuggestedRunId || formCandidateRuns[0]?.id || '')}
-                  className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
-                >
-                  Привязать выбранную тренировку
-                </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetRaceEventForm()
+              setIsFormOpen(true)
+            }}
+            className="app-button-primary inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium sm:w-auto sm:shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+            Добавить старт
+          </button>
+        </div>
+
+        {raceEventsError ? <p className="text-sm text-red-600">{raceEventsError}</p> : null}
+
+        <section ref={menuContainerRef} className="rounded-2xl">
+          {isRaceEventsLoading && !raceEvents ? (
+            <div className="app-card rounded-2xl border px-4 py-5 shadow-sm">
+              <p className="app-text-secondary text-sm">Загружаем старты...</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="app-text-primary text-base font-semibold">Предстоящие</h3>
+                  <p className="app-text-secondary text-sm">{upcomingRaceEvents.length}</p>
+                </div>
+                {upcomingRaceEvents.length === 0 ? (
+                  <div className="app-card rounded-2xl border border-dashed p-4 shadow-sm">
+                    <p className="app-text-secondary text-sm">Нет предстоящих стартов.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {upcomingRaceEvents.map((raceEvent) => (
+                      <RaceEventCard
+                        key={raceEvent.id}
+                        raceEvent={raceEvent}
+                        isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
+                        candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
+                        selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
+                        isMenuOpen={openRaceEventMenuId === raceEvent.id}
+                        isLinking={linkingRaceEventId === raceEvent.id}
+                        isUnlinking={unlinkingRaceEventId === raceEvent.id}
+                        onOpen={(nextRaceEvent) => {
+                          router.push(`/races/${nextRaceEvent.id}`)
+                        }}
+                        onMenuToggle={(raceEventId) => {
+                          setOpenRaceEventMenuId((currentValue) => currentValue === raceEventId ? null : raceEventId)
+                        }}
+                        onEdit={handleStartEditingRaceEvent}
+                        onDelete={(nextRaceEvent) => {
+                          setOpenRaceEventMenuId(null)
+                          setPendingDeleteRaceEvent(nextRaceEvent)
+                        }}
+                        onConfirmSuggestedLink={handleConfirmSuggestedLink}
+                        onSelectSuggestedRun={(raceEventId, runId) => {
+                          setSuggestedRunIdsByRaceEvent((currentValue) => ({
+                            ...currentValue,
+                            [raceEventId]: runId,
+                          }))
+                        }}
+                        onUnlink={handleUnlinkRaceEvent}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="app-text-primary text-base font-semibold">Прошедшие</h3>
+                  <p className="app-text-secondary text-sm">{pastRaceEvents.length}</p>
+                </div>
+                {pastRaceEvents.length === 0 ? (
+                  <div className="app-card rounded-2xl border border-dashed p-4 shadow-sm">
+                    <p className="app-text-secondary text-sm">Нет прошедших стартов.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pastRaceEvents.map((raceEvent) => (
+                      <RaceEventCard
+                        key={raceEvent.id}
+                        raceEvent={raceEvent}
+                        isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
+                        candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
+                        selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
+                        isMenuOpen={openRaceEventMenuId === raceEvent.id}
+                        isLinking={linkingRaceEventId === raceEvent.id}
+                        isUnlinking={unlinkingRaceEventId === raceEvent.id}
+                        onOpen={(nextRaceEvent) => {
+                          router.push(`/races/${nextRaceEvent.id}`)
+                        }}
+                        onMenuToggle={(raceEventId) => {
+                          setOpenRaceEventMenuId((currentValue) => currentValue === raceEventId ? null : raceEventId)
+                        }}
+                        onEdit={handleStartEditingRaceEvent}
+                        onDelete={(nextRaceEvent) => {
+                          setOpenRaceEventMenuId(null)
+                          setPendingDeleteRaceEvent(nextRaceEvent)
+                        }}
+                        onConfirmSuggestedLink={handleConfirmSuggestedLink}
+                        onSelectSuggestedRun={(raceEventId, runId) => {
+                          setSuggestedRunIdsByRaceEvent((currentValue) => ({
+                            ...currentValue,
+                            [raceEventId]: runId,
+                          }))
+                        }}
+                        onUnlink={handleUnlinkRaceEvent}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          ) : null}
-          {raceEventsError ? <p className="text-sm text-red-600">{raceEventsError}</p> : null}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="submit"
-              disabled={submittingRaceEvent}
-              className="app-button-primary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submittingRaceEvent
-                ? (editingRaceEventId ? 'Сохраняем старт...' : 'Создаем старт...')
-                : (editingRaceEventId ? 'Сохранить старт' : 'Добавить старт')}
-            </button>
-            {editingRaceEventId ? (
-              <button
-                type="button"
-                onClick={resetRaceEventForm}
-                disabled={submittingRaceEvent}
-                className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Отмена
-              </button>
-            ) : null}
-          </div>
-        </form>
+          )}
+        </section>
       </section>
 
-      <section ref={menuContainerRef} className="mt-5 rounded-2xl">
-        {isRaceEventsLoading && !raceEvents ? (
-          <div className="app-card rounded-2xl border px-4 py-5 shadow-sm">
-            <p className="app-text-secondary text-sm">Загружаем старты...</p>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="app-card rounded-2xl border p-4 shadow-sm">
-              <h3 className="app-text-primary text-base font-semibold">Предстоящие</h3>
-              {upcomingRaceEvents.length === 0 ? (
-                <p className="app-text-secondary mt-2 text-sm">Нет предстоящих стартов.</p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {upcomingRaceEvents.map((raceEvent) => (
-                    <RaceEventCard
-                      key={raceEvent.id}
-                      raceEvent={raceEvent}
-                      isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
-                      candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
-                      selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
-                      isMenuOpen={openRaceEventMenuId === raceEvent.id}
-                      isLinking={linkingRaceEventId === raceEvent.id}
-                      isUnlinking={unlinkingRaceEventId === raceEvent.id}
-                      onOpen={(nextRaceEvent) => {
-                        router.push(`/races/${nextRaceEvent.id}`)
-                      }}
-                      onMenuToggle={(raceEventId) => {
-                        setOpenRaceEventMenuId((currentValue) => currentValue === raceEventId ? null : raceEventId)
-                      }}
-                      onEdit={handleStartEditingRaceEvent}
-                      onDelete={(nextRaceEvent) => {
-                        setOpenRaceEventMenuId(null)
-                        setPendingDeleteRaceEvent(nextRaceEvent)
-                      }}
-                      onConfirmSuggestedLink={handleConfirmSuggestedLink}
-                      onSelectSuggestedRun={(raceEventId, runId) => {
-                        setSuggestedRunIdsByRaceEvent((currentValue) => ({
-                          ...currentValue,
-                          [raceEventId]: runId,
-                        }))
-                      }}
-                      onUnlink={handleUnlinkRaceEvent}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="app-card rounded-2xl border p-4 shadow-sm">
-              <h3 className="app-text-primary text-base font-semibold">Прошедшие</h3>
-              {pastRaceEvents.length === 0 ? (
-                <p className="app-text-secondary mt-2 text-sm">Нет прошедших стартов.</p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {pastRaceEvents.map((raceEvent) => (
-                    <RaceEventCard
-                      key={raceEvent.id}
-                      raceEvent={raceEvent}
-                      isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
-                      candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
-                      selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
-                      isMenuOpen={openRaceEventMenuId === raceEvent.id}
-                      isLinking={linkingRaceEventId === raceEvent.id}
-                      isUnlinking={unlinkingRaceEventId === raceEvent.id}
-                      onOpen={(nextRaceEvent) => {
-                        router.push(`/races/${nextRaceEvent.id}`)
-                      }}
-                      onMenuToggle={(raceEventId) => {
-                        setOpenRaceEventMenuId((currentValue) => currentValue === raceEventId ? null : raceEventId)
-                      }}
-                      onEdit={handleStartEditingRaceEvent}
-                      onDelete={(nextRaceEvent) => {
-                        setOpenRaceEventMenuId(null)
-                        setPendingDeleteRaceEvent(nextRaceEvent)
-                      }}
-                      onConfirmSuggestedLink={handleConfirmSuggestedLink}
-                      onSelectSuggestedRun={(raceEventId, runId) => {
-                        setSuggestedRunIdsByRaceEvent((currentValue) => ({
-                          ...currentValue,
-                          [raceEventId]: runId,
-                        }))
-                      }}
-                      onUnlink={handleUnlinkRaceEvent}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
+      <RaceEventFormSheet
+        open={isFormOpen}
+        editing={Boolean(editingRaceEventId)}
+        submitting={submittingRaceEvent}
+        raceEventName={raceEventName}
+        raceEventDate={raceEventDate}
+        distanceInput={distanceInput}
+        resultTimeInput={resultTimeInput}
+        targetTimeInput={targetTimeInput}
+        selectedLinkedRunId={selectedLinkedRunId}
+        workoutOptions={workoutOptions}
+        formCandidateRuns={formCandidateRuns}
+        formSuggestedRunId={formSuggestedRunId}
+        formError={raceEventsError}
+        getCandidateRunLabel={getCandidateRunLabel}
+        onClose={resetRaceEventForm}
+        onSubmit={handleSubmitRaceEvent}
+        onRaceEventNameChange={setRaceEventName}
+        onRaceEventDateChange={setRaceEventDate}
+        onDistanceInputChange={setDistanceInput}
+        onResultTimeInputChange={setResultTimeInput}
+        onTargetTimeInputChange={setTargetTimeInput}
+        onSelectedLinkedRunIdChange={setSelectedLinkedRunId}
+        onFormSuggestedRunIdChange={setFormSuggestedRunId}
+      />
 
       <ConfirmActionSheet
         open={Boolean(pendingDeleteRaceEvent)}

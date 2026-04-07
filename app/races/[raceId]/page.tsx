@@ -8,64 +8,24 @@ import ConversationScreenShell from '@/components/ConversationScreenShell'
 import RunCommentThreadList from '@/components/RunCommentThreadList'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { loadRaceEvent, type RaceEvent, type RaceEventLinkedRunSummary } from '@/lib/race-events'
+import {
+  formatClock,
+  formatRaceDateLabel,
+  getRaceEventDisplayDistanceLabel,
+  getRaceEventDisplayTimeSeconds,
+  getRaceEventLinkedRun,
+  isRaceEventUpcoming,
+  loadRaceEvent,
+  type RaceEvent,
+  type RaceEventLinkedRunSummary,
+} from '@/lib/race-events'
 import { countVisibleRunComments, loadRaceComments, type RunCommentItem } from '@/lib/run-comments'
 import { supabase } from '@/lib/supabase'
 import { useEntityCommentsController } from '@/lib/use-entity-comments-controller'
 import type { User } from '@supabase/supabase-js'
 
-function formatRaceDateLabel(dateValue: string) {
-  const parsedDate = new Date(`${dateValue}T12:00:00`)
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return dateValue
-  }
-
-  return parsedDate.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
-function formatResultTimeClock(totalSeconds: number | null | undefined) {
-  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
-    return null
-  }
-
-  const normalizedSeconds = Math.round(totalSeconds ?? 0)
-  const hours = Math.floor(normalizedSeconds / 3600)
-  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
-  const seconds = normalizedSeconds % 60
-
-  return [
-    String(hours).padStart(2, '0'),
-    String(minutes).padStart(2, '0'),
-    String(seconds).padStart(2, '0'),
-  ].join(':')
-}
-
-function formatManualDistanceKm(distanceMeters: number | null | undefined) {
-  if (!Number.isFinite(distanceMeters) || (distanceMeters ?? 0) <= 0) {
-    return null
-  }
-
-  const distanceKm = Number(distanceMeters ?? 0) / 1000
-  return `${distanceKm.toFixed(2).replace(/\.?0+$/, '')} км`
-}
-
 function normalizeCommentTarget(value: string | null) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function getRaceEventLinkedRun(raceEvent: Pick<RaceEvent, 'linked_run'>) {
-  const linkedRun = raceEvent.linked_run
-
-  if (Array.isArray(linkedRun)) {
-    return (linkedRun[0] ?? null) as RaceEventLinkedRunSummary | null
-  }
-
-  return (linkedRun ?? null) as RaceEventLinkedRunSummary | null
 }
 
 function getLinkedRunPreviewLabel(linkedRun: RaceEventLinkedRunSummary) {
@@ -130,14 +90,11 @@ export default function RaceDiscussionPage() {
   )
   const visibleCommentsCount = useMemo(() => countVisibleRunComments(comments), [comments])
   const linkedRun = useMemo(() => (raceEvent ? getRaceEventLinkedRun(raceEvent) : null), [raceEvent])
-  const resultLabel = useMemo(
-    () => formatResultTimeClock(raceEvent?.result_time_seconds),
-    [raceEvent?.result_time_seconds]
-  )
-  const distanceLabel = useMemo(
-    () => formatManualDistanceKm(raceEvent?.distance_meters),
-    [raceEvent?.distance_meters]
-  )
+  const displayTime = useMemo(() => (raceEvent ? getRaceEventDisplayTimeSeconds(raceEvent) : null), [raceEvent])
+  const resultLabel = useMemo(() => formatClock(displayTime?.seconds), [displayTime?.seconds])
+  const targetLabel = useMemo(() => formatClock(raceEvent?.target_time_seconds), [raceEvent?.target_time_seconds])
+  const displayDistance = useMemo(() => (raceEvent ? getRaceEventDisplayDistanceLabel(raceEvent) : null), [raceEvent])
+  const isUpcoming = useMemo(() => (raceEvent ? isRaceEventUpcoming(raceEvent) : false), [raceEvent])
 
   useEffect(() => {
     if (replyTargetId && !replyTarget) {
@@ -421,9 +378,17 @@ export default function RaceDiscussionPage() {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        {distanceLabel ? <span className="app-text-primary">{distanceLabel}</span> : null}
-        {distanceLabel && resultLabel ? <span className="app-text-secondary">•</span> : null}
-        {resultLabel ? <span className="app-text-primary">Результат: {resultLabel}</span> : null}
+        {displayDistance ? <span className="app-text-primary">{displayDistance.label}</span> : null}
+        {displayDistance && (isUpcoming ? targetLabel : resultLabel) ? <span className="app-text-secondary">•</span> : null}
+        {isUpcoming ? (
+          <span className={targetLabel ? 'app-text-primary' : 'app-text-secondary'}>
+            {targetLabel ? `Цель: ${targetLabel}` : 'Цель не задана'}
+          </span>
+        ) : (
+          <span className={resultLabel ? 'app-text-primary' : 'app-text-secondary'}>
+            {resultLabel ? `Результат: ${resultLabel}` : 'Результат не указан'}
+          </span>
+        )}
       </div>
 
       {linkedRun ? (

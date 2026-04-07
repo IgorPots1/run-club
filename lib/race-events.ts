@@ -22,6 +22,20 @@ export type RaceEvent = {
 
 const PERSONAL_RECORD_DISTANCE_TOLERANCE = 0.02
 
+export function formatRaceDateLabel(dateValue: string) {
+  const parsedDate = new Date(`${dateValue}T12:00:00`)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return dateValue
+  }
+
+  return parsedDate.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 export function formatClock(totalSeconds: number | null | undefined) {
   if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) < 0) {
     return null
@@ -64,6 +78,57 @@ export function parseClockInput(value: string) {
     value: (hours * 3600) + (minutes * 60) + seconds,
     isValid: true,
   }
+}
+
+export function getRaceEventLinkedRun(raceEvent: Pick<RaceEvent, 'linked_run'>) {
+  const linkedRun = raceEvent.linked_run
+
+  if (Array.isArray(linkedRun)) {
+    return (linkedRun[0] ?? null) as RaceEventLinkedRunSummary | null
+  }
+
+  return (linkedRun ?? null) as RaceEventLinkedRunSummary | null
+}
+
+export function getRaceEventDisplayTimeSeconds(raceEvent: Pick<RaceEvent, 'linked_run' | 'result_time_seconds'>) {
+  const linkedRun = getRaceEventLinkedRun(raceEvent)
+
+  if (Number.isFinite(linkedRun?.moving_time_seconds) && (linkedRun?.moving_time_seconds ?? 0) >= 0) {
+    return {
+      seconds: Math.round(linkedRun?.moving_time_seconds ?? 0),
+      source: 'linked_run' as const,
+    }
+  }
+
+  if (Number.isFinite(raceEvent.result_time_seconds) && (raceEvent.result_time_seconds ?? 0) >= 0) {
+    return {
+      seconds: Math.round(raceEvent.result_time_seconds ?? 0),
+      source: 'manual' as const,
+    }
+  }
+
+  return null
+}
+
+export function getRaceEventDisplayDistanceLabel(raceEvent: Pick<RaceEvent, 'linked_run' | 'distance_meters'>) {
+  const linkedRun = getRaceEventLinkedRun(raceEvent)
+
+  if (Number.isFinite(linkedRun?.distance_km) && (linkedRun?.distance_km ?? 0) > 0) {
+    return {
+      label: `${Number(linkedRun?.distance_km ?? 0).toFixed(2).replace(/\.?0+$/, '')} км`,
+      source: 'linked_run' as const,
+    }
+  }
+
+  if (Number.isFinite(raceEvent.distance_meters) && (raceEvent.distance_meters ?? 0) > 0) {
+    const distanceKm = Number(raceEvent.distance_meters ?? 0) / 1000
+    return {
+      label: `${distanceKm.toFixed(2).replace(/\.?0+$/, '')} км`,
+      source: 'manual' as const,
+    }
+  }
+
+  return null
 }
 
 export function isRaceEventUpcoming(raceEvent: Pick<RaceEvent, 'race_date' | 'linked_run_id'>) {
