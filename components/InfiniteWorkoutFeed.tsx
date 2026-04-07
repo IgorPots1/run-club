@@ -158,15 +158,40 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
           <p className="app-text-secondary mt-1 break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
         </div>
 
-        <div className="mt-5 rounded-[24px] bg-black/[0.03] px-4 py-5 text-center dark:bg-white/[0.04]">
-          <p className={`app-text-primary ${isUpcoming ? 'text-xl sm:text-2xl' : 'text-[32px] sm:text-[38px]'} font-semibold leading-none tracking-[-0.03em]`}>
-            {primaryLabel}
-          </p>
-          <p className="app-text-secondary mt-3 text-sm">{primaryCaption}</p>
-          <p className="app-text-secondary mt-3 text-sm">
-            {distanceLabel ?? 'Дистанция не указана'}
-          </p>
-        </div>
+        {isUpcoming ? (
+          <div className="mt-4 min-w-0 space-y-2">
+            {targetLabel ? (
+              <div className="app-surface-muted flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2.5 dark:bg-white/[0.04]">
+                <span className="app-text-secondary text-xs font-medium uppercase tracking-wide">Цель</span>
+                <span className="app-text-primary break-words text-sm font-semibold">{targetLabel}</span>
+              </div>
+            ) : null}
+            {distanceLabel ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span className="app-text-secondary">Дистанция</span>
+                <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
+              </div>
+            ) : null}
+            {!targetLabel && !distanceLabel ? (
+              <p className="app-text-secondary text-sm">Подробности старта можно добавить позже.</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-4 min-w-0 space-y-2.5">
+            <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+              <p className="app-text-primary text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[32px]">
+                {primaryLabel}
+              </p>
+              <p className="app-text-secondary pb-0.5 text-sm">{primaryCaption}</p>
+            </div>
+            {distanceLabel ? (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span className="app-text-secondary">Дистанция</span>
+                <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {item.linkedRun ? (
           <div className="mt-4 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
