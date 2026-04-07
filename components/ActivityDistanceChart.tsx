@@ -7,12 +7,18 @@ import {
   CartesianGrid,
   Cell,
   ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 import type { AxisInterval } from 'recharts/types/util/types'
 import type { ActivityChartPoint, ActivityPeriod } from '@/lib/activity'
-import { formatDistanceKm } from '@/lib/format'
+import {
+  formatAveragePace,
+  formatDistanceKm,
+  formatDurationCompact,
+  formatRunDateLabel,
+} from '@/lib/format'
 
 type ActivityDistanceChartMode = ActivityPeriod | 'rolling30'
 
@@ -26,7 +32,10 @@ type ActivityDistanceChartProps = {
 }
 
 type ActivityChartTooltipProps = {
-  point: (ActivityChartPoint & { index: number }) | null
+  active?: boolean
+  payload?: Array<{ payload?: ActivityChartPoint }>
+  label?: string | number
+  mode: ActivityDistanceChartMode
 }
 
 type ChartConfig = {
@@ -45,17 +54,58 @@ function formatDistance(value: number) {
   return formatDistanceKm(value)
 }
 
-function ActivityChartTooltip({ point }: ActivityChartTooltipProps) {
-  if (!point) return null
+function formatTooltipDateLabel(
+  point: ActivityChartPoint,
+  mode: ActivityDistanceChartMode,
+  label?: string | number
+) {
+  if ((mode === 'week' || mode === 'month' || mode === 'rolling30') && point.date) {
+    return formatRunDateLabel(point.date)
+  }
+
+  if (typeof label === 'string' || typeof label === 'number') {
+    return String(label)
+  }
+
+  return point.label
+}
+
+function ActivityChartTooltip({
+  active,
+  payload,
+  label,
+  mode,
+}: ActivityChartTooltipProps) {
+  const point = payload?.[0]?.payload
+
+  if (!active || !point) return null
+
+  const distance = Math.max(0, Number(point.distance ?? 0))
+  const movingTimeSeconds = Math.max(0, Number(point.moving_time_seconds ?? 0))
+  const hasDetailedMetrics =
+    (mode === 'week' || mode === 'month' || mode === 'rolling30')
+    && distance > 0
+    && movingTimeSeconds > 0
+  const dateLabel = formatTooltipDateLabel(point, mode, label)
 
   return (
-    <div className="app-card max-w-[180px] rounded-xl border px-3 py-2 shadow-lg">
-      <p className="app-text-secondary text-xs">
-        Период: <span className="app-text-primary font-medium">{point.label}</span>
+    <div className="app-card max-w-[180px] rounded-xl border px-2.5 py-2 shadow-none">
+      <p className="app-text-secondary text-[11px] leading-4">
+        {dateLabel}
       </p>
-      <p className="app-text-secondary mt-1 text-xs">
-        Дистанция: <span className="app-text-primary font-medium">{formatDistance(point.distance)} км</span>
+      <p className="app-text-primary mt-1 text-sm font-semibold leading-5">
+        Пробег: {formatDistance(distance)} км
       </p>
+      {hasDetailedMetrics ? (
+        <>
+          <p className="app-text-secondary text-xs leading-4">
+            Время: {formatDurationCompact(movingTimeSeconds)}
+          </p>
+          <p className="app-text-secondary text-xs leading-4">
+            Темп: {formatAveragePace(movingTimeSeconds, distance)}
+          </p>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -183,12 +233,17 @@ export default function ActivityDistanceChart({
           left: compact ? 4 : 6,
         },
       }
-  const activeBar =
+  const activePoint =
     activeBarIndex === null || !data[activeBarIndex]
       ? null
       : { ...data[activeBarIndex], index: activeBarIndex }
-  const weekTapTargetsStyle =
-    mode === 'week'
+  const tooltipPayload = activePoint
+    ? [{
+        payload: activePoint,
+      }]
+    : undefined
+  const dayTapTargetsStyle =
+    mode === 'week' || mode === 'month' || mode === 'rolling30'
       ? {
           top: chartConfig.chartMargin.top,
           right: chartConfig.chartMargin.right + chartConfig.xPadding.right,
@@ -206,11 +261,6 @@ export default function ActivityDistanceChart({
   return (
     <div className={`${heightClassName} w-full`}>
       <div className="relative h-full w-full select-none touch-manipulation" style={chartInteractionStyle}>
-        {showTooltip ? (
-          <div className="pointer-events-none absolute left-2 top-2 z-10">
-            <ActivityChartTooltip point={activeBar} />
-          </div>
-        ) : null}
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
@@ -219,6 +269,15 @@ export default function ActivityDistanceChart({
             accessibilityLayer={false}
           >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+            <Tooltip
+              active={showTooltip && activePoint !== null}
+              payload={tooltipPayload}
+              label={activePoint?.label}
+              cursor={false}
+              position={{ x: 8, y: 8 }}
+              wrapperStyle={{ pointerEvents: 'none', zIndex: 20 }}
+              content={<ActivityChartTooltip mode={mode} />}
+            />
             <XAxis
               dataKey="label"
               ticks={mode === 'month' ? monthTicks : undefined}
@@ -245,7 +304,7 @@ export default function ActivityDistanceChart({
               barSize={chartConfig.barSize}
               maxBarSize={chartConfig.maxBarSize}
               onMouseEnter={(_, index) => {
-                if (data[index]?.distance > 0) {
+                if (data[index]) {
                   setActiveBarIndex(index)
                 }
               }}
@@ -253,7 +312,7 @@ export default function ActivityDistanceChart({
                 setActiveBarIndex(null)
               }}
               onClick={(_, index) => {
-                if (data[index]?.distance > 0) {
+                if (data[index]) {
                   setActiveBarIndex((current) => (current === index ? null : index))
                 }
               }}
@@ -261,22 +320,34 @@ export default function ActivityDistanceChart({
               {data.map((entry, index) => (
                 <Cell
                   key={`${entry.label}-${index}`}
-                  cursor={entry.distance > 0 ? 'pointer' : 'default'}
+                  cursor="pointer"
                   fillOpacity={activeBarIndex === index ? 0.82 : 1}
-                  pointerEvents={entry.distance > 0 ? 'auto' : 'none'}
+                  pointerEvents="auto"
                 />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-        {mode === 'week' && weekTapTargetsStyle ? (
-          <div className="absolute z-10 grid h-full w-full grid-cols-7" style={weekTapTargetsStyle}>
+        {showTooltip && dayTapTargetsStyle ? (
+          <div
+            className="absolute z-10 grid h-full w-full"
+            style={{
+              ...dayTapTargetsStyle,
+              gridTemplateColumns: `repeat(${Math.max(data.length, 1)}, minmax(0, 1fr))`,
+            }}
+            onMouseLeave={() => {
+              setActiveBarIndex(null)
+            }}
+          >
             {data.map((entry, index) => (
               <button
                 key={`${entry.label}-tap-${index}`}
                 type="button"
                 className="h-full min-h-0 w-full appearance-none bg-transparent p-0"
-                aria-label={`Показать активность за ${entry.label}: ${formatDistance(entry.distance)} км`}
+                aria-label={`Показать активность за ${entry.date ? formatRunDateLabel(entry.date) : entry.label}: ${formatDistance(entry.distance)} км`}
+                onMouseEnter={() => {
+                  setActiveBarIndex(index)
+                }}
                 onClick={() => {
                   setActiveBarIndex((current) => (current === index ? null : index))
                 }}
