@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, LoaderCircle, Trophy } from 'lucide-react'
+import { CheckCircle2, LoaderCircle, Trash2, Trophy } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
