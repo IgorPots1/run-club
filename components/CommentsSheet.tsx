@@ -146,9 +146,7 @@ export default function CommentsSheet({
     typeof window === 'undefined' ? null : window.innerHeight
   )
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-  const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const previousSubmittingRef = useRef(false)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
   const sheetStyle = useMemo(
     () =>
@@ -157,21 +155,6 @@ export default function CommentsSheet({
         : { maxHeight: `${Math.min(effectiveViewportHeight, 672)}px` },
     [effectiveViewportHeight]
   )
-
-  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior,
-      })
-      return
-    }
-
-    bottomRef.current?.scrollIntoView({
-      block: 'end',
-      behavior,
-    })
-  }
 
   useEffect(() => {
     if (!open) {
@@ -202,53 +185,8 @@ export default function CommentsSheet({
     if (!open) {
       setDraft('')
       setSubmitError('')
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollToBottom('auto')
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
     }
   }, [open])
-
-  useEffect(() => {
-    if (!open) {
-      previousSubmittingRef.current = submitting
-      return
-    }
-
-    const justFinishedSubmitting = previousSubmittingRef.current && !submitting
-    previousSubmittingRef.current = submitting
-
-    if (!justFinishedSubmitting) {
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollToBottom('smooth')
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [open, submitting])
-
-  useEffect(() => {
-    if (!open || loading) {
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollToBottom(comments.length > 0 ? 'smooth' : 'auto')
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [comments.length, loading, open])
 
   useEffect(() => {
     if (!open) {
@@ -395,7 +333,6 @@ export default function CommentsSheet({
               ))}
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
 
         <form
