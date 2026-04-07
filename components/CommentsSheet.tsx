@@ -165,18 +165,6 @@ export default function CommentsSheet({
     })
   }
 
-  function focusComposer() {
-    const textarea = textareaRef.current
-
-    if (!textarea) {
-      return
-    }
-
-    textarea.focus()
-    const nextCursorPosition = textarea.value.length
-    textarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
-  }
-
   useEffect(() => {
     if (!open) {
       return
@@ -229,7 +217,6 @@ export default function CommentsSheet({
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      focusComposer()
       scrollToBottom('smooth')
     })
 
@@ -279,9 +266,6 @@ export default function CommentsSheet({
       setSubmitError('')
       await onSubmitComment(trimmedDraft)
       setDraft('')
-      window.requestAnimationFrame(() => {
-        focusComposer()
-      })
     } catch {
       setSubmitError('Не удалось отправить комментарий')
     }
@@ -300,13 +284,12 @@ export default function CommentsSheet({
         onClick={onClose}
       />
       <section
-        className="app-card relative flex w-full flex-col rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl"
+        className="app-card relative flex max-h-full min-h-0 w-full flex-col overflow-hidden rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl"
         style={{
-          height: isolatedViewportStyle.height,
-          maxHeight: '42rem',
+          maxHeight: `min(${String(isolatedViewportStyle.height)}, 42rem)`,
         }}
       >
-        <div className="px-4 pt-4">
+        <div className="shrink-0 px-4 pt-4">
           <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -381,7 +364,7 @@ export default function CommentsSheet({
 
         <form
           onSubmit={handleSubmit}
-          className="border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
+          className="shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
         >
           <div className="flex items-end gap-2">
             <label htmlFor="feed-run-comment" className="sr-only">Сообщение</label>
@@ -397,7 +380,7 @@ export default function CommentsSheet({
               placeholder="Сообщение"
               disabled={submitting}
               enterKeyHint="send"
-              className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-base leading-5 sm:text-sm"
+              className="app-input max-h-[120px] min-h-11 w-full resize-none rounded-2xl border px-4 py-3 text-base leading-5 outline-none transition-[border-color,box-shadow] focus:border-black/15 focus:outline-none focus:ring-2 focus:ring-black/10 focus-visible:outline-none dark:focus:border-white/20 dark:focus:ring-white/10 sm:text-sm"
             />
             <button
               type="submit"
