@@ -5,6 +5,44 @@ import { LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunCommentItem } from '@/lib/run-comments'
 
+const COMMENTS_SHEET_DEBUG = true
+
+type CommentsSheetDebugSnapshot = {
+  reason: string
+  timestamp: string
+  windowScrollY: number | null
+  documentScrollTop: number | null
+  bodyOverflow: string
+  documentOverflow: string
+  windowInnerHeight: number | null
+  visualViewportHeight: number | null
+  visualViewportOffsetTop: number | null
+  visualViewportPageTop: number | null
+  sheetTop: number | null
+  sheetBottom: number | null
+  sheetHeight: number | null
+  scrollContainerTop: number | null
+  scrollContainerBottom: number | null
+  scrollContainerHeight: number | null
+  scrollContainerScrollTop: number | null
+  scrollContainerScrollHeight: number | null
+  scrollContainerClientHeight: number | null
+  composerTop: number | null
+  composerBottom: number | null
+  composerHeight: number | null
+  textareaTop: number | null
+  textareaBottom: number | null
+  textareaHeight: number | null
+  activeElementIsTextarea: boolean
+  commentsLength: number
+  draftLength: number
+}
+
+type CommentsSheetDebugEvent = {
+  timestamp: string
+  summary: string
+}
+
 type CommentsSheetProps = {
   open: boolean
   comments: RunCommentItem[]
@@ -142,8 +180,129 @@ export default function CommentsSheet({
 }: CommentsSheetProps) {
   const [draft, setDraft] = useState('')
   const [submitError, setSubmitError] = useState('')
+  const [debugSnapshot, setDebugSnapshot] = useState<CommentsSheetDebugSnapshot | null>(null)
+  const [debugEvents, setDebugEvents] = useState<CommentsSheetDebugEvent[]>([])
+  const sheetRef = useRef<HTMLElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLFormElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const focusDebugTimeoutRef = useRef<number | null>(null)
   const trimmedDraft = useMemo(() => draft.trim(), [draft])
+
+  function formatDebugNumber(value: number | null | undefined) {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return null
+    }
+
+    return Math.round(value * 100) / 100
+  }
+
+  function getRectSnapshot(element: Element | null) {
+    if (!element) {
+      return {
+        top: null,
+        bottom: null,
+        height: null,
+      }
+    }
+
+    const rect = element.getBoundingClientRect()
+
+    return {
+      top: formatDebugNumber(rect.top),
+      bottom: formatDebugNumber(rect.bottom),
+      height: formatDebugNumber(rect.height),
+    }
+  }
+
+  function buildDebugSnapshot(reason: string): CommentsSheetDebugSnapshot | null {
+    if (!COMMENTS_SHEET_DEBUG || typeof window === 'undefined' || typeof document === 'undefined') {
+      return null
+    }
+
+    const visualViewport = window.visualViewport
+    const scrollingElement = document.scrollingElement
+    const scrollContainer = scrollContainerRef.current
+    const textarea = textareaRef.current
+    const sheetRect = getRectSnapshot(sheetRef.current)
+    const scrollContainerRect = getRectSnapshot(scrollContainer)
+    const composerRect = getRectSnapshot(composerRef.current)
+    const textareaRect = getRectSnapshot(textarea)
+
+    return {
+      reason,
+      timestamp: new Date().toISOString(),
+      windowScrollY: formatDebugNumber(window.scrollY),
+      documentScrollTop: formatDebugNumber(scrollingElement?.scrollTop),
+      bodyOverflow: document.body.style.overflow,
+      documentOverflow: document.documentElement.style.overflow,
+      windowInnerHeight: formatDebugNumber(window.innerHeight),
+      visualViewportHeight: formatDebugNumber(visualViewport?.height),
+      visualViewportOffsetTop: formatDebugNumber(visualViewport?.offsetTop),
+      visualViewportPageTop: formatDebugNumber(visualViewport?.pageTop),
+      sheetTop: sheetRect.top,
+      sheetBottom: sheetRect.bottom,
+      sheetHeight: sheetRect.height,
+      scrollContainerTop: scrollContainerRect.top,
+      scrollContainerBottom: scrollContainerRect.bottom,
+      scrollContainerHeight: scrollContainerRect.height,
+      scrollContainerScrollTop: formatDebugNumber(scrollContainer?.scrollTop),
+      scrollContainerScrollHeight: formatDebugNumber(scrollContainer?.scrollHeight),
+      scrollContainerClientHeight: formatDebugNumber(scrollContainer?.clientHeight),
+      composerTop: composerRect.top,
+      composerBottom: composerRect.bottom,
+      composerHeight: composerRect.height,
+      textareaTop: textareaRect.top,
+      textareaBottom: textareaRect.bottom,
+      textareaHeight: textareaRect.height,
+      activeElementIsTextarea: document.activeElement === textarea,
+      commentsLength: comments.length,
+      draftLength: draft.length,
+    }
+  }
+
+  function logLayout(reason: string) {
+    const snapshot = buildDebugSnapshot(reason)
+
+    if (!snapshot) {
+      return
+    }
+
+    setDebugSnapshot(snapshot)
+    setDebugEvents((currentEvents) => {
+      const summary = [
+        snapshot.reason,
+        `scrollY=${String(snapshot.windowScrollY)}`,
+        `vv.h=${String(snapshot.visualViewportHeight)}`,
+        `vv.top=${String(snapshot.visualViewportOffsetTop)}`,
+        `sheet.h=${String(snapshot.sheetHeight)}`,
+        `composer.top=${String(snapshot.composerTop)}`,
+        `scrollTop=${String(snapshot.scrollContainerScrollTop)}`,
+      ].join(' | ')
+
+      return [
+        {
+          timestamp: snapshot.timestamp,
+          summary,
+        },
+        ...currentEvents,
+      ].slice(0, 12)
+    })
+    console.log('[CommentsSheetDebug]', snapshot)
+  }
+
+  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+    logLayout(`before-scrollToBottom:${behavior}`)
+
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior,
+      })
+    }
+
+    logLayout(`after-scrollToBottom:${behavior}`)
+  }
 
   useEffect(() => {
     if (!open) {
@@ -176,6 +335,44 @@ export default function CommentsSheet({
       setSubmitError('')
     }
   }, [open])
+
+  useEffect(() => {
+    if (!COMMENTS_SHEET_DEBUG || !open || typeof window === 'undefined') {
+      return
+    }
+
+    logLayout('sheet-open')
+
+    function handleWindowScroll() {
+      logLayout('window-scroll')
+    }
+
+    function handleVisualViewportResize() {
+      logLayout('visualViewport-resize')
+    }
+
+    function handleVisualViewportScroll() {
+      logLayout('visualViewport-scroll')
+    }
+
+    window.addEventListener('scroll', handleWindowScroll, { passive: true })
+    window.visualViewport?.addEventListener('resize', handleVisualViewportResize)
+    window.visualViewport?.addEventListener('scroll', handleVisualViewportScroll)
+
+    return () => {
+      window.removeEventListener('scroll', handleWindowScroll)
+      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize)
+      window.visualViewport?.removeEventListener('scroll', handleVisualViewportScroll)
+    }
+  }, [open, comments.length, draft.length])
+
+  useEffect(() => {
+    return () => {
+      if (focusDebugTimeoutRef.current !== null) {
+        window.clearTimeout(focusDebugTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -221,7 +418,39 @@ export default function CommentsSheet({
         className="absolute inset-0"
         onClick={onClose}
       />
+      {COMMENTS_SHEET_DEBUG && debugSnapshot ? (
+        <div className="pointer-events-none fixed left-2 right-2 top-2 z-[9999] max-h-[40vh] overflow-y-auto rounded-xl bg-black/80 p-2 font-mono text-[10px] leading-tight text-white shadow-2xl">
+          <div className="mb-1 font-semibold">[CommentsSheetDebug]</div>
+          <div>reason: {debugSnapshot.reason}</div>
+          <div>scrollY: {String(debugSnapshot.windowScrollY)}</div>
+          <div>docTop: {String(debugSnapshot.documentScrollTop)}</div>
+          <div>innerH: {String(debugSnapshot.windowInnerHeight)}</div>
+          <div>vv.h: {String(debugSnapshot.visualViewportHeight)}</div>
+          <div>vv.top: {String(debugSnapshot.visualViewportOffsetTop)}</div>
+          <div>vv.pageTop: {String(debugSnapshot.visualViewportPageTop)}</div>
+          <div>sheet.top: {String(debugSnapshot.sheetTop)}</div>
+          <div>sheet.bottom: {String(debugSnapshot.sheetBottom)}</div>
+          <div>sheet.h: {String(debugSnapshot.sheetHeight)}</div>
+          <div>scroll.scrollTop: {String(debugSnapshot.scrollContainerScrollTop)}</div>
+          <div>scroll.clientH: {String(debugSnapshot.scrollContainerClientHeight)}</div>
+          <div>scroll.scrollH: {String(debugSnapshot.scrollContainerScrollHeight)}</div>
+          <div>composer.top: {String(debugSnapshot.composerTop)}</div>
+          <div>composer.bottom: {String(debugSnapshot.composerBottom)}</div>
+          <div>composer.h: {String(debugSnapshot.composerHeight)}</div>
+          <div>textarea.top: {String(debugSnapshot.textareaTop)}</div>
+          <div>textarea.bottom: {String(debugSnapshot.textareaBottom)}</div>
+          <div>textarea.h: {String(debugSnapshot.textareaHeight)}</div>
+          <div>focused: {String(debugSnapshot.activeElementIsTextarea)}</div>
+          <div>comments: {debugSnapshot.commentsLength}</div>
+          <div>draft: {debugSnapshot.draftLength}</div>
+          <div className="mt-2 font-semibold">events</div>
+          {debugEvents.map((event) => (
+            <div key={`${event.timestamp}-${event.summary}`}>{event.summary}</div>
+          ))}
+        </div>
+      ) : null}
       <section
+        ref={sheetRef}
         className="app-card relative flex max-h-[min(78svh,42rem)] min-h-0 w-full flex-col overflow-hidden rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl"
       >
         <div className="shrink-0 px-4 pt-4">
@@ -243,7 +472,10 @@ export default function CommentsSheet({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-4 [overscroll-behavior-y:contain]">
+        <div
+          ref={scrollContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-4 [overscroll-behavior-y:contain]"
+        >
           {loading ? (
             <div className="space-y-4">
               <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
@@ -294,6 +526,7 @@ export default function CommentsSheet({
         </div>
 
         <form
+          ref={composerRef}
           onSubmit={handleSubmit}
           className="shrink-0 border-t border-black/5 bg-[var(--surface)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:border-white/10"
           style={{ willChange: 'transform' }}
@@ -308,6 +541,29 @@ export default function CommentsSheet({
               onChange={(event) => {
                 setDraft(event.target.value)
                 setSubmitError('')
+              }}
+              onFocus={() => {
+                logLayout('textarea-focus')
+
+                window.requestAnimationFrame(() => {
+                  logLayout('textarea-focus-raf1')
+
+                  window.requestAnimationFrame(() => {
+                    logLayout('textarea-focus-raf2')
+                  })
+                })
+
+                if (focusDebugTimeoutRef.current !== null) {
+                  window.clearTimeout(focusDebugTimeoutRef.current)
+                }
+
+                focusDebugTimeoutRef.current = window.setTimeout(() => {
+                  logLayout('textarea-focus-timeout-250ms')
+                  focusDebugTimeoutRef.current = null
+                }, 250)
+              }}
+              onBlur={() => {
+                logLayout('textarea-blur')
               }}
               placeholder="Сообщение"
               disabled={submitting}

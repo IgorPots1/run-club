@@ -19,15 +19,17 @@ export default async function DashboardPage() {
     redirect('/onboarding')
   }
 
+  async function loadInitialInboxUnreadCount() {
+    try {
+      return await getInboxUnreadCount(user.id)
+    } catch {
+      return 0
+    }
+  }
+
   const [overview, initialInboxUnreadCount] = await Promise.all([
     loadDashboardOverviewServer(user.id),
-    getInboxUnreadCount(user.id).catch((error) => {
-      console.error('[dashboard] failed to load inbox unread count', {
-        userId: user.id,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      })
-      return 0
-    }),
+    loadInitialInboxUnreadCount(),
   ])
   const initialLevelProgress = getLevelProgressFromXP(overview.stats.totalXp)
 
