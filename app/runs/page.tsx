@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
+import MyShoesPicker from '@/components/MyShoesPicker'
 import XpGainToast from '@/components/XpGainToast'
 import {
   buildPostRunChallengeFeedbackItems,
@@ -1104,27 +1105,19 @@ export default function RunsPage() {
           <p className="app-text-secondary mt-2 text-xs">Минуты и секунды должны быть в диапазоне от 0 до 59.</p>
         </div>
         <div>
-          <label htmlFor="shoe_id" className="app-text-secondary mb-1 block text-sm">Кроссовки</label>
-          <select
-            id="shoe_id"
-            value={selectedShoeId}
-            onChange={(event) => setSelectedShoeId(event.target.value)}
+          <label className="app-text-secondary mb-2 block text-sm">Кроссовки</label>
+          <MyShoesPicker
+            shoes={availableShoes}
+            selectedShoeId={selectedShoeId}
+            onSelect={setSelectedShoeId}
             disabled={submitting || loadingShoes}
-            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
-          >
-            <option value="">Без кроссовок</option>
-            {availableShoes.map((shoe) => (
-              <option key={shoe.id} value={shoe.id}>
-                {shoe.displayName}
-                {shoe.nickname ? ` (${shoe.nickname})` : ''}
-              </option>
-            ))}
-          </select>
-          <p className="app-text-secondary mt-2 text-xs">
-            {availableShoes.length > 0
-              ? 'По умолчанию выбрана последняя использованная пара, если она есть.'
-              : 'Сначала добавьте пару на экране "Активность → Кроссовки".'}
-          </p>
+            loading={loadingShoes}
+            hint={
+              availableShoes.length > 0
+                ? 'По умолчанию выбрана последняя использованная пара, если она есть.'
+                : 'Добавьте пару на экране "Активность → Кроссовки", чтобы быстро выбирать ее здесь.'
+            }
+          />
         </div>
         <div className="app-surface-muted rounded-xl px-4 py-3">
           <p className="app-text-muted text-xs font-medium uppercase tracking-wide">Предпросмотр</p>

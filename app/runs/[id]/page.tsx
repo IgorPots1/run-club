@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import MyShoesPicker from '@/components/MyShoesPicker'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
@@ -1612,29 +1613,22 @@ export default function RunDetailsPage() {
             </div>
 
             <div>
-              <label htmlFor="run-shoe" className="app-text-secondary text-sm font-medium">
+              <label className="app-text-secondary text-sm font-medium">
                 Кроссовки
               </label>
-              <select
-                id="run-shoe"
-                value={editedShoeId}
-                onChange={(event) => {
-                  setEditedShoeId(event.target.value)
+              <MyShoesPicker
+                shoes={availableShoes}
+                selectedShoeId={editedShoeId}
+                onSelect={(shoeId) => {
+                  setEditedShoeId(shoeId)
                   setSaveDetailsError('')
                   setSaveDetailsInfoMessage('')
                 }}
                 disabled={savingDetails || loadingShoes}
-                className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
-              >
-                <option value="">Без кроссовок</option>
-                {availableShoes.map((shoe) => (
-                  <option key={shoe.id} value={shoe.id}>
-                    {shoe.displayName}
-                    {shoe.nickname ? ` (${shoe.nickname})` : ''}
-                    {!shoe.isActive ? ' • архив' : ''}
-                  </option>
-                ))}
-              </select>
+                loading={loadingShoes}
+                className="mt-1"
+                hint="Можно выбрать активную пару, сохранить без кроссовок или открыть экран управления парами."
+              />
             </div>
 
             {saveDetailsError ? <p className="text-sm text-red-600">{saveDetailsError}</p> : null}
