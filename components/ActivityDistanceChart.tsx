@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import type { AxisInterval } from 'recharts/types/util/types'
 import type { ActivityChartPoint, ActivityPeriod } from '@/lib/activity'
 import { formatDistanceKm } from '@/lib/format'
 
@@ -26,6 +27,18 @@ type ActivityDistanceChartProps = {
 
 type ActivityChartTooltipProps = {
   point: (ActivityChartPoint & { index: number }) | null
+}
+
+type ChartConfig = {
+  interval?: AxisInterval
+  minTickGap: number
+  tickMargin: number
+  xPadding: { left: number; right: number }
+  yAxisWidth: number
+  chartMargin: { top: number; right: number; left: number; bottom: number }
+  barCategoryGap: string | number
+  barSize?: number
+  maxBarSize?: number
 }
 
 function formatDistance(value: number) {
@@ -100,7 +113,7 @@ export default function ActivityDistanceChart({
         ? 11
         : 12
   const xAxisHeight = compact ? 24 : mode === 'year' || mode === 'all' ? 40 : 32
-  const baseChartConfig =
+  const baseChartConfig: ChartConfig =
     mode === 'week'
       ? {
           interval: 0,
@@ -115,7 +128,6 @@ export default function ActivityDistanceChart({
         }
       : mode === 'month'
         ? {
-            interval: 'preserveStartEnd',
             minTickGap: isVerySmallScreen ? 16 : 14,
             tickMargin: 8,
             xPadding: { left: 4, right: 4 },
