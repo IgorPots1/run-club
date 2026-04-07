@@ -39,6 +39,7 @@ type InfiniteWorkoutFeedProps = {
 }
 
 type FeedCommentVisibilityById = Record<string, RunCommentVisibilityRecord>
+type RunFeedItem = Extract<FeedItem, { kind: 'run' }>
 
 function mergeUniqueFeedItems(existing: FeedRunItem[], incoming: FeedRunItem[]) {
   const existingIds = new Set(existing.map((item) => item.id))
@@ -209,7 +210,7 @@ export default function InfiniteWorkoutFeed({
     itemsRef.current = items
   }, [items])
 
-  const updateRunItem = useCallback((runId: string, updater: (item: FeedRunItem) => FeedRunItem) => {
+  const updateRunItem = useCallback((runId: string, updater: (item: RunFeedItem) => RunFeedItem) => {
     const nextItems = itemsRef.current.map((item) => (
       item.kind === 'run' && item.id === runId ? updater(item) : item
     ))
@@ -336,10 +337,14 @@ export default function InfiniteWorkoutFeed({
         }
 
         mergeRunCommentVisibility(commentSummary.visibilityByRunId)
-        setItems(page.items.map((item) => ({
-          ...item,
-          commentsCount: commentSummary.countsByRunId[item.id] ?? 0,
-        })))
+        setItems(page.items.map((item) => (
+          item.kind === 'run'
+            ? {
+                ...item,
+                commentsCount: commentSummary.countsByRunId[item.id] ?? 0,
+              }
+            : item
+        )))
         setHasMore(page.hasMore)
         setNextOffset(page.items.length)
       } catch {
