@@ -42,6 +42,16 @@ type RaceEventsResponse =
       ok: true
       raceEvents: RaceEvent[]
     }
+
+type RaceEventResponse =
+  | {
+      ok: true
+      raceEvent: RaceEvent
+    }
+  | {
+      ok: false
+      error?: string
+    }
   | {
       ok: false
       error?: string
@@ -75,6 +85,26 @@ export async function loadRaceEvents() {
   }
 
   return Array.isArray(payload.raceEvents) ? payload.raceEvents : []
+}
+
+export async function loadRaceEvent(raceEventId: string) {
+  const response = await fetch(`/api/race-events/${raceEventId}`, {
+    method: 'GET',
+    cache: 'no-store',
+    credentials: 'include',
+  })
+
+  const payload = await response.json().catch(() => null) as RaceEventResponse | null
+
+  if (!response.ok || !payload?.ok || !payload.raceEvent) {
+    throw new Error(
+      payload && 'error' in payload && typeof payload.error === 'string'
+        ? payload.error
+        : 'race_event_load_failed'
+    )
+  }
+
+  return payload.raceEvent
 }
 
 async function submitRaceEvent(

@@ -4,7 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { RUN_COMMENT_PLACEHOLDER_TEXT } from '@/lib/run-comments-constants'
 
 const RUN_COMMENT_MUTATION_SELECT =
-  'id, run_id, user_id, parent_id, comment, created_at, edited_at, deleted_at'
+  'id, entity_type, entity_id, run_id, user_id, parent_id, comment, created_at, edited_at, deleted_at'
+
+export type CommentEntityType = 'run' | 'race'
 
 type ResultOk<T> = {
   ok: true
@@ -25,9 +27,15 @@ type RunExistsRow = {
   id: string
 }
 
+type RaceExistsRow = {
+  id: string
+}
+
 export type RunCommentMutationRow = {
   id: string
-  run_id: string
+  entity_type: CommentEntityType
+  entity_id: string
+  run_id: string | null
   user_id: string
   parent_id: string | null
   comment: string
@@ -44,7 +52,7 @@ export type RunCommentPayload = RunCommentMutationRow & {
   liked_by_me: boolean
 }
 
-type RunCommentParentRow = Pick<RunCommentMutationRow, 'id' | 'run_id' | 'parent_id' | 'deleted_at'>
+type RunCommentParentRow = Pick<RunCommentMutationRow, 'id' | 'entity_type' | 'entity_id' | 'run_id' | 'parent_id' | 'deleted_at'>
 type RunCommentProfileRow = {
   name: string | null
   nickname: string | null
@@ -162,6 +170,27 @@ async function loadRunExists(
   return success(data as RunExistsRow)
 }
 
+async function loadRaceExists(
+  supabaseAdmin: SupabaseClient,
+  raceId: string
+): Promise<MutationResult<RaceExistsRow>> {
+  const { data, error } = await supabaseAdmin
+    .from('race_events')
+    .select('id')
+    .eq('id', raceId)
+    .maybeSingle()
+
+  if (error) {
+    return failure(500, error.message)
+  }
+
+  if (!data) {
+    return failure(404, 'race_not_found')
+  }
+
+  return success(data as RaceExistsRow)
+}
+
 async function loadRunCommentById(
   supabaseAdmin: SupabaseClient,
   commentId: string
@@ -185,12 +214,13 @@ async function loadRunCommentById(
 
 async function validateReplyParent(
   supabaseAdmin: SupabaseClient,
-  runId: string,
+  entityType: CommentEntityType,
+  entityId: string,
   parentId: string
 ): Promise<MutationResult<RunCommentParentRow>> {
   const { data, error } = await supabaseAdmin
     .from('run_comments')
-    .select('id, run_id, parent_id, deleted_at')
+    .select('id, entity_type, entity_id, run_id, parent_id, deleted_at')
     .eq('id', parentId)
     .maybeSingle()
 
@@ -204,8 +234,8 @@ async function validateReplyParent(
 
   const parentComment = data as RunCommentParentRow
 
-  if (parentComment.run_id !== runId) {
-    return failure(400, 'parent_comment_run_mismatch')
+  if (parentComment.entity_type !== entityType || parentComment.entity_id !== entityId) {
+    return failure(400, 'parent_comment_entity_mismatch')
   }
 
   if (parentComment.parent_id) {
@@ -298,19 +328,33 @@ export async function buildRunCommentPayload(params: {
 
 export async function createRunCommentRecord(params: {
   supabaseAdmin: SupabaseClient
-  runId: string
+  entityType: CommentEntityType
+  entityId: string
   userId: string
   comment: string
   parentId: string | null
 }): Promise<MutationResult<RunCommentMutationRow>> {
-  const runResult = await loadRunExists(params.supabaseAdmin, params.runId)
+  if (params.entityType === 'run') {
+    const runResult = await loadRunExists(params.supabaseAdmin, params.entityId)
 
-  if (!runResult.ok) {
-    return runResult
+    if (!runResult.ok) {
+      return runResult
+    }
+  } else {
+    const raceResult = await loadRaceExists(params.supabaseAdmin, params.entityId)
+
+    if (!raceResult.ok) {
+      return raceResult
+    }
   }
 
   if (params.parentId) {
-    const parentResult = await validateReplyParent(params.supabaseAdmin, params.runId, params.parentId)
+    const parentResult = await validateReplyParent(
+      params.supabaseAdmin,
+      params.entityType,
+      params.entityId,
+      params.parentId
+    )
 
     if (!parentResult.ok) {
       return parentResult
@@ -320,7 +364,9 @@ export async function createRunCommentRecord(params: {
   const { data, error } = await params.supabaseAdmin
     .from('run_comments')
     .insert({
-      run_id: params.runId,
+      entity_type: params.entityType,
+      entity_id: params.entityId,
+      run_id: params.entityType === 'run' ? params.entityId : null,
       user_id: params.userId,
       comment: params.comment,
       parent_id: params.parentId,
@@ -333,6 +379,23 @@ export async function createRunCommentRecord(params: {
   }
 
   return success(data as RunCommentMutationRow)
+}
+
+export async function createRunScopedCommentRecord(params: {
+  supabaseAdmin: SupabaseClient
+  runId: string
+  userId: string
+  comment: string
+  parentId: string | null
+}): Promise<MutationResult<RunCommentMutationRow>> {
+  return createRunCommentRecord({
+    supabaseAdmin: params.supabaseAdmin,
+    entityType: 'run',
+    entityId: params.runId,
+    userId: params.userId,
+    comment: params.comment,
+    parentId: params.parentId,
+  })
 }
 
 export async function updateRunCommentRecord(params: {

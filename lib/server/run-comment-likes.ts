@@ -17,7 +17,9 @@ type MutationResult<T> = ResultOk<T> | ResultError
 
 type RunCommentLikeTargetRow = {
   id: string
-  run_id: string
+  entity_type: 'run' | 'race'
+  entity_id: string
+  run_id: string | null
   deleted_at: string | null
 }
 
@@ -86,7 +88,7 @@ export async function toggleRunCommentLikeRecord(params: {
   commentId: string
   userId: string
   likedByMe: boolean
-}): Promise<MutationResult<{ runId: string }>> {
+}): Promise<MutationResult<{ entityType: 'run' | 'race'; entityId: string; runId: string | null }>> {
   const targetResult = await loadRunCommentLikeTarget(params.supabaseAdmin, params.commentId)
 
   if (!targetResult.ok) {
@@ -110,13 +112,19 @@ export async function toggleRunCommentLikeRecord(params: {
       return failure(500, error.message)
     }
 
-    return success({ runId: target.run_id })
+    return success({
+      entityType: target.entity_type,
+      entityId: target.entity_id,
+      runId: target.run_id,
+    })
   }
 
   const { error } = await params.supabaseAdmin
     .from('run_comment_likes')
     .insert({
       comment_id: params.commentId,
+      entity_type: target.entity_type,
+      entity_id: target.entity_id,
       run_id: target.run_id,
       user_id: params.userId,
     })
@@ -125,5 +133,9 @@ export async function toggleRunCommentLikeRecord(params: {
     return failure(500, error.message)
   }
 
-  return success({ runId: target.run_id })
+  return success({
+    entityType: target.entity_type,
+    entityId: target.entity_id,
+    runId: target.run_id,
+  })
 }

@@ -726,6 +726,7 @@ export default function RunDiscussionPage() {
         ) : (
           <RunCommentThreadList
             comments={comments}
+            commentDomIdPrefix="run-comment"
             currentUserId={user?.id ?? null}
             highlightedCommentId={highlightedCommentId}
             pendingLikeCommentIds={pendingLikeCommentIds}

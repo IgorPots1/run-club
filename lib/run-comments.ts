@@ -1,9 +1,13 @@
 import { RUN_COMMENT_PLACEHOLDER_TEXT } from './run-comments-constants'
 import { supabase } from './supabase'
 
+export type CommentEntityType = 'run' | 'race'
+
 type RunCommentRow = {
   id: string
-  run_id: string
+  entity_type: CommentEntityType
+  entity_id: string
+  run_id: string | null
   user_id: string
   parent_id: string | null
   comment: string
@@ -22,23 +26,29 @@ type RunCommentApiPayload = RunCommentRow & {
   liked_by_me: boolean | null
 }
 
-type RunCommentCountRow = Pick<RunCommentRow, 'id' | 'run_id' | 'parent_id' | 'created_at' | 'deleted_at'>
+type RunCommentCountRow = Pick<RunCommentRow, 'id' | 'entity_type' | 'entity_id' | 'parent_id' | 'created_at' | 'deleted_at'>
 export type RunCommentVisibilityRecord = {
   id: string
-  runId: string
+  entityType: CommentEntityType
+  entityId: string
+  runId: string | null
   parentId: string | null
   createdAt: string
   deletedAt: string | null
 }
 
 export type RunCommentVisibilitySummary = {
+  visibilityByEntityId: Record<string, RunCommentVisibilityRecord[]>
+  countsByEntityId: Record<string, number>
   visibilityByRunId: Record<string, RunCommentVisibilityRecord[]>
   countsByRunId: Record<string, number>
 }
 
 export type RunCommentLikeRealtimeRow = {
   comment_id: string
-  run_id: string
+  entity_type: CommentEntityType
+  entity_id: string
+  run_id: string | null
   user_id: string
   created_at: string
 }
@@ -52,7 +62,9 @@ export type RunCommentAuthorIdentity = {
 
 export type RunCommentItem = {
   id: string
-  runId: string
+  entityType: CommentEntityType
+  entityId: string
+  runId: string | null
   userId: string
   parentId: string | null
   comment: string
@@ -87,6 +99,8 @@ type CreateRunCommentInput = {
   parentId?: string | null
 }
 
+type CreateEntityCommentInput = CreateRunCommentInput
+
 type UpdateRunCommentInput = {
   comment: string
 }
@@ -114,6 +128,8 @@ function compareRunComments(left: Pick<RunCommentItem, 'createdAt' | 'id'>, righ
 function mapRunCommentApiPayloadToItem(comment: RunCommentApiPayload): RunCommentItem {
   return {
     id: comment.id,
+    entityType: comment.entity_type,
+    entityId: comment.entity_id,
     runId: comment.run_id,
     userId: comment.user_id,
     parentId: comment.parent_id,
@@ -153,6 +169,8 @@ export function mergeRunCommentRealtimeRow(params: {
 }): RunCommentItem {
   return {
     id: params.commentRow.id,
+    entityType: params.commentRow.entity_type,
+    entityId: params.commentRow.entity_id,
     runId: params.commentRow.run_id,
     userId: params.commentRow.user_id,
     parentId: params.commentRow.parent_id,
@@ -182,14 +200,28 @@ export function resolveRunCommentRealtimeItem(
   })
 }
 
-export async function createRunComment(runId: string, input: CreateRunCommentInput) {
-  return requestRunCommentMutation(`/api/runs/${runId}/comments`, {
+export async function createEntityComment(
+  entityType: CommentEntityType,
+  entityId: string,
+  input: CreateEntityCommentInput
+) {
+  const normalizedEntityPath = entityType === 'race' ? 'races' : 'runs'
+
+  return requestRunCommentMutation(`/api/${normalizedEntityPath}/${entityId}/comments`, {
     method: 'POST',
     body: JSON.stringify({
       comment: input.comment,
       parentId: input.parentId ?? null,
     }),
   })
+}
+
+export async function createRunComment(runId: string, input: CreateRunCommentInput) {
+  return createEntityComment('run', runId, input)
+}
+
+export async function createRaceComment(raceId: string, input: CreateEntityCommentInput) {
+  return createEntityComment('race', raceId, input)
 }
 
 export async function updateRunComment(commentId: string, input: UpdateRunCommentInput) {
@@ -373,63 +405,77 @@ export function countVisibleRunCommentRecords(comments: RunCommentVisibilityReco
 }
 
 export async function loadRunCommentVisibilitySummaryForRunIds(runIds: string[]): Promise<RunCommentVisibilitySummary> {
-  if (runIds.length === 0) {
+  return loadEntityCommentVisibilitySummaryForEntityIds('run', runIds)
+}
+
+export async function loadEntityCommentVisibilitySummaryForEntityIds(
+  entityType: CommentEntityType,
+  entityIds: string[]
+): Promise<RunCommentVisibilitySummary> {
+  if (entityIds.length === 0) {
     return {
+      visibilityByEntityId: {},
+      countsByEntityId: {},
       visibilityByRunId: {},
       countsByRunId: {},
     }
   }
 
-  const uniqueRunIds = Array.from(new Set(runIds))
+  const uniqueEntityIds = Array.from(new Set(entityIds))
   const { data, error } = await supabase
     .from('run_comments')
-    .select('id, run_id, parent_id, created_at, deleted_at')
-    .in('run_id', uniqueRunIds)
+    .select('id, entity_type, entity_id, parent_id, created_at, deleted_at')
+    .eq('entity_type', entityType)
+    .in('entity_id', uniqueEntityIds)
 
   if (error) {
     throw error
   }
 
-  const visibilityByRunId: Record<string, RunCommentVisibilityRecord[]> = {}
-  const countsByRunId: Record<string, number> = {}
+  const visibilityByEntityId: Record<string, RunCommentVisibilityRecord[]> = {}
+  const countsByEntityId: Record<string, number> = {}
 
-  for (const runId of uniqueRunIds) {
-    visibilityByRunId[runId] = []
-    countsByRunId[runId] = 0
+  for (const entityId of uniqueEntityIds) {
+    visibilityByEntityId[entityId] = []
+    countsByEntityId[entityId] = 0
   }
 
   for (const row of (data as RunCommentCountRow[] | null) ?? []) {
-    if (!visibilityByRunId[row.run_id]) {
-      visibilityByRunId[row.run_id] = []
+    if (!visibilityByEntityId[row.entity_id]) {
+      visibilityByEntityId[row.entity_id] = []
     }
 
-    visibilityByRunId[row.run_id].push({
+    visibilityByEntityId[row.entity_id].push({
       id: row.id,
-      runId: row.run_id,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      runId: row.entity_type === 'run' ? row.entity_id : null,
       parentId: row.parent_id,
       createdAt: row.created_at,
       deletedAt: row.deleted_at,
     })
   }
 
-  for (const runId of uniqueRunIds) {
-    countsByRunId[runId] = countVisibleCommentItems(visibilityByRunId[runId] ?? [])
+  for (const entityId of uniqueEntityIds) {
+    countsByEntityId[entityId] = countVisibleCommentItems(visibilityByEntityId[entityId] ?? [])
   }
 
   return {
-    visibilityByRunId,
-    countsByRunId,
+    visibilityByEntityId,
+    countsByEntityId,
+    visibilityByRunId: visibilityByEntityId,
+    countsByRunId: countsByEntityId,
   }
 }
 
 export async function loadRunCommentVisibilityForRunIds(runIds: string[]) {
   const summary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
-  return summary.visibilityByRunId
+  return summary.visibilityByEntityId
 }
 
 export async function loadRunCommentCountsForRunIds(runIds: string[]) {
   const summary = await loadRunCommentVisibilitySummaryForRunIds(runIds)
-  return summary.countsByRunId
+  return summary.countsByEntityId
 }
 
 export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCommentAuthorIdentity> {
@@ -454,19 +500,34 @@ export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCo
 }
 
 export async function loadRunComments(runId: string, viewerUserId: string | null = null): Promise<RunCommentItem[]> {
+  return loadEntityComments('run', runId, viewerUserId)
+}
+
+export async function loadRaceComments(raceId: string, viewerUserId: string | null = null): Promise<RunCommentItem[]> {
+  return loadEntityComments('race', raceId, viewerUserId)
+}
+
+export async function loadEntityComments(
+  entityType: CommentEntityType,
+  entityId: string,
+  viewerUserId: string | null = null
+): Promise<RunCommentItem[]> {
   console.debug('[RunComments] rpc load start', {
-    runId,
+    entityType,
+    entityId,
     viewerUserId,
   })
 
-  const { data: comments, error: commentsError } = await supabase.rpc('get_run_comments_with_meta', {
-    run_id: runId,
-    viewer_user_id: viewerUserId,
+  const { data: comments, error: commentsError } = await supabase.rpc('get_entity_comments_with_meta', {
+    p_entity_type: entityType,
+    p_entity_id: entityId,
+    p_viewer_user_id: viewerUserId,
   })
 
   if (commentsError) {
     console.error('[RunComments] rpc load failed', {
-      runId,
+      entityType,
+      entityId,
       viewerUserId,
       commentsError,
     })
@@ -478,7 +539,8 @@ export async function loadRunComments(runId: string, viewerUserId: string | null
     .sort(compareRunComments)
 
   console.debug('[RunComments] rpc load success', {
-    runId,
+    entityType,
+    entityId,
     viewerUserId,
     commentsCount: mappedComments.length,
   })
@@ -490,22 +552,33 @@ export function subscribeToRunCommentLikes(
   runId: string,
   handlers: SubscribeToRunCommentLikesHandlers
 ) {
-  if (!runId.trim()) {
+  return subscribeToEntityCommentLikes('run', runId, handlers)
+}
+
+export function subscribeToEntityCommentLikes(
+  entityType: CommentEntityType,
+  entityId: string,
+  handlers: SubscribeToRunCommentLikesHandlers
+) {
+  if (!entityId.trim()) {
     return () => {}
   }
 
   const channel = supabase
-    .channel(`run-comment-likes-${runId}-${Math.random().toString(36).slice(2)}`)
+    .channel(`comment-likes-${entityType}-${entityId}-${Math.random().toString(36).slice(2)}`)
     .on(
       'postgres_changes',
       {
         event: 'INSERT',
         schema: 'public',
         table: 'run_comment_likes',
-        filter: `run_id=eq.${runId}`,
       },
       (payload) => {
-        handlers.onInsert?.(payload.new as RunCommentLikeRealtimeRow)
+        const nextLike = payload.new as RunCommentLikeRealtimeRow
+
+        if (nextLike.entity_type === entityType && nextLike.entity_id === entityId) {
+          handlers.onInsert?.(nextLike)
+        }
       }
     )
     .on(
@@ -514,10 +587,13 @@ export function subscribeToRunCommentLikes(
         event: 'DELETE',
         schema: 'public',
         table: 'run_comment_likes',
-        filter: `run_id=eq.${runId}`,
       },
       (payload) => {
-        handlers.onDelete?.(payload.old as RunCommentLikeRealtimeRow)
+        const nextLike = payload.old as RunCommentLikeRealtimeRow
+
+        if (nextLike.entity_type === entityType && nextLike.entity_id === entityId) {
+          handlers.onDelete?.(nextLike)
+        }
       }
     )
     .subscribe()
@@ -531,22 +607,33 @@ export function subscribeToRunComments(
   runId: string,
   handlers: SubscribeToRunCommentsHandlers
 ) {
-  if (!runId.trim()) {
+  return subscribeToEntityComments('run', runId, handlers)
+}
+
+export function subscribeToEntityComments(
+  entityType: CommentEntityType,
+  entityId: string,
+  handlers: SubscribeToRunCommentsHandlers
+) {
+  if (!entityId.trim()) {
     return () => {}
   }
 
   const channel = supabase
-    .channel(`run-comments-${runId}-${Math.random().toString(36).slice(2)}`)
+    .channel(`comments-${entityType}-${entityId}-${Math.random().toString(36).slice(2)}`)
     .on(
       'postgres_changes',
       {
         event: 'INSERT',
         schema: 'public',
         table: 'run_comments',
-        filter: `run_id=eq.${runId}`,
       },
       (payload) => {
-        handlers.onInsert?.(payload.new as RunCommentRealtimeRow)
+        const nextComment = payload.new as RunCommentRealtimeRow
+
+        if (nextComment.entity_type === entityType && nextComment.entity_id === entityId) {
+          handlers.onInsert?.(nextComment)
+        }
       }
     )
     .on(
@@ -555,10 +642,13 @@ export function subscribeToRunComments(
         event: 'UPDATE',
         schema: 'public',
         table: 'run_comments',
-        filter: `run_id=eq.${runId}`,
       },
       (payload) => {
-        handlers.onUpdate?.(payload.new as RunCommentRealtimeRow)
+        const nextComment = payload.new as RunCommentRealtimeRow
+
+        if (nextComment.entity_type === entityType && nextComment.entity_id === entityId) {
+          handlers.onUpdate?.(nextComment)
+        }
       }
     )
     .subscribe()

@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
@@ -30,6 +31,7 @@ type RaceEventCardProps = {
   isLinking: boolean
   isUnlinking: boolean
   onMenuToggle: (raceEventId: string) => void
+  onOpen: (raceEvent: RaceEvent) => void
   onEdit: (raceEvent: RaceEvent) => void
   onDelete: (raceEvent: RaceEvent) => void
   onConfirmSuggestedLink: (raceEvent: RaceEvent) => void
@@ -368,6 +370,7 @@ function RaceEventCard({
   isLinking,
   isUnlinking,
   onMenuToggle,
+  onOpen,
   onEdit,
   onDelete,
   onConfirmSuggestedLink,
@@ -380,7 +383,28 @@ function RaceEventCard({
   const displayTimeLabel = formatResultTimeClock(displayTime?.seconds)
 
   return (
-    <div className="rounded-2xl border px-4 py-3">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        const target = event.target as HTMLElement | null
+
+        if (target?.closest('button, a, input, select, textarea, option')) {
+          return
+        }
+
+        onOpen(raceEvent)
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return
+        }
+
+        event.preventDefault()
+        onOpen(raceEvent)
+      }}
+      className="cursor-pointer rounded-2xl border px-4 py-3"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -508,6 +532,7 @@ function RaceEventCard({
 }
 
 export default function RacesManager({ userId }: RacesManagerProps) {
+  const router = useRouter()
   const [pendingDeleteRaceEvent, setPendingDeleteRaceEvent] = useState<RaceEvent | null>(null)
   const [submittingRaceEvent, setSubmittingRaceEvent] = useState(false)
   const [deletingRaceEventId, setDeletingRaceEventId] = useState<string | null>(null)
@@ -1021,6 +1046,9 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                       isMenuOpen={openRaceEventMenuId === raceEvent.id}
                       isLinking={linkingRaceEventId === raceEvent.id}
                       isUnlinking={unlinkingRaceEventId === raceEvent.id}
+                      onOpen={(nextRaceEvent) => {
+                        router.push(`/races/${nextRaceEvent.id}`)
+                      }}
                       onMenuToggle={(raceEventId) => {
                         setOpenRaceEventMenuId((currentValue) => currentValue === raceEventId ? null : raceEventId)
                       }}
@@ -1059,6 +1087,9 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                       isMenuOpen={openRaceEventMenuId === raceEvent.id}
                       isLinking={linkingRaceEventId === raceEvent.id}
                       isUnlinking={unlinkingRaceEventId === raceEvent.id}
+                      onOpen={(nextRaceEvent) => {
+                        router.push(`/races/${nextRaceEvent.id}`)
+                      }}
                       onMenuToggle={(raceEventId) => {
                         setOpenRaceEventMenuId((currentValue) => currentValue === raceEventId ? null : raceEventId)
                       }}

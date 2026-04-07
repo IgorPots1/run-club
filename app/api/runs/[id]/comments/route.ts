@@ -6,7 +6,7 @@ import {
 } from '@/lib/events/returnTriggerEvents'
 import {
   buildRunCommentPayload,
-  createRunCommentRecord,
+  createRunScopedCommentRecord,
   parseCreateRunCommentInput,
 } from '@/lib/server/run-comments'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -147,7 +147,7 @@ export async function POST(
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
-  const result = await createRunCommentRecord({
+  const result = await createRunScopedCommentRecord({
     supabaseAdmin,
     runId,
     userId: user.id,

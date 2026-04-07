@@ -11,6 +11,7 @@ import {
 
 type RunCommentThreadListProps = {
   comments: RunCommentItem[]
+  commentDomIdPrefix?: string
   currentUserId?: string | null
   replyComposerMode?: 'inline' | 'external'
   activeReplyTargetId?: string | null
@@ -151,6 +152,7 @@ function InlineComposer({
 
 type CommentCardProps = {
   comment: RunCommentItem
+  commentDomIdPrefix: string
   currentUserId?: string | null
   isReply?: boolean
   isReplyTargetActive?: boolean
@@ -176,6 +178,7 @@ type CommentCardProps = {
 
 function CommentCard({
   comment,
+  commentDomIdPrefix,
   currentUserId = null,
   isReply = false,
   isReplyTargetActive = false,
@@ -222,7 +225,7 @@ function CommentCard({
 
   return (
     <div
-      id={`run-comment-${comment.id}`}
+      id={`${commentDomIdPrefix}-${comment.id}`}
       className={isReply ? 'ml-7 border-l border-black/10 pl-3 sm:ml-13 sm:pl-4 dark:border-white/10' : ''}
     >
       <div className="flex items-start gap-3">
@@ -353,6 +356,7 @@ function CommentCard({
 
 export default function RunCommentThreadList({
   comments,
+  commentDomIdPrefix = 'comment',
   currentUserId = null,
   replyComposerMode = 'inline',
   activeReplyTargetId = null,
@@ -483,6 +487,7 @@ export default function RunCommentThreadList({
         <div key={thread.id} className="space-y-4">
           <CommentCard
             comment={thread}
+            commentDomIdPrefix={commentDomIdPrefix}
             currentUserId={currentUserId}
             isReplyTargetActive={replyComposerMode === 'external' && activeReplyTargetId === thread.id}
             isHighlighted={highlightedCommentId === thread.id}
@@ -517,6 +522,7 @@ export default function RunCommentThreadList({
                 <CommentCard
                   key={reply.id}
                   comment={reply}
+                  commentDomIdPrefix={commentDomIdPrefix}
                   currentUserId={currentUserId}
                   isReply
                   isHighlighted={highlightedCommentId === reply.id}

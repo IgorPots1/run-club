@@ -36,7 +36,7 @@ async function loadOwnedRaceEvent(
 ) {
   return supabaseAdmin
     .from('race_events')
-    .select('id, user_id, distance_meters, result_time_seconds')
+    .select(RACE_EVENT_SELECT)
     .eq('id', raceEventId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -63,6 +63,52 @@ async function loadLinkedRunIfOwned(
   }
 
   return { exists: Boolean(data) }
+}
+
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { user, error } = await getAuthenticatedUser()
+
+  if (error || !user) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error?.message ?? 'auth_required',
+      },
+      { status: 401 }
+    )
+  }
+
+  const { id: raceEventId } = await context.params
+  const supabaseAdmin = createSupabaseAdminClient()
+  const { data: existingRaceEvent, error: loadError } = await loadOwnedRaceEvent(supabaseAdmin, raceEventId, user.id)
+
+  if (loadError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: loadError.message,
+      },
+      { status: 500 }
+    )
+  }
+
+  if (!existingRaceEvent) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'race_event_not_found',
+      },
+      { status: 404 }
+    )
+  }
+
+  return NextResponse.json({
+    ok: true,
+    raceEvent: existingRaceEvent,
+  })
 }
 
 export async function PATCH(
