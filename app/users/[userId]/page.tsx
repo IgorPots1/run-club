@@ -32,6 +32,7 @@ type PublicRunStatRow = {
   distance_km: number | null
   created_at: string
   moving_time_seconds: number | null
+  elevation_gain_meters?: number | null
 }
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
@@ -87,6 +88,14 @@ function formatRecentDayDistanceLabel(distanceKm: number) {
   return String(roundedDistance)
 }
 
+function formatElevationGainLabel(totalElevationGainMeters: number) {
+  if (!Number.isFinite(totalElevationGainMeters) || totalElevationGainMeters <= 0) {
+    return ''
+  }
+
+  return `${Math.round(totalElevationGainMeters)} м`
+}
+
 function formatClubJoinedLabel(dateString: string | null | undefined) {
   if (!dateString) return 'дата неизвестна'
   const date = new Date(dateString)
@@ -110,7 +119,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .maybeSingle(),
     supabase
       .from('runs')
-      .select('distance_km, created_at, moving_time_seconds')
+      .select('distance_km, created_at, moving_time_seconds, elevation_gain_meters')
       .eq('user_id', userId),
   ])
 
@@ -156,6 +165,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const activity30Days = buildActivityWindowStats(publicRuns)
   const activity30DayChartData = buildRollingWeeklyDistanceChart(publicRuns, { weeks: 12 })
   const memberSinceLabel = formatClubJoinedLabel(publicProfile?.club_joined_at)
+  const activity30DayElevationLabel = formatElevationGainLabel(activity30Days.totalElevationGainMeters)
   const activity30DayMetrics = [
     {
       id: 'distance',
@@ -271,6 +281,8 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             subtitle="Сводка за последние 30 дней."
             metrics={activity30DayMetrics}
             compact
+            secondaryMetricLabel={activity30DayElevationLabel ? 'Набор высоты' : undefined}
+            secondaryMetricValue={activity30DayElevationLabel || undefined}
           />
           <div className="app-surface-muted mt-3 rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
             <p className="app-text-secondary text-sm font-medium">Тренд дистанции за 12 недель</p>

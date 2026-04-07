@@ -11,6 +11,8 @@ type ActivitySummaryGridProps = {
   subtitle?: string
   metrics: ActivitySummaryMetric[]
   compact?: boolean
+  secondaryMetricLabel?: string
+  secondaryMetricValue?: string
 }
 
 export default function ActivitySummaryGrid({
@@ -18,6 +20,8 @@ export default function ActivitySummaryGrid({
   subtitle,
   metrics,
   compact = false,
+  secondaryMetricLabel,
+  secondaryMetricValue,
 }: ActivitySummaryGridProps) {
   return (
     <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
@@ -48,6 +52,12 @@ export default function ActivitySummaryGrid({
           </div>
         ))}
       </div>
+      {secondaryMetricLabel && secondaryMetricValue ? (
+        <div className="app-text-secondary mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span>{secondaryMetricLabel}:</span>
+          <span className="app-text-primary font-medium">{secondaryMetricValue}</span>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -159,6 +159,14 @@ function formatRunMetaLabel(run: Pick<ActivityRunRow, 'created_at' | 'external_s
   return parts.join(' • ')
 }
 
+function formatElevationGainLabel(totalElevationGainMeters: number) {
+  if (!Number.isFinite(totalElevationGainMeters) || totalElevationGainMeters <= 0) {
+    return ''
+  }
+
+  return `${Math.round(totalElevationGainMeters)} м`
+}
+
 function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type' | 'badge_code'>) {
   if (achievement.source_type === 'challenge') {
     return 'app-card rounded-2xl border border-emerald-300/60 bg-emerald-50/80 p-4 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10'
@@ -339,6 +347,10 @@ export default function ActivityPage() {
       },
     ],
     [summary]
+  )
+  const summaryElevationLabel = useMemo(
+    () => formatElevationGainLabel(summary.totalElevationGainMeters),
+    [summary.totalElevationGainMeters]
   )
   const upcomingRaceEventsCount = useMemo(
     () => (raceEvents ?? []).filter((raceEvent) => isRaceEventUpcoming(raceEvent)).length,
@@ -549,6 +561,8 @@ export default function ActivityPage() {
                 title="Сводка по периоду"
                 subtitle="Твои ключевые показатели за выбранный диапазон."
                 metrics={summaryMetrics}
+                secondaryMetricLabel={summaryElevationLabel ? 'Набор высоты' : undefined}
+                secondaryMetricValue={summaryElevationLabel || undefined}
               />
 
               <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">

@@ -11,6 +11,7 @@ export type ActivityRunRow = {
   duration_minutes?: number | null
   duration_seconds?: number | null
   moving_time_seconds?: number | null
+  elevation_gain_meters?: number | null
   xp?: number | null
   created_at: string
   external_source?: string | null
@@ -20,6 +21,7 @@ export type ActivityWindowRun = {
   distance_km: number | null
   created_at: string
   moving_time_seconds?: number | null
+  elevation_gain_meters?: number | null
 }
 
 export type ActivityChartPoint = {
@@ -43,6 +45,7 @@ export type ActivitySummary = {
   totalWorkouts: number
   totalMovingTimeSeconds: number
   activeDaysCount: number
+  totalElevationGainMeters: number
   chartData: ActivityChartPoint[]
 }
 
@@ -51,6 +54,7 @@ export type ActivityWindowStats = {
   runsCount: number
   activeDaysCount: number
   totalMovingTimeSeconds: number
+  totalElevationGainMeters: number
 }
 
 function startOfDay(date: Date) {
@@ -188,6 +192,12 @@ function countActiveDays(runs: Array<{ createdAt: Date }>) {
   return new Set(runs.map((run) => formatDateKey(run.createdAt))).size
 }
 
+function sumElevationGainMeters(
+  runs: Array<{ elevationGainMeters: number }>
+) {
+  return runs.reduce((sum, run) => sum + Math.max(0, run.elevationGainMeters), 0)
+}
+
 function buildDistanceMapByKey(runs: Array<{ distance: number; createdAt: Date }>, keyBuilder: (date: Date) => number) {
   return runs.reduce<Record<number, number>>((totals, run) => {
     const key = keyBuilder(run.createdAt)
@@ -199,7 +209,7 @@ function buildDistanceMapByKey(runs: Array<{ distance: number; createdAt: Date }
 export async function loadActivityRuns(userId: string) {
   const { data, error } = await supabase
     .from('runs')
-    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, moving_time_seconds, xp, created_at, external_source')
+    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, xp, created_at, external_source')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
@@ -227,6 +237,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       0,
       Number(run.moving_time_seconds ?? run.duration_seconds ?? Number(run.duration_minutes ?? 0) * 60)
     ),
+    elevationGainMeters: Math.max(0, Number(run.elevation_gain_meters ?? 0)),
   }))
 
   if (period === 'week') {
@@ -241,6 +252,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       totalWorkouts: filteredRuns.length,
       totalMovingTimeSeconds: sumMovingTimeSeconds(filteredRuns),
       activeDaysCount: countActiveDays(filteredRuns),
+      totalElevationGainMeters: sumElevationGainMeters(filteredRuns),
       chartData: days.map((day, index) => ({
         label: formatWeekdayLabel(index),
         distance: filteredRuns
@@ -264,6 +276,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       totalWorkouts: filteredRuns.length,
       totalMovingTimeSeconds: sumMovingTimeSeconds(filteredRuns),
       activeDaysCount: countActiveDays(filteredRuns),
+      totalElevationGainMeters: sumElevationGainMeters(filteredRuns),
       chartData: daysInMonth.map((day) => ({
         label: String(day),
         distance: distanceByDay[day] ?? 0,
@@ -284,6 +297,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       totalWorkouts: filteredRuns.length,
       totalMovingTimeSeconds: sumMovingTimeSeconds(filteredRuns),
       activeDaysCount: countActiveDays(filteredRuns),
+      totalElevationGainMeters: sumElevationGainMeters(filteredRuns),
       chartData: months.map((month) => ({
         label: formatMonthLabel(month),
         distance: distanceByMonth[month.getMonth()] ?? 0,
@@ -297,6 +311,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       totalWorkouts: 0,
       totalMovingTimeSeconds: 0,
       activeDaysCount: 0,
+      totalElevationGainMeters: 0,
       chartData: [],
     }
   }
@@ -315,6 +330,7 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
     totalWorkouts: normalizedRuns.length,
     totalMovingTimeSeconds: sumMovingTimeSeconds(normalizedRuns),
     activeDaysCount: countActiveDays(normalizedRuns),
+    totalElevationGainMeters: sumElevationGainMeters(normalizedRuns),
     chartData: years.map((year) => ({
       label: formatYearLabel(year),
       distance: distanceByYear[year.getFullYear()] ?? 0,
@@ -344,6 +360,7 @@ export function buildActivityWindowStats(
     runsCount: filteredRuns.length,
     activeDaysCount: activeDateKeys.size,
     totalMovingTimeSeconds: filteredRuns.reduce((sum, run) => sum + Math.max(0, Number(run.moving_time_seconds ?? 0)), 0),
+    totalElevationGainMeters: filteredRuns.reduce((sum, run) => sum + Math.max(0, Number(run.elevation_gain_meters ?? 0)), 0),
   }
 }
 
