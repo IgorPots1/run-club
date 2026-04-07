@@ -1,5 +1,6 @@
 'use client'
 
+import { Check } from 'lucide-react'
 import Link from 'next/link'
 import { getShoeWearUi } from '@/lib/shoe-wear-ui'
 import type { UserShoeRecord } from '@/lib/shoes-client'
@@ -29,6 +30,31 @@ function getMetaLabel(shoe: UserShoeRecord) {
   return parts.join(' • ')
 }
 
+function getRemainingDistanceLabel(shoe: UserShoeRecord) {
+  const wearUi = getShoeWearUi({
+    currentDistanceMeters: shoe.currentDistanceMeters,
+    maxDistanceMeters: shoe.maxDistanceMeters,
+  })
+
+  if (wearUi.usagePercent > 100) {
+    return 'Пробег превысил ресурс'
+  }
+
+  return `Осталось ~${Math.max(0, Math.round((wearUi.maxDistanceMeters - wearUi.currentDistanceMeters) / 1000))} км`
+}
+
+function getWearDotClassName(status: 'fresh' | 'warning' | 'critical') {
+  if (status === 'critical') {
+    return 'bg-rose-500'
+  }
+
+  if (status === 'warning') {
+    return 'bg-amber-500'
+  }
+
+  return 'bg-emerald-500'
+}
+
 export default function MyShoesPicker({
   shoes,
   selectedShoeId,
@@ -43,30 +69,35 @@ export default function MyShoesPicker({
 
   return (
     <div className={wrapperClassName}>
-      <div className="space-y-2">
+      <div className="overflow-hidden rounded-2xl border border-black/[0.05] dark:border-white/[0.08]">
         <button
           type="button"
           onClick={() => onSelect('')}
           disabled={disabled}
           aria-pressed={selectedShoeId === ''}
-          className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+          className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
             selectedShoeId === ''
-              ? 'app-button-primary shadow-sm'
-              : 'app-card'
+              ? 'bg-[var(--accent-soft)]/70'
+              : 'bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
           }`}
         >
-          <p className="text-sm font-semibold">Без кроссовок</p>
-          <p className={`mt-1 text-xs ${selectedShoeId === '' ? 'text-white/85' : 'app-text-secondary'}`}>
-            Тренировка будет сохранена без пары
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="app-text-primary text-sm font-semibold">Без кроссовок</p>
+            <p className="app-text-secondary mt-1 text-xs">Тренировка будет сохранена без пары</p>
+          </div>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+            {selectedShoeId === '' ? (
+              <Check className="h-4 w-4 text-[var(--accent-strong)]" strokeWidth={2.2} />
+            ) : null}
+          </span>
         </button>
 
         {loading ? (
-          <div className="app-surface-muted rounded-2xl border border-dashed p-4 text-sm app-text-secondary">
+          <div className="app-surface-muted border-t border-dashed p-4 text-sm app-text-secondary">
             Загружаем ваши пары...
           </div>
         ) : shoes.length === 0 ? (
-          <div className="app-surface-muted rounded-2xl border border-dashed p-4 text-sm app-text-secondary">
+          <div className="app-surface-muted border-t border-dashed p-4 text-sm app-text-secondary">
             Пока нет добавленных кроссовок.
           </div>
         ) : (
@@ -77,18 +108,7 @@ export default function MyShoesPicker({
               currentDistanceMeters: shoe.currentDistanceMeters,
               maxDistanceMeters: shoe.maxDistanceMeters,
             })
-            const wearBarClassName =
-              wearUi.status === 'critical'
-                ? 'bg-rose-500'
-                : wearUi.status === 'warning'
-                  ? 'bg-amber-500'
-                  : 'bg-emerald-500'
-            const wearDotClassName =
-              wearUi.status === 'critical'
-                ? 'bg-rose-500'
-                : wearUi.status === 'warning'
-                  ? 'bg-amber-500'
-                  : 'bg-emerald-500'
+            const remainingDistanceLabel = getRemainingDistanceLabel(shoe)
 
             return (
               <button
@@ -97,40 +117,44 @@ export default function MyShoesPicker({
                 onClick={() => onSelect(shoe.id)}
                 disabled={disabled}
                 aria-pressed={isSelected}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`flex w-full items-start justify-between gap-3 border-t border-black/[0.05] px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.08] ${
                   isSelected
-                    ? 'app-button-primary shadow-sm'
-                    : 'app-card'
+                    ? 'bg-[var(--accent-soft)]/70'
+                    : 'bg-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 }`}
               >
-                <p className="text-sm font-semibold">{shoe.displayName}</p>
-                {metaLabel ? (
-                  <p className={`mt-1 text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
-                    {metaLabel}
-                  </p>
-                ) : null}
-                <div className="mt-2 flex items-center gap-2">
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${isSelected ? 'bg-white' : wearDotClassName}`}
-                    aria-hidden="true"
-                  />
-                  <p className={`text-xs ${isSelected ? 'text-white/85' : 'app-text-secondary'}`}>
-                    {wearUi.label} • {wearUi.distanceLabel}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <p className="app-text-primary text-sm font-semibold">{shoe.displayName}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                    <p className="app-text-secondary">{remainingDistanceLabel}</p>
+                    <span className="app-text-muted">•</span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${getWearDotClassName(wearUi.status)}`}
+                        aria-hidden="true"
+                      />
+                      <span className="app-text-secondary">{wearUi.label}</span>
+                    </div>
+                    {metaLabel ? (
+                      <>
+                        <span className="app-text-muted">•</span>
+                        <span className="app-text-secondary">{metaLabel}</span>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <div className={`mt-2 h-1.5 w-full overflow-hidden rounded-full ${isSelected ? 'bg-white/20' : 'bg-black/[0.06] dark:bg-white/[0.08]'}`}>
-                  <div
-                    className={`h-full rounded-full ${isSelected ? 'bg-white' : wearBarClassName}`}
-                    style={{ width: `${Math.min(100, Math.max(0, wearUi.usagePercent))}%` }}
-                  />
-                </div>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                  {isSelected ? (
+                    <Check className="h-4 w-4 text-[var(--accent-strong)]" strokeWidth={2.2} />
+                  ) : null}
+                </span>
               </button>
             )
           })
         )}
       </div>
 
-      <div className="mt-3 flex flex-col gap-2">
+      <div className="mt-3 flex flex-col gap-2 border-t border-black/[0.05] pt-3 dark:border-white/[0.08]">
         {hint ? <p className="app-text-secondary text-xs">{hint}</p> : null}
         <Link
           href={addPairHref}
