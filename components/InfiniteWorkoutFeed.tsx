@@ -222,7 +222,7 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
           href={`/users/${item.user_id}`}
           size="sm"
         />
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex min-w-0 flex-col items-end gap-2">
           {statusLabel ? (
             <span className="app-text-secondary inline-flex rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
               {statusLabel}
@@ -236,7 +236,7 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
 
       <div className="mt-4 text-center">
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6">{item.raceName}</p>
+          <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
           {item.isPersonalRecord ? (
             <span className="inline-flex items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
               PR
@@ -287,7 +287,7 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
       {item.linkedRun ? (
         <div className="mt-4 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
           <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
-          <p className="app-text-secondary mt-1 text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
+          <p className="app-text-secondary mt-1 break-words text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
           {linkedRunPace ? (
             <p className="app-text-secondary mt-1 text-xs">{linkedRunPace}</p>
           ) : null}

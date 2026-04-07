@@ -864,7 +864,7 @@ function ShoeGarageCard({
               ) : null}
             </div>
             <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
+              className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ${getWearBadgeClassName(wearUi.status)}`}
             >
               {wearUi.label}
             </span>

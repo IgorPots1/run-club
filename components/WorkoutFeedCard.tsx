@@ -363,7 +363,7 @@ function WorkoutFeedCard({
       </div>
 
       {!showMapPreview ? (
-        <div className="app-text-primary mt-4 flex items-center gap-2 whitespace-nowrap text-base font-semibold leading-tight">
+        <div className="app-text-primary mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold leading-tight">
           <span className="font-semibold">{distanceLabel}</span>
           <span className="app-text-secondary">•</span>
           <span className="font-semibold">{paceWithUnit}</span>
