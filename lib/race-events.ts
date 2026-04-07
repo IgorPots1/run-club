@@ -16,6 +16,16 @@ export type RaceEvent = {
   linked_run?: RaceEventLinkedRunSummary | null
 }
 
+export function isRaceEventUpcoming(raceEvent: Pick<RaceEvent, 'race_date' | 'linked_run_id'>) {
+  const today = new Date().toISOString().slice(0, 10)
+
+  if (raceEvent.race_date > today) {
+    return true
+  }
+
+  return !raceEvent.linked_run_id
+}
+
 export type RaceEventMutationInput = {
   name: string
   raceDate: string
