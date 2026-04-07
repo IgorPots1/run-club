@@ -23,7 +23,7 @@ import {
 } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
-import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { formatDistanceKm } from '@/lib/format'
 import { formatClock } from '@/lib/race-events'
 import { getLevelFromXP } from '@/lib/xp'
 
@@ -104,45 +104,25 @@ function formatLinkedRunPace(item: FeedRaceEventItem) {
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
 }
 
-function getRaceStatusLabel(raceDate: string | null) {
-  if (!raceDate) {
-    return null
-  }
-
-  const today = new Date().toISOString().slice(0, 10)
-  return raceDate > today ? 'Предстоящий старт' : 'Завершен'
-}
-
 function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
   const resultLabel = formatClock(item.resultTimeSeconds)
   const targetLabel = formatClock(item.targetTimeSeconds)
   const linkedRunPreview = formatLinkedRunPreview(item)
   const linkedRunPace = formatLinkedRunPace(item)
   const distanceLabel = getRaceDistanceLabel(item.distanceMeters)
-  const statusLabel = getRaceStatusLabel(item.raceDate)
   const isUpcoming = Boolean(item.raceDate && item.raceDate > new Date().toISOString().slice(0, 10))
 
   return (
     <Link href={`/races/${item.raceEventId}`} className="block">
       <article className="app-card relative overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <ParticipantIdentity
-              avatarUrl={item.avatar_url}
-              displayName={item.displayName}
-              level={getLevelFromXP(item.totalXp).level}
-              size="sm"
-            />
-          </div>
-          <p className="app-text-secondary min-w-0 text-left text-xs sm:text-right sm:text-sm">
-            {formatRunTimestampLabel(item.created_at, null)}
-          </p>
-        </div>
+        <ParticipantIdentity
+          avatarUrl={item.avatar_url}
+          displayName={item.displayName}
+          level={getLevelFromXP(item.totalXp).level}
+          size="sm"
+        />
 
         <div className="mt-4 min-w-0">
-          {isUpcoming && statusLabel ? (
-            <p className="app-text-muted text-[11px] font-medium uppercase tracking-wide">{statusLabel}</p>
-          ) : null}
           <div className="mt-1 flex items-start justify-between gap-3">
             <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
             <p className="app-text-secondary shrink-0 text-right text-sm">
