@@ -4,6 +4,14 @@ import type { FormEvent } from 'react'
 import { useEffect } from 'react'
 import type { ActivityRunRow } from '@/lib/activity'
 
+const DISTANCE_PRESETS = [
+  { label: '5 км', value: '5' },
+  { label: '10 км', value: '10' },
+  { label: '15 км', value: '15' },
+  { label: '21.1 км', value: '21.1' },
+  { label: '42.2 км', value: '42.2' },
+] as const
+
 type RaceEventFormSheetProps = {
   open: boolean
   editing: boolean
@@ -90,7 +98,8 @@ export default function RaceEventFormSheet({
         onClick={onClose}
         disabled={submitting}
       />
-      <section className="app-card relative flex max-h-[min(88svh,48rem)] w-full flex-col overflow-hidden rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-lg md:rounded-3xl md:pb-4">
+      <section className="app-card relative flex max-h-[min(88svh,48rem)] w-full min-w-0 flex-col overflow-hidden rounded-t-3xl shadow-xl md:max-w-lg md:rounded-3xl">
+        <div className="flex shrink-0 flex-col px-4 pt-4">
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -112,8 +121,10 @@ export default function RaceEventFormSheet({
             Закрыть
           </button>
         </div>
+        </div>
 
-        <form onSubmit={onSubmit} className="mt-4 min-h-0 flex-1 overflow-y-auto pb-1">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-4">
           <div className="space-y-4">
             <div>
               <label htmlFor="race-event-name" className="app-text-secondary mb-1 block text-sm">
@@ -148,13 +159,30 @@ export default function RaceEventFormSheet({
               <label htmlFor="race-event-distance" className="app-text-secondary mb-1 block text-sm">
                 Дистанция
               </label>
+              <div className="mb-2 flex flex-wrap gap-2">
+                {DISTANCE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => onDistanceInputChange(preset.value)}
+                    disabled={submitting}
+                    className={`inline-flex min-h-9 items-center justify-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      distanceInput === preset.value
+                        ? 'app-button-primary'
+                        : 'app-button-secondary'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
               <input
                 id="race-event-distance"
                 type="text"
                 inputMode="decimal"
                 value={distanceInput}
                 onChange={(event) => onDistanceInputChange(event.target.value)}
-                placeholder="Например: 5, 10, 21.1, 42.2"
+                placeholder="Например: 7.5"
                 disabled={submitting}
                 className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
               />
@@ -173,7 +201,8 @@ export default function RaceEventFormSheet({
                 inputMode="numeric"
                 value={targetTimeInput}
                 onChange={(event) => onTargetTimeInputChange(event.target.value)}
-                placeholder="Например: 01:45:00"
+                placeholder="чч:мм:сс"
+                autoComplete="off"
                 disabled={submitting}
                 className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
               />
@@ -192,7 +221,8 @@ export default function RaceEventFormSheet({
                 inputMode="numeric"
                 value={resultTimeInput}
                 onChange={(event) => onResultTimeInputChange(event.target.value)}
-                placeholder="Например: 03:15:42"
+                placeholder="чч:мм:сс"
+                autoComplete="off"
                 disabled={submitting}
                 className="app-input min-h-11 w-full rounded-xl border px-3 py-2"
               />
@@ -254,8 +284,10 @@ export default function RaceEventFormSheet({
 
             {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           </div>
+          </div>
 
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="shrink-0 border-t border-black/5 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 dark:border-white/10 md:pb-4">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={onClose}
@@ -273,6 +305,7 @@ export default function RaceEventFormSheet({
                 ? (editing ? 'Сохраняем старт...' : 'Создаем старт...')
                 : (editing ? 'Сохранить старт' : 'Добавить старт')}
             </button>
+          </div>
           </div>
         </form>
       </section>

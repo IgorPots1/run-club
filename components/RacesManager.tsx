@@ -20,6 +20,7 @@ import {
   getPersonalRecordRaceEventIds,
   isRaceEventUpcoming,
   loadRaceEvents,
+  maskClockInput,
   parseClockInput,
   updateRaceEvent,
   type RaceEvent,
@@ -433,6 +434,24 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   )
   const deletingActiveRaceEvent = pendingDeleteRaceEvent ? deletingRaceEventId === pendingDeleteRaceEvent.id : false
   const totalRaceEventsCount = (raceEvents ?? []).length
+
+  const handleDistanceInputChange = useCallback((nextValue: string) => {
+    const normalizedValue = nextValue.replace(',', '.')
+
+    if (!/^\d*([.]\d{0,2})?$/.test(normalizedValue)) {
+      return
+    }
+
+    setDistanceInput(normalizedValue)
+  }, [])
+
+  const handleResultTimeInputChange = useCallback((nextValue: string) => {
+    setResultTimeInput(maskClockInput(nextValue))
+  }, [])
+
+  const handleTargetTimeInputChange = useCallback((nextValue: string) => {
+    setTargetTimeInput(maskClockInput(nextValue))
+  }, [])
 
   useEffect(() => {
     if (raceEventsLoadError) {
@@ -872,9 +891,9 @@ export default function RacesManager({ userId }: RacesManagerProps) {
         onSubmit={handleSubmitRaceEvent}
         onRaceEventNameChange={setRaceEventName}
         onRaceEventDateChange={setRaceEventDate}
-        onDistanceInputChange={setDistanceInput}
-        onResultTimeInputChange={setResultTimeInput}
-        onTargetTimeInputChange={setTargetTimeInput}
+        onDistanceInputChange={handleDistanceInputChange}
+        onResultTimeInputChange={handleResultTimeInputChange}
+        onTargetTimeInputChange={handleTargetTimeInputChange}
         onSelectedLinkedRunIdChange={setSelectedLinkedRunId}
         onFormSuggestedRunIdChange={setFormSuggestedRunId}
       />

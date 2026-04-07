@@ -136,21 +136,19 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
               size="sm"
             />
           </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
-            {statusLabel ? (
-              <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
-                {statusLabel}
-              </span>
-            ) : null}
-            <p className="app-text-secondary min-w-0 text-left text-xs sm:text-right sm:text-sm">
-              {formatRunTimestampLabel(item.created_at, null)}
-            </p>
-          </div>
+          <p className="app-text-secondary min-w-0 text-left text-xs sm:text-right sm:text-sm">
+            {formatRunTimestampLabel(item.created_at, null)}
+          </p>
         </div>
 
         <div className="mt-4 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
+            {statusLabel ? (
+              <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-medium dark:border-white/10">
+                {statusLabel}
+              </span>
+            ) : null}
             {item.isPersonalRecord ? (
               <span className="inline-flex shrink-0 items-center rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-black">
                 PR
