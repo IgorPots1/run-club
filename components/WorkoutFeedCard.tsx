@@ -283,7 +283,11 @@ function WorkoutFeedCard({
       </div>
 
       <div className="mt-3">
-        <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
+        <p
+          className={`break-words whitespace-pre-wrap text-[15px] leading-5 ${
+            isManualRun ? 'app-text-primary font-bold' : 'app-text-primary font-semibold'
+          }`}
+        >
           {displayTitle}
         </p>
         {trimmedDescription ? (

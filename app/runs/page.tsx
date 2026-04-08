@@ -1,10 +1,11 @@
 'use client'
 
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
+import InnerPageHeader from '@/components/InnerPageHeader'
 import MyShoesPicker from '@/components/MyShoesPicker'
 import XpGainToast from '@/components/XpGainToast'
 import {
@@ -14,31 +15,11 @@ import {
   type PostRunChallengeFeedbackItem,
 } from '@/lib/challenge-ux'
 import { loadDashboardOverview } from '@/lib/dashboard'
-import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
-import { dispatchRunsUpdatedEvent, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
-import { createRun, deleteRun } from '@/lib/runs'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
+import { createRun } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
 import type { XpBreakdownItem } from '@/lib/xp'
 import type { User } from '@supabase/supabase-js'
-
-type Run = {
-  id: string
-  user_id: string
-  name: string | null
-  title?: string | null
-  distance_km: number
-  duration_minutes: number
-  duration_seconds?: number | null
-  xp: number
-  created_at: string
-  external_source?: string | null
-  external_id?: string | null
-  average_heartrate?: number | null
-  max_heartrate?: number | null
-  map_polyline?: string | null
-  calories?: number | null
-  average_cadence?: number | null
-}
 
 type CalendarDayCell = {
   key: string
@@ -49,94 +30,7 @@ type CalendarDayCell = {
 }
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
-const RUNS_REFETCH_THROTTLE_MS = 8000
 const CALENDAR_WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-
-function formatDurationMinutesLabel(totalMinutes: number) {
-  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
-    return '0 мин'
-  }
-
-  if (totalMinutes < 60) {
-    return `${totalMinutes} мин`
-  }
-
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-
-  if (minutes === 0) {
-    return `${hours} ч`
-  }
-
-  return `${hours} ч ${minutes} мин`
-}
-
-function formatPreciseDurationLabel(totalSeconds: number) {
-  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
-    return '0:00'
-  }
-
-  const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
-  const hours = Math.floor(normalizedSeconds / 3600)
-  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
-  const seconds = normalizedSeconds % 60
-
-  if (hours > 0) {
-    return `${hours}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`
-  }
-
-  return `${minutes}:${formatTwoDigits(seconds)}`
-}
-
-function formatPreciseDistanceKm(value: number) {
-  const fixed = value.toFixed(2)
-
-  if (fixed.endsWith('00')) {
-    return value.toFixed(1)
-  }
-
-  if (fixed.endsWith('0')) {
-    return fixed.slice(0, -1)
-  }
-
-  return fixed
-}
-
-function formatDistanceKmLabel(run: Pick<Run, 'distance_km' | 'external_source'>) {
-  if (run.external_source === 'strava') {
-    return formatPreciseDistanceKm(run.distance_km)
-  }
-
-  return formatDistanceKm(run.distance_km)
-}
-
-function getRunDurationSeconds(run: Pick<Run, 'duration_minutes' | 'duration_seconds'>) {
-  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
-    return Math.round(run.duration_seconds ?? 0)
-  }
-
-  return Math.round(run.duration_minutes * 60)
-}
-
-function formatRunDurationLabel(run: Pick<Run, 'duration_minutes' | 'duration_seconds'>) {
-  const totalSeconds = getRunDurationSeconds(run)
-
-  if (Number.isFinite(run.duration_seconds) && (run.duration_seconds ?? 0) > 0) {
-    return formatPreciseDurationLabel(totalSeconds)
-  }
-
-  return formatDurationMinutesLabel(run.duration_minutes)
-}
-
-function formatRunPace(run: Pick<Run, 'distance_km' | 'duration_minutes' | 'duration_seconds'>) {
-  const totalSeconds = getRunDurationSeconds(run)
-
-  return formatPaceLabel(totalSeconds, run.distance_km)
-}
-
-function getRunDisplayName(run: Pick<Run, 'name' | 'title'>) {
-  return run.name?.trim() || run.title?.trim() || DEFAULT_WORKOUT_NAME
-}
 
 function getTodayDateValue() {
   return new Date().toISOString().slice(0, 10)
@@ -491,7 +385,6 @@ export default function RunsPage() {
   const searchParams = useSearchParams()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [runs, setRuns] = useState<Run[]>([])
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
   const [selectedShoeId, setSelectedShoeId] = useState<string>('')
   const [loadingShoes, setLoadingShoes] = useState(false)
@@ -505,13 +398,7 @@ export default function RunsPage() {
   const [error, setError] = useState('')
   const [saveInfoMessage, setSaveInfoMessage] = useState('')
   const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[]; challengeMessages: PostRunChallengeFeedbackItem[] } | null>(null)
-  const [runsError, setRunsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [loadingRuns, setLoadingRuns] = useState(false)
-  const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
-  const lastRunsFetchAtRef = useRef(0)
-  const runsRequestPromiseRef = useRef<Promise<void> | null>(null)
-  const suppressNextRunsUpdatedRefreshRef = useRef(false)
   const parsedDistanceKm = parseDistanceInput(distanceInput)
   const selectedDistanceKm = parsedDistanceKm ?? 0
   const compactDistanceLabel = selectedDistanceKm > 0 ? formatCompactDistanceLabel(selectedDistanceKm) : '0'
@@ -654,103 +541,6 @@ export default function RunsPage() {
     }
   }, [user])
 
-  const fetchRuns = useCallback(async (
-    currentUser: User,
-    options: { force?: boolean } = {}
-  ) => {
-    const { force = false } = options
-
-    if (!force && Date.now() - lastRunsFetchAtRef.current < RUNS_REFETCH_THROTTLE_MS) {
-      return runsRequestPromiseRef.current ?? Promise.resolve()
-    }
-
-    if (runsRequestPromiseRef.current) {
-      return runsRequestPromiseRef.current
-    }
-
-    setLoadingRuns(true)
-    setRunsError('')
-
-    const requestPromise = (async () => {
-      try {
-        const response = await fetch('/api/runs', {
-          method: 'GET',
-          cache: 'no-store',
-          credentials: 'include',
-        })
-
-        if (response.status === 401) {
-          router.replace('/login')
-          return
-        }
-
-        const payload = (await response.json()) as
-          | { ok: true; runs: Run[] }
-          | { ok: false; step?: string; error?: string }
-
-        if (!response.ok || !payload.ok) {
-          setRunsError('Не удалось загрузить тренировки')
-          return
-        }
-
-        const normalizedRuns = (payload.runs ?? []).map((run) => ({
-          ...run,
-          distance_km: Number(run.distance_km ?? 0),
-          duration_minutes: Number(run.duration_minutes ?? 0),
-          duration_seconds:
-            run.duration_seconds == null ? null : Number(run.duration_seconds ?? 0),
-          xp: Number(run.xp ?? 0),
-        }))
-
-        lastRunsFetchAtRef.current = Date.now()
-        setRuns(normalizedRuns)
-      } catch {
-        setRunsError('Не удалось загрузить тренировки')
-      } finally {
-        setLoadingRuns(false)
-        runsRequestPromiseRef.current = null
-      }
-    })()
-
-    runsRequestPromiseRef.current = requestPromise
-    return requestPromise
-  }, [router])
-
-  useEffect(() => {
-    if (!user) return
-    const currentUser = user
-
-    async function loadRuns() {
-      await fetchRuns(currentUser, { force: true })
-    }
-
-    void loadRuns()
-  }, [fetchRuns, user])
-
-  useEffect(() => {
-    if (!user) return
-
-    const currentUser = user
-
-    function handleVisibilityRefresh() {
-      if (document.visibilityState === 'visible') {
-        void fetchRuns(currentUser)
-      }
-    }
-
-    function handleWindowFocus() {
-      void fetchRuns(currentUser)
-    }
-
-    window.addEventListener('focus', handleWindowFocus)
-    document.addEventListener('visibilitychange', handleVisibilityRefresh)
-
-    return () => {
-      window.removeEventListener('focus', handleWindowFocus)
-      document.removeEventListener('visibilitychange', handleVisibilityRefresh)
-    }
-  }, [fetchRuns, user])
-
   useEffect(() => {
     if (!saveInfoMessage) {
       return
@@ -778,35 +568,6 @@ export default function RunsPage() {
       window.clearTimeout(timer)
     }
   }, [xpToast])
-
-  useEffect(() => {
-    if (!user) return
-
-    const currentUser = user
-
-    function handleRunsUpdated() {
-      if (suppressNextRunsUpdatedRefreshRef.current) {
-        suppressNextRunsUpdatedRefreshRef.current = false
-        return
-      }
-
-      void fetchRuns(currentUser, { force: true })
-    }
-
-    function handleStorage(event: StorageEvent) {
-      if (event.key === RUNS_UPDATED_STORAGE_KEY) {
-        void fetchRuns(currentUser, { force: true })
-      }
-    }
-
-    window.addEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
-    window.addEventListener('storage', handleStorage)
-
-    return () => {
-      window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
-      window.removeEventListener('storage', handleStorage)
-    }
-  }, [fetchRuns, user])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -917,41 +678,6 @@ export default function RunsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (deletingRunIds.includes(id)) return
-    if (typeof window !== 'undefined' && !window.confirm('Удалить тренировку?')) return
-
-    setError('')
-    setSaveInfoMessage('')
-    setDeletingRunIds((prev) => [...prev, id])
-
-    try {
-      const { error } = await deleteRun(id)
-
-      if (error) {
-        setError('Не удалось удалить тренировку')
-        return
-      }
-
-      setRuns((prev) => prev.filter((r) => r.id !== id))
-      suppressNextRunsUpdatedRefreshRef.current = true
-      dispatchRunsUpdatedEvent()
-    } catch {
-      setError('Не удалось удалить тренировку')
-    } finally {
-      setDeletingRunIds((prev) => prev.filter((runId) => runId !== id))
-    }
-  }
-
-  function handleRunCardOpen(runId: string, event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) {
-    const target = event.target as HTMLElement
-    if (target.closest('button,a')) {
-      return
-    }
-
-    router.push(`/runs/${runId}`)
-  }
-
   if (loading) return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
   if (!user) {
     return (
@@ -964,8 +690,9 @@ export default function RunsPage() {
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-      <h1 className="app-text-primary mb-4 text-2xl font-bold">Тренировки</h1>
-      <form onSubmit={handleSubmit} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
+      <InnerPageHeader title="Тренировки" fallbackHref="/activity" />
+      <div className="mt-4">
+      <form onSubmit={handleSubmit} className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
           <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки (необязательно)</label>
           <input
@@ -1104,13 +831,13 @@ export default function RunsPage() {
             {saveInfoMessage}
           </div>
         ) : null}
-      {xpToast ? (
-        <XpGainToast
-          xpGained={xpToast.xpGained}
-          breakdown={xpToast.breakdown}
-          challengeMessages={xpToast.challengeMessages}
-        />
-      ) : null}
+        {xpToast ? (
+          <XpGainToast
+            xpGained={xpToast.xpGained}
+            breakdown={xpToast.breakdown}
+            challengeMessages={xpToast.challengeMessages}
+          />
+        ) : null}
         <button
           type="submit"
           disabled={submitting || !isWorkoutFormValid}
@@ -1124,65 +851,6 @@ export default function RunsPage() {
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
-      {runsError ? <p className="mb-4 text-sm text-red-600">{runsError}</p> : null}
-      <div className="mb-4 space-y-4">
-        {loadingRuns ? (
-          <p className="app-text-secondary text-sm">Загрузка тренировок...</p>
-        ) : runs.length === 0 ? (
-          <div className="app-text-secondary mt-10 text-center">
-            <p>Пока здесь пусто.</p>
-            <p className="mt-2 text-sm">Добавьте первую тренировку и начните собирать прогресс.</p>
-          </div>
-        ) : (
-          runs.map((run) => (
-            <div
-              key={run.id}
-              className="compact-run-card app-card relative cursor-pointer overflow-hidden rounded-2xl border p-4 shadow-sm"
-              role="button"
-              tabIndex={0}
-              onClick={(event) => handleRunCardOpen(run.id, event)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return
-                event.preventDefault()
-                handleRunCardOpen(run.id, event)
-              }}
-            >
-              <div className="compact-run-card-layout flex flex-col gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="app-text-primary break-words text-base font-semibold">
-                    {getRunDisplayName(run)}
-                  </p>
-                  <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold">
-                    <span className="break-words">{formatDistanceKmLabel(run)} км</span>
-                    <span className="app-text-secondary">•</span>
-                    <span className="break-words">{formatRunDurationLabel(run)}</span>
-                    {formatRunPace(run) ? (
-                      <>
-                        <span className="app-text-secondary">•</span>
-                        <span className="break-words">{formatRunPace(run)}</span>
-                      </>
-                    ) : null}
-                  </div>
-                  <p className="compact-run-card-secondary compact-run-card-meta app-text-muted text-sm mt-1">
-                    {formatRunTimestampLabel(run.created_at, run.external_source)}
-                  </p>
-                  <div className="compact-run-card-like">
-                    <p className="app-text-secondary break-words text-sm">⚡ +{run.xp} XP</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(run.id)}
-                  disabled={deletingRunIds.includes(run.id)}
-                  className="compact-run-card-action app-text-secondary inline-flex min-h-10 w-full items-center justify-center gap-1 self-start rounded-lg px-2 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-9 sm:w-auto"
-                >
-                  <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
-                  <span>{deletingRunIds.includes(run.id) ? 'Удаляем...' : 'Удалить'}</span>
-                </button>
-              </div>
-            </div>
-          ))
-        )}
       </div>
       </div>
       <CalendarDatePickerSheet
