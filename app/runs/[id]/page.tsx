@@ -562,7 +562,9 @@ export default function RunDetailsPage() {
   const [refreshingStravaSupplemental, setRefreshingStravaSupplemental] = useState(false)
   const [stravaSupplementalError, setStravaSupplementalError] = useState('')
   const [stravaSupplementalInfoMessage, setStravaSupplementalInfoMessage] = useState('')
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const previousIsEditModeRef = useRef(false)
   const currentUserIdRef = useRef<string | null>(null)
   const likeInFlightRef = useRef(false)
   const likeRequestVersionRef = useRef(0)
@@ -986,6 +988,23 @@ export default function RunDetailsPage() {
       description: run?.description ?? '',
     })
   }, [isEditMode, run?.description, run?.name, run?.title])
+
+  useEffect(() => {
+    if (previousIsEditModeRef.current && !isEditMode) {
+      window.requestAnimationFrame(() => {
+        const scrollContainer = scrollContainerRef.current
+
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: 'auto' })
+          return
+        }
+
+        window.scrollTo({ top: 0, behavior: 'auto' })
+      })
+    }
+
+    previousIsEditModeRef.current = isEditMode
+  }, [isEditMode])
 
   useEffect(() => {
     if (!stravaSupplementalInfoMessage) {
@@ -1436,8 +1455,17 @@ export default function RunDetailsPage() {
     </div>
   ) : null
 
+  const detailScrollContentClassName =
+    'pt-5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-5 md:pt-5'
+
   return (
-    <WorkoutDetailShell title="Тренировка" headerRightSlot={headerRightSlot} footer={editActionBar}>
+    <WorkoutDetailShell
+      title="Тренировка"
+      headerRightSlot={headerRightSlot}
+      footer={editActionBar}
+      scrollContainerRef={scrollContainerRef}
+      scrollContentClassName={detailScrollContentClassName}
+    >
     <div className="min-w-0 overflow-x-hidden space-y-4">
       {runPhotos.length > 0 || isEditMode ? (
         <section className="app-card rounded-2xl border p-4 shadow-sm">
@@ -1639,238 +1667,242 @@ export default function RunDetailsPage() {
         ) : null}
       </section>
 
-      {shouldRenderHeartRateChart ? (
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
-          <div className="mt-3 h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={heartRateChartData}
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                accessibilityLayer={false}
-                syncId="run-detail-series"
-                syncMethod="value"
-              >
-                <defs>
-                  <linearGradient id="heart-rate-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
-                <XAxis
-                  dataKey="time"
-                  type="number"
-                  domain={['dataMin', 'dataMax']}
-                  tickCount={6}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={24}
-                  tickMargin={8}
-                  tickFormatter={formatElapsedMinutesLabel}
-                  tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  tickFormatter={formatHeartRateTick}
-                  tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                  domain={['dataMin - 5', 'dataMax + 5']}
-                />
-                <Tooltip
-                  cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
-                  formatter={(value) => {
-                    const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
-                    return [`${Math.round(numericValue)} уд/мин`, 'Пульс']
-                  }}
-                  labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="heartRate"
-                  stroke="var(--accent-strong)"
-                  strokeWidth={2.5}
-                  fill="url(#heart-rate-fill)"
-                  fillOpacity={1}
-                  dot={false}
-                  activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      ) : null}
+      {!isEditMode ? (
+        <>
+          {shouldRenderHeartRateChart ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary text-base font-semibold">Пульс</h2>
+              <div className="mt-3 h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={heartRateChartData}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    accessibilityLayer={false}
+                    syncId="run-detail-series"
+                    syncMethod="value"
+                  >
+                    <defs>
+                      <linearGradient id="heart-rate-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.18} />
+                        <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                    <XAxis
+                      dataKey="time"
+                      type="number"
+                      domain={['dataMin', 'dataMax']}
+                      tickCount={6}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={24}
+                      tickMargin={8}
+                      tickFormatter={formatElapsedMinutesLabel}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                      tickFormatter={formatHeartRateTick}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                      domain={['dataMin - 5', 'dataMax + 5']}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                      formatter={(value) => {
+                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                        return [`${Math.round(numericValue)} уд/мин`, 'Пульс']
+                      }}
+                      labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="heartRate"
+                      stroke="var(--accent-strong)"
+                      strokeWidth={2.5}
+                      fill="url(#heart-rate-fill)"
+                      fillOpacity={1}
+                      dot={false}
+                      activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          ) : null}
 
-        {shouldRenderPaceChart ? (
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-base font-semibold">Темп</h2>
-            <div className="mt-3 h-[220px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={paceChartData}
-                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                  accessibilityLayer={false}
-                  syncId="run-detail-series"
-                  syncMethod="value"
+          {shouldRenderPaceChart ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary text-base font-semibold">Темп</h2>
+              <div className="mt-3 h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={paceChartData}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    accessibilityLayer={false}
+                    syncId="run-detail-series"
+                    syncMethod="value"
+                  >
+                    <defs>
+                      <linearGradient id="pace-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.16} />
+                        <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                    <XAxis
+                      dataKey="time"
+                      type="number"
+                      domain={['dataMin', 'dataMax']}
+                      tickCount={6}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={24}
+                      tickMargin={8}
+                      tickFormatter={formatElapsedMinutesLabel}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={44}
+                      tickFormatter={(value) => {
+                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                        return formatPaceTick(Math.abs(numericValue))
+                      }}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                      domain={['dataMin - 10', 'dataMax + 10']}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                      formatter={(_value, _name, item) => {
+                        const numericValue = Number(item?.payload?.paceSeconds ?? 0)
+                        return [formatPaceLabel(numericValue), 'Темп']
+                      }}
+                      labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="chartPace"
+                      baseValue="dataMin"
+                      stroke="var(--accent-strong)"
+                      strokeWidth={2.5}
+                      fill="url(#pace-fill)"
+                      fillOpacity={1}
+                      dot={false}
+                      activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          ) : null}
+
+          {formattedBreakdownRows.length > 0 ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary text-base font-semibold">Разбивка</h2>
+              <div className="mt-3 overflow-hidden rounded-xl border">
+                <div
+                  className={`grid gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary ${
+                    shouldShowBreakdownHeartRate
+                      ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                      : 'grid-cols-[56px_1fr_1fr_1fr]'
+                  }`}
                 >
-                  <defs>
-                    <linearGradient id="pace-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.16} />
-                      <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
-                  <XAxis
-                    dataKey="time"
-                    type="number"
-                    domain={['dataMin', 'dataMax']}
-                    tickCount={6}
-                    tickLine={false}
-                    axisLine={false}
-                    minTickGap={24}
-                    tickMargin={8}
-                    tickFormatter={formatElapsedMinutesLabel}
-                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={44}
-                    tickFormatter={(value) => {
-                      const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
-                      return formatPaceTick(Math.abs(numericValue))
-                    }}
-                    tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                    domain={['dataMin - 10', 'dataMax + 10']}
-                  />
-                  <Tooltip
-                    cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
-                    formatter={(_value, _name, item) => {
-                      const numericValue = Number(item?.payload?.paceSeconds ?? 0)
-                      return [formatPaceLabel(numericValue), 'Темп']
-                    }}
-                    labelFormatter={(value) => formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="chartPace"
-                    baseValue="dataMin"
-                    stroke="var(--accent-strong)"
-                    strokeWidth={2.5}
-                    fill="url(#pace-fill)"
-                    fillOpacity={1}
-                    dot={false}
-                    activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
-        ) : null}
+                  <span>№</span>
+                  <span>Км</span>
+                  <span>Время</span>
+                  <span>Темп</span>
+                  {shouldShowBreakdownHeartRate ? <span>Пульс</span> : null}
+                </div>
+                <div className="divide-y">
+                  {formattedBreakdownRows.map((row) => (
+                    <div
+                      key={`${row.index}-${row.distanceMeters}-${row.elapsedTimeSeconds}`}
+                      className={`grid gap-3 px-3 py-2.5 text-sm app-text-primary ${
+                        shouldShowBreakdownHeartRate
+                          ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                          : 'grid-cols-[56px_1fr_1fr_1fr]'
+                      }`}
+                    >
+                      <span className="font-medium">{row.index}</span>
+                      <span>{row.distanceLabel}</span>
+                      <span>{row.durationLabel}</span>
+                      <span>{row.paceLabel}</span>
+                      {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
 
-        {formattedBreakdownRows.length > 0 ? (
+          {run.map_polyline?.trim() ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary inline-flex items-center gap-2 text-base font-semibold">
+                <Map className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+                <span>
+                  Маршрут
+                  {details.distanceLabel ? ` • ${details.distanceLabel}` : ''}
+                </span>
+              </h2>
+              <div className="mt-3 rounded-2xl p-1 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+                {details.mapPreviewUrl ? (
+                  <div className="h-[210px] w-full overflow-hidden rounded-2xl border bg-[var(--surface-muted)]">
+                    <img
+                      src={details.mapPreviewUrl}
+                      alt="Маршрут тренировки"
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                    />
+                  </div>
+                ) : (
+                  <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
+                )}
+              </div>
+            </section>
+          ) : null}
+
           <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary text-base font-semibold">Разбивка</h2>
-            <div className="mt-3 overflow-hidden rounded-xl border">
-              <div
-                className={`grid gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary ${
-                  shouldShowBreakdownHeartRate
-                    ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
-                    : 'grid-cols-[56px_1fr_1fr_1fr]'
+            <div className="app-text-secondary flex items-center gap-6 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleToggleLike()
+                }}
+                disabled={likeInFlight || isOwner}
+                aria-pressed={likedByMe}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-full px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isLikeActive ? 'text-[var(--like-active)]' : 'app-text-secondary'
                 }`}
               >
-                <span>№</span>
-                <span>Км</span>
-                <span>Время</span>
-                <span>Темп</span>
-                {shouldShowBreakdownHeartRate ? <span>Пульс</span> : null}
-              </div>
-              <div className="divide-y">
-                {formattedBreakdownRows.map((row) => (
-                  <div
-                    key={`${row.index}-${row.distanceMeters}-${row.elapsedTimeSeconds}`}
-                    className={`grid gap-3 px-3 py-2.5 text-sm app-text-primary ${
-                      shouldShowBreakdownHeartRate
-                        ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
-                        : 'grid-cols-[56px_1fr_1fr_1fr]'
-                    }`}
-                  >
-                    <span className="font-medium">{row.index}</span>
-                    <span>{row.distanceLabel}</span>
-                    <span>{row.durationLabel}</span>
-                    <span>{row.paceLabel}</span>
-                    {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
-                  </div>
-                ))}
-              </div>
+                {likeInFlight ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                ) : (
+                  <Heart className="h-4 w-4" strokeWidth={1.9} fill={isLikeActive ? 'currentColor' : 'none'} />
+                )}
+                <span>{likesCount} лайков</span>
+              </button>
+              <span>{commentsCount} комментариев</span>
             </div>
           </section>
-        ) : null}
 
-        {run.map_polyline?.trim() ? (
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <h2 className="app-text-primary inline-flex items-center gap-2 text-base font-semibold">
-              <Map className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-              <span>
-                Маршрут
-                {details.distanceLabel ? ` • ${details.distanceLabel}` : ''}
-              </span>
-            </h2>
-            <div className="mt-3 rounded-2xl p-1 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-              {details.mapPreviewUrl ? (
-                <div className="h-[210px] w-full overflow-hidden rounded-2xl border bg-[var(--surface-muted)]">
-                  <img
-                    src={details.mapPreviewUrl}
-                    alt="Маршрут тренировки"
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                  />
-                </div>
-              ) : (
-                <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
-              )}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <div className="app-text-secondary flex items-center gap-6 text-sm">
-            <button
-              type="button"
-              onClick={() => {
-                void handleToggleLike()
-              }}
-              disabled={likeInFlight || isOwner}
-              aria-pressed={likedByMe}
-              className={`inline-flex min-h-10 items-center gap-2 rounded-full px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                isLikeActive ? 'text-[var(--like-active)]' : 'app-text-secondary'
-              }`}
-            >
-              {likeInFlight ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-              ) : (
-                <Heart className="h-4 w-4" strokeWidth={1.9} fill={isLikeActive ? 'currentColor' : 'none'} />
-              )}
-              <span>{likesCount} лайков</span>
-            </button>
-            <span>{commentsCount} комментариев</span>
-          </div>
-        </section>
-
-      <RunCommentsSection
-        comments={comments}
-        currentUserId={user?.id ?? null}
-        error={commentsError}
-        pendingLikeCommentIds={pendingLikeCommentIds}
-        onSubmitComment={handleCommentSubmit}
-        onToggleLikeComment={handleToggleLikeComment}
-        onReplyComment={handleReplySubmit}
-        onEditComment={handleEditComment}
-        onDeleteComment={handleDeleteComment}
-      />
+          <RunCommentsSection
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            error={commentsError}
+            pendingLikeCommentIds={pendingLikeCommentIds}
+            onSubmitComment={handleCommentSubmit}
+            onToggleLikeComment={handleToggleLikeComment}
+            onReplyComment={handleReplySubmit}
+            onEditComment={handleEditComment}
+            onDeleteComment={handleDeleteComment}
+          />
+        </>
+      ) : null}
     </div>
 
     <RunPhotoLightbox
