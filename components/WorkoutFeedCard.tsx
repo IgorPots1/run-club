@@ -307,13 +307,6 @@ function WorkoutFeedCard({
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
-        {insight ? (
-          <div className="mt-1.5">
-            <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/[0.07] bg-black/[0.03] px-2.5 py-1 text-[11px] font-medium leading-none dark:border-white/[0.09] dark:bg-white/[0.04]">
-              <span className="truncate">{insight.label}</span>
-            </span>
-          </div>
-        ) : null}
         {trimmedDescription ? (
           <div className="mt-1.5">
             <p
@@ -346,6 +339,14 @@ function WorkoutFeedCard({
           </div>
         ) : null}
       </div>
+
+      {insight ? (
+        <div className="mt-2">
+          <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/[0.07] bg-black/[0.03] px-2.5 py-1 text-[11px] font-medium leading-none dark:border-white/[0.09] dark:bg-white/[0.04]">
+            <span className="truncate">{insight.label}</span>
+          </span>
+        </div>
+      ) : null}
 
       {shouldRenderMediaCarousel && mapPreviewUrl ? (
         <div className="mt-2" onClick={(event) => event.stopPropagation()}>
