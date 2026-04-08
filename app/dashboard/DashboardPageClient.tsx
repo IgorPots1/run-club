@@ -745,6 +745,7 @@ export default function DashboardPageClient({
             currentUserId={initialUser.id}
             enabled={shouldLoadSecondaryContent}
             pageSize={10}
+            scrollRestorationKey="dashboard-feed"
             emptyTitle="Пока нет тренировок"
             showLevelSubtitle
           />

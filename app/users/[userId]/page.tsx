@@ -305,6 +305,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             currentUserId={user.id}
             targetUserId={userId}
             pageSize={10}
+            scrollRestorationKey={`profile-${userId}`}
             emptyTitle="У этого участника пока нет тренировок"
             emptyDescription="Когда появятся пробежки, они будут показаны здесь."
             showLevelSubtitle={false}

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunLikesSheet from '@/components/RunLikesSheet'
@@ -23,6 +23,7 @@ import {
 } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
+import { getCurrentAppHref, saveRunDetailSource } from '@/lib/run-detail-navigation'
 import { formatDistanceKm } from '@/lib/format'
 import { formatClock } from '@/lib/race-events'
 import { getLevelFromXP } from '@/lib/xp'
@@ -43,6 +44,21 @@ type InfiniteWorkoutFeedProps = {
 
 type FeedCommentVisibilityById = Record<string, RunCommentVisibilityRecord>
 type RunFeedItem = Extract<FeedItem, { kind: 'run' }>
+type FeedRestoreSnapshot = {
+  items: FeedItem[]
+  hasMore: boolean
+  nextOffset: number
+  savedAt: number
+  scrollTop: number
+}
+type FeedRestoreState = {
+  snapshot: FeedRestoreSnapshot | null
+  scrollTop: number
+  shouldRestoreScroll: boolean
+  skipReason: string | null
+}
+
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 function isRunFeedItem(item: FeedItem): item is RunFeedItem {
   return item.kind === 'run'
@@ -103,6 +119,102 @@ function formatLinkedRunPace(item: FeedRaceEventItem) {
   const seconds = paceSeconds % 60
 
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
+}
+
+function readPendingFeedRestore({
+  scrollRestorationKey,
+  historyStateKey,
+  scrollStorageKey,
+  snapshotStorageKey,
+}: {
+  scrollRestorationKey?: string
+  historyStateKey: string
+  scrollStorageKey: string
+  snapshotStorageKey: string
+}): FeedRestoreState {
+  if (!scrollRestorationKey || typeof window === 'undefined') {
+    return {
+      snapshot: null,
+      scrollTop: 0,
+      shouldRestoreScroll: false,
+      skipReason: 'restoration-disabled',
+    }
+  }
+
+  const historyEntryRestoreKey = window.history.state?.[historyStateKey]
+
+  if (typeof historyEntryRestoreKey !== 'string' || historyEntryRestoreKey.length === 0) {
+    return {
+      snapshot: null,
+      scrollTop: 0,
+      shouldRestoreScroll: false,
+      skipReason: 'missing-history-entry-key',
+    }
+  }
+
+  const pendingRestoreKey = window.sessionStorage.getItem(scrollStorageKey)
+
+  if (pendingRestoreKey !== historyEntryRestoreKey) {
+    return {
+      snapshot: null,
+      scrollTop: 0,
+      shouldRestoreScroll: false,
+      skipReason: pendingRestoreKey ? 'history-entry-mismatch' : 'no-pending-restore',
+    }
+  }
+
+  const rawSnapshot = window.sessionStorage.getItem(snapshotStorageKey)
+
+  if (!rawSnapshot) {
+    return {
+      snapshot: null,
+      scrollTop: 0,
+      shouldRestoreScroll: true,
+      skipReason: 'missing-snapshot',
+    }
+  }
+
+  try {
+    const parsedSnapshot = JSON.parse(rawSnapshot) as {
+      items?: FeedItem[]
+      hasMore?: boolean
+      nextOffset?: number
+      savedAt?: number
+      scrollTop?: number
+    }
+    const scrollTop = Number.isFinite(parsedSnapshot.scrollTop) ? Number(parsedSnapshot.scrollTop) : 0
+
+    if (!Array.isArray(parsedSnapshot.items)) {
+      return {
+        snapshot: null,
+        scrollTop,
+        shouldRestoreScroll: true,
+        skipReason: 'missing-items-snapshot',
+      }
+    }
+
+    return {
+      snapshot: {
+        items: parsedSnapshot.items,
+        hasMore: parsedSnapshot.hasMore === true,
+        nextOffset: Number.isFinite(parsedSnapshot.nextOffset)
+          ? Number(parsedSnapshot.nextOffset)
+          : parsedSnapshot.items.length,
+        savedAt: Number.isFinite(parsedSnapshot.savedAt) ? Number(parsedSnapshot.savedAt) : Date.now(),
+        scrollTop,
+      },
+      scrollTop,
+      shouldRestoreScroll: true,
+      skipReason: null,
+    }
+  } catch {
+    return {
+      snapshot: null,
+      scrollTop: 0,
+      shouldRestoreScroll: true,
+      skipReason: 'invalid-snapshot',
+    }
+  }
 }
 
 function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
@@ -194,6 +306,22 @@ export default function InfiniteWorkoutFeed({
   onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
+  const scrollStorageKey = useMemo(
+    () => (scrollRestorationKey ? `feed-scroll:${scrollRestorationKey}` : ''),
+    [scrollRestorationKey]
+  )
+  const historyStateKey = useMemo(
+    () => (scrollRestorationKey ? `feedRestoreKey:${scrollRestorationKey}` : ''),
+    [scrollRestorationKey]
+  )
+  const snapshotStorageKey = useMemo(
+    () => (scrollRestorationKey ? `feed-snapshot:${scrollRestorationKey}` : ''),
+    [scrollRestorationKey]
+  )
+  const feedQueryKey = useMemo(
+    () => [currentUserId ?? 'anonymous', targetUserId ?? 'all', pageSize].join(':'),
+    [currentUserId, pageSize, targetUserId]
+  )
   const [items, setItems] = useState<FeedItem[]>([])
   const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, RunLikedUserItem[]>>({})
   const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
@@ -214,32 +342,16 @@ export default function InfiniteWorkoutFeed({
   const commentVisibilityByRunIdRef = useRef<Record<string, FeedCommentVisibilityById>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
-  const hasHydratedFromRestoreRef = useRef(false)
+  const restoredSnapshotRef = useRef<FeedRestoreSnapshot | null>(null)
+  const restoreLogStateRef = useRef<FeedRestoreState>({
+    snapshot: null,
+    scrollTop: 0,
+    shouldRestoreScroll: false,
+    skipReason: scrollRestorationKey ? 'pending-check' : 'restoration-disabled',
+  })
+  const hasLoggedRestoreStatusRef = useRef(false)
   const shouldRestoreScrollRef = useRef(false)
-  const restoredSnapshotRef = useRef<{
-    items: FeedItem[]
-    hasMore: boolean
-    nextOffset: number
-    savedAt: number
-  } | null>(null)
-
-  const scrollStorageKey = useMemo(
-    () => (scrollRestorationKey ? `feed-scroll:${scrollRestorationKey}` : ''),
-    [scrollRestorationKey]
-  )
-  const historyStateKey = useMemo(
-    () => (scrollRestorationKey ? `feedRestoreKey:${scrollRestorationKey}` : ''),
-    [scrollRestorationKey]
-  )
-  const snapshotStorageKey = useMemo(
-    () => (scrollRestorationKey ? `feed-snapshot:${scrollRestorationKey}` : ''),
-    [scrollRestorationKey]
-  )
-
-  const feedQueryKey = useMemo(
-    () => [currentUserId ?? 'anonymous', targetUserId ?? 'all', pageSize].join(':'),
-    [currentUserId, pageSize, targetUserId]
-  )
+  const restoreScrollTopRef = useRef(0)
 
   const getActiveScrollContainer = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -305,8 +417,15 @@ export default function InfiniteWorkoutFeed({
     itemsRef.current = items
   }, [items])
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!scrollRestorationKey || typeof window === 'undefined') {
+      if (!hasLoggedRestoreStatusRef.current) {
+        console.info('[InfiniteWorkoutFeed] restore skipped', {
+          key: scrollRestorationKey,
+          reason: 'restoration-disabled',
+        })
+        hasLoggedRestoreStatusRef.current = true
+      }
       return
     }
 
@@ -326,50 +445,60 @@ export default function InfiniteWorkoutFeed({
     }
 
     const pendingRestoreKey = window.sessionStorage.getItem(scrollStorageKey)
+    const restoreState = readPendingFeedRestore({
+      scrollRestorationKey,
+      historyStateKey,
+      scrollStorageKey,
+      snapshotStorageKey,
+    })
 
     if (pendingRestoreKey !== historyEntryRestoreKey) {
       window.sessionStorage.removeItem(scrollStorageKey)
       window.sessionStorage.removeItem(snapshotStorageKey)
-      restoredSnapshotRef.current = null
-      shouldRestoreScrollRef.current = false
-      hasHydratedFromRestoreRef.current = true
+    } else {
+      window.sessionStorage.removeItem(scrollStorageKey)
+
+      if (!restoreState.snapshot && window.sessionStorage.getItem(snapshotStorageKey)) {
+        window.sessionStorage.removeItem(snapshotStorageKey)
+      }
+    }
+
+    restoreLogStateRef.current = restoreState
+    restoredSnapshotRef.current = restoreState.snapshot
+    shouldRestoreScrollRef.current = restoreState.shouldRestoreScroll
+    restoreScrollTopRef.current = restoreState.scrollTop
+
+    if (restoreState.snapshot) {
+      commentVisibilityByRunIdRef.current = {}
+      likeInFlightRef.current = {}
+      itemsRef.current = restoreState.snapshot.items
+      setItems(restoreState.snapshot.items)
+      setHasMore(restoreState.snapshot.hasMore)
+      setNextOffset(restoreState.snapshot.nextOffset)
+      setLikeInFlightByRunId({})
+      setActiveLikesRun(null)
+      setFeedError('')
+      setInitialLoading(false)
+    }
+
+    if (hasLoggedRestoreStatusRef.current) {
       return
     }
 
-    shouldRestoreScrollRef.current = true
-    window.sessionStorage.removeItem(scrollStorageKey)
-
-    const rawSnapshot = window.sessionStorage.getItem(snapshotStorageKey)
-
-    if (!rawSnapshot) {
-      hasHydratedFromRestoreRef.current = true
-      return
+    if (restoreState.shouldRestoreScroll) {
+      console.info('[InfiniteWorkoutFeed] prepared restore snapshot', {
+        key: scrollRestorationKey,
+        restoredItems: restoreState.snapshot?.items.length ?? 0,
+        scrollTop: restoreState.scrollTop,
+      })
+    } else {
+      console.info('[InfiniteWorkoutFeed] restore skipped', {
+        key: scrollRestorationKey,
+        reason: restoreState.skipReason ?? 'no-pending-restore',
+      })
     }
 
-    try {
-      const parsedSnapshot = JSON.parse(rawSnapshot) as {
-        items?: FeedItem[]
-        hasMore?: boolean
-        nextOffset?: number
-        savedAt?: number
-      }
-
-      if (!Array.isArray(parsedSnapshot.items)) {
-        hasHydratedFromRestoreRef.current = true
-        return
-      }
-
-      restoredSnapshotRef.current = {
-        items: parsedSnapshot.items,
-        hasMore: parsedSnapshot.hasMore === true,
-        nextOffset: Number.isFinite(parsedSnapshot.nextOffset) ? Number(parsedSnapshot.nextOffset) : parsedSnapshot.items.length,
-        savedAt: Number.isFinite(parsedSnapshot.savedAt) ? Number(parsedSnapshot.savedAt) : Date.now(),
-      }
-    } catch {
-      window.sessionStorage.removeItem(snapshotStorageKey)
-    } finally {
-      hasHydratedFromRestoreRef.current = true
-    }
+    hasLoggedRestoreStatusRef.current = true
   }, [historyStateKey, scrollRestorationKey, scrollStorageKey, snapshotStorageKey])
 
   const updateRunItem = useCallback((runId: string, updater: (item: RunFeedItem) => RunFeedItem) => {
@@ -611,52 +740,66 @@ export default function InfiniteWorkoutFeed({
     void loadFirstPage()
   }, [enabled, feedQueryKey, loadFirstPage])
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!shouldRestoreScrollRef.current || initialLoading || items.length === 0 || typeof window === 'undefined') {
       return
     }
 
-    const rawScrollTop = window.sessionStorage.getItem(snapshotStorageKey)
-    const parsedSnapshot = rawScrollTop ? (() => {
-      try {
-        return JSON.parse(rawScrollTop) as { scrollTop?: number }
-      } catch {
-        return null
-      }
-    })() : null
-    const nextScrollTop = Number.isFinite(parsedSnapshot?.scrollTop) ? Number(parsedSnapshot?.scrollTop) : 0
+    const nextScrollTop = restoreScrollTopRef.current
 
     const restoreScroll = () => {
       writeCurrentScrollTop(nextScrollTop)
-      shouldRestoreScrollRef.current = false
     }
 
+    shouldRestoreScrollRef.current = false
     restoreScroll()
+    console.info('[InfiniteWorkoutFeed] restored scroll', {
+      key: scrollRestorationKey,
+      scrollTop: nextScrollTop,
+      items: items.length,
+    })
     const animationFrameId = window.requestAnimationFrame(restoreScroll)
 
     return () => {
       window.cancelAnimationFrame(animationFrameId)
     }
-  }, [initialLoading, items.length, snapshotStorageKey, writeCurrentScrollTop])
+  }, [initialLoading, items.length, scrollRestorationKey, writeCurrentScrollTop])
 
   const navigateToRun = useCallback((runId: string) => {
     if (!runId) {
       return
     }
 
-    if (scrollRestorationKey && typeof window !== 'undefined') {
-      const currentHistoryState = window.history.state ?? {}
-      const historyEntryRestoreKey = currentHistoryState?.[historyStateKey]
+    if (typeof window !== 'undefined') {
+      const sourceHref = getCurrentAppHref()
+      saveRunDetailSource({
+        href: sourceHref,
+        scrollRestorationKey,
+      })
 
-      if (typeof historyEntryRestoreKey === 'string' && historyEntryRestoreKey.length > 0) {
-        window.sessionStorage.setItem(scrollStorageKey, historyEntryRestoreKey)
-        window.sessionStorage.setItem(snapshotStorageKey, JSON.stringify({
-          scrollTop: readCurrentScrollTop(),
-          items: itemsRef.current,
-          hasMore,
-          nextOffset,
-          savedAt: Date.now(),
-        }))
+      if (scrollRestorationKey) {
+        const currentScrollTop = readCurrentScrollTop()
+        const currentHistoryState = window.history.state ?? {}
+        const historyEntryRestoreKey = currentHistoryState?.[historyStateKey]
+
+        if (typeof historyEntryRestoreKey === 'string' && historyEntryRestoreKey.length > 0) {
+          window.sessionStorage.setItem(scrollStorageKey, historyEntryRestoreKey)
+          window.sessionStorage.setItem(snapshotStorageKey, JSON.stringify({
+            scrollTop: currentScrollTop,
+            items: itemsRef.current,
+            hasMore,
+            nextOffset,
+            savedAt: Date.now(),
+          }))
+          console.info('[InfiniteWorkoutFeed] saved scroll snapshot', {
+            key: scrollRestorationKey,
+            sourceHref,
+            scrollTop: currentScrollTop,
+            items: itemsRef.current.length,
+            hasMore,
+            nextOffset,
+          })
+        }
       }
     }
 
