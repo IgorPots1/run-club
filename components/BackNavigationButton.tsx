@@ -1,8 +1,9 @@
 'use client'
 
 import { ChevronLeft } from 'lucide-react'
+import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { readRunDetailSource } from '@/lib/run-detail-navigation'
+import { hydrateRunDetailSourceHistoryState, readRunDetailSource } from '@/lib/run-detail-navigation'
 
 type BackNavigationButtonProps = {
   fallbackHref?: string
@@ -19,6 +20,14 @@ export default function BackNavigationButton({
 }: BackNavigationButtonProps) {
   const router = useRouter()
   const pathname = usePathname()
+
+  useEffect(() => {
+    if (!pathname || !/^\/runs\/[^/]+$/.test(pathname)) {
+      return
+    }
+
+    hydrateRunDetailSourceHistoryState()
+  }, [pathname])
 
   function resolveFallbackHref() {
     if (!pathname || !/^\/runs\/[^/]+$/.test(pathname)) {

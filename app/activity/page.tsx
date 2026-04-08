@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import ActivityReturnState from '@/components/ActivityReturnState'
 import ActivityDistanceChart from '@/components/ActivityDistanceChart'
 import ActivitySummaryGrid from '@/components/ActivitySummaryGrid'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
@@ -322,6 +323,7 @@ export default function ActivityPage() {
   const [pendingDeleteRun, setPendingDeleteRun] = useState<ActivityRunRow | null>(null)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const suppressNextRunsUpdatedRefreshRef = useRef(false)
+  const prepareRunDetailNavigationRef = useRef<(runId: string) => void>(() => {})
 
   useEffect(() => {
     let isMounted = true
@@ -656,6 +658,15 @@ export default function ActivityPage() {
     }
   }, [deletingRunIds, mutate, pendingDeleteRun, user])
 
+  const handleOpenRunDetail = useCallback((runId: string) => {
+    if (!runId) {
+      return
+    }
+
+    prepareRunDetailNavigationRef.current(runId)
+    router.push(`/runs/${runId}`)
+  }, [router])
+
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
   }
@@ -670,6 +681,14 @@ export default function ActivityPage() {
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
+      <ActivityReturnState
+        period={period}
+        onRestorePeriod={setPeriod}
+        restoreReady={!loadingUser && !isLoading}
+        onReady={(prepare) => {
+          prepareRunDetailNavigationRef.current = prepare
+        }}
+      />
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:max-w-7xl md:px-8 md:py-6">
         <div className="mb-5 md:mb-8">
           <h1 className="app-text-primary text-2xl font-bold">Активность</h1>
@@ -921,7 +940,11 @@ export default function ActivityPage() {
                     className="compact-run-card app-card overflow-hidden rounded-2xl border border-black/5 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:border-white/10"
                   >
                     <div className="compact-run-card-layout flex flex-col gap-4 sm:flex-row sm:items-start">
-                      <Link href={`/runs/${run.id}`} className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenRunDetail(run.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
                         <p className="app-text-primary break-words text-[15px] font-semibold leading-5">
                           {getRunDisplayName(run)}
                         </p>
@@ -939,7 +962,7 @@ export default function ActivityPage() {
                         <p className="compact-run-card-secondary compact-run-card-meta app-text-secondary mt-1.5 break-words text-sm">
                           {formatRunMetaLabel(run)}
                         </p>
-                      </Link>
+                      </button>
                       {run.user_id === user.id ? (
                         <button
                           type="button"
