@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Heart, MapPin, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
@@ -53,6 +53,10 @@ type WorkoutFeedCardProps = {
   photos?: WorkoutMediaPhoto[]
 }
 
+const DEFAULT_PHOTO_OBJECT_POSITION = '50% 50%'
+const PORTRAIT_PHOTO_OBJECT_POSITION = '50% 30%'
+const PORTRAIT_HEIGHT_OVER_WIDTH_THRESHOLD = 1.1
+
 function formatDistanceLabel(distanceKm: number) {
   return formatDistanceKm(distanceKm)
 }
@@ -69,6 +73,54 @@ function normalizePaceLabel(pace: string | number | null | undefined) {
 function buildDisplayTitle(rawTitle: string | null) {
   return (rawTitle?.trim() || 'Тренировка').replace(/(\d+)\.0(\s*км\b)/g, '$1$2')
 }
+
+function getPhotoObjectPosition(naturalWidth: number, naturalHeight: number) {
+  if (naturalWidth <= 0 || naturalHeight <= 0) {
+    return DEFAULT_PHOTO_OBJECT_POSITION
+  }
+
+  const heightOverWidth = naturalHeight / naturalWidth
+  return heightOverWidth > PORTRAIT_HEIGHT_OVER_WIDTH_THRESHOLD
+    ? PORTRAIT_PHOTO_OBJECT_POSITION
+    : DEFAULT_PHOTO_OBJECT_POSITION
+}
+
+type WorkoutFeedPhotoPreviewImageProps = {
+  src: string
+  alt: string
+}
+
+const WorkoutFeedPhotoPreviewImage = memo(function WorkoutFeedPhotoPreviewImage({
+  src,
+  alt,
+}: WorkoutFeedPhotoPreviewImageProps) {
+  const [objectPosition, setObjectPosition] = useState(DEFAULT_PHOTO_OBJECT_POSITION)
+
+  const handleLoad = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const nextObjectPosition = getPhotoObjectPosition(
+      event.currentTarget.naturalWidth,
+      event.currentTarget.naturalHeight
+    )
+
+    setObjectPosition((currentValue) => (
+      currentValue === nextObjectPosition ? currentValue : nextObjectPosition
+    ))
+  }, [])
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className="h-full w-full object-cover"
+      style={{ objectPosition }}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onLoad={handleLoad}
+    />
+  )
+})
 
 type FeedActionButtonProps = {
   count: number
@@ -396,14 +448,9 @@ function WorkoutFeedCard({
                     >
                       <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                         <div className="relative aspect-[2.15/1] w-full">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
+                          <WorkoutFeedPhotoPreviewImage
                             src={slide.src}
                             alt={`Фото тренировки ${displayTitle}`}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                            decoding="async"
-                            draggable={false}
                           />
                         </div>
                       </div>
@@ -469,14 +516,9 @@ function WorkoutFeedCard({
           aria-label="Открыть фото тренировки"
         >
           <div className="relative aspect-[2.15/1] w-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <WorkoutFeedPhotoPreviewImage
               src={previewPhoto.thumbnail_url ?? previewPhoto.public_url}
               alt={`Фото тренировки ${displayTitle}`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              decoding="async"
-              draggable={false}
             />
             {additionalPhotosCount > 0 ? (
               <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
