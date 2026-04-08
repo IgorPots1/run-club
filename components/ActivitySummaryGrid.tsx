@@ -13,6 +13,9 @@ type ActivitySummaryGridProps = {
   compact?: boolean
   secondaryMetricLabel?: string
   secondaryMetricValue?: string
+  className?: string
+  metricClassName?: string
+  valueClassName?: string
 }
 
 export default function ActivitySummaryGrid({
@@ -22,9 +25,12 @@ export default function ActivitySummaryGrid({
   compact = false,
   secondaryMetricLabel,
   secondaryMetricValue,
+  className,
+  metricClassName,
+  valueClassName,
 }: ActivitySummaryGridProps) {
   return (
-    <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
+    <section className={`app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5 ${className ?? ''}`.trim()}>
       {title ? (
         <div>
           <h2 className="app-text-primary text-base font-semibold">{title}</h2>
@@ -39,13 +45,13 @@ export default function ActivitySummaryGrid({
             key={metric.id}
             className={`app-surface-muted flex min-h-[92px] flex-col justify-between rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10 ${
               compact ? 'sm:min-h-[88px]' : 'sm:min-h-[100px]'
-            }`}
+            } ${metricClassName ?? ''}`.trim()}
           >
             <p className="app-text-secondary text-sm">{metric.label}</p>
             <p
               className={`app-text-primary mt-3 break-words font-semibold leading-tight ${
                 compact ? 'text-lg sm:text-[1.15rem]' : 'text-[1.45rem] sm:text-[1.7rem]'
-              }`}
+              } ${valueClassName ?? ''}`.trim()}
             >
               {metric.value}
             </p>
