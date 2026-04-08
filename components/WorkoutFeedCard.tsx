@@ -157,6 +157,7 @@ function WorkoutFeedCard({
   const [activeMediaIndex, setActiveMediaIndex] = useState(0)
   const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
+  const trimmedDescription = description?.trim() || ''
   const previewPhoto = photos[0] ?? null
   const additionalPhotosCount = Math.max(0, photos.length - 1)
   const mapPreviewUrl = mapPolyline ? getStaticMapUrl(mapPolyline) : null
@@ -277,6 +278,11 @@ function WorkoutFeedCard({
         <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
+        {trimmedDescription ? (
+          <p className="app-text-secondary mt-1.5 line-clamp-3 break-words whitespace-pre-wrap text-sm leading-5">
+            {trimmedDescription}
+          </p>
+        ) : null}
         {locationLabel ? (
           <p className="app-text-secondary mt-1.5 break-words text-sm">
             {locationLabel}

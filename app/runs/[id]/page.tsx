@@ -27,6 +27,7 @@ import {
   loadRunComments,
   type RunCommentItem,
 } from '@/lib/run-comments'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import {
   loadRunLikesSummaryForRunIds,
   subscribeToRunLikes,
@@ -1239,6 +1240,7 @@ export default function RunDetailsPage() {
       setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
       setEditedName(nextName ?? '')
       setIsEditingTitle(false)
+      dispatchRunsUpdatedEvent()
     } catch {
       setSaveTitleError('Не удалось сохранить название')
     } finally {
@@ -1275,6 +1277,7 @@ export default function RunDetailsPage() {
       setEditedDescription(nextDescription ?? '')
       setDescriptionExpanded(false)
       setIsEditingDescription(false)
+      dispatchRunsUpdatedEvent()
     } catch {
       setSaveDescriptionError('Не удалось сохранить описание')
     } finally {
