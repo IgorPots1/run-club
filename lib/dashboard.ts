@@ -251,7 +251,13 @@ function compareFeedItemsByCreatedAt(
   return right.id.localeCompare(left.id)
 }
 
-function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>) {
+type RunDurationFields = {
+  moving_time_seconds?: number | null
+  duration_seconds?: number | null
+  duration_minutes?: number | null
+}
+
+function resolveDurationSeconds(run: RunDurationFields) {
   if (Number.isFinite(run.moving_time_seconds) && (run.moving_time_seconds ?? 0) > 0) {
     return Math.round(run.moving_time_seconds ?? 0)
   }
