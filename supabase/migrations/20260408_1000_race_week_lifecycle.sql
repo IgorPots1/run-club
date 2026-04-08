@@ -8,8 +8,50 @@ check (status in ('scheduled', 'active', 'finalized'));
 alter table public.race_weeks
 alter column status set default 'scheduled';
 
+create or replace function public.get_race_week_timezone()
+returns text
+language sql
+stable
+as $$
+  select 'Europe/Moscow'::text;
+$$;
+
+update public.race_weeks rw
+set
+  starts_at = canonical.starts_at,
+  ends_at = canonical.ends_at,
+  slug = canonical.slug,
+  timezone = canonical.timezone
+from (
+  select
+    source.id,
+    (date_trunc('week', source.starts_at at time zone public.get_race_week_timezone())
+      at time zone public.get_race_week_timezone()) as starts_at,
+    ((date_trunc('week', source.starts_at at time zone public.get_race_week_timezone())
+      at time zone public.get_race_week_timezone()) + interval '7 days') as ends_at,
+    to_char(
+      (date_trunc('week', source.starts_at at time zone public.get_race_week_timezone())
+        at time zone public.get_race_week_timezone()) at time zone public.get_race_week_timezone(),
+      'YYYY-MM-DD'
+    ) as slug,
+    public.get_race_week_timezone() as timezone
+  from public.race_weeks source
+) canonical
+where rw.id = canonical.id
+  and (
+    rw.starts_at,
+    rw.ends_at,
+    rw.slug,
+    rw.timezone
+  ) is distinct from (
+    canonical.starts_at,
+    canonical.ends_at,
+    canonical.slug,
+    canonical.timezone
+  );
+
 create or replace function public.resolve_current_race_week(
-  p_now timestamptz default timezone('utc', now())
+  p_now timestamptz default now()
 )
 returns table (
   id uuid,
@@ -92,7 +134,7 @@ revoke all on function public.resolve_current_race_week(timestamptz) from anon;
 revoke all on function public.resolve_current_race_week(timestamptz) from authenticated;
 
 create or replace function public.reconcile_race_week_lifecycle(
-  p_now timestamptz default timezone('utc', now())
+  p_now timestamptz default now()
 )
 returns void
 language plpgsql
@@ -100,7 +142,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_now timestamptz := coalesce(p_now, timezone('utc', now()));
+  v_now timestamptz := coalesce(p_now, now());
+  v_race_week_timezone text := public.get_race_week_timezone();
+  v_local_now timestamp without time zone;
+  v_local_current_starts_at timestamp without time zone;
   v_current_starts_at timestamptz;
   v_current_ends_at timestamptz;
   v_next_starts_at timestamptz;
@@ -114,12 +159,14 @@ declare
 begin
   perform pg_advisory_xact_lock(942316, 8042026);
 
-  v_current_starts_at := date_trunc('week', v_now at time zone 'utc') at time zone 'utc';
+  v_local_now := v_now at time zone v_race_week_timezone;
+  v_local_current_starts_at := date_trunc('week', v_local_now);
+  v_current_starts_at := v_local_current_starts_at at time zone v_race_week_timezone;
   v_current_ends_at := v_current_starts_at + interval '7 days';
   v_next_starts_at := v_current_ends_at;
   v_next_ends_at := v_next_starts_at + interval '7 days';
-  v_current_slug := to_char(v_current_starts_at at time zone 'utc', 'YYYY-MM-DD');
-  v_next_slug := to_char(v_next_starts_at at time zone 'utc', 'YYYY-MM-DD');
+  v_current_slug := to_char(v_current_starts_at at time zone v_race_week_timezone, 'YYYY-MM-DD');
+  v_next_slug := to_char(v_next_starts_at at time zone v_race_week_timezone, 'YYYY-MM-DD');
 
   for v_week_to_finalize_id in
     select rw.id
@@ -142,7 +189,7 @@ begin
     v_current_slug,
     v_current_starts_at,
     v_current_ends_at,
-    'UTC',
+    v_race_week_timezone,
     'scheduled'
   where not exists (
     select 1
@@ -161,7 +208,7 @@ begin
     v_next_slug,
     v_next_starts_at,
     v_next_ends_at,
-    'UTC',
+    v_race_week_timezone,
     'scheduled'
   where not exists (
     select 1
@@ -217,7 +264,8 @@ begin
   update public.race_weeks
   set
     status = 'scheduled',
-    finalized_at = null
+    finalized_at = null,
+    timezone = v_race_week_timezone
   where status <> 'finalized'
     and id <> v_current_week_id;
 
@@ -226,7 +274,7 @@ begin
     status = 'active',
     finalized_at = null,
     slug = v_current_slug,
-    timezone = 'UTC'
+    timezone = v_race_week_timezone
   where id = v_current_week_id
     and status <> 'finalized';
 
@@ -237,7 +285,7 @@ begin
       when id = v_next_week_id then v_next_slug
       else slug
     end,
-    timezone = 'UTC'
+    timezone = v_race_week_timezone
   where id in (v_current_week_id, v_next_week_id);
 
   if exists (
