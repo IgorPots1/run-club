@@ -49,6 +49,22 @@ function getPodiumBadgeChipClass(badgeCode: string | null | undefined, rank: num
   return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
 }
 
+function getPodiumBadgeText(rank: number) {
+  if (rank === 1) {
+    return 'Победитель'
+  }
+
+  if (rank === 2) {
+    return '2 место'
+  }
+
+  if (rank === 3) {
+    return '3 место'
+  }
+
+  return ''
+}
+
 export default async function RaceHistoryWeekPage({ params }: PageProps) {
   const [{ user, error }, { weekId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -150,9 +166,10 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
                 {topResults.map((row) => {
                   const isCurrentUser = row.userId === user.id
                   const rowBadge = topResultBadgesByUserId.get(row.userId) ?? null
-                  const rowBadgeLabel = rowBadge
+                  const rowBadgeTitle = rowBadge
                     ? getRaceBadgeLabel(rowBadge.badgeCode, rowBadge.sourceRank ?? row.rank)
                     : ''
+                  const rowBadgeText = rowBadge ? getPodiumBadgeText(row.rank) : ''
 
                   return (
                     <div
@@ -170,13 +187,22 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
                               {row.rank}. {row.displayName}
                             </p>
                             {rowBadge ? (
-                              <span
-                                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPodiumBadgeChipClass(
-                                  rowBadge.badgeCode,
-                                  rowBadge.sourceRank ?? row.rank
-                                )}`}
-                              >
-                                {rowBadgeLabel}
+                              <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap">
+                                <span
+                                  title={rowBadgeTitle}
+                                  aria-label={rowBadgeTitle}
+                                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPodiumBadgeChipClass(
+                                    rowBadge.badgeCode,
+                                    rowBadge.sourceRank ?? row.rank
+                                  )}`}
+                                >
+                                  {rowBadgeTitle}
+                                </span>
+                                {rowBadgeText ? (
+                                  <span className="app-text-secondary text-xs font-medium">
+                                    {rowBadgeText}
+                                  </span>
+                                ) : null}
                               </span>
                             ) : null}
                           </div>
