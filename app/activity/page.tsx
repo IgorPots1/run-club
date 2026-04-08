@@ -512,7 +512,13 @@ export default function ActivityPage() {
     }
   }, [period, runs, summary.totalDistance])
   const insightItems = useMemo(() => {
-    const items: Array<{ id: string; label: string; value: string; subtext?: string }> = []
+    const items: Array<{
+      id: string
+      label: string
+      value: string
+      subtext?: string
+      tone?: 'positive' | 'negative'
+    }> = []
 
     if (activityInsights.longestRun) {
       items.push({
@@ -554,6 +560,7 @@ export default function ActivityPage() {
         label: 'Прогресс',
         value: progressInsight.value,
         subtext: progressInsight.subtext,
+        tone: progressInsight.value.startsWith('-') ? 'negative' : 'positive',
       })
     }
 
@@ -770,20 +777,34 @@ export default function ActivityPage() {
                 metrics={summaryMetrics}
                 secondaryMetricLabel={summaryElevationLabel ? 'Набор высоты' : undefined}
                 secondaryMetricValue={summaryElevationLabel || undefined}
+                className="bg-black/[0.015] p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.035)] dark:bg-white/[0.025] dark:ring-white/8 md:p-4"
+                metricClassName="bg-black/[0.02] dark:bg-white/[0.03]"
+                valueClassName="font-semibold"
               />
 
               {insightItems.length > 0 ? (
                 <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
                   <h2 className="app-text-primary text-base font-semibold">Инсайты</h2>
-                  <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5">
+                  <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 md:gap-x-4 md:gap-y-4">
                     {insightItems.map((insight) => (
-                      <div key={insight.id} className="min-w-0">
-                        <p className="app-text-secondary text-xs sm:text-sm">{insight.label}</p>
-                        <p className="app-text-primary mt-1 break-words text-sm font-semibold leading-tight sm:text-base">
+                      <div
+                        key={insight.id}
+                        className="min-w-0 rounded-xl border-l-2 border-black/8 bg-black/[0.02] px-3 py-2.5 dark:border-white/12 dark:bg-white/[0.03]"
+                      >
+                        <p className="app-text-secondary text-[11px] font-medium sm:text-xs">{insight.label}</p>
+                        <p
+                          className={`mt-1 break-words text-base font-bold leading-tight sm:text-lg ${
+                            insight.tone === 'positive'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : insight.tone === 'negative'
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'app-text-primary'
+                          }`}
+                        >
                           {insight.value}
                         </p>
                         {insight.subtext ? (
-                          <p className="app-text-secondary mt-1 text-xs leading-tight">
+                          <p className="app-text-secondary mt-1 text-[11px] leading-tight sm:text-xs">
                             {insight.subtext}
                           </p>
                         ) : null}
@@ -793,7 +814,7 @@ export default function ActivityPage() {
                 </section>
               ) : null}
 
-              <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
+              <div className="app-card mt-2 min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mt-3 md:p-5">
                 <p className="app-text-secondary text-sm font-medium">{chartTitle}</p>
                 {shouldRenderEmptyState ? (
                   <div className="app-text-secondary mt-6 text-center text-sm">
