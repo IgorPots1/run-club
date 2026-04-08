@@ -258,7 +258,7 @@ function WorkoutFeedCard({
         router.push(`/runs/${runId}`)
       }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">
           <ParticipantIdentity
             avatarUrl={avatarUrl}
@@ -268,13 +268,13 @@ function WorkoutFeedCard({
             size="sm"
           />
         </div>
+        <p className="app-text-secondary ml-auto shrink-0 pt-0.5 text-xs whitespace-nowrap">
+          {formatRunTimestampLabel(createdAt, externalSource)}
+        </p>
       </div>
 
       <div className="mt-3">
-        <p className="app-text-secondary text-sm">
-          {formatRunTimestampLabel(createdAt, externalSource)}
-        </p>
-        <p className="app-text-primary mt-1 break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
+        <p className="app-text-primary break-words whitespace-pre-wrap text-[15px] font-semibold leading-5">
           {displayTitle}
         </p>
         {locationLabel ? (
@@ -421,17 +421,9 @@ function WorkoutFeedCard({
         </button>
       ) : null}
 
-      <div className="app-text-primary mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
-        <span>{distanceLabel}</span>
-        <span className="app-text-secondary">•</span>
-        <span>{paceWithUnit}</span>
-        <span className="app-text-secondary">•</span>
-        <span>{movingTimeLabel}</span>
-      </div>
-
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 shrink items-center gap-2 sm:gap-4">
+          <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
             <FeedActionButton
               count={likesCount}
               active={isHeartActive}
@@ -450,8 +442,9 @@ function WorkoutFeedCard({
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
           </div>
-          <div className="app-text-secondary shrink-0 text-right text-sm font-semibold whitespace-nowrap">
-            ⚡ +{xp} XP
+          <div className="app-text-secondary ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium">
+            <span aria-hidden="true" className="text-[11px] leading-none">⚡</span>
+            <span>+{xp} XP</span>
           </div>
         </div>
       </div>
