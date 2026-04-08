@@ -32,6 +32,16 @@ type RunRow = {
   created_at: string
 }
 
+type RunInsightHistoryRow = {
+  id: string
+  user_id: string
+  distance_km: number | null
+  duration_minutes?: number | null
+  duration_seconds?: number | null
+  moving_time_seconds?: number | null
+  created_at: string
+}
+
 type RunPhotoRow = {
   id: string
   run_id: string
@@ -102,6 +112,12 @@ export type DashboardRunItem = {
   commentsCount: number
   likedByMe: boolean
   photos: FeedRunPhoto[]
+  insight: FeedRunInsight | null
+}
+
+export type FeedRunInsight = {
+  type: 'best_pace_7d' | 'longest_14d' | 'faster_than_average_10'
+  label: string
 }
 
 export type FeedRunItem = DashboardRunItem & {
@@ -150,6 +166,10 @@ export type UserProfileSummary = {
 
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const TOTAL_XP_CACHE_TTL_MS = 60 * 1000
+const RUN_INSIGHT_MIN_DISTANCE_KM = 3
+const RUN_INSIGHT_BEST_PACE_WINDOW_DAYS = 7
+const RUN_INSIGHT_LONGEST_WINDOW_DAYS = 14
+const RUN_INSIGHT_AVERAGE_RUN_COUNT = 10
 
 const profileCache = new Map<string, { value: ProfileRow | null; expiresAt: number }>()
 const totalXpCache = new Map<string, { value: number; expiresAt: number }>()
@@ -242,6 +262,150 @@ function resolveDurationSeconds(run: Pick<RunRow, 'moving_time_seconds' | 'durat
 
   if (Number.isFinite(run.duration_minutes) && (run.duration_minutes ?? 0) > 0) {
     return Math.round(Number(run.duration_minutes ?? 0) * 60)
+  }
+
+  return null
+}
+
+function getRunCreatedAtMs(run: Pick<RunInsightHistoryRow, 'created_at'>) {
+  const timestamp = new Date(run.created_at).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function getComparablePaceSeconds(
+  run: Pick<RunInsightHistoryRow, 'distance_km' | 'moving_time_seconds' | 'duration_seconds' | 'duration_minutes'>
+) {
+  const distanceKm = Number(run.distance_km ?? 0)
+
+  if (!Number.isFinite(distanceKm) || distanceKm < RUN_INSIGHT_MIN_DISTANCE_KM) {
+    return null
+  }
+
+  const durationSeconds = resolveDurationSeconds(run)
+
+  if (!Number.isFinite(durationSeconds) || (durationSeconds ?? 0) <= 0) {
+    return null
+  }
+
+  const paceSeconds = Number(durationSeconds) / distanceKm
+  return Number.isFinite(paceSeconds) && paceSeconds > 0 ? paceSeconds : null
+}
+
+function getPositiveDistanceKm(run: Pick<RunInsightHistoryRow, 'distance_km'>) {
+  const distanceKm = Number(run.distance_km ?? 0)
+  return Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : null
+}
+
+function buildRunInsight(
+  run: RunRow,
+  runsByUserId: Record<string, RunInsightHistoryRow[]>,
+  runIndexById: Record<string, number>
+): FeedRunInsight | null {
+  const userRuns = runsByUserId[run.user_id] ?? []
+
+  if (userRuns.length < 2) {
+    return null
+  }
+
+  const currentRunIndex = runIndexById[run.id]
+
+  if (!Number.isInteger(currentRunIndex) || currentRunIndex < 0) {
+    return null
+  }
+
+  const currentRun = userRuns[currentRunIndex]
+  const currentCreatedAtMs = getRunCreatedAtMs(currentRun)
+
+  if (currentCreatedAtMs == null) {
+    return null
+  }
+
+  const currentPaceSeconds = getComparablePaceSeconds(currentRun)
+
+  if (currentPaceSeconds != null) {
+    const bestPaceWindowStartMs =
+      currentCreatedAtMs - RUN_INSIGHT_BEST_PACE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const paceWindowRuns = userRuns.filter((candidateRun) => {
+      const createdAtMs = getRunCreatedAtMs(candidateRun)
+      const paceSeconds = getComparablePaceSeconds(candidateRun)
+
+      return (
+        createdAtMs != null &&
+        paceSeconds != null &&
+        createdAtMs >= bestPaceWindowStartMs &&
+        createdAtMs <= currentCreatedAtMs
+      )
+    })
+
+    if (paceWindowRuns.length >= 2) {
+      const bestPaceSeconds = paceWindowRuns.reduce((bestValue, candidateRun) => {
+        const paceSeconds = getComparablePaceSeconds(candidateRun)
+        return paceSeconds != null && paceSeconds < bestValue ? paceSeconds : bestValue
+      }, currentPaceSeconds)
+
+      if (currentPaceSeconds <= bestPaceSeconds) {
+        return {
+          type: 'best_pace_7d',
+          label: 'Лучший темп за 7 дней',
+        }
+      }
+    }
+  }
+
+  const currentDistanceKm = getPositiveDistanceKm(currentRun)
+
+  if (currentDistanceKm != null) {
+    const longestWindowStartMs = currentCreatedAtMs - RUN_INSIGHT_LONGEST_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const distanceWindowRuns = userRuns.filter((candidateRun) => {
+      const createdAtMs = getRunCreatedAtMs(candidateRun)
+      const distanceKm = getPositiveDistanceKm(candidateRun)
+
+      return (
+        createdAtMs != null &&
+        distanceKm != null &&
+        createdAtMs >= longestWindowStartMs &&
+        createdAtMs <= currentCreatedAtMs
+      )
+    })
+
+    if (distanceWindowRuns.length >= 2) {
+      const maxDistanceKm = distanceWindowRuns.reduce((bestValue, candidateRun) => {
+        const distanceKm = getPositiveDistanceKm(candidateRun)
+        return distanceKm != null && distanceKm > bestValue ? distanceKm : bestValue
+      }, currentDistanceKm)
+      const maxDistanceCount = distanceWindowRuns.filter(
+        (candidateRun) => getPositiveDistanceKm(candidateRun) === maxDistanceKm
+      ).length
+
+      if (currentDistanceKm === maxDistanceKm && maxDistanceCount === 1) {
+        return {
+          type: 'longest_14d',
+          label: 'Самая длинная за 14 дней',
+        }
+      }
+    }
+  }
+
+  if (currentPaceSeconds != null) {
+    const previousComparableRuns = userRuns
+      .slice(currentRunIndex + 1)
+      .filter((candidateRun) => getComparablePaceSeconds(candidateRun) != null)
+      .slice(0, RUN_INSIGHT_AVERAGE_RUN_COUNT)
+
+    if (previousComparableRuns.length === RUN_INSIGHT_AVERAGE_RUN_COUNT) {
+      const averagePreviousPaceSeconds =
+        previousComparableRuns.reduce((sum, candidateRun) => {
+          const paceSeconds = getComparablePaceSeconds(candidateRun)
+          return sum + Number(paceSeconds ?? 0)
+        }, 0) / RUN_INSIGHT_AVERAGE_RUN_COUNT
+
+      if (currentPaceSeconds < averagePreviousPaceSeconds) {
+        return {
+          type: 'faster_than_average_10',
+          label: 'Быстрее среднего за 10 тренировок',
+        }
+      }
+    }
   }
 
   return null
@@ -518,6 +682,7 @@ export async function loadFeedRuns(
     likesSummary,
     photosResult,
     currentRaceEventsResult,
+    historicalRunsResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
@@ -554,6 +719,14 @@ export async function loadFeedRuns(
           `)
           .in('id', editableRaceEventIds)
           .eq('user_id', currentUserId),
+    userIds.length === 0
+      ? Promise.resolve({ data: [] as RunInsightHistoryRow[], error: null })
+      : supabase
+          .from('runs')
+          .select('id, user_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, created_at')
+          .in('user_id', userIds)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
   ])
 
   const photosByRunId = ((photosResult.data as RunPhotoRow[] | null) ?? []).reduce<Record<string, FeedRunPhoto[]>>(
@@ -589,6 +762,25 @@ export async function loadFeedRuns(
       raceEvent,
     ]))
   ) as Record<string, FeedRaceEventCurrentRow>
+  const historicalRunsByUserId = (((historicalRunsResult.data as RunInsightHistoryRow[] | null) ?? [])).reduce<
+    Record<string, RunInsightHistoryRow[]>
+  >((accumulator, historicalRun) => {
+    if (typeof historicalRun.user_id !== 'string' || historicalRun.user_id.length === 0) {
+      return accumulator
+    }
+
+    if (!accumulator[historicalRun.user_id]) {
+      accumulator[historicalRun.user_id] = []
+    }
+
+    accumulator[historicalRun.user_id].push(historicalRun)
+    return accumulator
+  }, {})
+  const historicalRunIndexById = Object.fromEntries(
+    Object.values(historicalRunsByUserId).flatMap((userRuns) =>
+      userRuns.map((historicalRun, index) => [historicalRun.id, index] as const)
+    )
+  ) as Record<string, number>
 
   const runItems: FeedItem[] = pageRuns.map((run) => {
       const profile = profileById[run.user_id]
@@ -617,6 +809,7 @@ export async function loadFeedRuns(
         commentsCount: 0,
         likedByMe: likesSummary.likedRunIds.has(run.id),
         photos: photosByRunId[run.id] ?? [],
+        insight: buildRunInsight(run, historicalRunsByUserId, historicalRunIndexById),
       }
     })
 

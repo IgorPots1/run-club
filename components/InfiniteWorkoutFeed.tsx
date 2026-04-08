@@ -766,6 +766,7 @@ export default function InfiniteWorkoutFeed({
                 likesCount={item.likesCount}
                 commentsCount={item.commentsCount}
                 likedByMe={item.likedByMe}
+                insight={item.insight}
                 isOwnRun={item.user_id === currentUserId}
                 isLikeInFlight={Boolean(likeInFlightByRunId[item.id])}
                 photos={item.photos}
