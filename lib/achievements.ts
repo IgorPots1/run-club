@@ -48,6 +48,10 @@ export type UserAchievement = {
   rank?: number | null
 }
 
+type LoadUserAchievementsOptions = {
+  limit?: number
+}
+
 function toSafeNumber(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
   return Number.isFinite(numericValue) ? Number(numericValue) : null
@@ -136,21 +140,40 @@ async function loadChallengesByIds(
   }))
 }
 
-export async function loadUserAchievements(userId: string): Promise<UserAchievement[]> {
+export async function loadUserAchievements(userId: string, options: LoadUserAchievementsOptions = {}): Promise<UserAchievement[]> {
   const supabase = await createSupabaseServerClient()
+  const limit = typeof options.limit === 'number' && Number.isFinite(options.limit)
+    ? Math.max(1, Math.floor(options.limit))
+    : null
 
   const [{ data: raceAwards, error: raceAwardsError }, { data: challengeCompletions, error: challengeCompletionsError }] = await Promise.all([
-    supabase
-      .from('user_badge_awards')
-      .select('id, badge_code, race_week_id, source_rank, awarded_at')
-      .eq('user_id', userId)
-      .eq('source_type', 'weekly_race')
-      .order('awarded_at', { ascending: false }),
-    supabase
-      .from('user_challenges')
-      .select('challenge_id, completed_at')
-      .eq('user_id', userId)
-      .order('completed_at', { ascending: false }),
+    (async () => {
+      let query = supabase
+        .from('user_badge_awards')
+        .select('id, badge_code, race_week_id, source_rank, awarded_at')
+        .eq('user_id', userId)
+        .eq('source_type', 'weekly_race')
+        .order('awarded_at', { ascending: false })
+
+      if (limit !== null) {
+        query = query.limit(limit)
+      }
+
+      return query
+    })(),
+    (async () => {
+      let query = supabase
+        .from('user_challenges')
+        .select('challenge_id, completed_at')
+        .eq('user_id', userId)
+        .order('completed_at', { ascending: false })
+
+      if (limit !== null) {
+        query = query.limit(limit)
+      }
+
+      return query
+    })(),
   ])
 
   if (raceAwardsError) {
@@ -263,5 +286,7 @@ export async function loadUserAchievements(userId: string): Promise<UserAchievem
     return achievements
   }, [])
 
-  return [...raceAchievements, ...challengeAchievements].sort(compareByDateDesc)
+  const achievements = [...raceAchievements, ...challengeAchievements].sort(compareByDateDesc)
+
+  return limit === null ? achievements : achievements.slice(0, limit)
 }

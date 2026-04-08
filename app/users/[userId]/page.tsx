@@ -3,10 +3,12 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { CheckCircle2, Trophy } from 'lucide-react'
 import ActivitySummaryGrid from '@/components/ActivitySummaryGrid'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import ProfileWeeklyVolumeTrendChart from '@/components/ProfileWeeklyVolumeTrendChart'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
+import { loadUserAchievements, type UserAchievement } from '@/lib/achievements'
 import { buildActivityWindowStats, buildRollingWeeklyDistanceChart } from '@/lib/activity'
 import { formatAveragePace, formatDistanceKm, formatDurationCompact } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
@@ -36,6 +38,7 @@ type PublicRunStatRow = {
 }
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
+const PROFILE_ACHIEVEMENTS_LIMIT = 4
 
 function formatDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -104,6 +107,50 @@ function formatClubJoinedLabel(dateString: string | null | undefined) {
   return `${monthLabels[date.getMonth()] ?? ''} ${date.getFullYear()}`.trim()
 }
 
+function formatAchievementDate(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date)
+}
+
+function getAchievementSourceLabel(sourceType: UserAchievement['source_type']) {
+  return sourceType === 'weekly_race' ? 'Гонка недели' : 'Челлендж'
+}
+
+function getAchievementItemClass(hasHref: boolean) {
+  const baseClass = 'app-surface-muted rounded-2xl border border-black/[0.06] px-4 py-3 shadow-sm dark:border-white/[0.08]'
+
+  if (!hasHref) {
+    return baseClass
+  }
+
+  return `${baseClass} block transition-transform transition-shadow hover:shadow-md active:scale-[0.99]`
+}
+
+function getAchievementIconClass(sourceType: UserAchievement['source_type']) {
+  if (sourceType === 'weekly_race') {
+    return 'border border-amber-300/80 bg-amber-100/90 text-amber-700 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  return 'border border-emerald-300/70 bg-emerald-100/90 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
+}
+
+function AchievementPreviewIcon({ sourceType }: { sourceType: UserAchievement['source_type'] }) {
+  if (sourceType === 'weekly_race') {
+    return <Trophy className="h-[18px] w-[18px]" strokeWidth={2} />
+  }
+
+  return <CheckCircle2 className="h-[18px] w-[18px]" strokeWidth={2} />
+}
+
 export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ user, error, supabase }, { userId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -111,7 +158,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     redirect('/login')
   }
 
-  const [{ data: profile, error: profileError }, { data: runs, error: runsError }] = await Promise.all([
+  const [{ data: profile, error: profileError }, { data: runs, error: runsError }, achievementsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('id, name, nickname, avatar_url, club_joined_at, total_xp')
@@ -121,11 +168,19 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .from('runs')
       .select('distance_km, created_at, moving_time_seconds, elevation_gain_meters')
       .eq('user_id', userId),
+    loadUserAchievements(userId, { limit: PROFILE_ACHIEVEMENTS_LIMIT })
+      .then((data) => ({ data, error: null as string | null }))
+      .catch(() => ({
+        data: [] as UserAchievement[],
+        error: 'Не удалось загрузить достижения',
+      })),
   ])
 
   const publicProfile = (profile as PublicProfileRow | null) ?? null
   const publicRuns = (runs as PublicRunStatRow[] | null) ?? []
   const hasLoadError = Boolean(profileError || runsError)
+  const recentAchievements = achievementsResult.data
+  const achievementsLoadError = achievementsResult.error
 
   if (!publicProfile && !hasLoadError) {
     return (
@@ -298,6 +353,70 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               </p>
             )}
           </div>
+        </section>
+        <section className="app-card rounded-3xl border p-4 shadow-sm sm:p-5">
+          <div className="min-w-0">
+            <h2 className="app-text-primary text-lg font-semibold">Достижения</h2>
+            <p className="app-text-secondary mt-1 text-sm">Последние награды и завершенные челленджи участника.</p>
+          </div>
+
+          {achievementsLoadError ? (
+            <p className="mt-4 text-sm text-red-600">{achievementsLoadError}</p>
+          ) : recentAchievements.length === 0 ? (
+            <div className="app-surface-muted mt-4 rounded-2xl border border-black/[0.06] px-4 py-4 text-center dark:border-white/[0.08]">
+              <p className="app-text-secondary text-sm">Пока нет достижений.</p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {recentAchievements.map((achievement) => {
+                const content = (
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAchievementIconClass(achievement.source_type)}`}
+                      aria-hidden="true"
+                    >
+                      <AchievementPreviewIcon sourceType={achievement.source_type} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="app-text-secondary text-[11px] font-medium uppercase tracking-[0.08em]">
+                            {getAchievementSourceLabel(achievement.source_type)}
+                          </p>
+                          <p className="app-text-primary mt-1 text-sm font-semibold">{achievement.label}</p>
+                        </div>
+                        {achievement.rank ? (
+                          <span className="shrink-0 rounded-full border border-black/[0.06] bg-black/[0.04] px-2.5 py-1 text-xs font-semibold text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80">
+                            #{achievement.rank}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="app-text-secondary mt-1 text-sm">{achievement.subtitle}</p>
+                      <p className="app-text-secondary mt-2 text-xs">{formatAchievementDate(achievement.date)}</p>
+                    </div>
+                  </div>
+                )
+
+                if (achievement.href) {
+                  return (
+                    <Link
+                      key={achievement.id}
+                      href={achievement.href}
+                      className={getAchievementItemClass(true)}
+                    >
+                      {content}
+                    </Link>
+                  )
+                }
+
+                return (
+                  <div key={achievement.id} className={getAchievementItemClass(false)}>
+                    {content}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </section>
         <div>
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Последняя активность</h2>
