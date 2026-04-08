@@ -6,7 +6,7 @@ export type RaceWeekSummary = {
   startsAt: string
   endsAt: string
   timezone: string
-  status: 'active' | 'finalized'
+  status: 'scheduled' | 'active' | 'finalized'
   finalizedAt: string | null
 }
 
@@ -51,7 +51,7 @@ type RaceWeekDbRow = {
   starts_at: string
   ends_at: string
   timezone: string
-  status: 'active' | 'finalized'
+  status: 'scheduled' | 'active' | 'finalized'
   finalized_at: string | null
 }
 

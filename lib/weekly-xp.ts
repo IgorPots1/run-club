@@ -15,7 +15,7 @@ type CurrentRaceWeekRpcRow = {
   starts_at: string
   ends_at: string
   timezone: string
-  status: 'active' | 'finalized'
+  status: 'scheduled' | 'active' | 'finalized'
   finalized_at: string | null
 }
 
@@ -25,7 +25,7 @@ export type CurrentRaceWeek = {
   startsAt: string
   endsAt: string
   timezone: string
-  status: 'active' | 'finalized'
+  status: 'scheduled' | 'active' | 'finalized'
   finalizedAt: string | null
 }
 
