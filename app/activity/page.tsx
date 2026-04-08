@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, LoaderCircle, Trash2, Trophy } from 'lucide-react'
+import { CheckCircle2, ChevronRight, LoaderCircle, Trash2, Trophy } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -402,33 +402,42 @@ export default function ActivityPage() {
   const shouldRenderEmptyState = summary.chartData.length === 0
   const deletingActiveRun = pendingDeleteRun ? deletingRunIds.includes(pendingDeleteRun.id) : false
   const summaryMetrics = useMemo(
-    () => [
-      {
-        id: 'distance',
-        label: 'Дистанция',
-        value: `${formatDistance(summary.totalDistance)} км`,
-      },
-      {
-        id: 'runs',
-        label: 'Пробежки',
-        value: String(summary.totalWorkouts),
-      },
-      {
-        id: 'moving-time',
-        label: 'В движении',
-        value: formatDurationCompact(summary.totalMovingTimeSeconds),
-      },
-      {
-        id: 'average-pace',
-        label: 'Средний темп',
-        value: formatAveragePace(summary.totalMovingTimeSeconds, summary.totalDistance),
-      },
-    ],
+    () => {
+      const metrics = [
+        {
+          id: 'distance',
+          label: 'Дистанция',
+          value: `${formatDistance(summary.totalDistance)} км`,
+        },
+        {
+          id: 'runs',
+          label: 'Пробежки',
+          value: String(summary.totalWorkouts),
+        },
+        {
+          id: 'moving-time',
+          label: 'В движении',
+          value: formatDurationCompact(summary.totalMovingTimeSeconds),
+        },
+        {
+          id: 'average-pace',
+          label: 'Средний темп',
+          value: formatAveragePace(summary.totalMovingTimeSeconds, summary.totalDistance),
+        },
+      ]
+      const elevationLabel = formatElevationGainLabel(summary.totalElevationGainMeters)
+
+      if (elevationLabel) {
+        metrics.push({
+          id: 'elevation-gain',
+          label: 'Набор высоты',
+          value: elevationLabel,
+        })
+      }
+
+      return metrics
+    },
     [summary]
-  )
-  const summaryElevationLabel = useMemo(
-    () => formatElevationGainLabel(summary.totalElevationGainMeters),
-    [summary.totalElevationGainMeters]
   )
   const activityInsights = useMemo(() => {
     const longestRun = filteredRuns.reduce<ActivityRunRow | null>((bestRun, run) => {
@@ -667,69 +676,59 @@ export default function ActivityPage() {
           <p className="app-text-secondary mt-1 text-sm">Твоя беговая статистика за выбранный период.</p>
         </div>
 
-        <div className="app-card mb-5 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mb-8 md:p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
+        <div className="mb-5 space-y-3 md:mb-8">
+          <Link
+            href="/runs"
+            className="app-card flex items-start justify-between gap-3 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:ring-white/10"
+          >
+            <div className="min-w-0">
               <p className="app-text-primary text-base font-semibold">Тренировки</p>
               <p className="app-text-secondary mt-1 text-sm">
                 Добавь новую тренировку и смотри историю ниже.
               </p>
+              <p className="app-text-secondary mt-2 text-xs font-medium">
+                Добавить и посмотреть историю
+              </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Link
-                href="/runs"
-                className="app-button-primary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
-              >
-                Добавить тренировку
-              </Link>
-            </div>
-          </div>
-        </div>
+            <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+          </Link>
 
-        <div className="app-card mb-5 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mb-8 md:p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
+          <Link
+            href="/activity/shoes"
+            className="app-card flex items-start justify-between gap-3 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:ring-white/10"
+          >
+            <div className="min-w-0">
               <p className="app-text-primary text-base font-semibold">Кроссовки</p>
               <p className="app-text-secondary mt-1 text-sm">
                 Добавляй пары и следи за их пробегом в одном месте.
               </p>
+              <p className="app-text-secondary mt-2 text-xs font-medium">
+                Пары и пробег
+              </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Link
-                href="/activity/shoes"
-                className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
-              >
-                Открыть кроссовки
-              </Link>
-            </div>
-          </div>
-        </div>
+            <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+          </Link>
 
-        <section className="app-card mb-5 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mb-8 md:p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
+          <Link
+            href="/races"
+            className="app-card flex items-start justify-between gap-3 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:ring-white/10"
+          >
+            <div className="min-w-0">
               <p className="app-text-primary text-base font-semibold">Старты</p>
               <p className="app-text-secondary mt-1 text-sm">
-                Управляйте календарем стартов и привязывайте к ним тренировки на отдельном экране.
+                Календарь стартов, результаты и связанные тренировки.
               </p>
               {!raceEventsLoadError ? (
-                <p className="app-text-secondary mt-2 text-sm">
+                <p className="app-text-secondary mt-2 text-xs font-medium">
                   Предстоящие: {upcomingRaceEventsCount} • Прошедшие: {pastRaceEventsCount}
                 </p>
               ) : (
-                <p className="mt-2 text-sm text-red-600">Не удалось загрузить сводку стартов</p>
+                <p className="mt-2 text-xs font-medium text-red-600">Не удалось загрузить сводку стартов</p>
               )}
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Link
-                href="/races"
-                className="app-button-secondary inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
-              >
-                Открыть старты
-              </Link>
-            </div>
-          </div>
-        </section>
+            <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+          </Link>
+        </div>
 
         <div className="mb-5 flex flex-wrap gap-2 md:mb-8 md:gap-2.5">
           {PERIOD_OPTIONS.map((option) => (
@@ -775,43 +774,18 @@ export default function ActivityPage() {
                 title="Сводка по периоду"
                 subtitle="Твои ключевые показатели за выбранный диапазон."
                 metrics={summaryMetrics}
-                secondaryMetricLabel={summaryElevationLabel ? 'Набор высоты' : undefined}
-                secondaryMetricValue={summaryElevationLabel || undefined}
-                className="bg-black/[0.015] p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.035)] dark:bg-white/[0.025] dark:ring-white/8 md:p-4"
+                compact
+                className="bg-black/[0.015] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.035)] dark:bg-white/[0.025] dark:ring-white/8 md:p-5"
                 metricClassName="bg-black/[0.02] dark:bg-white/[0.03]"
                 valueClassName="font-semibold"
               />
 
               {insightItems.length > 0 ? (
-                <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
-                  <h2 className="app-text-primary text-base font-semibold">Инсайты</h2>
-                  <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 md:gap-x-4 md:gap-y-4">
-                    {insightItems.map((insight) => (
-                      <div
-                        key={insight.id}
-                        className="min-w-0 rounded-xl border-l-2 border-black/8 bg-black/[0.02] px-3 py-2.5 dark:border-white/12 dark:bg-white/[0.03]"
-                      >
-                        <p className="app-text-secondary text-[11px] font-medium sm:text-xs">{insight.label}</p>
-                        <p
-                          className={`mt-1 break-words text-base font-bold leading-tight sm:text-lg ${
-                            insight.tone === 'positive'
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : insight.tone === 'negative'
-                                ? 'text-red-600 dark:text-red-400'
-                                : 'app-text-primary'
-                          }`}
-                        >
-                          {insight.value}
-                        </p>
-                        {insight.subtext ? (
-                          <p className="app-text-secondary mt-1 text-[11px] leading-tight sm:text-xs">
-                            {insight.subtext}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </section>
+                <ActivitySummaryGrid
+                  title="Инсайты"
+                  metrics={insightItems}
+                  compact
+                />
               ) : null}
 
               <div className="app-card mt-2 min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:mt-3 md:p-5">

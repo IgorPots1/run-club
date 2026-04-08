@@ -4,6 +4,8 @@ type ActivitySummaryMetric = {
   id: string
   label: string
   value: string
+  subtext?: string
+  tone?: 'positive' | 'negative'
 }
 
 type ActivitySummaryGridProps = {
@@ -39,22 +41,33 @@ export default function ActivitySummaryGrid({
           ) : null}
         </div>
       ) : null}
-      <div className={`${title ? 'mt-4' : ''} grid grid-cols-2 gap-3 md:grid-cols-4`}>
+      <div className={`${title ? 'mt-3' : ''} grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3`}>
         {metrics.map((metric) => (
           <div
             key={metric.id}
-            className={`app-surface-muted flex min-h-[92px] flex-col justify-between rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10 ${
-              compact ? 'sm:min-h-[88px]' : 'sm:min-h-[100px]'
+            className={`min-w-0 rounded-xl border-l-2 border-black/8 bg-black/[0.02] px-3 py-2.5 dark:border-white/12 dark:bg-white/[0.03] ${
+              compact ? 'sm:min-h-[82px]' : 'sm:min-h-[88px]'
             } ${metricClassName ?? ''}`.trim()}
           >
-            <p className="app-text-secondary text-sm">{metric.label}</p>
+            <p className="app-text-secondary text-[11px] font-medium sm:text-xs">{metric.label}</p>
             <p
               className={`app-text-primary mt-3 break-words font-semibold leading-tight ${
-                compact ? 'text-lg sm:text-[1.15rem]' : 'text-[1.45rem] sm:text-[1.7rem]'
+                metric.tone === 'positive'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : metric.tone === 'negative'
+                    ? 'text-red-600 dark:text-red-400'
+                    : compact
+                      ? 'text-base sm:text-[1.05rem]'
+                      : 'text-base sm:text-lg'
               } ${valueClassName ?? ''}`.trim()}
             >
               {metric.value}
             </p>
+            {metric.subtext ? (
+              <p className="app-text-secondary mt-1 text-[11px] leading-tight sm:text-xs">
+                {metric.subtext}
+              </p>
+            ) : null}
           </div>
         ))}
       </div>
