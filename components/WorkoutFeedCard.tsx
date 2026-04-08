@@ -23,12 +23,6 @@ type WorkoutFeedCardMediaSlide =
       photoIndex: number
     }
 
-type WorkoutFeedMetricItem = {
-  id: 'distance' | 'pace' | 'movingTime'
-  label: string
-  value: string
-}
-
 type WorkoutFeedCardProps = {
   runId?: string
   rawTitle: string | null
@@ -73,15 +67,6 @@ function normalizePaceLabel(pace: string | number | null | undefined) {
 
 function buildDisplayTitle(rawTitle: string | null) {
   return (rawTitle?.trim() || 'Тренировка').replace(/(\d+)\.0(\s*км\b)/g, '$1$2')
-}
-
-function WorkoutMetricPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-2xl border border-black/[0.06] bg-black/[0.025] px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.03]">
-      <p className="app-text-muted text-[11px] font-medium leading-none">{label}</p>
-      <p className="app-text-primary mt-1 break-words text-sm font-semibold leading-5">{value}</p>
-    </div>
-  )
 }
 
 type FeedActionButtonProps = {
@@ -226,19 +211,13 @@ function WorkoutFeedCard({
   const currentMediaIndex = Math.max(0, Math.min(activeMediaIndex, totalMediaSlides - 1))
   const distanceLabel = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm > 0
     ? `${formatDistanceLabel(distanceKm)} км`
-    : '—'
-  const hasDistanceMetric = distanceLabel !== '—'
+    : ''
   const paceLabel = normalizePaceLabel(pace)
-  const paceWithUnit = paceLabel ? `${paceLabel} /км` : '—'
-  const hasPaceMetric = paceWithUnit !== '—'
-  const movingTimeLabel = movingTime?.trim() || '—'
-  const hasMovingTimeMetric = movingTimeLabel !== '—'
-  const compactMetricItems: WorkoutFeedMetricItem[] = [
-    hasDistanceMetric ? { id: 'distance', label: 'Дистанция', value: distanceLabel } : null,
-    hasPaceMetric ? { id: 'pace', label: 'Темп', value: paceWithUnit } : null,
-    hasMovingTimeMetric ? { id: 'movingTime', label: 'Время', value: movingTimeLabel } : null,
-  ].filter((item): item is WorkoutFeedMetricItem => item !== null)
+  const paceWithUnit = paceLabel ? `${paceLabel} /км` : ''
+  const movingTimeLabel = movingTime?.trim() || ''
   const hasMediaContent = shouldRenderMediaCarousel || (showMapPreview && Boolean(mapPreviewUrl)) || Boolean(previewPhoto)
+  const isManualRun = externalSource !== 'strava'
+  const shouldRenderInlineMetrics = !hasMediaContent && isManualRun && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
@@ -484,11 +463,13 @@ function WorkoutFeedCard({
           </div>
         </button>
       ) : null}
-      {!hasMediaContent && compactMetricItems.length > 0 ? (
-        <div className="mt-2 grid gap-2 sm:grid-cols-3">
-          {compactMetricItems.map((metricItem) => (
-            <WorkoutMetricPill key={metricItem.id} label={metricItem.label} value={metricItem.value} />
-          ))}
+      {shouldRenderInlineMetrics ? (
+        <div className="app-text-muted mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+          {distanceLabel ? <span>{distanceLabel}</span> : null}
+          {distanceLabel && paceWithUnit ? <span aria-hidden="true">•</span> : null}
+          {paceWithUnit ? <span>{paceWithUnit}</span> : null}
+          {(distanceLabel || paceWithUnit) && movingTimeLabel ? <span aria-hidden="true">•</span> : null}
+          {movingTimeLabel ? <span>{movingTimeLabel}</span> : null}
         </div>
       ) : null}
 
