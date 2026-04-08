@@ -43,6 +43,7 @@ export default function FeedPage() {
         <InfiniteWorkoutFeed
           currentUserId={currentUserId}
           pageSize={10}
+          scrollRestorationKey="main-feed"
           emptyTitle="Лента пока пуста."
           emptyDescription={currentUserId ? 'Добавьте первую тренировку или загляните позже.' : 'Войдите, чтобы видеть активность клуба.'}
           emptyCtaHref={emptyCtaHref}

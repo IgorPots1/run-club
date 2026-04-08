@@ -48,6 +48,7 @@ type WorkoutFeedCardProps = {
   onToggleLike: (runId: string) => void
   onOpenLikes?: () => void
   onCommentClick?: (runId: string) => void
+  onNavigateToRun?: (runId: string) => void
   profileHref?: string | null
   photos?: WorkoutMediaPhoto[]
 }
@@ -152,6 +153,7 @@ function WorkoutFeedCard({
   onToggleLike,
   onOpenLikes,
   onCommentClick,
+  onNavigateToRun,
   profileHref = null,
   photos = [],
 }: WorkoutFeedCardProps) {
@@ -247,6 +249,19 @@ function WorkoutFeedCard({
     setActiveMediaIndex(boundedIndex)
   }
 
+  function openRunDetail() {
+    if (!runId) {
+      return
+    }
+
+    if (onNavigateToRun) {
+      onNavigateToRun(runId)
+      return
+    }
+
+    router.push(`/runs/${runId}`)
+  }
+
   return (
     <div
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
@@ -256,7 +271,7 @@ function WorkoutFeedCard({
         if (!runId) return
         const target = event.target as HTMLElement
         if (target.closest('a,button')) return
-        router.push(`/runs/${runId}`)
+        openRunDetail()
       }}
       onKeyDown={(event) => {
         if (!runId) return
@@ -264,7 +279,7 @@ function WorkoutFeedCard({
         const target = event.target as HTMLElement
         if (target.closest('a,button')) return
         event.preventDefault()
-        router.push(`/runs/${runId}`)
+        openRunDetail()
       }}
     >
       <div className="flex min-w-0 items-start gap-3">

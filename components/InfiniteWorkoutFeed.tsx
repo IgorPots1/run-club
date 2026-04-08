@@ -32,6 +32,7 @@ type InfiniteWorkoutFeedProps = {
   enabled?: boolean
   targetUserId?: string | null
   pageSize?: number
+  scrollRestorationKey?: string
   emptyTitle: string
   emptyDescription?: string
   emptyCtaHref?: string
@@ -185,6 +186,7 @@ export default function InfiniteWorkoutFeed({
   enabled = true,
   targetUserId = null,
   pageSize = 10,
+  scrollRestorationKey,
   emptyTitle,
   emptyDescription,
   emptyCtaHref,
@@ -204,6 +206,7 @@ export default function InfiniteWorkoutFeed({
   const [nextOffset, setNextOffset] = useState(0)
   const [likeInFlightByRunId, setLikeInFlightByRunId] = useState<Record<string, boolean>>({})
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const feedRootRef = useRef<HTMLDivElement | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedItem[]>([])
   const likeInFlightRef = useRef<Record<string, boolean>>({})
@@ -211,11 +214,88 @@ export default function InfiniteWorkoutFeed({
   const commentVisibilityByRunIdRef = useRef<Record<string, FeedCommentVisibilityById>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
+  const hasHydratedFromRestoreRef = useRef(false)
+  const shouldRestoreScrollRef = useRef(false)
+  const restoredSnapshotRef = useRef<{
+    items: FeedItem[]
+    hasMore: boolean
+    nextOffset: number
+    savedAt: number
+  } | null>(null)
+
+  const scrollStorageKey = useMemo(
+    () => (scrollRestorationKey ? `feed-scroll:${scrollRestorationKey}` : ''),
+    [scrollRestorationKey]
+  )
+  const historyStateKey = useMemo(
+    () => (scrollRestorationKey ? `feedRestoreKey:${scrollRestorationKey}` : ''),
+    [scrollRestorationKey]
+  )
+  const snapshotStorageKey = useMemo(
+    () => (scrollRestorationKey ? `feed-snapshot:${scrollRestorationKey}` : ''),
+    [scrollRestorationKey]
+  )
 
   const feedQueryKey = useMemo(
     () => [currentUserId ?? 'anonymous', targetUserId ?? 'all', pageSize].join(':'),
     [currentUserId, pageSize, targetUserId]
   )
+
+  const getActiveScrollContainer = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return null
+    }
+
+    const rootElement = feedRootRef.current
+    let currentElement = rootElement?.parentElement ?? null
+
+    while (currentElement) {
+      const style = window.getComputedStyle(currentElement)
+      const overflowY = style.overflowY
+      const isScrollable = (
+        overflowY === 'auto' ||
+        overflowY === 'scroll' ||
+        overflowY === 'overlay'
+      ) && currentElement.scrollHeight > currentElement.clientHeight + 4
+
+      if (isScrollable) {
+        return currentElement
+      }
+
+      currentElement = currentElement.parentElement
+    }
+
+    return window
+  }, [])
+
+  const readCurrentScrollTop = useCallback(() => {
+    const scrollContainer = getActiveScrollContainer()
+
+    if (!scrollContainer) {
+      return 0
+    }
+
+    if (scrollContainer === window) {
+      return window.scrollY || window.pageYOffset || 0
+    }
+
+    return (scrollContainer as HTMLElement).scrollTop
+  }, [getActiveScrollContainer])
+
+  const writeCurrentScrollTop = useCallback((scrollTop: number) => {
+    const scrollContainer = getActiveScrollContainer()
+
+    if (!scrollContainer) {
+      return
+    }
+
+    if (scrollContainer === window) {
+      window.scrollTo({ top: scrollTop, behavior: 'auto' })
+      return
+    }
+
+    scrollContainer.scrollTo({ top: scrollTop, behavior: 'auto' })
+  }, [getActiveScrollContainer])
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId
@@ -224,6 +304,73 @@ export default function InfiniteWorkoutFeed({
   useEffect(() => {
     itemsRef.current = items
   }, [items])
+
+  useEffect(() => {
+    if (!scrollRestorationKey || typeof window === 'undefined') {
+      return
+    }
+
+    const currentHistoryState = window.history.state ?? {}
+    let historyEntryRestoreKey = currentHistoryState?.[historyStateKey]
+
+    if (typeof historyEntryRestoreKey !== 'string' || historyEntryRestoreKey.length === 0) {
+      historyEntryRestoreKey = `${Date.now()}:${Math.random().toString(36).slice(2)}`
+      window.history.replaceState(
+        {
+          ...currentHistoryState,
+          [historyStateKey]: historyEntryRestoreKey,
+        },
+        '',
+        window.location.href
+      )
+    }
+
+    const pendingRestoreKey = window.sessionStorage.getItem(scrollStorageKey)
+
+    if (pendingRestoreKey !== historyEntryRestoreKey) {
+      window.sessionStorage.removeItem(scrollStorageKey)
+      window.sessionStorage.removeItem(snapshotStorageKey)
+      restoredSnapshotRef.current = null
+      shouldRestoreScrollRef.current = false
+      hasHydratedFromRestoreRef.current = true
+      return
+    }
+
+    shouldRestoreScrollRef.current = true
+    window.sessionStorage.removeItem(scrollStorageKey)
+
+    const rawSnapshot = window.sessionStorage.getItem(snapshotStorageKey)
+
+    if (!rawSnapshot) {
+      hasHydratedFromRestoreRef.current = true
+      return
+    }
+
+    try {
+      const parsedSnapshot = JSON.parse(rawSnapshot) as {
+        items?: FeedItem[]
+        hasMore?: boolean
+        nextOffset?: number
+        savedAt?: number
+      }
+
+      if (!Array.isArray(parsedSnapshot.items)) {
+        hasHydratedFromRestoreRef.current = true
+        return
+      }
+
+      restoredSnapshotRef.current = {
+        items: parsedSnapshot.items,
+        hasMore: parsedSnapshot.hasMore === true,
+        nextOffset: Number.isFinite(parsedSnapshot.nextOffset) ? Number(parsedSnapshot.nextOffset) : parsedSnapshot.items.length,
+        savedAt: Number.isFinite(parsedSnapshot.savedAt) ? Number(parsedSnapshot.savedAt) : Date.now(),
+      }
+    } catch {
+      window.sessionStorage.removeItem(snapshotStorageKey)
+    } finally {
+      hasHydratedFromRestoreRef.current = true
+    }
+  }, [historyStateKey, scrollRestorationKey, scrollStorageKey, snapshotStorageKey])
 
   const updateRunItem = useCallback((runId: string, updater: (item: RunFeedItem) => RunFeedItem) => {
     const nextItems = itemsRef.current.map((item) => (
@@ -437,6 +584,21 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
+    if (restoredSnapshotRef.current) {
+      commentVisibilityByRunIdRef.current = {}
+      likeInFlightRef.current = {}
+      itemsRef.current = restoredSnapshotRef.current.items
+      setItems(restoredSnapshotRef.current.items)
+      setHasMore(restoredSnapshotRef.current.hasMore)
+      setNextOffset(restoredSnapshotRef.current.nextOffset)
+      setLikeInFlightByRunId({})
+      setActiveLikesRun(null)
+      setFeedError('')
+      setInitialLoading(false)
+      restoredSnapshotRef.current = null
+      return
+    }
+
     firstPageRequestKeyRef.current = feedQueryKey
     firstPageRequestPromiseRef.current = null
     commentVisibilityByRunIdRef.current = {}
@@ -448,6 +610,58 @@ export default function InfiniteWorkoutFeed({
     setActiveLikesRun(null)
     void loadFirstPage()
   }, [enabled, feedQueryKey, loadFirstPage])
+
+  useEffect(() => {
+    if (!shouldRestoreScrollRef.current || initialLoading || items.length === 0 || typeof window === 'undefined') {
+      return
+    }
+
+    const rawScrollTop = window.sessionStorage.getItem(snapshotStorageKey)
+    const parsedSnapshot = rawScrollTop ? (() => {
+      try {
+        return JSON.parse(rawScrollTop) as { scrollTop?: number }
+      } catch {
+        return null
+      }
+    })() : null
+    const nextScrollTop = Number.isFinite(parsedSnapshot?.scrollTop) ? Number(parsedSnapshot?.scrollTop) : 0
+
+    const restoreScroll = () => {
+      writeCurrentScrollTop(nextScrollTop)
+      shouldRestoreScrollRef.current = false
+    }
+
+    restoreScroll()
+    const animationFrameId = window.requestAnimationFrame(restoreScroll)
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+    }
+  }, [initialLoading, items.length, snapshotStorageKey, writeCurrentScrollTop])
+
+  const navigateToRun = useCallback((runId: string) => {
+    if (!runId) {
+      return
+    }
+
+    if (scrollRestorationKey && typeof window !== 'undefined') {
+      const currentHistoryState = window.history.state ?? {}
+      const historyEntryRestoreKey = currentHistoryState?.[historyStateKey]
+
+      if (typeof historyEntryRestoreKey === 'string' && historyEntryRestoreKey.length > 0) {
+        window.sessionStorage.setItem(scrollStorageKey, historyEntryRestoreKey)
+        window.sessionStorage.setItem(snapshotStorageKey, JSON.stringify({
+          scrollTop: readCurrentScrollTop(),
+          items: itemsRef.current,
+          hasMore,
+          nextOffset,
+          savedAt: Date.now(),
+        }))
+      }
+    }
+
+    router.push(`/runs/${runId}`)
+  }, [hasMore, historyStateKey, nextOffset, readCurrentScrollTop, router, scrollRestorationKey, scrollStorageKey, snapshotStorageKey])
 
   useEffect(() => {
     if (!enabled) {
@@ -710,7 +924,7 @@ export default function InfiniteWorkoutFeed({
 
   return (
     <>
-      <div className="min-h-[236px] space-y-4 pb-2">
+      <div ref={feedRootRef} className="min-h-[236px] space-y-4 pb-2">
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         {initialLoading && items.length === 0 ? (
           <>
@@ -773,6 +987,7 @@ export default function InfiniteWorkoutFeed({
                 onToggleLike={handleLikeToggle}
                 onOpenLikes={() => handleOpenLikes(item)}
                 onCommentClick={handleCommentClick}
+                onNavigateToRun={navigateToRun}
                 profileHref={`/users/${item.user_id}`}
               />
             ) : (
