@@ -44,6 +44,15 @@ function formatDistance(value: number) {
   return formatDistanceKm(value)
 }
 
+function formatInsightValueWithDate(value: string, dateString: string | null | undefined) {
+  if (!dateString) {
+    return value
+  }
+
+  const dateLabel = formatRunDateLabel(dateString)
+  return dateLabel === 'Дата неизвестна' ? value : `${value} · ${dateLabel}`
+}
+
 function getMovingTimeSeconds(run: Pick<ActivityRunRow, 'moving_time_seconds'>) {
   if (!Number.isFinite(run.moving_time_seconds) || (run.moving_time_seconds ?? 0) <= 0) {
     return null
@@ -632,37 +641,29 @@ export default function ActivityPage() {
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
                     <p className="app-text-secondary text-sm">Самый длинный забег</p>
-                    <p className="app-text-primary mt-3 text-[1.45rem] font-semibold leading-tight sm:text-[1.7rem]">
+                    <p className="app-text-primary mt-3 break-words text-lg font-semibold leading-tight sm:text-[1.15rem] md:text-[1.25rem]">
                       {activityInsights.longestRun
-                        ? `${formatDistance(Number(activityInsights.longestRun.distance_km ?? 0))} км`
+                        ? formatInsightValueWithDate(
+                            `${formatDistance(Number(activityInsights.longestRun.distance_km ?? 0))} км`,
+                            activityInsights.longestRun.created_at
+                          )
                         : '—'}
                     </p>
-                    {activityInsights.longestRun ? (
-                      <p className="app-text-secondary mt-2 text-sm">
-                        {formatRunDateLabel(activityInsights.longestRun.created_at)}
-                      </p>
-                    ) : null}
                   </div>
 
                   <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
                     <p className="app-text-secondary text-sm">Самый быстрый забег</p>
-                    <p className="app-text-primary mt-3 text-[1.45rem] font-semibold leading-tight sm:text-[1.7rem]">
+                    <p className="app-text-primary mt-3 break-words text-lg font-semibold leading-tight sm:text-[1.15rem] md:text-[1.25rem]">
                       {activityInsights.fastestRun
-                        ? formatAveragePace(
-                            getMovingTimeSeconds(activityInsights.fastestRun) ?? 0,
-                            Number(activityInsights.fastestRun.distance_km ?? 0)
+                        ? formatInsightValueWithDate(
+                            formatAveragePace(
+                              getMovingTimeSeconds(activityInsights.fastestRun) ?? 0,
+                              Number(activityInsights.fastestRun.distance_km ?? 0)
+                            ),
+                            activityInsights.fastestRun.created_at
                           )
                         : '—'}
                     </p>
-                    {activityInsights.fastestRun ? (
-                      <p className="app-text-secondary mt-2 text-sm">
-                        {formatRunDateLabel(activityInsights.fastestRun.created_at)}
-                      </p>
-                    ) : (
-                      <p className="app-text-secondary mt-2 text-sm">
-                        От 3 км и дольше
-                      </p>
-                    )}
                   </div>
                 </div>
               </section>
