@@ -1,5 +1,3 @@
-import Link from 'next/link'
-
 export default function DashboardLoading() {
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
@@ -9,17 +7,13 @@ export default function DashboardLoading() {
             <div className="skeleton-line h-6 w-40" />
             <div className="skeleton-line h-4 w-20" />
           </div>
-          <div className="skeleton-line h-11 w-11 rounded-full" />
+          <div className="flex items-center gap-2 self-start">
+            <div className="skeleton-line h-11 w-11 rounded-full" />
+            <div className="skeleton-line h-11 w-11 rounded-full" />
+          </div>
         </div>
 
         <div className="mb-4">
-          <Link
-            href="/runs"
-            className="app-button-primary mb-4 mt-4 block min-h-13 w-full rounded-xl px-4 py-3.5 text-center text-base font-semibold shadow-sm shadow-black/15 ring-1 ring-black/5 sm:text-lg dark:ring-white/10"
-          >
-            + Добавить тренировку
-          </Link>
-
           <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
             <div className="skeleton-line h-4 w-28" />
             <div className="mt-3 space-y-2">

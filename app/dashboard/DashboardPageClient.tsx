@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Bell, Target, Trophy } from 'lucide-react'
+import { Activity, Bell, Plus, Target, Trophy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -64,6 +64,13 @@ const dashboardChallengeTypeLabels: Record<DashboardActiveChallenge['period_type
   monthly: 'Ежемесячный',
   lifetime: 'Достижение',
 }
+
+const dashboardCardFocusRingClass =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20'
+
+const dashboardClickableCardClass = `app-card mb-4 block overflow-hidden rounded-xl border p-4 shadow-sm transition-[transform,box-shadow] hover:shadow-md active:scale-[0.995] ${dashboardCardFocusRingClass}`
+
+const dashboardHeaderActionClass = `app-card relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border shadow-sm transition-[transform,box-shadow] hover:shadow-md active:scale-[0.98] ${dashboardCardFocusRingClass}`
 
 function formatDashboardChallengeDate(value: string) {
   const date = new Date(value)
@@ -157,12 +164,14 @@ function DashboardChallengeCard({
   const daysLeft = formatDashboardChallengeDaysLeft(challenge)
 
   return (
-    <article
+    <Link
+      href="/challenges"
+      aria-label={`Открыть челленджи: ${challenge.title}`}
       data-challenge-card={challenge.id}
-      className={`app-card w-[86%] shrink-0 snap-center overflow-hidden rounded-xl border p-4 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none sm:w-[420px] ${
+      className={`app-card block w-[86%] shrink-0 snap-center overflow-hidden rounded-xl border p-4 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none sm:w-[420px] ${dashboardCardFocusRingClass} ${
         featured
           ? 'scale-100 opacity-100 shadow-md ring-1 ring-black/5 dark:ring-white/10'
-          : 'scale-[0.985] opacity-80 shadow-sm'
+          : 'scale-[0.985] opacity-80 shadow-sm hover:opacity-100'
       }`}
     >
       <div className="flex items-start gap-3">
@@ -206,7 +215,7 @@ function DashboardChallengeCard({
           ) : null}
         </div>
       </div>
-    </article>
+    </Link>
   )
 }
 
@@ -522,22 +531,25 @@ export default function DashboardPageClient({
             displayName={headerDisplayName}
             levelLabel={headerLevelLabel}
           />
-          <Link
-            href="/activity/inbox"
-            aria-label="Открыть входящие"
-            className="app-card relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border shadow-sm transition-transform hover:shadow-md active:scale-[0.98]"
-          >
-            <Bell className="h-5 w-5" strokeWidth={1.9} />
-            <UnreadBadge count={initialInboxUnreadCount} className="absolute -right-1 -top-1" />
-          </Link>
+          <div className="flex items-center gap-2 self-start">
+            <Link
+              href="/runs"
+              aria-label="Добавить тренировку"
+              className={dashboardHeaderActionClass}
+            >
+              <Plus className="h-5 w-5" strokeWidth={2.1} />
+            </Link>
+            <Link
+              href="/activity/inbox"
+              aria-label="Открыть входящие"
+              className={dashboardHeaderActionClass}
+            >
+              <Bell className="h-5 w-5" strokeWidth={1.9} />
+              <UnreadBadge count={initialInboxUnreadCount} className="absolute -right-1 -top-1" />
+            </Link>
+          </div>
         </div>
         <div className="mb-4">
-          <Link
-            href="/runs"
-            className="app-button-primary mb-4 mt-4 block min-h-13 w-full rounded-xl px-4 py-3.5 text-center text-base font-semibold shadow-sm shadow-black/15 ring-1 ring-black/5 sm:text-lg dark:ring-white/10"
-          >
-            + Добавить тренировку
-          </Link>
           {showOverviewSkeleton ? (
             <>
               <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
@@ -573,10 +585,10 @@ export default function DashboardPageClient({
               <p className="text-sm text-red-600">{overviewStateError}</p>
             </div>
           ) : stats ? (
-            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+            <Link href="/activity" className={dashboardClickableCardClass}>
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
                 <Activity className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Твой прогресс</span>
+                <span>Мой прогресс</span>
               </p>
               <div className="mt-3 space-y-2">
                 <div className="space-y-0.5">
@@ -589,15 +601,15 @@ export default function DashboardPageClient({
                   {stats.runsCount} тренировок • +{stats.totalXp} XP
                 </p>
               </div>
-            </div>
+            </Link>
           ) : (
-            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+            <Link href="/activity" className={dashboardClickableCardClass}>
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
                 <Activity className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Твой прогресс</span>
+                <span>Мой прогресс</span>
               </p>
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
-            </div>
+            </Link>
           )}
           {activeChallenges.length > 0 ? (
             <section className="mb-4">
@@ -623,25 +635,20 @@ export default function DashboardPageClient({
               </div>
             </section>
           ) : allChallengesCompleted ? (
-            <div className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+            <Link href="/challenges" className={dashboardClickableCardClass}>
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 <span>Челленджи</span>
               </p>
               <p className="app-text-secondary mt-3 text-sm">Все активные челленджи уже выполнены</p>
-              <Link
-                href="/club"
-                className="app-button-secondary mt-3 inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm"
-              >
-                Открыть достижения
-              </Link>
-            </div>
+              <p className="app-text-secondary mt-2 text-sm">Открой достижения и новые цели</p>
+            </Link>
           ) : null}
           {stats && levelProgress ? (
             <button
               type="button"
               onClick={() => setShowXpModal(true)}
-              className="app-card mb-4 block w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition-transform active:scale-[0.995]"
+              className={`app-card mb-4 block w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition-[transform,box-shadow] hover:shadow-md active:scale-[0.995] ${dashboardCardFocusRingClass}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -670,7 +677,7 @@ export default function DashboardPageClient({
             </button>
           ) : null}
           <div
-            role="button"
+            role="link"
             tabIndex={0}
             onClick={(event) => {
               const target = event.target as HTMLElement
@@ -691,7 +698,7 @@ export default function DashboardPageClient({
               event.preventDefault()
               router.push('/race')
             }}
-            className="cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20"
+            className={`cursor-pointer rounded-xl ${dashboardCardFocusRingClass}`}
             aria-label="Открыть гонку недели"
           >
             <WeeklyLeaderboard
@@ -702,7 +709,7 @@ export default function DashboardPageClient({
             />
           </div>
           {lastWeekResultsCard ? (
-            <div className="app-card mb-4 overflow-hidden rounded-xl border p-4 shadow-sm">
+            <Link href={`/race/history/${lastWeekResultsCard.weekId}`} className={dashboardClickableCardClass}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="app-text-primary text-lg font-semibold">🏆 Итоги прошлой недели</h2>
@@ -730,15 +737,8 @@ export default function DashboardPageClient({
                     <p className="app-text-secondary mt-3 text-sm">Ты не участвовал</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/race/history/${lastWeekResultsCard.weekId}`)}
-                  className="app-button-secondary min-h-10 shrink-0 rounded-lg border px-3 py-2 text-sm"
-                >
-                  Открыть
-                </button>
               </div>
-            </div>
+            </Link>
           ) : null}
           <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
           <InfiniteWorkoutFeed
