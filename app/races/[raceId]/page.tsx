@@ -8,6 +8,7 @@ import ConversationScreenShell from '@/components/ConversationScreenShell'
 import RunCommentThreadList from '@/components/RunCommentThreadList'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { useRunDetailReturnState } from '@/lib/run-detail-navigation'
 import {
   formatClock,
   formatRaceDateLabel,
@@ -94,6 +95,11 @@ export default function RaceDiscussionPage() {
   const targetLabel = useMemo(() => formatClock(raceEvent?.target_time_seconds), [raceEvent?.target_time_seconds])
   const displayDistance = useMemo(() => (raceEvent ? getRaceEventDisplayDistanceLabel(raceEvent) : null), [raceEvent])
   const isUpcoming = useMemo(() => (raceEvent ? isRaceEventUpcoming(raceEvent) : false), [raceEvent])
+  const { prepareForRunDetailNavigation } = useRunDetailReturnState({
+    sourceKey: 'race-detail',
+    scrollContainerRef,
+    debugLabel: 'RaceDetail',
+  })
 
   useEffect(() => {
     if (replyTargetId && !replyTarget) {
@@ -354,6 +360,15 @@ export default function RaceDiscussionPage() {
     await toggleLikeComment(commentId)
   }
 
+  function handleOpenLinkedRun(runId: string) {
+    if (!runId) {
+      return
+    }
+
+    prepareForRunDetailNavigation()
+    router.push(`/runs/${runId}`)
+  }
+
   const discussionSummary = loadingRace ? (
     <section className="app-card rounded-2xl border p-4 shadow-sm">
       <div className="space-y-3">
@@ -394,13 +409,14 @@ export default function RaceDiscussionPage() {
         <div className="mt-4 rounded-2xl border px-3 py-3">
           <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
           <p className="app-text-secondary mt-1 break-words text-sm">{getLinkedRunPreviewLabel(linkedRun)}</p>
-          <Link
-            href={`/runs/${linkedRun.id}`}
+          <button
+            type="button"
+            onClick={() => handleOpenLinkedRun(linkedRun.id)}
             className="app-button-secondary mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium sm:w-auto"
           >
             <span>Открыть тренировку</span>
             <ArrowUpRight className="h-4 w-4" />
-          </Link>
+          </button>
         </div>
       ) : null}
     </section>

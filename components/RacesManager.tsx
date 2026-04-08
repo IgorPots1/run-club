@@ -9,6 +9,7 @@ import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import RaceEventFormSheet from '@/components/RaceEventFormSheet'
 import { loadActivityRuns, type ActivityRunRow } from '@/lib/activity'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
+import { useRunDetailReturnState } from '@/lib/run-detail-navigation'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import {
   createRaceEvent,
@@ -46,6 +47,7 @@ type RaceEventCardProps = {
   onConfirmSuggestedLink: (raceEvent: RaceEvent) => void
   onSelectSuggestedRun: (raceEventId: string, runId: string) => void
   onUnlink: (raceEvent: RaceEvent) => void
+  onOpenLinkedRun: (runId: string) => void
 }
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
@@ -195,6 +197,7 @@ function RaceEventCard({
   onConfirmSuggestedLink,
   onSelectSuggestedRun,
   onUnlink,
+  onOpenLinkedRun,
 }: RaceEventCardProps) {
   const linkedRunLabel = getRaceEventLinkedRunLabel(raceEvent)
   const displayDistance = getRaceEventDisplayDistanceLabel(raceEvent)
@@ -278,13 +281,14 @@ function RaceEventCard({
               <p className="app-text-secondary break-words text-xs">
                 {linkedRunLabel}
               </p>
-              <Link
-                href={`/runs/${raceEvent.linked_run_id}`}
+              <button
+                type="button"
+                onClick={() => onOpenLinkedRun(raceEvent.linked_run_id!)}
                 className="app-text-secondary mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-1 py-2 text-sm font-medium hover:text-[var(--text-primary)] sm:w-auto sm:justify-start"
               >
                 <span>Открыть тренировку</span>
                 <ArrowUpRight className="h-4 w-4" />
-              </Link>
+              </button>
             </div>
           ) : null}
           {!raceEvent.linked_run_id && candidateRuns.length > 0 ? (
@@ -384,6 +388,10 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   const [linkingRaceEventId, setLinkingRaceEventId] = useState<string | null>(null)
   const [unlinkingRaceEventId, setUnlinkingRaceEventId] = useState<string | null>(null)
   const menuContainerRef = useRef<HTMLDivElement | null>(null)
+  const { prepareForRunDetailNavigation } = useRunDetailReturnState({
+    sourceKey: 'races-list',
+    debugLabel: 'RacesManager',
+  })
   const { data: runs } = useSWR(
     ['activity-runs', userId] as const,
     ([, nextUserId]: readonly [string, string]) => loadActivityRuns(nextUserId),
@@ -437,6 +445,15 @@ export default function RacesManager({ userId }: RacesManagerProps) {
   )
   const deletingActiveRaceEvent = pendingDeleteRaceEvent ? deletingRaceEventId === pendingDeleteRaceEvent.id : false
   const totalRaceEventsCount = (raceEvents ?? []).length
+
+  const handleOpenLinkedRun = useCallback((runId: string) => {
+    if (!runId) {
+      return
+    }
+
+    prepareForRunDetailNavigation()
+    router.push(`/runs/${runId}`)
+  }, [prepareForRunDetailNavigation, router])
 
   const handleDistanceInputChange = useCallback((nextValue: string) => {
     const normalizedValue = nextValue.replace(',', '.')
@@ -823,6 +840,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                           }))
                         }}
                         onUnlink={handleUnlinkRaceEvent}
+                        onOpenLinkedRun={handleOpenLinkedRun}
                       />
                     ))}
                   </div>
@@ -869,6 +887,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                           }))
                         }}
                         onUnlink={handleUnlinkRaceEvent}
+                        onOpenLinkedRun={handleOpenLinkedRun}
                       />
                     ))}
                   </div>
