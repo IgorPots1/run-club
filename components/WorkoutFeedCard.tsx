@@ -298,7 +298,7 @@ function WorkoutFeedCard({
       </div>
 
       <div className="mt-3">
-        <p className="text-gray-900 dark:text-gray-50 break-words whitespace-pre-wrap text-base font-semibold leading-5">
+        <p className="app-text-primary break-words whitespace-pre-wrap text-[17px] font-semibold leading-6">
           {displayTitle}
         </p>
         {trimmedDescription ? (
