@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import InnerPageHeader from '@/components/InnerPageHeader'
-import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
+import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel, getRacePodiumBadgeTone } from '@/lib/race-badges'
 import {
   loadFinalizedRaceWeek,
+  loadRaceWeekBadgesByUserIds,
   loadLatestFinalizedRaceWeek,
   loadRaceWeekParticipantCount,
   loadRaceWeekTopResults,
@@ -28,6 +29,24 @@ function getTopRowClass(rank: number, isCurrentUser: boolean) {
   }
 
   return 'app-card'
+}
+
+function getPodiumBadgeChipClass(badgeCode: string | null | undefined, rank: number | null | undefined) {
+  const tone = getRacePodiumBadgeTone(badgeCode, rank)
+
+  if (tone === 'gold') {
+    return 'border border-amber-300/80 bg-amber-100/90 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  if (tone === 'silver') {
+    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
+  }
+
+  if (tone === 'bronze') {
+    return 'border border-orange-300/80 bg-orange-100/90 text-orange-800 dark:border-orange-300/20 dark:bg-orange-300/10 dark:text-orange-100'
+  }
+
+  return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
 }
 
 export default async function RaceHistoryWeekPage({ params }: PageProps) {
@@ -78,6 +97,10 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
     rank: badge?.sourceRank ?? userResult?.rank ?? null,
     totalParticipants,
   })
+  const topResultBadgesByUserId = await loadRaceWeekBadgesByUserIds(
+    weekId,
+    topResults.map((row) => row.userId)
+  )
 
   return (
     <main className="min-h-screen">
@@ -126,6 +149,10 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
               <div className="mt-3 space-y-2">
                 {topResults.map((row) => {
                   const isCurrentUser = row.userId === user.id
+                  const rowBadge = topResultBadgesByUserId.get(row.userId) ?? null
+                  const rowBadgeLabel = rowBadge
+                    ? getRaceBadgeLabel(rowBadge.badgeCode, rowBadge.sourceRank ?? row.rank)
+                    : ''
 
                   return (
                     <div
@@ -134,13 +161,25 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p
-                            className={`app-text-primary truncate text-sm ${
-                              isCurrentUser || row.rank <= 3 ? 'font-semibold' : 'font-medium'
-                            }`}
-                          >
-                            {row.rank}. {row.displayName}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p
+                              className={`app-text-primary truncate text-sm ${
+                                isCurrentUser || row.rank <= 3 ? 'font-semibold' : 'font-medium'
+                              }`}
+                            >
+                              {row.rank}. {row.displayName}
+                            </p>
+                            {rowBadge ? (
+                              <span
+                                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPodiumBadgeChipClass(
+                                  rowBadge.badgeCode,
+                                  rowBadge.sourceRank ?? row.rank
+                                )}`}
+                              >
+                                {rowBadgeLabel}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         <p
                           className={`app-text-primary shrink-0 text-sm ${

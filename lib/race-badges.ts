@@ -6,6 +6,40 @@ type RaceBadgeWeekDateRange = {
   ends_at?: string | null
 }
 
+export type RacePodiumBadgeTone = 'gold' | 'silver' | 'bronze' | null
+
+export function getRacePodiumBadgeTone(badgeCode: string | null | undefined, rank: number | null | undefined): RacePodiumBadgeTone {
+  if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
+    return 'gold'
+  }
+
+  if (badgeCode === 'weekly_race_2') {
+    return 'silver'
+  }
+
+  if (badgeCode === 'weekly_race_3') {
+    return 'bronze'
+  }
+
+  if (badgeCode === 'race_week_top_3' && rank === 1) {
+    return 'gold'
+  }
+
+  if (badgeCode === 'race_week_top_3' && rank === 2) {
+    return 'silver'
+  }
+
+  if (badgeCode === 'race_week_top_3' && rank === 3) {
+    return 'bronze'
+  }
+
+  return null
+}
+
+export function isRacePodiumBadge(badgeCode: string | null | undefined, rank: number | null | undefined) {
+  return getRacePodiumBadgeTone(badgeCode, rank) !== null
+}
+
 export function getRaceBadgeLabel(badgeCode: string | null | undefined, rank: number | null | undefined) {
   if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
     return '1 место'

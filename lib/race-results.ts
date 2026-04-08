@@ -218,6 +218,41 @@ export async function loadRaceWeekUserBadge(weekId: string, userId: string) {
   return mapBadgeAward((data as RaceWeekBadgeDbRow | null) ?? null)
 }
 
+export async function loadRaceWeekBadgesByUserIds(weekId: string, userIds: string[]) {
+  const uniqueUserIds = Array.from(new Set(userIds.filter((userId) => typeof userId === 'string' && userId.length > 0)))
+
+  if (uniqueUserIds.length === 0) {
+    return new Map<string, RaceWeekBadgeAward>()
+  }
+
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase
+    .from('user_badge_awards')
+    .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
+    .eq('race_week_id', weekId)
+    .eq('source_type', 'weekly_race')
+    .in('user_id', uniqueUserIds)
+    .order('awarded_at', { ascending: false })
+
+  if (error) {
+    throw new Error('Не удалось загрузить бейджи недели для таблицы результатов')
+  }
+
+  const badgesByUserId = new Map<string, RaceWeekBadgeAward>()
+
+  for (const row of (data as RaceWeekBadgeDbRow[] | null) ?? []) {
+    const badge = mapBadgeAward(row)
+
+    if (!badge || badgesByUserId.has(badge.userId)) {
+      continue
+    }
+
+    badgesByUserId.set(badge.userId, badge)
+  }
+
+  return badgesByUserId
+}
+
 export async function loadRaceWeekParticipantCount(weekId: string) {
   const supabase = await createSupabaseServerClient()
   const { data, error } = await supabase
