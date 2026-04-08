@@ -14,7 +14,6 @@ import {
   YAxis,
 } from 'recharts'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
-import MyShoesPicker from '@/components/MyShoesPicker'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import RunRouteMapPreview from '@/components/RunRouteMapPreview'
@@ -528,22 +527,6 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
-type RunEditDraft = {
-  name: string
-  description: string
-  shoeId: string
-}
-
-function getRunEditDraft(
-  run: Pick<RunDetailsRow, 'name' | 'description' | 'shoe_id'> | null | undefined
-): RunEditDraft {
-  return {
-    name: run?.name ?? '',
-    description: run?.description ?? '',
-    shoeId: run?.shoe_id ?? '',
-  }
-}
-
 export default function RunDetailsPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -564,15 +547,15 @@ export default function RunDetailsPage() {
   const [commentsError, setCommentsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
-  const [isEditingDetails, setIsEditingDetails] = useState(false)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [isEditingDescription, setIsEditingDescription] = useState(false)
   const [editedName, setEditedName] = useState('')
   const [editedDescription, setEditedDescription] = useState('')
-  const [editedShoeId, setEditedShoeId] = useState('')
-  const [saveDetailsError, setSaveDetailsError] = useState('')
-  const [saveDetailsInfoMessage, setSaveDetailsInfoMessage] = useState('')
-  const [savingDetails, setSavingDetails] = useState(false)
+  const [saveTitleError, setSaveTitleError] = useState('')
+  const [saveDescriptionError, setSaveDescriptionError] = useState('')
+  const [savingTitle, setSavingTitle] = useState(false)
+  const [savingDescription, setSavingDescription] = useState(false)
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
-  const [loadingShoes, setLoadingShoes] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
@@ -994,29 +977,20 @@ export default function RunDetailsPage() {
   }, [runId])
 
   useEffect(() => {
-    if (isEditingDetails) {
+    if (isEditingTitle) {
       return
     }
 
-    const nextDraft = getRunEditDraft(run)
-    setEditedName(nextDraft.name)
-    setEditedDescription(nextDraft.description)
-    setEditedShoeId(nextDraft.shoeId)
-  }, [isEditingDetails, run])
+    setEditedName(run?.name ?? '')
+  }, [isEditingTitle, run?.name])
 
   useEffect(() => {
-    if (!saveDetailsInfoMessage) {
+    if (isEditingDescription) {
       return
     }
 
-    const timer = window.setTimeout(() => {
-      setSaveDetailsInfoMessage('')
-    }, 3200)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [saveDetailsInfoMessage])
+    setEditedDescription(run?.description ?? '')
+  }, [isEditingDescription, run?.description])
 
   useEffect(() => {
     if (!stravaSupplementalInfoMessage) {
@@ -1037,13 +1011,10 @@ export default function RunDetailsPage() {
 
     if (!user || !run || user.id !== run.user_id) {
       setAvailableShoes([])
-      setLoadingShoes(false)
       return () => {
         isMounted = false
       }
     }
-
-    setLoadingShoes(true)
 
     void loadUserShoeSelectionData({
       activeOnly: true,
@@ -1057,11 +1028,6 @@ export default function RunDetailsPage() {
       .catch(() => {
         if (isMounted) {
           setAvailableShoes([])
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setLoadingShoes(false)
         }
       })
 
@@ -1175,101 +1141,115 @@ export default function RunDetailsPage() {
   const isMissingOfficialLaps = canRefreshStravaSupplemental && runLaps.length === 0
   const normalizedEditedName = toNullableTrimmedText(editedName)
   const normalizedEditedDescription = toNullableTrimmedText(editedDescription)
-  const normalizedEditedShoeId = editedShoeId.trim() || null
-  const hasNameChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
+  const hasTitleChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
-  const hasShoeChanged = normalizedEditedShoeId !== (run?.shoe_id ?? null)
-  const hasPendingDetailChanges =
-    hasNameChanged ||
-    hasDescriptionChanged ||
-    hasShoeChanged
   const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
   const isLikeActive = isOwner ? likesCount > 0 : likedByMe
 
-  function handleStartEditingDetails() {
+  function handleStartEditingTitle() {
     if (!isOwner || !run) {
       return
     }
 
-    const nextDraft = getRunEditDraft(run)
-    setEditedName(nextDraft.name)
-    setEditedDescription(nextDraft.description)
-    setEditedShoeId(nextDraft.shoeId)
-    setSaveDetailsError('')
-    setSaveDetailsInfoMessage('')
-    setIsEditingDetails(true)
+    setEditedName(run.name ?? '')
+    setSaveTitleError('')
+    setIsEditingDescription(false)
+    setSaveDescriptionError('')
+    setIsEditingTitle(true)
   }
 
-  function handleCancelEditingDetails() {
-    const nextDraft = getRunEditDraft(run)
-    setEditedName(nextDraft.name)
-    setEditedDescription(nextDraft.description)
-    setEditedShoeId(nextDraft.shoeId)
-    setSaveDetailsError('')
-    setSaveDetailsInfoMessage('')
-    setIsEditingDetails(false)
+  function handleCancelEditingTitle() {
+    setEditedName(run?.name ?? '')
+    setSaveTitleError('')
+    setIsEditingTitle(false)
   }
 
-  async function handleSaveDetails() {
-    if (!user || !run || !isOwner || savingDetails || !hasPendingDetailChanges) {
+  function handleStartEditingDescription() {
+    if (!isOwner || !run) {
+      return
+    }
+
+    setEditedDescription(run.description ?? '')
+    setSaveDescriptionError('')
+    setIsEditingTitle(false)
+    setSaveTitleError('')
+    setIsEditingDescription(true)
+  }
+
+  function handleCancelEditingDescription() {
+    setEditedDescription(run?.description ?? '')
+    setSaveDescriptionError('')
+    setIsEditingDescription(false)
+  }
+
+  async function handleSaveTitle() {
+    if (!user || !run || !isOwner || savingTitle || !hasTitleChanged) {
       return
     }
 
     const nextName = normalizedEditedName
-    const nextDescription = normalizedEditedDescription
-    const updates: Partial<RunDetailsRow> = {}
-
-    if (hasNameChanged) {
-      updates.name = nextName
-      updates.name_manually_edited = true
+    const updates: Partial<RunDetailsRow> = {
+      name: nextName,
+      name_manually_edited: true,
     }
 
-    if (hasDescriptionChanged) {
-      updates.description = nextDescription
-      updates.description_manually_edited = true
-    }
-
-    if (hasShoeChanged) {
-      updates.shoe_id = normalizedEditedShoeId
-    }
-
-    setSavingDetails(true)
-    setSaveDetailsError('')
-    setSaveDetailsInfoMessage('')
+    setSavingTitle(true)
+    setSaveTitleError('')
 
     try {
-      const { error: updateError, shoeWearMessage } = await updateRun(run.id, {
-        name: Object.prototype.hasOwnProperty.call(updates, 'name') ? (updates.name ?? null) : undefined,
-        description: Object.prototype.hasOwnProperty.call(updates, 'description')
-          ? (updates.description ?? null)
-          : undefined,
-        nameManuallyEdited: Object.prototype.hasOwnProperty.call(updates, 'name_manually_edited')
-          ? Boolean(updates.name_manually_edited)
-          : undefined,
-        descriptionManuallyEdited: Object.prototype.hasOwnProperty.call(updates, 'description_manually_edited')
-          ? Boolean(updates.description_manually_edited)
-          : undefined,
-        shoeId: Object.prototype.hasOwnProperty.call(updates, 'shoe_id')
-          ? (updates.shoe_id ?? null)
-          : undefined,
+      const { error: updateError } = await updateRun(run.id, {
+        name: nextName,
+        nameManuallyEdited: true,
       })
 
       if (updateError) {
-        setSaveDetailsError('Не удалось сохранить изменения')
+        setSaveTitleError('Не удалось сохранить название')
         return
       }
 
       setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
       setEditedName(nextName ?? '')
-      setEditedDescription(nextDescription ?? '')
-      setEditedShoeId(normalizedEditedShoeId ?? '')
-      setDescriptionExpanded(false)
-      setIsEditingDetails(false)
-      setSaveDetailsInfoMessage(shoeWearMessage ?? '')
+      setIsEditingTitle(false)
     } catch {
-      setSaveDetailsError('Не удалось сохранить изменения')
+      setSaveTitleError('Не удалось сохранить название')
     } finally {
-      setSavingDetails(false)
+      setSavingTitle(false)
+    }
+  }
+
+  async function handleSaveDescription() {
+    if (!user || !run || !isOwner || savingDescription || !hasDescriptionChanged) {
+      return
+    }
+
+    const nextDescription = normalizedEditedDescription
+    const updates: Partial<RunDetailsRow> = {
+      description: nextDescription,
+      description_manually_edited: true,
+    }
+
+    setSavingDescription(true)
+    setSaveDescriptionError('')
+
+    try {
+      const { error: updateError } = await updateRun(run.id, {
+        description: nextDescription,
+        descriptionManuallyEdited: true,
+      })
+
+      if (updateError) {
+        setSaveDescriptionError('Не удалось сохранить описание')
+        return
+      }
+
+      setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
+      setEditedDescription(nextDescription ?? '')
+      setDescriptionExpanded(false)
+      setIsEditingDescription(false)
+    } catch {
+      setSaveDescriptionError('Не удалось сохранить описание')
+    } finally {
+      setSavingDescription(false)
     }
   }
 
@@ -1535,112 +1515,124 @@ export default function RunDetailsPage() {
             href={`/users/${run.user_id}`}
             size="md"
           />
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 flex-col items-end">
             <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
               {formatRunTimestampLabel(run.created_at, run.external_source)}
             </p>
-            {isOwner && !isEditingDetails ? (
-              <button
-                type="button"
-                onClick={handleStartEditingDetails}
-                className="app-text-muted text-xs font-medium"
-              >
-                Редактировать
-              </button>
-            ) : null}
           </div>
         </div>
 
-        {isEditingDetails ? (
-          <div className="mt-3 space-y-4">
-            <div>
-              <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
-                Название
-              </label>
-              <input
-                id="run-name"
-                type="text"
-                value={editedName}
-                onChange={(event) => {
-                  setEditedName(event.target.value)
-                  setSaveDetailsError('')
-                  setSaveDetailsInfoMessage('')
-                }}
-                placeholder="Введите название"
-                disabled={savingDetails}
-                className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="run-description" className="app-text-secondary text-sm font-medium">
-                Описание
-              </label>
-              <textarea
-                id="run-description"
-                value={editedDescription}
-                onChange={(event) => {
-                  setEditedDescription(event.target.value)
-                  setSaveDetailsError('')
-                  setSaveDetailsInfoMessage('')
-                }}
-                placeholder="Добавьте описание"
-                disabled={savingDetails}
-                className="app-input mt-1 min-h-28 w-full rounded-lg border px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label className="app-text-secondary text-sm font-medium">
-                Кроссовки
-              </label>
-              <MyShoesPicker
-                shoes={availableShoes}
-                selectedShoeId={editedShoeId}
-                onSelect={(shoeId) => {
-                  setEditedShoeId(shoeId)
-                  setSaveDetailsError('')
-                  setSaveDetailsInfoMessage('')
-                }}
-                disabled={savingDetails || loadingShoes}
-                loading={loadingShoes}
-                className="mt-1"
-                hint="Можно выбрать активную пару, сохранить без кроссовок или открыть экран управления парами."
-              />
-            </div>
-
-            {saveDetailsError ? <p className="text-sm text-red-600">{saveDetailsError}</p> : null}
-
-            <div className="flex flex-wrap justify-end gap-2">
+        {isEditingTitle ? (
+          <div className="mt-3">
+            <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
+              Название
+            </label>
+            <input
+              id="run-name"
+              type="text"
+              value={editedName}
+              onChange={(event) => {
+                setEditedName(event.target.value)
+                setSaveTitleError('')
+              }}
+              placeholder="Введите название"
+              disabled={savingTitle}
+              className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+            />
+            {saveTitleError ? <p className="mt-2 text-sm text-red-600">{saveTitleError}</p> : null}
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={handleCancelEditingDetails}
-                disabled={savingDetails}
-                className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleCancelEditingTitle}
+                disabled={savingTitle}
+                className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Отмена
               </button>
               <button
                 type="button"
-                onClick={() => void handleSaveDetails()}
-                disabled={savingDetails || !hasPendingDetailChanges}
-                className="app-button-primary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void handleSaveTitle()}
+                disabled={savingTitle || !hasTitleChanged}
+                className="app-button-primary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {savingDetails ? 'Сохраняем...' : 'Сохранить'}
+                {savingTitle ? 'Сохраняем...' : 'Сохранить'}
               </button>
             </div>
           </div>
         ) : (
-          <>
-            <h1 className="app-text-primary mt-3 break-words text-base font-medium">{getRunTitle(run)}</h1>
-            {currentAssignedShoe ? (
-              <p className="app-text-secondary mt-2 text-sm">
-                Кроссовки: {currentAssignedShoe.displayName}
-                {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
-                {!currentAssignedShoe.isActive ? ' • архив' : ''}
-              </p>
-            ) : null}
-            {runDescription ? (
+          <div className="mt-3">
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
+              {isOwner ? (
+                <button
+                  type="button"
+                  onClick={handleStartEditingTitle}
+                  className="app-text-muted shrink-0 text-xs font-medium"
+                >
+                  Редактировать
+                </button>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {currentAssignedShoe ? (
+          <p className="app-text-secondary mt-2 text-sm">
+            Кроссовки: {currentAssignedShoe.displayName}
+            {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
+            {!currentAssignedShoe.isActive ? ' • архив' : ''}
+          </p>
+        ) : null}
+
+        {runDescription || isOwner || isEditingDescription ? (
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="app-text-secondary text-sm font-medium">Описание</p>
+              {isOwner && !isEditingDescription ? (
+                <button
+                  type="button"
+                  onClick={handleStartEditingDescription}
+                  className="app-text-muted shrink-0 text-xs font-medium"
+                >
+                  {runDescription ? 'Редактировать' : 'Добавить'}
+                </button>
+              ) : null}
+            </div>
+
+            {isEditingDescription ? (
+              <div className="mt-2">
+                <textarea
+                  id="run-description"
+                  value={editedDescription}
+                  onChange={(event) => {
+                    setEditedDescription(event.target.value)
+                    setSaveDescriptionError('')
+                  }}
+                  placeholder="Добавьте описание"
+                  disabled={savingDescription}
+                  className="app-input min-h-28 w-full rounded-lg border px-3 py-2"
+                />
+                {saveDescriptionError ? <p className="mt-2 text-sm text-red-600">{saveDescriptionError}</p> : null}
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelEditingDescription}
+                    disabled={savingDescription}
+                    className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveDescription()}
+                    disabled={savingDescription || !hasDescriptionChanged}
+                    className="app-button-primary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingDescription ? 'Сохраняем...' : 'Сохранить'}
+                  </button>
+                </div>
+              </div>
+            ) : runDescription ? (
               <div className="mt-2">
                 <p
                   className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
@@ -1658,13 +1650,9 @@ export default function RunDetailsPage() {
                   {descriptionExpanded ? 'Скрыть' : 'Читать'}
                 </button>
               </div>
-            ) : null}
-          </>
-        )}
-
-        {saveDetailsInfoMessage ? (
-          <div className="mt-3 rounded-xl border border-amber-300/70 bg-amber-100/80 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
-            {saveDetailsInfoMessage}
+            ) : (
+              <p className="app-text-muted mt-2 text-sm">Пока без описания.</p>
+            )}
           </div>
         ) : null}
 
