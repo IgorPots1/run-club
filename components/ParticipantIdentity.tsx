@@ -10,6 +10,7 @@ type ParticipantIdentityProps = {
   level: number
   href?: string | null
   size: 'sm' | 'md'
+  nameWeightClass?: 'font-medium' | 'font-semibold' | 'font-bold'
 }
 
 function AvatarFallback({ size }: { size: 'sm' | 'md' }) {
@@ -41,6 +42,7 @@ export default function ParticipantIdentity({
   level,
   href = null,
   size,
+  nameWeightClass = 'font-semibold',
 }: ParticipantIdentityProps) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
@@ -62,7 +64,9 @@ export default function ParticipantIdentity({
         <AvatarFallback size={size} />
       )}
       <div className="min-w-0">
-        <p className={`app-text-primary break-words font-semibold ${nameClass}`.trim()}>{displayName.trim() || 'Бегун'}</p>
+        <p className={`app-text-primary break-words ${nameWeightClass} ${nameClass}`.trim()}>
+          {displayName.trim() || 'Бегун'}
+        </p>
         <p className="app-text-secondary break-words text-sm">Уровень {level}</p>
       </div>
     </>

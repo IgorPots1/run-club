@@ -290,6 +290,7 @@ function WorkoutFeedCard({
             level={level}
             href={profileHref}
             size="sm"
+            nameWeightClass="font-medium"
           />
         </div>
         <p className="app-text-secondary ml-auto shrink-0 pt-0.5 text-xs whitespace-nowrap">
@@ -298,13 +299,13 @@ function WorkoutFeedCard({
       </div>
 
       <div className="mt-3">
-        <p className="!text-black dark:!text-white font-semibold text-[17px] leading-6 break-words whitespace-pre-wrap">
+        <p className="!text-black dark:!text-white font-bold text-[17px] leading-6 break-words whitespace-pre-wrap">
           {displayTitle}
         </p>
         {trimmedDescription ? (
           <div className="mt-1.5">
             <p
-              className={`break-words whitespace-pre-wrap text-sm leading-5 text-[var(--text-secondary)]/90 ${
+              className={`break-words whitespace-pre-wrap text-sm leading-5 text-[var(--text-secondary)]/70 ${
                 descriptionExpanded ? '' : 'line-clamp-2'
               }`}
             >
