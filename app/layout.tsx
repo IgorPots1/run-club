@@ -61,6 +61,7 @@ export default async function RootLayout({
   const requestHeaders = await headers()
   const pathname = requestHeaders.get("x-run-club-pathname") ?? ""
   const isAdminRoute = pathname.startsWith("/admin")
+  const isRunDetailRoute = /^\/runs\/[^/]+$/.test(pathname)
   const shouldEnforceAppAccess =
     pathname !== "/" &&
     pathname !== "/login" &&
@@ -98,12 +99,14 @@ export default async function RootLayout({
 
   return (
     <html lang="ru">
-      <body className="min-h-screen">
+      <body className={isRunDetailRoute ? "min-h-screen overflow-hidden md:overflow-visible" : "min-h-screen"}>
         <PwaRegister />
         <VoiceStreamLifecycle />
         <UnreadBadgeSync />
         <div
-          className={`app-shell mx-auto min-h-screen max-w-xl overflow-x-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`app-shell mx-auto min-h-screen max-w-xl overflow-x-hidden ${
+            isRunDetailRoute ? "pb-0" : "pb-[calc(5.75rem+env(safe-area-inset-bottom))]"
+          } md:max-w-7xl md:pb-0 ${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           {resolvedNavbarUser ? (
             <div className="hidden md:block">

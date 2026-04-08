@@ -1397,7 +1397,7 @@ export default function RunDetailsPage() {
   if (authLoading || loading) {
     return (
       <WorkoutDetailShell title="Тренировка">
-      <div className="space-y-4">
+      <div className="min-w-0 overflow-x-hidden space-y-4">
         <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -1457,7 +1457,7 @@ export default function RunDetailsPage() {
   if (!run || !details) {
     return (
       <WorkoutDetailShell title="Тренировка">
-      <div className="app-card rounded-xl border p-4 shadow-sm">
+      <div className="min-w-0 overflow-x-hidden app-card rounded-xl border p-4 shadow-sm">
         <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
       </div>
       </WorkoutDetailShell>
@@ -1466,7 +1466,7 @@ export default function RunDetailsPage() {
 
   return (
     <WorkoutDetailShell title="Тренировка">
-    <div className="space-y-4">
+    <div className="min-w-0 overflow-x-hidden space-y-4">
       {runPhotos.length > 0 || isOwner ? (
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
@@ -1495,7 +1495,7 @@ export default function RunDetailsPage() {
           {uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
 
           {runPhotos.length > 0 ? (
-            <div className="mt-3 overflow-x-auto pb-1">
+            <div className="mt-3 min-w-0 overflow-x-auto overflow-y-hidden pb-1">
               <div className="flex min-w-max gap-3">
                 {runPhotos.map((photo, index) => (
                   <button
