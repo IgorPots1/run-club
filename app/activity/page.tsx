@@ -23,6 +23,7 @@ import {
   formatAveragePace,
   formatDistanceKm,
   formatDurationCompact,
+  formatRunDateLabel,
   formatRunSourceLabel,
   formatRunTimestampLabel,
 } from '@/lib/format'
@@ -37,9 +38,18 @@ const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
 ]
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
+const FASTEST_RUN_MIN_DISTANCE_KM = 3
 
 function formatDistance(value: number) {
   return formatDistanceKm(value)
+}
+
+function getMovingTimeSeconds(run: Pick<ActivityRunRow, 'moving_time_seconds'>) {
+  if (!Number.isFinite(run.moving_time_seconds) || (run.moving_time_seconds ?? 0) <= 0) {
+    return null
+  }
+
+  return Math.round(run.moving_time_seconds ?? 0)
 }
 
 function formatTwoDigits(value: number) {
@@ -352,6 +362,55 @@ export default function ActivityPage() {
     () => formatElevationGainLabel(summary.totalElevationGainMeters),
     [summary.totalElevationGainMeters]
   )
+  const activityInsights = useMemo(() => {
+    const longestRun = filteredRuns.reduce<ActivityRunRow | null>((bestRun, run) => {
+      const distanceKm = Number(run.distance_km ?? 0)
+
+      if (distanceKm <= 0) {
+        return bestRun
+      }
+
+      if (!bestRun || distanceKm > Number(bestRun.distance_km ?? 0)) {
+        return run
+      }
+
+      return bestRun
+    }, null)
+
+    const fastestRun = filteredRuns.reduce<ActivityRunRow | null>((bestRun, run) => {
+      const distanceKm = Number(run.distance_km ?? 0)
+      const movingTimeSeconds = getMovingTimeSeconds(run)
+
+      if (distanceKm < FASTEST_RUN_MIN_DISTANCE_KM || !movingTimeSeconds) {
+        return bestRun
+      }
+
+      const paceSeconds = movingTimeSeconds / distanceKm
+
+      if (!Number.isFinite(paceSeconds) || paceSeconds <= 0) {
+        return bestRun
+      }
+
+      if (!bestRun) {
+        return run
+      }
+
+      const bestDistanceKm = Number(bestRun.distance_km ?? 0)
+      const bestMovingTimeSeconds = getMovingTimeSeconds(bestRun)
+
+      if (!bestMovingTimeSeconds || bestDistanceKm <= 0) {
+        return run
+      }
+
+      const bestPaceSeconds = bestMovingTimeSeconds / bestDistanceKm
+      return paceSeconds < bestPaceSeconds ? run : bestRun
+    }, null)
+
+    return {
+      longestRun,
+      fastestRun,
+    }
+  }, [filteredRuns])
   const upcomingRaceEventsCount = useMemo(
     () => (raceEvents ?? []).filter((raceEvent) => isRaceEventUpcoming(raceEvent)).length,
     [raceEvents]
@@ -564,6 +623,49 @@ export default function ActivityPage() {
                 secondaryMetricLabel={summaryElevationLabel ? 'Набор высоты' : undefined}
                 secondaryMetricValue={summaryElevationLabel || undefined}
               />
+
+              <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
+                <div>
+                  <h2 className="app-text-primary text-base font-semibold">Инсайты</h2>
+                  <p className="app-text-secondary mt-1 text-sm">Два простых ориентира по выбранному периоду.</p>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+                    <p className="app-text-secondary text-sm">Самый длинный забег</p>
+                    <p className="app-text-primary mt-3 text-[1.45rem] font-semibold leading-tight sm:text-[1.7rem]">
+                      {activityInsights.longestRun
+                        ? `${formatDistance(Number(activityInsights.longestRun.distance_km ?? 0))} км`
+                        : '—'}
+                    </p>
+                    {activityInsights.longestRun ? (
+                      <p className="app-text-secondary mt-2 text-sm">
+                        {formatRunDateLabel(activityInsights.longestRun.created_at)}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
+                    <p className="app-text-secondary text-sm">Самый быстрый забег</p>
+                    <p className="app-text-primary mt-3 text-[1.45rem] font-semibold leading-tight sm:text-[1.7rem]">
+                      {activityInsights.fastestRun
+                        ? formatAveragePace(
+                            getMovingTimeSeconds(activityInsights.fastestRun) ?? 0,
+                            Number(activityInsights.fastestRun.distance_km ?? 0)
+                          )
+                        : '—'}
+                    </p>
+                    {activityInsights.fastestRun ? (
+                      <p className="app-text-secondary mt-2 text-sm">
+                        {formatRunDateLabel(activityInsights.fastestRun.created_at)}
+                      </p>
+                    ) : (
+                      <p className="app-text-secondary mt-2 text-sm">
+                        От 3 км и дольше
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </section>
 
               <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
                 <p className="app-text-secondary text-sm font-medium">{chartTitle}</p>
