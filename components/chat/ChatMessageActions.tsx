@@ -91,12 +91,12 @@ export default function ChatMessageActions({
   ].filter(Boolean).length
   const reactionBarHeight = canReact ? REACTION_BAR_HEIGHT : 0
 
-  if (!open || !anchorRect) {
-    return null
-  }
-
   useEffect(() => {
     if (typeof window === 'undefined') {
+      return
+    }
+
+    if (!open || !anchorRect) {
       return
     }
 
@@ -115,7 +115,11 @@ export default function ChatMessageActions({
       window.removeEventListener('resize', updateViewportSize)
       window.visualViewport?.removeEventListener('resize', updateViewportSize)
     }
-  }, [])
+  }, [open, anchorRect])
+
+  if (!open || !anchorRect) {
+    return null
+  }
 
   const viewportWidth = viewportSize.width
   const viewportHeight = viewportSize.height
