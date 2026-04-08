@@ -61,6 +61,65 @@ function getMovingTimeSeconds(run: Pick<ActivityRunRow, 'moving_time_seconds'>) 
   return Math.round(run.moving_time_seconds ?? 0)
 }
 
+function startOfDay(date: Date) {
+  const next = new Date(date)
+  next.setHours(0, 0, 0, 0)
+  return next
+}
+
+function startOfWeek(date: Date) {
+  const next = startOfDay(date)
+  const day = next.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  next.setDate(next.getDate() + diff)
+  return next
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1)
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function getPreviousPeriodRange(period: ActivityPeriod, now: Date = new Date()) {
+  if (period === 'week') {
+    const currentStart = startOfWeek(now)
+    return {
+      start: addDays(currentStart, -7),
+      end: currentStart,
+      label: 'к прошлой неделе',
+    }
+  }
+
+  if (period === 'month') {
+    const currentStart = startOfMonth(now)
+    return {
+      start: new Date(currentStart.getFullYear(), currentStart.getMonth() - 1, 1),
+      end: currentStart,
+      label: 'к прошлому месяцу',
+    }
+  }
+
+  if (period === 'year') {
+    const currentStart = startOfYear(now)
+    return {
+      start: new Date(currentStart.getFullYear() - 1, 0, 1),
+      end: currentStart,
+      label: 'к прошлому году',
+    }
+  }
+
+  return null
+}
+
 function formatTwoDigits(value: number) {
   return String(value).padStart(2, '0')
 }
@@ -420,6 +479,86 @@ export default function ActivityPage() {
       fastestRun,
     }
   }, [filteredRuns])
+  const progressInsight = useMemo(() => {
+    const previousRange = getPreviousPeriodRange(period)
+
+    if (!previousRange) {
+      return null
+    }
+
+    const previousDistance = (runs ?? []).reduce((sum, run) => {
+      const createdAt = new Date(run.created_at)
+
+      if (Number.isNaN(createdAt.getTime()) || createdAt < previousRange.start || createdAt >= previousRange.end) {
+        return sum
+      }
+
+      return sum + Math.max(0, Number(run.distance_km ?? 0))
+    }, 0)
+
+    if (!Number.isFinite(previousDistance) || previousDistance <= 0) {
+      return null
+    }
+
+    const changePercent = Math.round(((summary.totalDistance - previousDistance) / previousDistance) * 100)
+
+    if (!Number.isFinite(changePercent)) {
+      return null
+    }
+
+    return {
+      value: `${changePercent > 0 ? '+' : ''}${changePercent}%`,
+      subtext: previousRange.label,
+    }
+  }, [period, runs, summary.totalDistance])
+  const insightItems = useMemo(() => {
+    const items: Array<{ id: string; label: string; value: string; subtext?: string }> = []
+
+    if (activityInsights.longestRun) {
+      items.push({
+        id: 'longest-run',
+        label: 'Самый длинный',
+        value: formatInsightValueWithDate(
+          `${formatDistance(Number(activityInsights.longestRun.distance_km ?? 0))} км`,
+          activityInsights.longestRun.created_at
+        ),
+      })
+    }
+
+    if (activityInsights.fastestRun) {
+      items.push({
+        id: 'fastest-run',
+        label: 'Самый быстрый',
+        value: formatInsightValueWithDate(
+          formatAveragePace(
+            getMovingTimeSeconds(activityInsights.fastestRun) ?? 0,
+            Number(activityInsights.fastestRun.distance_km ?? 0)
+          ),
+          activityInsights.fastestRun.created_at
+        ),
+      })
+    }
+
+    if (summary.totalWorkouts > 0) {
+      items.push({
+        id: 'average-distance',
+        label: 'В среднем',
+        value: `${formatDistance(summary.totalDistance / summary.totalWorkouts)} км`,
+        subtext: 'за тренировку',
+      })
+    }
+
+    if (progressInsight) {
+      items.push({
+        id: 'progress',
+        label: 'Прогресс',
+        value: progressInsight.value,
+        subtext: progressInsight.subtext,
+      })
+    }
+
+    return items
+  }, [activityInsights, progressInsight, summary.totalDistance, summary.totalWorkouts])
   const upcomingRaceEventsCount = useMemo(
     () => (raceEvents ?? []).filter((raceEvent) => isRaceEventUpcoming(raceEvent)).length,
     [raceEvents]
@@ -633,40 +772,26 @@ export default function ActivityPage() {
                 secondaryMetricValue={summaryElevationLabel || undefined}
               />
 
-              <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
-                <div>
+              {insightItems.length > 0 ? (
+                <section className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
                   <h2 className="app-text-primary text-base font-semibold">Инсайты</h2>
-                  <p className="app-text-secondary mt-1 text-sm">Два простых ориентира по выбранному периоду.</p>
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-                    <p className="app-text-secondary text-sm">Самый длинный забег</p>
-                    <p className="app-text-primary mt-3 break-words text-lg font-semibold leading-tight sm:text-[1.15rem] md:text-[1.25rem]">
-                      {activityInsights.longestRun
-                        ? formatInsightValueWithDate(
-                            `${formatDistance(Number(activityInsights.longestRun.distance_km ?? 0))} км`,
-                            activityInsights.longestRun.created_at
-                          )
-                        : '—'}
-                    </p>
+                  <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5">
+                    {insightItems.map((insight) => (
+                      <div key={insight.id} className="min-w-0">
+                        <p className="app-text-secondary text-xs sm:text-sm">{insight.label}</p>
+                        <p className="app-text-primary mt-1 break-words text-sm font-semibold leading-tight sm:text-base">
+                          {insight.value}
+                        </p>
+                        {insight.subtext ? (
+                          <p className="app-text-secondary mt-1 text-xs leading-tight">
+                            {insight.subtext}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
-
-                  <div className="app-surface-muted rounded-2xl px-3 py-3 ring-1 ring-black/5 dark:ring-white/10">
-                    <p className="app-text-secondary text-sm">Самый быстрый забег</p>
-                    <p className="app-text-primary mt-3 break-words text-lg font-semibold leading-tight sm:text-[1.15rem] md:text-[1.25rem]">
-                      {activityInsights.fastestRun
-                        ? formatInsightValueWithDate(
-                            formatAveragePace(
-                              getMovingTimeSeconds(activityInsights.fastestRun) ?? 0,
-                              Number(activityInsights.fastestRun.distance_km ?? 0)
-                            ),
-                            activityInsights.fastestRun.created_at
-                          )
-                        : '—'}
-                    </p>
-                  </div>
-                </div>
-              </section>
+                </section>
+              ) : null}
 
               <div className="app-card min-w-0 overflow-hidden rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
                 <p className="app-text-secondary text-sm font-medium">{chartTitle}</p>
