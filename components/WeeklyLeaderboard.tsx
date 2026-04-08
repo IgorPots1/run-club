@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Flame } from 'lucide-react'
+import { formatRaceWeekDateRange } from '@/lib/race-badges'
 import type { WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 
 type WeeklyLeaderboardProps = {
@@ -17,6 +18,7 @@ export default function WeeklyLeaderboard({
   loading = false,
   error = '',
 }: WeeklyLeaderboardProps) {
+  const week = leaderboard?.week ?? null
   const topRows = Array.isArray(leaderboard?.topRows) ? leaderboard.topRows : []
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
@@ -32,6 +34,14 @@ export default function WeeklyLeaderboard({
         <Flame className="h-4 w-4 shrink-0" strokeWidth={1.9} />
         <span>Гонка недели</span>
       </p>
+      {!loading && !error && week ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
+            Текущая неделя
+          </span>
+          <span className="app-text-secondary text-sm">{formatRaceWeekDateRange(week)}</span>
+        </div>
+      ) : null}
 
       {loading ? (
         <>
@@ -56,8 +66,13 @@ export default function WeeklyLeaderboard({
         </>
       ) : error ? (
         <p className="app-text-secondary mt-3 text-sm">{error}</p>
+      ) : !week ? (
+        <div className="mt-3">
+          <p className="app-text-secondary text-sm">Сейчас нет активной недели гонки.</p>
+          <p className="app-text-secondary mt-2 text-sm">Открой экран гонки, чтобы посмотреть статус и последние итоги.</p>
+        </div>
       ) : topRows.length === 0 ? (
-        <p className="app-text-secondary mt-3 text-sm">Пока нет данных за последние 7 дней</p>
+        <p className="app-text-secondary mt-3 text-sm">Пока в текущей неделе нет результатов.</p>
       ) : (
         <div className="mt-3 space-y-2">
           {topRows.map((row) => (

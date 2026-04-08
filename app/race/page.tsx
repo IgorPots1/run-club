@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { getBootstrapUser } from '@/lib/auth'
+import { formatRaceWeekDateRange } from '@/lib/race-badges'
+import { loadLatestFinalizedRaceWeek, type RaceWeekSummary } from '@/lib/race-results-client'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import type { User } from '@supabase/supabase-js'
 
@@ -133,7 +135,23 @@ export default function RacePage() {
       focusThrottleInterval: 15000,
     }
   )
+  const {
+    data: latestFinalizedRaceWeek,
+    error: latestFinalizedRaceWeekError,
+    isLoading: latestFinalizedRaceWeekLoading,
+  } = useSWR<RaceWeekSummary | null>(
+    user ? (['latest-finalized-race-week', user.id] as const) : null,
+    () => loadLatestFinalizedRaceWeek(),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 60000,
+      focusThrottleInterval: 60000,
+    }
+  )
 
+  const week = leaderboard?.week ?? null
   const rows = Array.isArray(leaderboard?.rows) ? leaderboard.rows : []
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
@@ -183,6 +201,7 @@ export default function RacePage() {
     }),
     [currentUserRow?.rank, gapToBehind, gapToNext]
   )
+  const showHistoryLink = !latestFinalizedRaceWeekLoading && Boolean(latestFinalizedRaceWeek?.id)
 
   if (loadingUser) {
     return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
@@ -204,7 +223,32 @@ export default function RacePage() {
     >
         <div className="app-card rounded-2xl border p-4 shadow-sm">
           <h1 className="app-text-primary text-2xl font-bold">Гонка недели</h1>
-          <p className="app-text-secondary mt-1 text-sm">Последние 7 дней</p>
+          {week ? (
+            <>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
+                  Текущая неделя
+                </span>
+                <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
+                  Статус: {week.status === 'active' ? 'активна' : 'завершена'}
+                </span>
+              </div>
+              <p className="app-text-secondary mt-2 text-sm">Период: {formatRaceWeekDateRange(week)}</p>
+            </>
+          ) : (
+            <p className="app-text-secondary mt-2 text-sm">Сейчас активная неделя гонки не запущена.</p>
+          )}
+
+          {latestFinalizedRaceWeekError ? (
+            <p className="mt-3 text-sm text-red-600">Не удалось загрузить последнюю завершенную неделю</p>
+          ) : showHistoryLink ? (
+            <Link
+              href={`/race/history/${latestFinalizedRaceWeek!.id}`}
+              className="app-button-secondary mt-4 inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm"
+            >
+              Итоги прошлой недели
+            </Link>
+          ) : null}
 
           {isLoading ? (
             <div className="mt-4 space-y-3">
@@ -216,9 +260,16 @@ export default function RacePage() {
               ))}
             </div>
           ) : error ? (
-            <p className="app-text-secondary mt-4 text-sm">Не удалось загрузить недельный рейтинг</p>
+            <p className="app-text-secondary mt-4 text-sm">Не удалось загрузить гонку недели</p>
+          ) : !week ? (
+            <div className="app-surface-muted mt-4 rounded-2xl p-4">
+              <p className="app-text-primary text-sm font-medium">Активной фиксированной недели сейчас нет.</p>
+              <p className="app-text-secondary mt-2 text-sm">
+                Когда новая неделя будет открыта в `race_weeks`, здесь появится ее живой рейтинг и текущий статус.
+              </p>
+            </div>
           ) : rows.length === 0 ? (
-            <p className="app-text-secondary mt-4 text-sm">Пока нет данных за последние 7 дней</p>
+            <p className="app-text-secondary mt-4 text-sm">Пока в текущей неделе нет результатов.</p>
           ) : (
             <>
               {currentUserRow ? (
