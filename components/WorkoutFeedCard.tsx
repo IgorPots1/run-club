@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Heart, MessageCircle } from 'lucide-react'
+import { Heart, MapPin, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
@@ -156,6 +156,7 @@ function WorkoutFeedCard({
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [activeMediaIndex, setActiveMediaIndex] = useState(0)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const trimmedDescription = description?.trim() || ''
@@ -280,14 +281,35 @@ function WorkoutFeedCard({
           {displayTitle}
         </p>
         {trimmedDescription ? (
-          <p className="app-text-secondary mt-1.5 line-clamp-3 break-words whitespace-pre-wrap text-sm leading-5">
-            {trimmedDescription}
-          </p>
+          <div className="mt-1.5">
+            <p
+              className={`break-words whitespace-pre-wrap text-sm leading-5 text-[var(--text-secondary)]/90 ${
+                descriptionExpanded ? '' : 'line-clamp-2'
+              }`}
+            >
+              {trimmedDescription}
+            </p>
+            {trimmedDescription.length > 90 ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setDescriptionExpanded((currentValue) => !currentValue)
+                }}
+                className="app-text-muted mt-0.5 text-xs font-medium"
+              >
+                {descriptionExpanded ? 'Скрыть' : 'Читать'}
+              </button>
+            ) : null}
+          </div>
         ) : null}
         {locationLabel ? (
-          <p className="app-text-secondary mt-1.5 break-words text-sm">
-            {locationLabel}
-          </p>
+          <div className="app-text-muted mt-1.5 inline-flex max-w-full items-start gap-1.5 text-xs">
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
+            <p className="min-w-0 break-words leading-4">
+              {locationLabel}
+            </p>
+          </div>
         ) : null}
       </div>
 
@@ -315,14 +337,14 @@ function WorkoutFeedCard({
                         />
                         <div
                           aria-hidden="true"
-                          className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+                          className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/72 via-black/24 to-transparent"
                         />
                         <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-sm">
                             <span>{distanceLabel}</span>
-                            <span className="text-white/75">•</span>
+                            <span className="text-white/80">•</span>
                             <span>{paceWithUnit}</span>
-                            <span className="text-white/75">•</span>
+                            <span className="text-white/80">•</span>
                             <span>{movingTimeLabel}</span>
                           </div>
                         </div>
@@ -386,14 +408,14 @@ function WorkoutFeedCard({
             />
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/60 via-black/18 to-transparent"
+              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/72 via-black/24 to-transparent"
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-3.5 pt-8">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] sm:text-base">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-sm">
                 <span>{distanceLabel}</span>
-                <span className="text-white/75">•</span>
+                <span className="text-white/80">•</span>
                 <span>{paceWithUnit}</span>
-                <span className="text-white/75">•</span>
+                <span className="text-white/80">•</span>
                 <span>{movingTimeLabel}</span>
               </div>
             </div>
@@ -449,8 +471,8 @@ function WorkoutFeedCard({
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
           </div>
-          <div className="app-text-secondary ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium">
-            <span aria-hidden="true" className="text-[11px] leading-none">⚡</span>
+          <div className="app-text-muted ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-medium sm:text-xs">
+            <span aria-hidden="true" className="text-[10px] leading-none opacity-80">⚡</span>
             <span>+{xp} XP</span>
           </div>
         </div>
