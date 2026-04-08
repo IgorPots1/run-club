@@ -7,8 +7,24 @@ type RaceBadgeWeekDateRange = {
 }
 
 export function getRaceBadgeLabel(badgeCode: string | null | undefined, rank: number | null | undefined) {
-  if (badgeCode === 'race_week_winner') {
-    return 'Победитель недели'
+  if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
+    return '1 место'
+  }
+
+  if (badgeCode === 'weekly_race_2') {
+    return '2 место'
+  }
+
+  if (badgeCode === 'weekly_race_3') {
+    return '3 место'
+  }
+
+  if (badgeCode === 'race_week_top_3' && rank === 2) {
+    return '2 место'
+  }
+
+  if (badgeCode === 'race_week_top_3' && rank === 3) {
+    return '3 место'
   }
 
   if (badgeCode === 'race_week_top_3') {
@@ -16,7 +32,7 @@ export function getRaceBadgeLabel(badgeCode: string | null | undefined, rank: nu
   }
 
   if (badgeCode === 'race_week_top_10') {
-    return 'Топ-10'
+    return typeof rank === 'number' && rank > 0 ? `#${rank}` : 'Топ-10'
   }
 
   if (typeof rank === 'number' && rank > 0) {
@@ -37,16 +53,26 @@ export function formatRacePlacementLabel(args: {
     return ''
   }
 
-  if (badgeCode === 'race_week_winner') {
+  if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
     return `1 из ${totalParticipants} участников`
   }
 
-  if (badgeCode === 'race_week_top_3') {
-    return `Топ-3 из ${totalParticipants} участников`
+  if (badgeCode === 'weekly_race_2') {
+    return `2 из ${totalParticipants} участников`
+  }
+
+  if (badgeCode === 'weekly_race_3') {
+    return `3 из ${totalParticipants} участников`
+  }
+
+  if (badgeCode === 'race_week_top_3' && typeof rank === 'number' && rank > 0) {
+    return `${rank} из ${totalParticipants} участников`
   }
 
   if (badgeCode === 'race_week_top_10') {
-    return `Топ-10 из ${totalParticipants} участников`
+    return typeof rank === 'number' && rank > 0
+      ? `${rank} из ${totalParticipants} участников`
+      : `Топ-10 из ${totalParticipants} участников`
   }
 
   if (typeof rank === 'number' && rank > 0) {

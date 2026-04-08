@@ -253,8 +253,16 @@ function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type
 
   const badgeCode = achievement.badge_code
 
-  if (badgeCode === 'race_week_winner') {
+  if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
     return 'app-card rounded-2xl border border-amber-300/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-400/30 dark:bg-amber-400/12'
+  }
+
+  if (badgeCode === 'weekly_race_2') {
+    return 'app-card rounded-2xl border border-slate-300/70 bg-slate-50/85 p-4 shadow-sm dark:border-slate-400/25 dark:bg-slate-400/10'
+  }
+
+  if (badgeCode === 'weekly_race_3') {
+    return 'app-card rounded-2xl border border-orange-300/75 bg-orange-50/85 p-4 shadow-sm dark:border-orange-400/25 dark:bg-orange-400/10'
   }
 
   if (badgeCode === 'race_week_top_3') {
@@ -269,8 +277,16 @@ function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type
 }
 
 function getAchievementRankClass(badgeCode: string | null | undefined) {
-  if (badgeCode === 'race_week_winner') {
+  if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
     return 'border border-amber-300/80 bg-amber-100/80 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  if (badgeCode === 'weekly_race_2') {
+    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
+  }
+
+  if (badgeCode === 'weekly_race_3') {
+    return 'border border-orange-300/80 bg-orange-100/90 text-orange-800 dark:border-orange-300/20 dark:bg-orange-300/10 dark:text-orange-100'
   }
 
   if (badgeCode === 'race_week_top_3') {
@@ -285,8 +301,16 @@ function getAchievementIconWrapperClass(achievement: Pick<UserAchievement, 'sour
     return 'border border-emerald-300/70 bg-emerald-100/90 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
   }
 
-  if (achievement.badge_code === 'race_week_winner') {
+  if (achievement.badge_code === 'weekly_race_1' || achievement.badge_code === 'race_week_winner') {
     return 'border border-amber-300/80 bg-amber-100/90 text-amber-700 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
+  }
+
+  if (achievement.badge_code === 'weekly_race_2') {
+    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
+  }
+
+  if (achievement.badge_code === 'weekly_race_3') {
+    return 'border border-orange-300/80 bg-orange-100/90 text-orange-700 dark:border-orange-300/20 dark:bg-orange-300/10 dark:text-orange-100'
   }
 
   if (achievement.badge_code === 'race_week_top_3') {

@@ -23,6 +23,7 @@ import { loadDashboardOverview } from '@/lib/dashboard'
 import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
+import { getRaceBadgeLabel } from '@/lib/race-badges'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
@@ -219,26 +220,6 @@ function DashboardChallengeCard({
   )
 }
 
-function getRaceBadgeText(badgeCode: string | null | undefined, rank: number | null | undefined) {
-  if (badgeCode === 'race_week_winner') {
-    return 'Победитель недели'
-  }
-
-  if (badgeCode === 'race_week_top_3') {
-    return 'Топ-3'
-  }
-
-  if (badgeCode === 'race_week_top_10') {
-    return 'Топ-10'
-  }
-
-  if (typeof rank === 'number' && rank > 0) {
-    return `#${rank}`
-  }
-
-  return 'Без бейджа'
-}
-
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
@@ -341,7 +322,7 @@ export default function DashboardPageClient({
       ]).then(([userResult, badge]) => ({
         weekId,
         userResult,
-        badgeText: getRaceBadgeText(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null),
+        badgeText: getRaceBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null),
       })),
     {
       ...swrBaseOptions,
