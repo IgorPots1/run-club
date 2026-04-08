@@ -8,6 +8,7 @@ export const INBOX_APP_EVENT_TYPES = [
   'run_comment.created',
   'run_comment.reply_created',
   'challenge.completed',
+  'weekly_race.result',
   'race_event.created',
   'race_event.completed',
 ] as const
@@ -121,6 +122,11 @@ function getFallbackEventCopy(type: string) {
     case 'challenge.completed':
       return {
         title: 'Челлендж выполнен',
+        body: null,
+      }
+    case 'weekly_race.result':
+      return {
+        title: 'Гонка недели завершена',
         body: null,
       }
     case 'race_event.created':

@@ -268,6 +268,60 @@ begin
   where ir.rank <= 3
   on conflict (user_id, badge_code, race_week_id) do nothing;
 
+  insert into public.app_events (
+    type,
+    actor_user_id,
+    target_user_id,
+    entity_type,
+    entity_id,
+    category,
+    channel,
+    priority,
+    target_path,
+    dedupe_key,
+    payload
+  )
+  select
+    'weekly_race.result',
+    null,
+    ir.user_id,
+    'race_week',
+    p_race_week_id,
+    'race',
+    'inbox',
+    case
+      when ir.rank <= 3 then 'important'
+      else 'normal'
+    end,
+    '/race/history/' || p_race_week_id::text,
+    'weekly_race.result:' || p_race_week_id::text || ':' || ir.user_id::text,
+    jsonb_build_object(
+      'v', 1,
+      'targetPath', '/race/history/' || p_race_week_id::text,
+      'preview', jsonb_build_object(
+        'title', case ir.rank
+          when 1 then 'Ты занял 1 место в гонке недели'
+          when 2 then 'Ты занял 2 место в гонке недели'
+          when 3 then 'Ты занял 3 место в гонке недели'
+          else 'Гонка недели завершена'
+        end,
+        'body', case
+          when ir.rank between 4 and 5 then 'Ты занял ' || ir.rank::text || ' место. Ты был близко к призовым местам'
+          when ir.rank > 3 then 'Ты занял ' || ir.rank::text || ' место'
+          else coalesce(v_week.slug, 'weekly-race')
+        end
+      ),
+      'context', jsonb_build_object(
+        'raceWeekId', p_race_week_id,
+        'weekSlug', v_week.slug,
+        'rank', ir.rank,
+        'totalXp', ir.total_xp,
+        'raceBonusXp', ir.race_bonus_xp
+      )
+    )
+  from inserted_results ir
+  on conflict (dedupe_key) do nothing;
+
   update public.race_weeks
   set
     status = 'finalized',
