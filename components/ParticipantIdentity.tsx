@@ -11,6 +11,8 @@ type ParticipantIdentityProps = {
   href?: string | null
   size: 'sm' | 'md'
   nameWeightClass?: 'font-medium' | 'font-semibold' | 'font-bold'
+  nameSizeClass?: string
+  levelClassName?: string
 }
 
 function AvatarFallback({ size }: { size: 'sm' | 'md' }) {
@@ -43,12 +45,15 @@ export default function ParticipantIdentity({
   href = null,
   size,
   nameWeightClass = 'font-semibold',
+  nameSizeClass,
+  levelClassName,
 }: ParticipantIdentityProps) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarSrc = avatarUrl?.trim() ? avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
   const avatarSizeClass = size === 'md' ? 'h-11 w-11' : 'h-10 w-10'
-  const nameClass = size === 'md' ? 'text-[15px]' : ''
+  const nameClass = nameSizeClass ?? (size === 'md' ? 'text-[15px]' : '')
+  const levelClass = levelClassName ?? 'app-text-secondary break-words text-sm'
   const content = (
     <>
       {showAvatarImage && avatarSrc ? (
@@ -67,7 +72,7 @@ export default function ParticipantIdentity({
         <p className={`app-text-primary break-words ${nameWeightClass} ${nameClass}`.trim()}>
           {displayName.trim() || 'Бегун'}
         </p>
-        <p className="app-text-secondary break-words text-sm">Уровень {level}</p>
+        <p className={levelClass}>{`Уровень ${level}`}</p>
       </div>
     </>
   )

@@ -218,6 +218,7 @@ function WorkoutFeedCard({
   const paceWithUnit = paceLabel ? `${paceLabel} /км` : ''
   const movingTimeLabel = movingTime?.trim() || ''
   const hasMediaContent = shouldRenderMediaCarousel || (showMapPreview && Boolean(mapPreviewUrl)) || Boolean(previewPhoto)
+  const isNoMediaWorkout = !hasMediaContent
   const isManualRun = externalSource !== 'strava'
   const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
@@ -291,6 +292,8 @@ function WorkoutFeedCard({
             href={profileHref}
             size="sm"
             nameWeightClass="font-medium"
+            nameSizeClass="text-[15px]"
+            levelClassName="app-text-muted break-words text-[13px]"
           />
         </div>
         <p className="app-text-secondary ml-auto shrink-0 pt-0.5 text-xs whitespace-nowrap">
@@ -299,13 +302,13 @@ function WorkoutFeedCard({
       </div>
 
       <div className="mt-3">
-        <p className="!text-black dark:!text-white font-bold text-[17px] leading-6 break-words whitespace-pre-wrap">
+        <p className="app-text-primary text-[22px] font-bold leading-7 break-words whitespace-pre-wrap">
           {displayTitle}
         </p>
         {trimmedDescription ? (
           <div className="mt-1.5">
             <p
-              className={`break-words whitespace-pre-wrap text-sm leading-5 text-[var(--text-secondary)]/70 ${
+              className={`break-words whitespace-pre-wrap text-sm leading-5 app-text-muted ${
                 descriptionExpanded ? '' : 'line-clamp-2'
               }`}
             >
@@ -484,11 +487,21 @@ function WorkoutFeedCard({
         </button>
       ) : null}
       {shouldRenderInlineMetrics ? (
-        <div className="app-text-muted mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+        <div
+          className={`mt-2 flex flex-wrap items-center gap-1.5 ${
+            isNoMediaWorkout
+              ? 'app-text-primary text-[18px] font-bold'
+              : 'app-text-secondary text-[16px] font-medium'
+          }`}
+        >
           {distanceLabel ? <span>{distanceLabel}</span> : null}
-          {distanceLabel && paceWithUnit ? <span aria-hidden="true">•</span> : null}
+          {distanceLabel && paceWithUnit ? (
+            <span aria-hidden="true" className={isNoMediaWorkout ? 'app-text-secondary' : 'app-text-muted'}>•</span>
+          ) : null}
           {paceWithUnit ? <span>{paceWithUnit}</span> : null}
-          {(distanceLabel || paceWithUnit) && movingTimeLabel ? <span aria-hidden="true">•</span> : null}
+          {(distanceLabel || paceWithUnit) && movingTimeLabel ? (
+            <span aria-hidden="true" className={isNoMediaWorkout ? 'app-text-secondary' : 'app-text-muted'}>•</span>
+          ) : null}
           {movingTimeLabel ? <span>{movingTimeLabel}</span> : null}
         </div>
       ) : null}
