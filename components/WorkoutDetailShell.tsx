@@ -30,6 +30,19 @@ export default function WorkoutDetailShell({
   ]
     .filter(Boolean)
     .join(' ')
+  const footerWrapperClassName = [
+    'shrink-0 px-4 pt-1',
+    'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+    'md:px-4 md:pb-5',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const footerSurfaceClassName = [
+    'relative z-10 rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/90 px-3 py-2 shadow-sm backdrop-blur-sm',
+    'dark:border-white/10 dark:bg-[color:var(--background)]/86',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <main
@@ -45,7 +58,11 @@ export default function WorkoutDetailShell({
         <div ref={scrollContainerRef} className={scrollLayoutClassName}>
           {children}
         </div>
-        {footer}
+        {footer ? (
+          <div className={footerWrapperClassName}>
+            <div className={footerSurfaceClassName}>{footer}</div>
+          </div>
+        ) : null}
       </div>
     </main>
   )

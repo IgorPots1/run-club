@@ -1145,6 +1145,13 @@ export default function RunDetailsPage() {
   const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
   const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
   const isLikeActive = isOwner ? likesCount > 0 : likedByMe
+  const isEditing = isEditingTitle || isEditingDescription
+  const isSaving = savingTitle || savingDescription
+  const hasPendingEditChanges = isEditingTitle
+    ? hasTitleChanged
+    : isEditingDescription
+      ? hasDescriptionChanged
+      : false
 
   function handleStartEditingTitle() {
     if (!isOwner || !run) {
@@ -1180,6 +1187,28 @@ export default function RunDetailsPage() {
     setEditedDescription(run?.description ?? '')
     setSaveDescriptionError('')
     setIsEditingDescription(false)
+  }
+
+  function handleCancelEditing() {
+    if (isEditingTitle) {
+      handleCancelEditingTitle()
+      return
+    }
+
+    if (isEditingDescription) {
+      handleCancelEditingDescription()
+    }
+  }
+
+  async function handleSaveEditing() {
+    if (isEditingTitle) {
+      await handleSaveTitle()
+      return
+    }
+
+    if (isEditingDescription) {
+      await handleSaveDescription()
+    }
   }
 
   async function handleSaveTitle() {
@@ -1444,8 +1473,31 @@ export default function RunDetailsPage() {
     )
   }
 
+  const editActionBar = isEditing ? (
+    <div className="flex items-center justify-between gap-3">
+      <button
+        type="button"
+        onClick={handleCancelEditing}
+        disabled={isSaving}
+        className="app-button-secondary min-h-11 rounded-2xl border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        Отмена
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void handleSaveEditing()
+        }}
+        disabled={isSaving || !hasPendingEditChanges}
+        className="app-button-primary min-h-11 rounded-2xl border px-5 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isSaving ? 'Сохраняем...' : 'Сохранить'}
+      </button>
+    </div>
+  ) : null
+
   return (
-    <WorkoutDetailShell title="Тренировка">
+    <WorkoutDetailShell title="Тренировка" footer={editActionBar}>
     <div className="min-w-0 overflow-x-hidden space-y-4">
       {runPhotos.length > 0 || isOwner ? (
         <section className="app-card rounded-2xl border p-4 shadow-sm">
@@ -1540,24 +1592,6 @@ export default function RunDetailsPage() {
               className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
             />
             {saveTitleError ? <p className="mt-2 text-sm text-red-600">{saveTitleError}</p> : null}
-            <div className="mt-3 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={handleCancelEditingTitle}
-                disabled={savingTitle}
-                className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSaveTitle()}
-                disabled={savingTitle || !hasTitleChanged}
-                className="app-button-primary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {savingTitle ? 'Сохраняем...' : 'Сохранить'}
-              </button>
-            </div>
           </div>
         ) : (
           <div className="mt-3">
@@ -1613,24 +1647,6 @@ export default function RunDetailsPage() {
                   className="app-input min-h-28 w-full rounded-lg border px-3 py-2"
                 />
                 {saveDescriptionError ? <p className="mt-2 text-sm text-red-600">{saveDescriptionError}</p> : null}
-                <div className="mt-3 flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelEditingDescription}
-                    disabled={savingDescription}
-                    className="app-button-secondary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveDescription()}
-                    disabled={savingDescription || !hasDescriptionChanged}
-                    className="app-button-primary min-h-10 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {savingDescription ? 'Сохраняем...' : 'Сохранить'}
-                  </button>
-                </div>
               </div>
             ) : runDescription ? (
               <div className="mt-2">
