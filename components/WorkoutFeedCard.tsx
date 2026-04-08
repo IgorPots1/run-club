@@ -324,21 +324,25 @@ function WorkoutFeedCard({
             ) : null}
           </div>
         ) : null}
-        {locationLabel ? (
-          <div className="app-text-muted mt-1.5 inline-flex max-w-full items-start gap-1.5 text-xs">
-            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
-            <p className="min-w-0 break-words leading-4">
-              {locationLabel}
-            </p>
-          </div>
-        ) : null}
       </div>
 
-      {insight ? (
-        <div className="mt-2">
-          <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/[0.07] bg-black/[0.03] px-2.5 py-1 text-[11px] font-medium leading-none dark:border-white/[0.09] dark:bg-white/[0.04]">
-            <span className="truncate">{insight.label}</span>
-          </span>
+      {insight || locationLabel ? (
+        <div className="mt-2 space-y-1.5">
+          {insight ? (
+            <div>
+              <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/[0.07] bg-black/[0.03] px-2.5 py-1 text-[11px] font-medium leading-none dark:border-white/[0.09] dark:bg-white/[0.04]">
+                <span className="truncate">{insight.label}</span>
+              </span>
+            </div>
+          ) : null}
+          {locationLabel ? (
+            <div className="app-text-muted inline-flex max-w-full items-start gap-1.5 text-xs">
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
+              <p className="min-w-0 break-words leading-4">
+                {locationLabel}
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
