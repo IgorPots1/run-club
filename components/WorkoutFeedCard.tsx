@@ -130,6 +130,7 @@ function WorkoutFeedCard({
   rawTitle,
   city = null,
   country = null,
+  description = null,
   externalSource = null,
   distanceKm,
   pace,
