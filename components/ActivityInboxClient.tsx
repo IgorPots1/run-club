@@ -73,6 +73,10 @@ function formatGroupedRunLikeTitle(item: ActivityGroupedRunLikeInboxItem) {
   return `${firstActorName}, ${secondActorName} и еще ${item.actorCount - 2} чел. лайкнули вашу пробежку`
 }
 
+function isGroupedRunLikeInboxItem(event: ActivityInboxListItem): event is ActivityGroupedRunLikeInboxItem {
+  return event.type === 'grouped_run_like'
+}
+
 function getInitialLabel(name: string | null | undefined) {
   const trimmed = name?.trim()
   return trimmed?.[0]?.toUpperCase() ?? 'R'
@@ -116,25 +120,31 @@ export default function ActivityInboxClient({
       ) : (
         <div className="space-y-2">
           {events.map((event) => {
-            const actorName = event.type === 'grouped_run_like'
-              ? null
-              : event.actorName
-            const actorAvatarUrl = event.type === 'grouped_run_like'
-              ? event.actorPreviewAvatarUrls[0] ?? null
-              : event.actorAvatarUrl
-            const eventType = event.type === 'grouped_run_like'
-              ? 'run_like.created'
-              : event.type
-            const title = event.type === 'grouped_run_like'
-              ? formatGroupedRunLikeTitle(event)
-              : event.title
+            let groupedRunLikeEvent: ActivityGroupedRunLikeInboxItem | null = null
+            let actorName: string | null
+            let actorAvatarUrl: string | null
+            let eventType: string
+            let title: string
+
+            if (isGroupedRunLikeInboxItem(event)) {
+              groupedRunLikeEvent = event
+              actorName = null
+              actorAvatarUrl = event.actorPreviewAvatarUrls[0] ?? null
+              eventType = 'run_like.created'
+              title = formatGroupedRunLikeTitle(event)
+            } else {
+              actorName = event.actorName
+              actorAvatarUrl = event.actorAvatarUrl
+              eventType = event.type
+              title = event.title
+            }
             const cardContent = (
               <div className="flex items-start gap-2">
-                {event.type === 'grouped_run_like' ? (
+                {groupedRunLikeEvent ? (
                   <div className="relative h-9 w-9 shrink-0">
                     {[0, 1].map((index) => {
-                      const previewAvatarUrl = event.actorPreviewAvatarUrls[index] ?? null
-                      const previewName = event.actorPreviewNames[index] ?? null
+                      const previewAvatarUrl = groupedRunLikeEvent.actorPreviewAvatarUrls[index] ?? null
+                      const previewName = groupedRunLikeEvent.actorPreviewNames[index] ?? null
 
                       if (!previewAvatarUrl && !previewName) {
                         return null
@@ -142,7 +152,7 @@ export default function ActivityInboxClient({
 
                       return (
                         <div
-                          key={`${event.id}-avatar-${index}`}
+                          key={`${groupedRunLikeEvent.id}-avatar-${index}`}
                           className={`absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full border border-[color:var(--background)] bg-black/[0.05] text-[11px] font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80 ${
                             index === 0 ? 'left-0 z-10' : 'left-3 z-0'
                           }`}

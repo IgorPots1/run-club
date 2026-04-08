@@ -72,11 +72,11 @@ function readScrollTop(scrollElement: ScrollContainer | null) {
     return 0
   }
 
-  if (scrollElement === window) {
-    return window.scrollY || window.pageYOffset || 0
+  if (scrollElement instanceof HTMLElement) {
+    return scrollElement.scrollTop
   }
 
-  return scrollElement.scrollTop
+  return scrollElement.scrollY || scrollElement.pageYOffset || 0
 }
 
 function writeScrollTop(scrollElement: ScrollContainer | null, scrollTop: number) {
