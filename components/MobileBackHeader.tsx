@@ -39,19 +39,21 @@ export default function MobileBackHeader({
 
   return (
     <header className={layoutClassName}>
-      <div className="grid min-h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3">
+      <div className="relative flex min-h-12 items-center gap-3">
         <BackNavigationButton fallbackHref={fallbackHref} variant="icon" />
-        <div className="min-w-0">
-          <h1 className="app-text-primary truncate text-center text-base font-semibold">
-            {title}
-          </h1>
+        <div className="pointer-events-none absolute inset-x-0 flex justify-center px-[5.5rem]">
+          <div className="min-w-0">
+            <h1 className="app-text-primary truncate text-center text-base font-semibold">
+              {title}
+            </h1>
+          </div>
         </div>
         {rightSlot ? (
-          <div className="flex h-11 w-11 items-center justify-center">
+          <div className="ml-auto flex min-w-[2.75rem] items-center justify-end">
             {rightSlot}
           </div>
         ) : (
-          <div className="h-11 w-11 shrink-0" aria-hidden="true" />
+          <div className="ml-auto h-11 w-11 shrink-0" aria-hidden="true" />
         )}
       </div>
     </header>

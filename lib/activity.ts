@@ -27,7 +27,6 @@ export type ActivityWindowRun = {
 export type ActivityChartPoint = {
   label: string
   distance: number
-  date?: string
   moving_time_seconds?: number | null
 }
 
@@ -271,7 +270,6 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
         distance: filteredRuns
           .filter((run) => isSameDay(run.createdAt, day))
           .reduce((sum, run) => sum + run.distance, 0),
-        date: `${formatDateKey(day)}T12:00:00`,
         moving_time_seconds: filteredRuns
           .filter((run) => isSameDay(run.createdAt, day))
           .reduce((sum, run) => sum + run.movingTimeSeconds, 0),
@@ -298,7 +296,6 @@ export function buildActivitySummary(runs: ActivityRunRow[], period: ActivityPer
       chartData: daysInMonth.map((day) => ({
         label: String(day),
         distance: distanceByDay[day] ?? 0,
-        date: `${formatDateKey(new Date(start.getFullYear(), start.getMonth(), day))}T12:00:00`,
         moving_time_seconds: movingTimeByDay[day] ?? 0,
       })),
     }

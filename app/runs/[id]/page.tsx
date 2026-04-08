@@ -34,7 +34,7 @@ import {
   toggleRunLike,
 } from '@/lib/run-likes'
 import { useRunCommentsController } from '@/lib/use-run-comments-controller'
-import { updateRun } from '@/lib/runs'
+import { updateRun, type UpdateRunInput } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
 import { uploadRunPhoto } from '@/lib/storage/uploadRunPhoto'
 import { supabase } from '@/lib/supabase'
@@ -548,14 +548,13 @@ export default function RunDetailsPage() {
   const [commentsError, setCommentsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
-  const [isEditingTitle, setIsEditingTitle] = useState(false)
-  const [isEditingDescription, setIsEditingDescription] = useState(false)
-  const [editedName, setEditedName] = useState('')
-  const [editedDescription, setEditedDescription] = useState('')
-  const [saveTitleError, setSaveTitleError] = useState('')
-  const [saveDescriptionError, setSaveDescriptionError] = useState('')
-  const [savingTitle, setSavingTitle] = useState(false)
-  const [savingDescription, setSavingDescription] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [draft, setDraft] = useState({
+    name: '',
+    description: '',
+  })
+  const [saveError, setSaveError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
@@ -648,7 +647,7 @@ export default function RunDetailsPage() {
   }
 
   function handleOpenPhotoPicker() {
-    if (!photoInputRef.current || uploadingPhotos || !isOwner) {
+    if (!photoInputRef.current || uploadingPhotos || !isOwner || !isEditMode) {
       return
     }
 
@@ -665,7 +664,7 @@ export default function RunDetailsPage() {
       return
     }
 
-    if (!user || !run || !isOwner || uploadingPhotos) {
+    if (!user || !run || !isOwner || !isEditMode || uploadingPhotos) {
       setUploadPhotosError('Добавлять фото может только владелец тренировки')
       return
     }
@@ -978,20 +977,15 @@ export default function RunDetailsPage() {
   }, [runId])
 
   useEffect(() => {
-    if (isEditingTitle) {
+    if (isEditMode) {
       return
     }
 
-    setEditedName(run?.name ?? '')
-  }, [isEditingTitle, run?.name])
-
-  useEffect(() => {
-    if (isEditingDescription) {
-      return
-    }
-
-    setEditedDescription(run?.description ?? '')
-  }, [isEditingDescription, run?.description])
+    setDraft({
+      name: run?.name ?? run?.title ?? '',
+      description: run?.description ?? '',
+    })
+  }, [isEditMode, run?.description, run?.name, run?.title])
 
   useEffect(() => {
     if (!stravaSupplementalInfoMessage) {
@@ -1140,148 +1134,81 @@ export default function RunDetailsPage() {
     run.external_id.trim().length > 0
   )
   const isMissingOfficialLaps = canRefreshStravaSupplemental && runLaps.length === 0
-  const normalizedEditedName = toNullableTrimmedText(editedName)
-  const normalizedEditedDescription = toNullableTrimmedText(editedDescription)
-  const hasTitleChanged = normalizedEditedName !== toNullableTrimmedText(run?.name)
-  const hasDescriptionChanged = normalizedEditedDescription !== toNullableTrimmedText(run?.description)
+  const currentEditableName = run?.name ?? run?.title ?? ''
+  const normalizedDraftName = toNullableTrimmedText(draft.name)
+  const normalizedDraftDescription = toNullableTrimmedText(draft.description)
+  const hasTitleChanged = normalizedDraftName !== toNullableTrimmedText(currentEditableName)
+  const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(run?.description)
   const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
   const isLikeActive = isOwner ? likesCount > 0 : likedByMe
-  const isEditing = isEditingTitle || isEditingDescription
-  const isSaving = savingTitle || savingDescription
-  const hasPendingEditChanges = isEditingTitle
-    ? hasTitleChanged
-    : isEditingDescription
-      ? hasDescriptionChanged
-      : false
+  const hasPendingChanges = hasTitleChanged || hasDescriptionChanged
 
-  function handleStartEditingTitle() {
+  function handleEnterEditMode() {
     if (!isOwner || !run) {
       return
     }
 
-    setEditedName(run.name ?? '')
-    setSaveTitleError('')
-    setIsEditingDescription(false)
-    setSaveDescriptionError('')
-    setIsEditingTitle(true)
+    setDraft({
+      name: run.name ?? run.title ?? '',
+      description: run.description ?? '',
+    })
+    setSaveError('')
+    setUploadPhotosError('')
+    setIsEditMode(true)
   }
 
-  function handleCancelEditingTitle() {
-    setEditedName(run?.name ?? '')
-    setSaveTitleError('')
-    setIsEditingTitle(false)
+  function handleCancelEditMode() {
+    setDraft({
+      name: run?.name ?? run?.title ?? '',
+      description: run?.description ?? '',
+    })
+    setSaveError('')
+    setUploadPhotosError('')
+    setIsEditMode(false)
   }
 
-  function handleStartEditingDescription() {
-    if (!isOwner || !run) {
+  async function handleSaveEditMode() {
+    if (!user || !run || !isOwner || isSaving || !hasPendingChanges) {
       return
     }
 
-    setEditedDescription(run.description ?? '')
-    setSaveDescriptionError('')
-    setIsEditingTitle(false)
-    setSaveTitleError('')
-    setIsEditingDescription(true)
-  }
+    const updates: UpdateRunInput = {}
+    const nextRunUpdates: Partial<RunDetailsRow> = {}
 
-  function handleCancelEditingDescription() {
-    setEditedDescription(run?.description ?? '')
-    setSaveDescriptionError('')
-    setIsEditingDescription(false)
-  }
-
-  function handleCancelEditing() {
-    if (isEditingTitle) {
-      handleCancelEditingTitle()
-      return
+    if (hasTitleChanged) {
+      updates.name = normalizedDraftName
+      updates.nameManuallyEdited = true
+      nextRunUpdates.name = normalizedDraftName
+      nextRunUpdates.name_manually_edited = true
     }
 
-    if (isEditingDescription) {
-      handleCancelEditingDescription()
-    }
-  }
-
-  async function handleSaveEditing() {
-    if (isEditingTitle) {
-      await handleSaveTitle()
-      return
+    if (hasDescriptionChanged) {
+      updates.description = normalizedDraftDescription
+      updates.descriptionManuallyEdited = true
+      nextRunUpdates.description = normalizedDraftDescription
+      nextRunUpdates.description_manually_edited = true
     }
 
-    if (isEditingDescription) {
-      await handleSaveDescription()
-    }
-  }
-
-  async function handleSaveTitle() {
-    if (!user || !run || !isOwner || savingTitle || !hasTitleChanged) {
-      return
-    }
-
-    const nextName = normalizedEditedName
-    const updates: Partial<RunDetailsRow> = {
-      name: nextName,
-      name_manually_edited: true,
-    }
-
-    setSavingTitle(true)
-    setSaveTitleError('')
+    setIsSaving(true)
+    setSaveError('')
 
     try {
-      const { error: updateError } = await updateRun(run.id, {
-        name: nextName,
-        nameManuallyEdited: true,
-      })
+      const { error: updateError } = await updateRun(run.id, updates)
 
       if (updateError) {
-        setSaveTitleError('Не удалось сохранить название')
+        setSaveError('Не удалось сохранить изменения')
         return
       }
 
-      setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
-      setEditedName(nextName ?? '')
-      setIsEditingTitle(false)
-      dispatchRunsUpdatedEvent()
-    } catch {
-      setSaveTitleError('Не удалось сохранить название')
-    } finally {
-      setSavingTitle(false)
-    }
-  }
-
-  async function handleSaveDescription() {
-    if (!user || !run || !isOwner || savingDescription || !hasDescriptionChanged) {
-      return
-    }
-
-    const nextDescription = normalizedEditedDescription
-    const updates: Partial<RunDetailsRow> = {
-      description: nextDescription,
-      description_manually_edited: true,
-    }
-
-    setSavingDescription(true)
-    setSaveDescriptionError('')
-
-    try {
-      const { error: updateError } = await updateRun(run.id, {
-        description: nextDescription,
-        descriptionManuallyEdited: true,
-      })
-
-      if (updateError) {
-        setSaveDescriptionError('Не удалось сохранить описание')
-        return
-      }
-
-      setRun((currentRun) => (currentRun ? { ...currentRun, ...updates } : currentRun))
-      setEditedDescription(nextDescription ?? '')
+      setRun((currentRun) => (currentRun ? { ...currentRun, ...nextRunUpdates } : currentRun))
       setDescriptionExpanded(false)
-      setIsEditingDescription(false)
+      setSaveError('')
+      setIsEditMode(false)
       dispatchRunsUpdatedEvent()
     } catch {
-      setSaveDescriptionError('Не удалось сохранить описание')
+      setSaveError('Не удалось сохранить изменения')
     } finally {
-      setSavingDescription(false)
+      setIsSaving(false)
     }
   }
 
@@ -1476,11 +1403,21 @@ export default function RunDetailsPage() {
     )
   }
 
-  const editActionBar = isEditing ? (
+  const headerRightSlot = isOwner && !isEditMode ? (
+    <button
+      type="button"
+      onClick={handleEnterEditMode}
+      className="app-text-primary inline-flex min-h-11 items-center justify-center rounded-full px-1 text-sm font-medium"
+    >
+      Изменить
+    </button>
+  ) : null
+
+  const editActionBar = isEditMode ? (
     <div className="flex items-center justify-between gap-3">
       <button
         type="button"
-        onClick={handleCancelEditing}
+        onClick={handleCancelEditMode}
         disabled={isSaving}
         className="app-button-secondary min-h-11 rounded-2xl border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
       >
@@ -1489,9 +1426,9 @@ export default function RunDetailsPage() {
       <button
         type="button"
         onClick={() => {
-          void handleSaveEditing()
+          void handleSaveEditMode()
         }}
-        disabled={isSaving || !hasPendingEditChanges}
+        disabled={isSaving || !hasPendingChanges}
         className="app-button-primary min-h-11 rounded-2xl border px-5 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSaving ? 'Сохраняем...' : 'Сохранить'}
@@ -1500,13 +1437,13 @@ export default function RunDetailsPage() {
   ) : null
 
   return (
-    <WorkoutDetailShell title="Тренировка" footer={editActionBar}>
+    <WorkoutDetailShell title="Тренировка" headerRightSlot={headerRightSlot} footer={editActionBar}>
     <div className="min-w-0 overflow-x-hidden space-y-4">
-      {runPhotos.length > 0 || isOwner ? (
+      {runPhotos.length > 0 || isEditMode ? (
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
-            {isOwner ? (
+            {isOwner && isEditMode ? (
               <button
                 type="button"
                 onClick={handleOpenPhotoPicker}
@@ -1527,7 +1464,7 @@ export default function RunDetailsPage() {
             className="hidden"
           />
 
-          {uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
+          {isEditMode && uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
 
           {runPhotos.length > 0 ? (
             <div className="mt-3 min-w-0 overflow-x-auto overflow-y-hidden pb-1">
@@ -1577,41 +1514,32 @@ export default function RunDetailsPage() {
           </div>
         </div>
 
-        {isEditingTitle ? (
-          <div className="mt-3">
-            <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
-              Название
-            </label>
-            <input
-              id="run-name"
-              type="text"
-              value={editedName}
-              onChange={(event) => {
-                setEditedName(event.target.value)
-                setSaveTitleError('')
-              }}
-              placeholder="Введите название"
-              disabled={savingTitle}
-              className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
-            />
-            {saveTitleError ? <p className="mt-2 text-sm text-red-600">{saveTitleError}</p> : null}
-          </div>
-        ) : (
-          <div className="mt-3">
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
-              {isOwner ? (
-                <button
-                  type="button"
-                  onClick={handleStartEditingTitle}
-                  className="app-text-muted shrink-0 text-xs font-medium"
-                >
-                  Редактировать
-                </button>
-              ) : null}
-            </div>
-          </div>
-        )}
+        <div className="mt-3">
+          {isEditMode ? (
+            <>
+              <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
+                Название
+              </label>
+              <input
+                id="run-name"
+                type="text"
+                value={draft.name}
+                onChange={(event) => {
+                  setDraft((currentDraft) => ({
+                    ...currentDraft,
+                    name: event.target.value,
+                  }))
+                  setSaveError('')
+                }}
+                placeholder="Введите название"
+                disabled={isSaving}
+                className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </>
+          ) : (
+            <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
+          )}
+        </div>
 
         {currentAssignedShoe ? (
           <p className="app-text-secondary mt-2 text-sm">
@@ -1621,35 +1549,27 @@ export default function RunDetailsPage() {
           </p>
         ) : null}
 
-        {runDescription || isOwner || isEditingDescription ? (
+        {runDescription || isOwner || isEditMode ? (
           <div className="mt-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="app-text-secondary text-sm font-medium">Описание</p>
-              {isOwner && !isEditingDescription ? (
-                <button
-                  type="button"
-                  onClick={handleStartEditingDescription}
-                  className="app-text-muted shrink-0 text-xs font-medium"
-                >
-                  {runDescription ? 'Редактировать' : 'Добавить'}
-                </button>
-              ) : null}
-            </div>
+            <p className="app-text-secondary text-sm font-medium">Описание</p>
 
-            {isEditingDescription ? (
+            {isEditMode ? (
               <div className="mt-2">
                 <textarea
                   id="run-description"
-                  value={editedDescription}
+                  value={draft.description}
                   onChange={(event) => {
-                    setEditedDescription(event.target.value)
-                    setSaveDescriptionError('')
+                    setDraft((currentDraft) => ({
+                      ...currentDraft,
+                      description: event.target.value,
+                    }))
+                    setSaveError('')
                   }}
                   placeholder="Добавьте описание"
-                  disabled={savingDescription}
+                  disabled={isSaving}
                   className="app-input min-h-28 w-full rounded-lg border px-3 py-2"
                 />
-                {saveDescriptionError ? <p className="mt-2 text-sm text-red-600">{saveDescriptionError}</p> : null}
+                {saveError ? <p className="mt-2 text-sm text-red-600">{saveError}</p> : null}
               </div>
             ) : runDescription ? (
               <div className="mt-2">
