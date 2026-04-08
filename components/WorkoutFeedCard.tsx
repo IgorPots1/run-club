@@ -217,7 +217,7 @@ function WorkoutFeedCard({
   const movingTimeLabel = movingTime?.trim() || ''
   const hasMediaContent = shouldRenderMediaCarousel || (showMapPreview && Boolean(mapPreviewUrl)) || Boolean(previewPhoto)
   const isManualRun = externalSource !== 'strava'
-  const shouldRenderInlineMetrics = !hasMediaContent && isManualRun && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
+  const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
@@ -285,7 +285,7 @@ function WorkoutFeedCard({
       <div className="mt-3">
         <p
           className={`break-words whitespace-pre-wrap text-[15px] leading-5 ${
-            isManualRun ? 'app-text-primary font-bold' : 'app-text-primary font-semibold'
+            isManualRun ? 'app-text-primary text-base font-bold' : 'app-text-primary font-semibold'
           }`}
         >
           {displayTitle}

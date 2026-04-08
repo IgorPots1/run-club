@@ -690,9 +690,9 @@ export default function RunsPage() {
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-      <InnerPageHeader title="Тренировки" fallbackHref="/activity" />
-      <div className="mt-4">
-      <form onSubmit={handleSubmit} className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
+        <InnerPageHeader title="Тренировки" fallbackHref="/activity" sticky />
+        <div className="mt-4">
+          <form onSubmit={handleSubmit} className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
           <label htmlFor="title" className="app-text-secondary block text-sm mb-1">Название тренировки (необязательно)</label>
           <input
@@ -826,32 +826,32 @@ export default function RunsPage() {
             ) : null}
           </div>
         </div>
-        {saveInfoMessage ? (
-          <div className="rounded-xl border border-amber-300/70 bg-amber-100/80 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
-            {saveInfoMessage}
-          </div>
-        ) : null}
-        {xpToast ? (
-          <XpGainToast
-            xpGained={xpToast.xpGained}
-            breakdown={xpToast.breakdown}
-            challengeMessages={xpToast.challengeMessages}
-          />
-        ) : null}
-        <button
-          type="submit"
-          disabled={submitting || !isWorkoutFormValid}
-          className={`min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed sm:w-auto ${
-            submitting || !isWorkoutFormValid
-              ? 'app-button-secondary text-[var(--text-muted)] opacity-70'
-              : 'app-button-primary shadow-sm'
-          }`}
-        >
-          {submitting ? 'Сохраняем тренировку...' : 'Добавить тренировку'}
-        </button>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-      </form>
-      </div>
+            {saveInfoMessage ? (
+              <div className="rounded-xl border border-amber-300/70 bg-amber-100/80 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+                {saveInfoMessage}
+              </div>
+            ) : null}
+            {xpToast ? (
+              <XpGainToast
+                xpGained={xpToast.xpGained}
+                breakdown={xpToast.breakdown}
+                challengeMessages={xpToast.challengeMessages}
+              />
+            ) : null}
+            <button
+              type="submit"
+              disabled={submitting || !isWorkoutFormValid}
+              className={`min-h-11 w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed sm:w-auto ${
+                submitting || !isWorkoutFormValid
+                  ? 'app-button-secondary text-[var(--text-muted)] opacity-70'
+                  : 'app-button-primary shadow-sm'
+              }`}
+            >
+              {submitting ? 'Сохраняем тренировку...' : 'Добавить тренировку'}
+            </button>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </form>
+        </div>
       </div>
       <CalendarDatePickerSheet
         key={`${selectedDate}:${todayDateValue}`}
