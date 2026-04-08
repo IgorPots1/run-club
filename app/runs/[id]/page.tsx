@@ -1426,7 +1426,7 @@ export default function RunDetailsPage() {
     <button
       type="button"
       onClick={handleEnterEditMode}
-      className="app-text-primary inline-flex min-h-11 items-center justify-center rounded-full px-1 text-sm font-medium"
+      className="app-text-primary inline-flex min-h-11 max-w-full items-center justify-end truncate rounded-full px-0 text-right text-sm font-medium"
     >
       Изменить
     </button>
@@ -1456,7 +1456,7 @@ export default function RunDetailsPage() {
   ) : null
 
   const detailScrollContentClassName =
-    'pt-5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-5 md:pt-5'
+    'pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-5 md:pt-5'
 
   return (
     <WorkoutDetailShell
@@ -1526,146 +1526,152 @@ export default function RunDetailsPage() {
         </section>
       ) : null}
 
-      <section className="app-card rounded-2xl border p-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <ParticipantIdentity
-            avatarUrl={author?.avatar_url ?? null}
-            displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
-            level={authorLevel}
-            href={`/users/${run.user_id}`}
-            size="md"
-          />
-          <div className="flex shrink-0 flex-col items-end">
-            <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
-              {formatRunTimestampLabel(run.created_at, run.external_source)}
-            </p>
+      {isEditMode ? (
+        <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <div className="mt-1">
+            <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
+              Название
+            </label>
+            <input
+              id="run-name"
+              type="text"
+              value={draft.name}
+              onChange={(event) => {
+                setDraft((currentDraft) => ({
+                  ...currentDraft,
+                  name: event.target.value,
+                }))
+                setSaveError('')
+              }}
+              placeholder="Введите название"
+              disabled={isSaving}
+              className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+            />
           </div>
-        </div>
 
-        <div className="mt-3">
-          {isEditMode ? (
-            <>
-              <label htmlFor="run-name" className="app-text-secondary text-sm font-medium">
-                Название
-              </label>
-              <input
-                id="run-name"
-                type="text"
-                value={draft.name}
+          <div className="mt-4">
+            <p className="app-text-secondary text-sm font-medium">Описание</p>
+
+            <div className="mt-2">
+              <textarea
+                id="run-description"
+                value={draft.description}
                 onChange={(event) => {
                   setDraft((currentDraft) => ({
                     ...currentDraft,
-                    name: event.target.value,
+                    description: event.target.value,
                   }))
                   setSaveError('')
                 }}
-                placeholder="Введите название"
+                placeholder="Добавьте описание"
                 disabled={isSaving}
-                className="app-input mt-1 min-h-11 w-full rounded-lg border px-3 py-2"
+                className="app-input min-h-28 w-full rounded-lg border px-3 py-2"
               />
-            </>
-          ) : (
-            <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
-          )}
-        </div>
+              {saveError ? <p className="mt-2 text-sm text-red-600">{saveError}</p> : null}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="app-card rounded-2xl border p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <ParticipantIdentity
+              avatarUrl={author?.avatar_url ?? null}
+              displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
+              level={authorLevel}
+              href={`/users/${run.user_id}`}
+              size="md"
+            />
+            <div className="flex shrink-0 flex-col items-end">
+              <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
+                {formatRunTimestampLabel(run.created_at, run.external_source)}
+              </p>
+            </div>
+          </div>
 
-        {currentAssignedShoe ? (
-          <p className="app-text-secondary mt-2 text-sm">
-            Кроссовки: {currentAssignedShoe.displayName}
-            {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
-            {!currentAssignedShoe.isActive ? ' • архив' : ''}
-          </p>
-        ) : null}
-
-        {runDescription || isOwner || isEditMode ? (
           <div className="mt-3">
-            <p className="app-text-secondary text-sm font-medium">Описание</p>
-
-            {isEditMode ? (
-              <div className="mt-2">
-                <textarea
-                  id="run-description"
-                  value={draft.description}
-                  onChange={(event) => {
-                    setDraft((currentDraft) => ({
-                      ...currentDraft,
-                      description: event.target.value,
-                    }))
-                    setSaveError('')
-                  }}
-                  placeholder="Добавьте описание"
-                  disabled={isSaving}
-                  className="app-input min-h-28 w-full rounded-lg border px-3 py-2"
-                />
-                {saveError ? <p className="mt-2 text-sm text-red-600">{saveError}</p> : null}
-              </div>
-            ) : runDescription ? (
-              <div className="mt-2">
-                <p
-                  className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
-                    descriptionExpanded ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {runDescription}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => setDescriptionExpanded((prev) => !prev)}
-                  className="app-text-muted mt-0.5 text-xs font-medium"
-                >
-                  {descriptionExpanded ? 'Скрыть' : 'Читать'}
-                </button>
-              </div>
-            ) : (
-              <p className="app-text-muted mt-2 text-sm">Пока без описания.</p>
-            )}
+            <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
           </div>
-        ) : null}
 
-        <div className="mt-2.5 text-sm">
-          <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
-          <div className="grid content-start gap-1.5">
-            <p className="app-text-secondary text-sm leading-tight">Расстояние</p>
-            <p className="app-text-primary text-lg font-semibold leading-tight">{details.distanceLabel ?? '—'}</p>
-          </div>
-          <div className="grid content-start gap-1.5">
-            <p className="app-text-secondary text-sm leading-tight">Время в движении</p>
-            <p className="app-text-primary text-lg font-semibold leading-tight">{details.movingTimeLabel || details.durationLabel || '—'}</p>
-          </div>
-          <div className="grid content-start gap-1.5">
-            <p className="app-text-secondary text-sm leading-tight">Средний темп</p>
-            <p className="app-text-primary text-lg font-semibold leading-tight">{details.paceLabel ?? '—'}</p>
-          </div>
-          <div className="grid content-start gap-1.5">
-            <p className="app-text-secondary text-sm leading-tight">Набор высоты</p>
-            <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
-          </div>
-        </div>
-
-        {isMissingOfficialLaps ? (
-          <div className="mt-4 rounded-xl border px-4 py-3">
-            <p className="app-text-secondary text-sm">
-              Разбивка показана по расчетным данным. Официальные сплиты из Strava можно загрузить вручную.
+          {currentAssignedShoe ? (
+            <p className="app-text-secondary mt-2 text-sm">
+              Кроссовки: {currentAssignedShoe.displayName}
+              {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
+              {!currentAssignedShoe.isActive ? ' • архив' : ''}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                void handleRefreshStravaSupplemental()
-              }}
-              disabled={refreshingStravaSupplemental}
-              className="app-button-secondary mt-3 min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {refreshingStravaSupplemental ? 'Обновляем из Strava...' : 'Обновить из Strava'}
-            </button>
-            {stravaSupplementalError ? <p className="mt-2 text-sm text-red-600">{stravaSupplementalError}</p> : null}
-            {stravaSupplementalInfoMessage ? <p className="mt-2 text-sm text-green-700">{stravaSupplementalInfoMessage}</p> : null}
+          ) : null}
+
+          {runDescription || isOwner ? (
+            <div className="mt-3">
+              <p className="app-text-secondary text-sm font-medium">Описание</p>
+
+              {runDescription ? (
+                <div className="mt-2">
+                  <p
+                    className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
+                      descriptionExpanded ? '' : 'line-clamp-2'
+                    }`}
+                  >
+                    {runDescription}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionExpanded((prev) => !prev)}
+                    className="app-text-muted mt-0.5 text-xs font-medium"
+                  >
+                    {descriptionExpanded ? 'Скрыть' : 'Читать'}
+                  </button>
+                </div>
+              ) : (
+                <p className="app-text-muted mt-2 text-sm">Пока без описания.</p>
+              )}
+            </div>
+          ) : null}
+
+          <div className="mt-2.5 text-sm">
+            <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
           </div>
-        ) : null}
-      </section>
+
+          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Расстояние</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.distanceLabel ?? '—'}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Время в движении</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.movingTimeLabel || details.durationLabel || '—'}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Средний темп</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.paceLabel ?? '—'}</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <p className="app-text-secondary text-sm leading-tight">Набор высоты</p>
+              <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
+            </div>
+          </div>
+
+          {isMissingOfficialLaps ? (
+            <div className="mt-4 rounded-xl border px-4 py-3">
+              <p className="app-text-secondary text-sm">
+                Разбивка показана по расчетным данным. Официальные сплиты из Strava можно загрузить вручную.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleRefreshStravaSupplemental()
+                }}
+                disabled={refreshingStravaSupplemental}
+                className="app-button-secondary mt-3 min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {refreshingStravaSupplemental ? 'Обновляем из Strava...' : 'Обновить из Strava'}
+              </button>
+              {stravaSupplementalError ? <p className="mt-2 text-sm text-red-600">{stravaSupplementalError}</p> : null}
+              {stravaSupplementalInfoMessage ? <p className="mt-2 text-sm text-green-700">{stravaSupplementalInfoMessage}</p> : null}
+            </div>
+          ) : null}
+        </section>
+      )}
 
       {!isEditMode ? (
         <>
