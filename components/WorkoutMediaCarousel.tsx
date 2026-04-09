@@ -108,7 +108,7 @@ export default function WorkoutMediaCarousel({
   )
   const canUseStaticMapPreview = Boolean(mapPreviewUrl) && failedMapPreviewUrl !== mapPreviewUrl
   const mediaSlides = useMemo<WorkoutMediaSlide[]>(() => (
-    orderedMedia.flatMap((mediaItem) => {
+    orderedMedia.flatMap((mediaItem): WorkoutMediaSlide[] => {
       if (mediaItem.type === 'map') {
         if (canUseStaticMapPreview && mapPreviewUrl) {
           return [{
