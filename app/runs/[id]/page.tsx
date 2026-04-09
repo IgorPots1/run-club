@@ -76,10 +76,17 @@ type RunDetailSeriesPoint = {
   value: number
 }
 
+type RunDetailDistanceSeriesPoint = {
+  distance: number
+  value: number
+}
+
 type RunDetailSeriesRow = {
   exists: boolean
   pace_points: RunDetailSeriesPoint[] | null
   heartrate_points: RunDetailSeriesPoint[] | null
+  cadence_points: RunDetailSeriesPoint[] | null
+  altitude_points: RunDetailDistanceSeriesPoint[] | null
 }
 
 type RunLapRow = {
@@ -113,6 +120,8 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
   exists: false,
   pace_points: null,
   heartrate_points: null,
+  cadence_points: null,
+  altitude_points: null,
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
@@ -191,6 +200,25 @@ function normalizeRunDetailSeriesPoints(value: unknown): RunDetailSeriesPoint[] 
   return points.length > 0 ? points : null
 }
 
+function normalizeRunDetailDistanceSeriesPoints(value: unknown): RunDetailDistanceSeriesPoint[] | null {
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  const points = value
+    .filter(
+      (point): point is { distance?: unknown; value?: unknown; x?: unknown; y?: unknown } =>
+        typeof point === 'object' && point !== null
+    )
+    .map((point) => ({
+      distance: Number(point.distance ?? point.x),
+      value: Number(point.value ?? point.y),
+    }))
+    .filter((point) => Number.isFinite(point.distance) && point.distance >= 0 && Number.isFinite(point.value))
+
+  return points.length > 0 ? points : null
+}
+
 function formatDurationLabel(totalSeconds: number) {
   const safeSeconds = Math.max(0, Math.round(totalSeconds))
   const hours = Math.floor(safeSeconds / 3600)
@@ -245,6 +273,14 @@ function formatBreakdownPaceLabel(averagePaceSeconds: number) {
 }
 
 function formatHeartRateTick(value: number) {
+  return `${Math.round(value)}`
+}
+
+function formatCadenceTick(value: number) {
+  return `${Math.round(value)}`
+}
+
+function formatElevationTick(value: number) {
   return `${Math.round(value)}`
 }
 
@@ -508,6 +544,17 @@ function mapSeriesPointsToElapsedMinutes(
     }),
     usedFallbackApproximation: canApproximateAcrossDuration,
   }
+}
+
+function mapDistanceSeriesPointsToDistanceKm(points: RunDetailDistanceSeriesPoint[] | null | undefined) {
+  const safePoints = points ?? []
+
+  return safePoints
+    .map((point) => ({
+      distanceKm: point.distance / 1000,
+      value: point.value,
+    }))
+    .filter((point) => Number.isFinite(point.distanceKm) && point.distanceKm >= 0 && Number.isFinite(point.value))
 }
 
 function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
@@ -822,7 +869,7 @@ export default function RunDetailsPage() {
             .maybeSingle(),
           supabase
             .from('run_detail_series')
-            .select('pace_points, heartrate_points')
+            .select('pace_points, heartrate_points, cadence_points, altitude_points')
             .eq('run_id', runData.id)
             .maybeSingle(),
           supabase
@@ -861,6 +908,8 @@ export default function RunDetailsPage() {
               exists: Boolean(seriesResult.data),
               pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
               heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
+              cadence_points: normalizeRunDetailSeriesPoints(seriesResult.data?.cadence_points),
+              altitude_points: normalizeRunDetailDistanceSeriesPoints(seriesResult.data?.altitude_points),
             }
 
         setRun(runData as RunDetailsRow)
@@ -1017,6 +1066,14 @@ export default function RunDetailsPage() {
     () => mapSeriesPointsToElapsedMinutes(runSeries.heartrate_points, chartDurationSeconds),
     [chartDurationSeconds, runSeries.heartrate_points]
   )
+  const cadenceSeriesForChart = useMemo(
+    () => mapSeriesPointsToElapsedMinutes(runSeries.cadence_points, chartDurationSeconds),
+    [chartDurationSeconds, runSeries.cadence_points]
+  )
+  const altitudeSeriesForChart = useMemo(
+    () => mapDistanceSeriesPointsToDistanceKm(runSeries.altitude_points),
+    [runSeries.altitude_points]
+  )
   const paceChartData = useMemo(
     () =>
       paceSeriesForChart.data.map((point) => ({
@@ -1034,8 +1091,26 @@ export default function RunDetailsPage() {
       })),
     [heartRateSeriesForChart.data]
   )
+  const cadenceChartData = useMemo(
+    () =>
+      cadenceSeriesForChart.data.map((point) => ({
+        time: point.time,
+        cadence: point.value,
+      })),
+    [cadenceSeriesForChart.data]
+  )
+  const altitudeChartData = useMemo(
+    () =>
+      altitudeSeriesForChart.map((point) => ({
+        distanceKm: point.distanceKm,
+        altitude: point.value,
+      })),
+    [altitudeSeriesForChart]
+  )
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
+  const shouldRenderCadenceChart = (runSeries.cadence_points?.length ?? 0) > 1
+  const shouldRenderAltitudeChart = (runSeries.altitude_points?.length ?? 0) > 1
   const breakdownRows = useMemo(() => {
     if (runLaps.length > 0) {
       return runLaps
@@ -1789,6 +1864,134 @@ export default function RunDetailsPage() {
                       stroke="var(--accent-strong)"
                       strokeWidth={2.5}
                       fill="url(#heart-rate-fill)"
+                      fillOpacity={1}
+                      dot={false}
+                      activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          ) : null}
+
+          {shouldRenderCadenceChart ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary text-base font-semibold">Каденс</h2>
+              <div className="mt-3 h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={cadenceChartData}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    accessibilityLayer={false}
+                    syncId="run-detail-series"
+                    syncMethod="value"
+                  >
+                    <defs>
+                      <linearGradient id="cadence-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.16} />
+                        <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                    <XAxis
+                      dataKey="time"
+                      type="number"
+                      domain={['dataMin', 'dataMax']}
+                      tickCount={6}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={24}
+                      tickMargin={8}
+                      tickFormatter={formatElapsedMinutesLabel}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                      tickFormatter={formatCadenceTick}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                      domain={['dataMin - 5', 'dataMax + 5']}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                      formatter={(value) => {
+                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                        return [`${Math.round(numericValue)} шаг/мин`, 'Каденс']
+                      }}
+                      labelFormatter={(value) =>
+                        formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="cadence"
+                      stroke="var(--accent-strong)"
+                      strokeWidth={2.5}
+                      fill="url(#cadence-fill)"
+                      fillOpacity={1}
+                      dot={false}
+                      activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          ) : null}
+
+          {shouldRenderAltitudeChart ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary text-base font-semibold">Профиль высоты</h2>
+              <div className="mt-3 h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={altitudeChartData}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    accessibilityLayer={false}
+                  >
+                    <defs>
+                      <linearGradient id="altitude-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.14} />
+                        <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                    <XAxis
+                      dataKey="distanceKm"
+                      type="number"
+                      domain={['dataMin', 'dataMax']}
+                      tickCount={6}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={24}
+                      tickMargin={8}
+                      tickFormatter={formatDistanceKm}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                      tickFormatter={formatElevationTick}
+                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
+                      domain={['dataMin - 5', 'dataMax + 5']}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
+                      formatter={(value) => {
+                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                        return [`${Math.round(numericValue)} м`, 'Высота']
+                      }}
+                      labelFormatter={(value) =>
+                        `${formatDistanceKm(typeof value === 'number' ? value : Number(value ?? 0))} км`
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="altitude"
+                      stroke="var(--accent-strong)"
+                      strokeWidth={2.5}
+                      fill="url(#altitude-fill)"
                       fillOpacity={1}
                       dot={false}
                       activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}

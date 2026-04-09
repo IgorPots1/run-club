@@ -154,6 +154,11 @@ type RunDetailSeriesPoint = {
   value: number
 }
 
+type RunDetailDistanceSeriesPoint = {
+  distance: number
+  value: number
+}
+
 type RunLapUpsertPayload = {
   run_id: string
   strava_activity_id: number
@@ -231,6 +236,8 @@ function getStreamLengths(streams: StravaActivityStreams) {
     distance: streams.distance?.length ?? 0,
     velocity_smooth: streams.velocity_smooth?.length ?? 0,
     heartrate: streams.heartrate?.length ?? 0,
+    cadence: streams.cadence?.length ?? 0,
+    altitude: streams.altitude?.length ?? 0,
   }
 }
 
@@ -588,7 +595,7 @@ function buildRunLapUpsertPayloads(
   })
 }
 
-function buildBucketedSeries(
+function buildBucketedTimeSeries(
   timeValues: number[] | undefined,
   values: number[] | undefined,
   toYValue: (value: number) => number | null
@@ -635,8 +642,55 @@ function buildBucketedSeries(
   return points.length >= MIN_SERIES_POINTS ? points : null
 }
 
+function buildBucketedDistanceSeries(
+  distanceValues: number[] | undefined,
+  values: number[] | undefined,
+  toYValue: (value: number) => number | null
+): RunDetailDistanceSeriesPoint[] | null {
+  if (
+    !Array.isArray(distanceValues) ||
+    !Array.isArray(values) ||
+    distanceValues.length === 0 ||
+    values.length === 0 ||
+    distanceValues.length !== values.length
+  ) {
+    return null
+  }
+
+  const bucketCount = Math.min(MAX_SERIES_POINTS, values.length)
+  const points: RunDetailDistanceSeriesPoint[] = []
+
+  for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
+    const start = Math.floor((bucketIndex * values.length) / bucketCount)
+    const end = Math.floor(((bucketIndex + 1) * values.length) / bucketCount)
+    const bucketPoints = values
+      .slice(start, Math.max(start + 1, end))
+      .map((value, indexOffset) => ({
+        distance: Number(distanceValues[start + indexOffset]),
+        value: toYValue(value),
+      }))
+      .filter(
+        (point): point is { distance: number; value: number } =>
+          Number.isFinite(point.distance) && point.distance >= 0 && Number.isFinite(point.value)
+      )
+
+    if (bucketPoints.length === 0) {
+      continue
+    }
+
+    const averageDistance = bucketPoints.reduce((sum, point) => sum + point.distance, 0) / bucketPoints.length
+    const averageValue = bucketPoints.reduce((sum, point) => sum + point.value, 0) / bucketPoints.length
+    points.push({
+      distance: Math.round(averageDistance),
+      value: Math.round(averageValue),
+    })
+  }
+
+  return points.length >= MIN_SERIES_POINTS ? points : null
+}
+
 function buildPaceSeriesPoints(streams: StravaActivityStreams) {
-  return buildBucketedSeries(streams.time, streams.velocity_smooth, (velocityMetersPerSecond) => {
+  return buildBucketedTimeSeries(streams.time, streams.velocity_smooth, (velocityMetersPerSecond) => {
     if (!Number.isFinite(velocityMetersPerSecond) || velocityMetersPerSecond <= 0) {
       return null
     }
@@ -662,7 +716,7 @@ function buildHeartrateSeriesPoints(
   )
 
   let producedBucketCount = 0
-  const points = buildBucketedSeries(streams.time, heartrateValues, (heartrate) => {
+  const points = buildBucketedTimeSeries(streams.time, heartrateValues, (heartrate) => {
     if (!Number.isFinite(heartrate) || heartrate < 40 || heartrate > 240) {
       return null
     }
@@ -695,6 +749,26 @@ function buildHeartrateSeriesPoints(
   })
 
   return points
+}
+
+function buildCadenceSeriesPoints(streams: StravaActivityStreams) {
+  return buildBucketedTimeSeries(streams.time, streams.cadence, (cadence) => {
+    if (!Number.isFinite(cadence) || cadence < 30 || cadence > 260) {
+      return null
+    }
+
+    return cadence
+  })
+}
+
+function buildAltitudeSeriesPoints(streams: StravaActivityStreams) {
+  return buildBucketedDistanceSeries(streams.distance, streams.altitude, (altitudeMeters) => {
+    if (!Number.isFinite(altitudeMeters) || altitudeMeters < -1000 || altitudeMeters > 10000) {
+      return null
+    }
+
+    return altitudeMeters
+  })
 }
 
 async function syncRunDetailSeriesForActivity(
@@ -752,6 +826,8 @@ async function syncRunDetailSeriesForActivity(
 
     const pacePoints = buildPaceSeriesPoints(streams)
     const heartratePoints = buildHeartrateSeriesPoints(streams, activityId)
+    const cadencePoints = buildCadenceSeriesPoints(streams)
+    const altitudePoints = buildAltitudeSeriesPoints(streams)
 
     if (heartratePoints == null && pacePoints != null) {
       const heartrateValues = Array.isArray(streams.heartrate) ? streams.heartrate : undefined
@@ -781,6 +857,8 @@ async function syncRunDetailSeriesForActivity(
         activityId,
         pacePointsLength: pacePoints?.length ?? 0,
         heartratePointsLength: heartratePoints?.length ?? 0,
+        cadencePointsLength: cadencePoints?.length ?? 0,
+        altitudePointsLength: altitudePoints?.length ?? 0,
       })
     }
 
@@ -791,6 +869,8 @@ async function syncRunDetailSeriesForActivity(
           run_id: runId,
           pace_points: pacePoints,
           heartrate_points: heartratePoints,
+          cadence_points: cadencePoints,
+          altitude_points: altitudePoints,
           source: STRAVA_EXTERNAL_SOURCE,
         },
         {

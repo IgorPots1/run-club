@@ -92,6 +92,8 @@ export type StravaActivityStreams = {
   time?: number[]
   distance?: number[]
   heartrate?: number[]
+  cadence?: number[]
+  altitude?: number[]
   velocity_smooth?: number[]
 }
 

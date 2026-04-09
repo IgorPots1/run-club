@@ -11,7 +11,7 @@ const STRAVA_AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
 const STRAVA_ACTIVITIES_URL = 'https://www.strava.com/api/v3/athlete/activities'
 const STRAVA_ACTIVITY_URL = 'https://www.strava.com/api/v3/activities'
-const STRAVA_ACTIVITY_STREAM_KEYS = 'time,distance,heartrate,velocity_smooth'
+const STRAVA_ACTIVITY_STREAM_KEYS = 'time,distance,heartrate,cadence,altitude,velocity_smooth'
 const STRAVA_MVP_SCOPE = 'read,activity:read_all'
 
 type StravaActivityStreamEnvelope = {
@@ -248,6 +248,8 @@ export async function fetchActivityStreams(
     time: Array.isArray(parsed?.time?.data) ? parsed.time.data.filter((value): value is number => typeof value === 'number') : undefined,
     distance: Array.isArray(parsed?.distance?.data) ? parsed.distance.data.filter((value): value is number => typeof value === 'number') : undefined,
     heartrate: Array.isArray(parsed?.heartrate?.data) ? parsed.heartrate.data.filter((value): value is number => typeof value === 'number') : undefined,
+    cadence: Array.isArray(parsed?.cadence?.data) ? parsed.cadence.data.filter((value): value is number => typeof value === 'number') : undefined,
+    altitude: Array.isArray(parsed?.altitude?.data) ? parsed.altitude.data.filter((value): value is number => typeof value === 'number') : undefined,
     velocity_smooth: Array.isArray(parsed?.velocity_smooth?.data)
       ? parsed.velocity_smooth.data.filter((value): value is number => typeof value === 'number')
       : undefined,
