@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Heart, LoaderCircle, Map } from 'lucide-react'
+import { Heart, LoaderCircle } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -16,8 +16,8 @@ import {
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import RunCommentsSection from '@/components/RunCommentsSection'
-import RunRouteMapPreview from '@/components/RunRouteMapPreview'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
+import WorkoutMediaCarousel from '@/components/WorkoutMediaCarousel'
 import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
@@ -1457,6 +1457,7 @@ export default function RunDetailsPage() {
 
   const detailScrollContentClassName =
     'pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-5 md:pt-5'
+  const hasMedia = Boolean(run.map_polyline?.trim()) || runPhotos.length > 0
 
   return (
     <WorkoutDetailShell
@@ -1467,10 +1468,10 @@ export default function RunDetailsPage() {
       scrollContentClassName={detailScrollContentClassName}
     >
     <div className="min-w-0 overflow-x-hidden space-y-4">
-      {runPhotos.length > 0 || isEditMode ? (
+      {hasMedia || isEditMode ? (
         <section className="app-card rounded-2xl border p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="app-text-primary text-base font-semibold">Фотографии</h2>
+            <h2 className="app-text-primary text-base font-semibold">Медиа</h2>
             {isOwner && isEditMode ? (
               <button
                 type="button"
@@ -1494,30 +1495,16 @@ export default function RunDetailsPage() {
 
           {isEditMode && uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
 
-          {runPhotos.length > 0 ? (
-            <div className="mt-3 min-w-0 overflow-x-auto overflow-y-hidden pb-1">
-              <div className="flex min-w-max gap-3">
-                {runPhotos.map((photo, index) => (
-                  <button
-                    key={photo.id}
-                    type="button"
-                    onClick={() => setSelectedPhotoIndex(index)}
-                    className="h-40 w-56 shrink-0 overflow-hidden rounded-2xl border bg-[var(--surface-muted)] shadow-sm transition-transform active:scale-[0.99]"
-                    aria-label={`Открыть фото тренировки ${index + 1}`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.thumbnail_url ?? photo.public_url}
-                      alt={`Фото тренировки ${index + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                      draggable={false}
-                    />
-                  </button>
-                ))}
-              </div>
-            </div>
+          {hasMedia ? (
+            <WorkoutMediaCarousel
+              className="mt-3"
+              mapPolyline={run.map_polyline}
+              mapPreviewUrl={details.mapPreviewUrl}
+              photos={runPhotos}
+              allowSwipeMode="always"
+              enableMapFallbackPreview
+              onOpenPhoto={setSelectedPhotoIndex}
+            />
           ) : (
             <p className="app-text-secondary mt-3 text-sm">
               Добавьте фотографии тренировки, чтобы они появились в галерее.
@@ -1840,34 +1827,6 @@ export default function RunDetailsPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            </section>
-          ) : null}
-
-          {run.map_polyline?.trim() ? (
-            <section className="app-card rounded-2xl border p-4 shadow-sm">
-              <h2 className="app-text-primary inline-flex items-center gap-2 text-base font-semibold">
-                <Map className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-                <span>
-                  Маршрут
-                  {details.distanceLabel ? ` • ${details.distanceLabel}` : ''}
-                </span>
-              </h2>
-              <div className="mt-3 rounded-2xl p-1 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-                {details.mapPreviewUrl ? (
-                  <div className="h-[210px] w-full overflow-hidden rounded-2xl border bg-[var(--surface-muted)]">
-                    <img
-                      src={details.mapPreviewUrl}
-                      alt="Маршрут тренировки"
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                      draggable={false}
-                    />
-                  </div>
-                ) : (
-                  <RunRouteMapPreview polyline={run.map_polyline} className="h-[210px] w-full overflow-hidden rounded-2xl border" />
-                )}
               </div>
             </section>
           ) : null}
