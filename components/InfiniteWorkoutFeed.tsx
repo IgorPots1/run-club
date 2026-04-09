@@ -124,11 +124,11 @@ type RaceFeedCardProps = {
   item: FeedRaceEventItem
   isLikeInFlight: boolean
   onCommentClick: (raceEventId: string) => void
+  onOpenRaceEvent: (raceEventId: string) => void
   onToggleLike: (raceEventId: string) => void
 }
 
-function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onToggleLike }: RaceFeedCardProps) {
-  const router = useRouter()
+function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onOpenRaceEvent, onToggleLike }: RaceFeedCardProps) {
   const resultLabel = formatClock(item.resultTimeSeconds)
   const targetLabel = formatClock(item.targetTimeSeconds)
   const linkedRunPreview = formatLinkedRunPreview(item)
@@ -144,14 +144,14 @@ function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onToggleLike }: Ra
       onClick={(event) => {
         const target = event.target as HTMLElement
         if (target.closest('a,button')) return
-        router.push(`/races/${item.raceEventId}`)
+        onOpenRaceEvent(item.raceEventId)
       }}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         const target = event.target as HTMLElement
         if (target.closest('a,button')) return
         event.preventDefault()
-        router.push(`/races/${item.raceEventId}`)
+        onOpenRaceEvent(item.raceEventId)
       }}
     >
       <ParticipantIdentity
@@ -634,6 +634,16 @@ export default function InfiniteWorkoutFeed({
     router.push(`/runs/${runId}`)
   }, [prepareForRunDetailNavigation, router])
 
+  const navigateToRaceEvent = useCallback((raceEventId: string) => {
+    if (!raceEventId) {
+      return
+    }
+
+    prepareForRunDetailNavigation()
+
+    router.push(`/races/${raceEventId}`)
+  }, [prepareForRunDetailNavigation, router])
+
   useEffect(() => {
     if (!enabled) {
       return
@@ -1012,8 +1022,8 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    router.push(`/races/${raceEventId}`)
-  }, [router])
+    navigateToRaceEvent(raceEventId)
+  }, [navigateToRaceEvent])
 
   const handleOpenLikes = useCallback((item: FeedRunItem) => {
     setActiveLikesRun({
@@ -1105,6 +1115,7 @@ export default function InfiniteWorkoutFeed({
                 item={item}
                 isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
                 onCommentClick={handleRaceEventCommentClick}
+                onOpenRaceEvent={navigateToRaceEvent}
                 onToggleLike={handleRaceEventLikeToggle}
               />
             )
