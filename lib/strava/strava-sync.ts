@@ -113,6 +113,12 @@ type MissingRunDetailSeriesRow = {
   external_id: string | null
 }
 
+type ExistingRunDetailSeriesStatusRow = {
+  run_id: string
+  cadence_points: unknown | null
+  altitude_points: unknown | null
+}
+
 type MissingHeartrateBackfillRunRow = {
   id: string
   external_id: string | null
@@ -201,6 +207,25 @@ type RunLapsSyncResult = {
   status: RunLapsSyncStatus
   errorMessage: string | null
   httpStatus: number | null
+}
+
+function getMissingRunDetailSeriesReasons(row: ExistingRunDetailSeriesStatusRow | null) {
+  const reasons: Array<'missing_detail_series_row' | 'missing_cadence_points' | 'missing_altitude_points'> = []
+
+  if (!row) {
+    reasons.push('missing_detail_series_row')
+    return reasons
+  }
+
+  if (row.cadence_points == null) {
+    reasons.push('missing_cadence_points')
+  }
+
+  if (row.altitude_points == null) {
+    reasons.push('missing_altitude_points')
+  }
+
+  return reasons
 }
 
 function getLevelUpState(previousTotalXp: number, nextTotalXp: number) {
@@ -782,6 +807,53 @@ async function syncRunDetailSeriesForActivity(
     shouldDebugRunDetailSeries({ runId, activityId }) || matchesDebugRunId(runId, debugRunId)
 
   try {
+    const { data: existingSeriesStatus, error: existingSeriesStatusError } = await supabase
+      .from('run_detail_series')
+      .select('run_id, cadence_points, altitude_points')
+      .eq('run_id', runId)
+      .maybeSingle()
+
+    if (existingSeriesStatusError) {
+      throw new Error(existingSeriesStatusError.message)
+    }
+
+    const normalizedExistingSeriesStatus = (existingSeriesStatus as ExistingRunDetailSeriesStatusRow | null) ?? null
+    const missingReasons = getMissingRunDetailSeriesReasons(normalizedExistingSeriesStatus)
+    const shouldPopulateAllSeries = normalizedExistingSeriesStatus == null
+    const shouldBackfillCadencePoints = missingReasons.includes('missing_cadence_points')
+    const shouldBackfillAltitudePoints = missingReasons.includes('missing_altitude_points')
+
+    if (missingReasons.length === 0) {
+      if (shouldDebug) {
+        console.info('[run-detail-debug] run_detail_series_backfill_not_needed', {
+          runId,
+          activityId,
+        })
+      }
+
+      console.info('Strava run detail series backfill skipped', {
+        runId,
+        activityId,
+        reason: 'all_detail_series_fields_present',
+      })
+
+      return false
+    }
+
+    if (shouldDebug) {
+      console.info('[run-detail-debug] run_detail_series_backfill_needed', {
+        runId,
+        activityId,
+        missingReasons,
+      })
+    }
+
+    console.info('Strava run detail series backfill needed', {
+      runId,
+      activityId,
+      missingReasons,
+    })
+
     console.info('[strava-webhook-debug] fetch_streams_start', {
       runId,
       activityId,
@@ -829,6 +901,20 @@ async function syncRunDetailSeriesForActivity(
     const cadencePoints = buildCadenceSeriesPoints(streams)
     const altitudePoints = buildAltitudeSeriesPoints(streams)
 
+    if (shouldBackfillCadencePoints && cadencePoints == null) {
+      console.info('Strava cadence points unavailable during backfill', {
+        runId,
+        activityId,
+      })
+    }
+
+    if (shouldBackfillAltitudePoints && altitudePoints == null) {
+      console.info('Strava altitude points unavailable during backfill', {
+        runId,
+        activityId,
+      })
+    }
+
     if (heartratePoints == null && pacePoints != null) {
       const heartrateValues = Array.isArray(streams.heartrate) ? streams.heartrate : undefined
       const validHeartrateCount = (heartrateValues ?? []).filter(
@@ -867,10 +953,16 @@ async function syncRunDetailSeriesForActivity(
       .upsert(
         {
           run_id: runId,
-          pace_points: pacePoints,
-          heartrate_points: heartratePoints,
-          cadence_points: cadencePoints,
-          altitude_points: altitudePoints,
+          ...(shouldPopulateAllSeries ? {
+            pace_points: pacePoints,
+            heartrate_points: heartratePoints,
+          } : {}),
+          ...(shouldPopulateAllSeries || shouldBackfillCadencePoints ? {
+            cadence_points: cadencePoints,
+          } : {}),
+          ...(shouldPopulateAllSeries || shouldBackfillAltitudePoints ? {
+            altitude_points: altitudePoints,
+          } : {}),
           source: STRAVA_EXTERNAL_SOURCE,
         },
         {
@@ -1358,7 +1450,7 @@ async function backfillMissingRunDetailSeriesForUser(
 
   const { data: existingSeriesRows, error: existingSeriesError } = await supabase
     .from('run_detail_series')
-    .select('run_id')
+    .select('run_id, cadence_points, altitude_points')
     .in('run_id', candidateRuns.map((run) => run.id))
 
   if (existingSeriesError) {
@@ -1369,13 +1461,15 @@ async function backfillMissingRunDetailSeriesForUser(
     return
   }
 
-  const existingRunIds = new Set(
-    (existingSeriesRows ?? [])
-      .map((row) => row.run_id)
-      .filter((runId): runId is string => typeof runId === 'string' && runId.length > 0)
+  const existingSeriesRowsByRunId = new Map(
+    ((existingSeriesRows as ExistingRunDetailSeriesStatusRow[] | null) ?? [])
+      .filter((row) => typeof row.run_id === 'string' && row.run_id.length > 0)
+      .map((row) => [row.run_id, row] as const)
   )
 
-  const missingRuns = candidateRuns.filter((run) => !existingRunIds.has(run.id))
+  const missingRuns = candidateRuns.filter((run) =>
+    getMissingRunDetailSeriesReasons(existingSeriesRowsByRunId.get(run.id) ?? null).length > 0
+  )
 
   const selectedRuns = debugRunId
     ? missingRuns.filter((run) => run.id === debugRunId).slice(0, 1)
@@ -1436,7 +1530,7 @@ async function backfillMissingRunDetailSeriesForUser(
     console.info('Strava run detail series fallback sync triggered', {
       runId: run.id,
       activityId,
-      fallback_reason: 'historical_missing_detail_series',
+      fallback_reason: getMissingRunDetailSeriesReasons(existingSeriesRowsByRunId.get(run.id) ?? null),
     })
 
     await syncRunSupplementalStravaDataForActivity(supabase, run.id, activityId, accessToken)
@@ -2460,7 +2554,7 @@ export async function importStravaActivityForUser(
   if (options.accessToken) {
     const { data: existingSeriesRow, error: existingSeriesError } = await supabase
       .from('run_detail_series')
-      .select('run_id')
+      .select('run_id, cadence_points, altitude_points')
       .eq('run_id', normalizedExistingRun.id)
       .maybeSingle()
 
@@ -2470,12 +2564,23 @@ export async function importStravaActivityForUser(
           activityId: activityForImport.id,
         error: existingSeriesError.message,
       })
-    } else if (!existingSeriesRow) {
-      console.info('Strava run detail series fallback sync triggered', {
-        runId: existingRunIdForSupplementalSync,
+    } else {
+      const missingReasons = getMissingRunDetailSeriesReasons(
+        (existingSeriesRow as ExistingRunDetailSeriesStatusRow | null) ?? null
+      )
+
+      if (missingReasons.length > 0) {
+        console.info('Strava run detail series fallback sync triggered', {
+          runId: existingRunIdForSupplementalSync,
           activityId: activityForImport.id,
-        fallback_reason: 'missing_detail_series',
-      })
+          fallback_reason: missingReasons,
+        })
+      } else {
+        console.info('Strava run detail series already complete', {
+          runId: existingRunIdForSupplementalSync,
+          activityId: activityForImport.id,
+        })
+      }
     }
 
     await syncRunSupplementalStravaDataForActivity(
