@@ -2140,8 +2140,19 @@ export async function importStravaActivityForUser(
   }
 
   const normalizedExistingRun = (existingRun as ExistingStravaRunRow | null) ?? null
+  const shouldAttemptXpRecovery = normalizedExistingRun
+    ? Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0))) === 0
+    : false
   const runXp = normalizedExistingRun
-    ? null
+    ? shouldAttemptXpRecovery
+      ? await calculateRunXp({
+          userId,
+          createdAt: payload.created_at,
+          distanceKm: payload.distance_km,
+          excludeRunId: normalizedExistingRun.id,
+          supabase,
+        })
+      : null
     : await calculateRunXp({
         userId,
         createdAt: payload.created_at,
@@ -2150,7 +2161,14 @@ export async function importStravaActivityForUser(
       })
 
   payload.xp = normalizedExistingRun
-    ? Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0)))
+    ? shouldAttemptXpRecovery
+      ? Math.max(
+          0,
+          Math.round(Number(runXp?.xp ?? 0)) > 0
+            ? Number(runXp?.xp ?? 0)
+            : Number(normalizedExistingRun.xp ?? 0)
+        )
+      : Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0)))
     : Math.max(0, Math.round(Number(runXp?.xp ?? 0)))
   let finalCity = payload.city
   let finalRegion = payload.region
@@ -2609,8 +2627,8 @@ export async function importStravaActivityForUser(
   return {
     status: 'updated',
     activityId: payload.external_id,
-    xpGained: 0,
-    breakdown: [],
+    xpGained: shouldAttemptXpRecovery ? Math.max(0, Math.round(Number(runXp?.xp ?? 0))) : 0,
+    breakdown: shouldAttemptXpRecovery ? runXp?.breakdown ?? [] : [],
     levelUp: levelState.levelUp,
     newLevel: levelState.newLevel,
   }

@@ -17,6 +17,7 @@ type CalculateRunXpOptions = {
   userId: string
   createdAt: string
   distanceKm: number
+  excludeRunId?: string
   supabase?: ReturnType<typeof createSupabaseAdminClient>
 }
 
@@ -44,6 +45,7 @@ export async function calculateRunXp({
   userId,
   createdAt,
   distanceKm,
+  excludeRunId,
   supabase = createSupabaseAdminClient(),
 }: CalculateRunXpOptions) {
   const createdAtDate = new Date(createdAt)
@@ -77,6 +79,7 @@ export async function calculateRunXp({
     .eq('user_id', userId)
     .gte('created_at', runFrequencyWindowStart)
     .lte('created_at', normalizedCreatedAt)
+    .neq('id', excludeRunId ?? '')
 
   if (recentRunsError) {
     throw recentRunsError
@@ -101,6 +104,7 @@ export async function calculateRunXp({
     .eq('user_id', userId)
     .gte('created_at', windowStart)
     .lte('created_at', normalizedCreatedAt)
+    .neq('id', excludeRunId ?? '')
 
   if (error) {
     throw error
