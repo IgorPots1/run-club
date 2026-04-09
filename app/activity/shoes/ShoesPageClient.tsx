@@ -118,6 +118,28 @@ function normalizeCatalogSearchText(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
 }
 
+function dedupeShoesById(shoes: UserShoeRecord[]) {
+  const shoesById = new Map<string, UserShoeRecord>()
+
+  for (const shoe of shoes) {
+    shoesById.set(shoe.id, shoe)
+  }
+
+  return Array.from(shoesById.values()).sort((left, right) => {
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  })
+}
+
+function replaceShoeInList(shoes: UserShoeRecord[], nextShoe: UserShoeRecord) {
+  return dedupeShoesById(
+    shoes.map((shoe) => (shoe.id === nextShoe.id ? nextShoe : shoe))
+  )
+}
+
+function prependShoeToList(shoes: UserShoeRecord[], nextShoe: UserShoeRecord) {
+  return dedupeShoesById([nextShoe, ...shoes])
+}
+
 type CatalogSearchResult = {
   brandId: string
   brandName: string
@@ -965,18 +987,22 @@ export default function ShoesPageClient({
     dedupingInterval: 15000,
     focusThrottleInterval: 15000,
   })
+  const resolvedShoes = useMemo(
+    () => dedupeShoesById(Array.isArray(shoes) ? shoes : initialShoes),
+    [initialShoes, shoes]
+  )
 
   const editingShoe = useMemo(
-    () => shoes?.find((shoe) => shoe.id === editingShoeId) ?? null,
-    [editingShoeId, shoes]
+    () => resolvedShoes.find((shoe) => shoe.id === editingShoeId) ?? null,
+    [editingShoeId, resolvedShoes]
   )
   const activeShoes = useMemo(
-    () => (shoes ?? []).filter((shoe) => shoe.isActive),
-    [shoes]
+    () => resolvedShoes.filter((shoe) => shoe.isActive),
+    [resolvedShoes]
   )
   const archivedShoes = useMemo(
-    () => (shoes ?? []).filter((shoe) => !shoe.isActive),
-    [shoes]
+    () => resolvedShoes.filter((shoe) => !shoe.isActive),
+    [resolvedShoes]
   )
   const problematicSummaryLines = useMemo(() => {
     const warningCount = activeShoes.filter((shoe) => {
@@ -1095,11 +1121,15 @@ export default function ShoesPageClient({
         isActive: nextIsActive,
       })
 
-      await mutate(
-        (currentShoes) =>
-          (currentShoes ?? []).map((currentShoe) => (currentShoe.id === updatedShoe.id ? updatedShoe : currentShoe)),
-        { revalidate: false }
-      )
+      const optimisticShoes = replaceShoeInList(resolvedShoes, updatedShoe)
+
+      await mutate(loadUserShoes(), {
+        optimisticData: optimisticShoes,
+        rollbackOnError: true,
+        populateCache: (result) =>
+          dedupeShoesById(Array.isArray(result) ? result : optimisticShoes),
+        revalidate: false,
+      })
 
       if (shoe.id === editingShoeId) {
         resetForm()
@@ -1151,19 +1181,26 @@ export default function ShoesPageClient({
 
       if (editingShoeId) {
         const updatedShoe = await updateUserShoe(editingShoeId, payload)
+        const optimisticShoes = replaceShoeInList(resolvedShoes, updatedShoe)
 
-        await mutate(
-          (currentShoes) =>
-            (currentShoes ?? []).map((shoe) => (shoe.id === updatedShoe.id ? updatedShoe : shoe)),
-          { revalidate: false }
-        )
+        await mutate(loadUserShoes(), {
+          optimisticData: optimisticShoes,
+          rollbackOnError: true,
+          populateCache: (result) =>
+            dedupeShoesById(Array.isArray(result) ? result : optimisticShoes),
+          revalidate: false,
+        })
       } else {
         const createdShoe = await createUserShoe(payload)
+        const optimisticShoes = prependShoeToList(resolvedShoes, createdShoe)
 
-        await mutate(
-          (currentShoes) => [createdShoe, ...(currentShoes ?? [])],
-          { revalidate: false }
-        )
+        await mutate(loadUserShoes(), {
+          optimisticData: optimisticShoes,
+          rollbackOnError: true,
+          populateCache: (result) =>
+            dedupeShoesById(Array.isArray(result) ? result : optimisticShoes),
+          revalidate: false,
+        })
       }
 
       resetForm()
@@ -1219,7 +1256,7 @@ export default function ShoesPageClient({
             <div className="min-w-0">
               <p className="app-text-primary text-sm font-medium">Активные пары</p>
               <p className="app-text-secondary mt-1 text-xs">
-                {activeShoes.length} из {shoes?.length ?? 0} {getPairsLabel(shoes?.length ?? 0)}
+                {activeShoes.length} из {resolvedShoes.length} {getPairsLabel(resolvedShoes.length)}
               </p>
             </div>
             <p className="app-text-secondary min-w-0 break-words text-sm">{activeShoes.length} пар</p>
@@ -1232,7 +1269,7 @@ export default function ShoesPageClient({
           <div className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">Не удалось загрузить список кроссовок</p>
           </div>
-        ) : !shoes || shoes.length === 0 ? (
+        ) : resolvedShoes.length === 0 ? (
           <div className="app-card rounded-2xl border p-5 text-center shadow-sm md:p-6">
             <p className="app-text-primary text-base font-semibold">Пока нет кроссовок</p>
             <p className="app-text-secondary mt-2 text-sm">
