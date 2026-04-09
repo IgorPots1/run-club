@@ -5,7 +5,11 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
-import { toggleRaceEventLike } from '@/lib/race-event-likes'
+import {
+  subscribeToRaceEventLikes,
+  toggleRaceEventLike,
+  type RaceEventLikeRealtimePayload,
+} from '@/lib/race-event-likes'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedItem, type FeedRunItem, type FeedRaceEventItem } from '@/lib/dashboard'
@@ -763,6 +767,70 @@ export default function InfiniteWorkoutFeed({
       unsubscribe()
     }
   }, [enabled, updateRunItem])
+
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    const unsubscribe = subscribeToRaceEventLikes((payload: RaceEventLikeRealtimePayload) => {
+      const activeUserId = currentUserIdRef.current
+      if (raceEventLikeInFlightRef.current[payload.raceEventId] && payload.userId === activeUserId) {
+        return
+      }
+
+      const currentItem = itemsRef.current.find(
+        (item): item is RaceEventFeedItem => item.kind === 'race_event' && item.raceEventId === payload.raceEventId
+      )
+
+      if (!currentItem) {
+        return
+      }
+
+      if (payload.eventType === 'INSERT') {
+        if (payload.userId === activeUserId) {
+          if (currentItem.raceEventLikedByViewer) {
+            return
+          }
+
+          updateRaceEventItem(payload.raceEventId, (item) => ({
+            ...item,
+            raceEventLikedByViewer: true,
+            raceEventLikeCount: item.raceEventLikeCount + 1,
+          }))
+          return
+        }
+
+        updateRaceEventItem(payload.raceEventId, (item) => ({
+          ...item,
+          raceEventLikeCount: item.raceEventLikeCount + 1,
+        }))
+        return
+      }
+
+      if (payload.userId === activeUserId) {
+        if (!currentItem.raceEventLikedByViewer) {
+          return
+        }
+
+        updateRaceEventItem(payload.raceEventId, (item) => ({
+          ...item,
+          raceEventLikedByViewer: false,
+          raceEventLikeCount: Math.max(0, item.raceEventLikeCount - 1),
+        }))
+        return
+      }
+
+      updateRaceEventItem(payload.raceEventId, (item) => ({
+        ...item,
+        raceEventLikeCount: Math.max(0, item.raceEventLikeCount - 1),
+      }))
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [enabled, updateRaceEventItem])
 
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current

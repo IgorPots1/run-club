@@ -19,6 +19,12 @@ export type RaceEventLikesSummary = {
   likedRaceEventIds: Set<string>
 }
 
+export type RaceEventLikeRealtimePayload = {
+  eventType: 'INSERT' | 'DELETE'
+  raceEventId: string
+  userId: string
+}
+
 export async function loadRaceEventLikesSummaryForRaceEventIds(
   raceEventIds: string[],
   currentUserId: string | null
@@ -86,5 +92,61 @@ export async function toggleRaceEventLike(raceEventId: string) {
     error: null,
     liked: payload.liked,
     likeCount: payload.likeCount,
+  }
+}
+
+export function subscribeToRaceEventLikes(onChange: (payload: RaceEventLikeRealtimePayload) => void) {
+  const channel = supabase
+    .channel(`race-event-likes-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'race_event_likes',
+      },
+      (payload) => {
+        const nextLike = payload.new as RaceEventLikeRow | null
+        const raceEventId = String(nextLike?.race_event_id ?? '')
+        const userId = String(nextLike?.user_id ?? '')
+
+        if (!raceEventId || !userId) {
+          return
+        }
+
+        onChange({
+          eventType: 'INSERT',
+          raceEventId,
+          userId,
+        })
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'race_event_likes',
+      },
+      (payload) => {
+        const previousLike = payload.old as RaceEventLikeRow | null
+        const raceEventId = String(previousLike?.race_event_id ?? '')
+        const userId = String(previousLike?.user_id ?? '')
+
+        if (!raceEventId || !userId) {
+          return
+        }
+
+        onChange({
+          eventType: 'DELETE',
+          raceEventId,
+          userId,
+        })
+      }
+    )
+    .subscribe()
+
+  return () => {
+    void supabase.removeChannel(channel)
   }
 }
