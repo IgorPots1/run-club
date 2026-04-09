@@ -61,10 +61,10 @@ export default function RunCommentsSection({
   }
 
   return (
-    <section className="app-card rounded-2xl border p-4 shadow-sm">
+    <section className="space-y-4">
       <h2 className="app-text-primary text-base font-semibold">Комментарии</h2>
       {onSubmitComment ? (
-        <form onSubmit={handleSubmit} className="mt-4">
+        <form onSubmit={handleSubmit}>
           <label htmlFor="run-comment" className="sr-only">Комментарий</label>
           <textarea
             id="run-comment"
@@ -90,7 +90,7 @@ export default function RunCommentsSection({
         </form>
       ) : null}
       {loading ? (
-        <div className="mt-4 space-y-4">
+        <div className="space-y-4">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
             <div className="min-w-0 flex-1 space-y-2">
@@ -108,11 +108,11 @@ export default function RunCommentsSection({
           </div>
         </div>
       ) : error ? (
-        <p className="mt-4 text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error}</p>
       ) : visibleCommentsCount === 0 ? (
-        <p className="app-text-secondary mt-4 text-sm">Пока нет комментариев</p>
+        <p className="app-text-secondary text-sm">Пока нет комментариев</p>
       ) : (
-        <div className="mt-4">
+        <div>
           <RunCommentThreadList
             comments={comments}
             currentUserId={currentUserId}

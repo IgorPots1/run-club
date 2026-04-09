@@ -13,6 +13,7 @@ import {
   YAxis,
 } from 'recharts'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import { hasRenderableRoutePolyline } from '@/components/RunRouteMapPreview'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import RunCommentsSection from '@/components/RunCommentsSection'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
@@ -60,6 +61,7 @@ type RunDetailsRow = {
   calories?: number | null
   xp?: number | null
   map_polyline?: string | null
+  raw_strava_payload?: Record<string, unknown> | null
   created_at: string
 }
 
@@ -127,7 +129,7 @@ const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
 }
 
 const RUN_DETAILS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, user_id, name, title, description, shoe_id, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, calories, average_cadence, created_at'
+  'id, user_id, name, title, description, shoe_id, name_manually_edited, description_manually_edited, city, region, country, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, average_heartrate, max_heartrate, xp, map_polyline, raw_strava_payload, calories, average_cadence, created_at'
 
 const RUN_DETAILS_SELECT_LEGACY =
   'id, user_id, name, title, shoe_id, external_source, external_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elapsed_time_seconds, average_pace_seconds, elevation_gain_meters, created_at'
@@ -153,6 +155,7 @@ function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefin
     message.includes('max_heartrate') ||
     message.includes('xp') ||
     message.includes('map_polyline') ||
+    message.includes('raw_strava_payload') ||
     message.includes('external_id') ||
     message.includes('calories') ||
     message.includes('average_cadence') ||
@@ -565,6 +568,44 @@ function scaleCadenceValue(value: number) {
   }
 
   return value * CADENCE_STEP_MULTIPLIER
+}
+
+function hasCoordinatePair(value: unknown) {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((coordinate) => Number.isFinite(Number(coordinate)))
+  )
+}
+
+function hasStravaGpsData(payload: Record<string, unknown> | null | undefined) {
+  if (!payload) {
+    return false
+  }
+
+  const mapValue = payload.map
+  const mapData = typeof mapValue === 'object' && mapValue !== null
+    ? mapValue as { summary_polyline?: unknown; polyline?: unknown }
+    : null
+  const hasStravaPolyline =
+    (typeof mapData?.summary_polyline === 'string' && hasRenderableRoutePolyline(mapData.summary_polyline)) ||
+    (typeof mapData?.polyline === 'string' && hasRenderableRoutePolyline(mapData.polyline))
+
+  return hasStravaPolyline || hasCoordinatePair(payload.start_latlng) || hasCoordinatePair(payload.end_latlng)
+}
+
+function hasGpsElevationSource(
+  run: Pick<RunDetailsRow, 'map_polyline' | 'external_source' | 'raw_strava_payload'> | null
+) {
+  if (!run) {
+    return false
+  }
+
+  if (typeof run.map_polyline === 'string' && hasRenderableRoutePolyline(run.map_polyline)) {
+    return true
+  }
+
+  return run.external_source === 'strava' && hasStravaGpsData(run.raw_strava_payload)
 }
 
 function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
@@ -1129,10 +1170,11 @@ export default function RunDetailsPage() {
 
     return Math.floor(minAltitude - 6)
   }, [altitudeChartData])
+  const canRenderElevationProfile = useMemo(() => hasGpsElevationSource(run), [run])
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
   const shouldRenderCadenceChart = (runSeries.cadence_points?.length ?? 0) > 1
-  const shouldRenderAltitudeChart = (runSeries.altitude_points?.length ?? 0) > 1
+  const shouldRenderAltitudeChart = canRenderElevationProfile && (runSeries.altitude_points?.length ?? 0) > 1
   const breakdownRows = useMemo(() => {
     if (runLaps.length > 0) {
       return runLaps
