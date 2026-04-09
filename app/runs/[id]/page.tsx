@@ -549,6 +549,7 @@ export default function RunDetailsPage() {
   const [commentsError, setCommentsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [isDescriptionTruncated, setIsDescriptionTruncated] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
   const [draft, setDraft] = useState({
     name: '',
@@ -565,6 +566,7 @@ export default function RunDetailsPage() {
   const [stravaSupplementalInfoMessage, setStravaSupplementalInfoMessage] = useState('')
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const descriptionRef = useRef<HTMLParagraphElement | null>(null)
   const previousIsEditModeRef = useRef(false)
   const currentUserIdRef = useRef<string | null>(null)
   const likeInFlightRef = useRef(false)
@@ -1008,6 +1010,38 @@ export default function RunDetailsPage() {
   }, [isEditMode])
 
   useEffect(() => {
+    setDescriptionExpanded(false)
+  }, [runDescription])
+
+  useEffect(() => {
+    if (!runDescription) {
+      setIsDescriptionTruncated(false)
+      return
+    }
+
+    if (descriptionExpanded) {
+      return
+    }
+
+    const descriptionElement = descriptionRef.current
+
+    if (!descriptionElement) {
+      return
+    }
+
+    const measureTruncation = () => {
+      setIsDescriptionTruncated(descriptionElement.scrollHeight > descriptionElement.clientHeight + 1)
+    }
+
+    measureTruncation()
+    window.addEventListener('resize', measureTruncation)
+
+    return () => {
+      window.removeEventListener('resize', measureTruncation)
+    }
+  }, [descriptionExpanded, runDescription])
+
+  useEffect(() => {
     if (!stravaSupplementalInfoMessage) {
       return
     }
@@ -1146,6 +1180,19 @@ export default function RunDetailsPage() {
     [breakdownRows]
   )
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
+  const runLocationLabel = useMemo(() => {
+    const uniqueParts = [run?.city, run?.region, run?.country].reduce<string[]>((parts, value) => {
+      const trimmedValue = toNullableTrimmedText(value)
+
+      if (!trimmedValue || parts.includes(trimmedValue)) {
+        return parts
+      }
+
+      return [...parts, trimmedValue]
+    }, [])
+
+    return uniqueParts.length > 0 ? uniqueParts.join(', ') : null
+  }, [run?.city, run?.region, run?.country])
   const isOwner = Boolean(user && run && user.id === run.user_id)
   const canRefreshStravaSupplemental = Boolean(
     isOwner &&
@@ -1353,14 +1400,6 @@ export default function RunDetailsPage() {
       Number.isFinite(run.calories) && (run.calories ?? 0) > 0
         ? `${Math.round(run.calories ?? 0)} ккал`
         : null
-    const summaryLine =
-      [
-        distanceLabel,
-        paceLabel ? paceLabel.replace(' /км', '/км') : null,
-        movingTimeLabel || durationLabel,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .join(' • ') || null
 
     return {
       distanceLabel,
@@ -1370,7 +1409,6 @@ export default function RunDetailsPage() {
       elevationLabel,
       heartRateLabel,
       caloriesLabel,
-      summaryLine,
       xpValue: Number.isFinite(run.xp) && (run.xp ?? 0) > 0
         ? Math.round(run.xp ?? 0)
         : Math.max(0, Math.round(50 + distanceKm * 10)),
@@ -1618,17 +1656,21 @@ export default function RunDetailsPage() {
 
           <div className="mt-3">
             <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
-            {details.summaryLine ? (
-              <p className="app-text-secondary mt-1 text-sm leading-tight">{details.summaryLine}</p>
-            ) : null}
           </div>
 
-          {currentAssignedShoe ? (
-            <p className="app-text-secondary mt-2 text-sm">
-              Кроссовки: {currentAssignedShoe.displayName}
-              {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
-              {!currentAssignedShoe.isActive ? ' • архив' : ''}
-            </p>
+          {currentAssignedShoe || runLocationLabel ? (
+            <div className="mt-2 space-y-1">
+              {runLocationLabel ? (
+                <p className="app-text-secondary text-sm leading-5">{runLocationLabel}</p>
+              ) : null}
+              {currentAssignedShoe ? (
+                <p className="app-text-secondary text-sm leading-5">
+                  Кроссовки: {currentAssignedShoe.displayName}
+                  {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
+                  {!currentAssignedShoe.isActive ? ' • архив' : ''}
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           {runDescription || isOwner ? (
@@ -1638,6 +1680,7 @@ export default function RunDetailsPage() {
               {runDescription ? (
                 <div className="mt-2">
                   <p
+                    ref={descriptionRef}
                     className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
                       descriptionExpanded ? '' : 'line-clamp-2'
                     }`}
@@ -1645,13 +1688,23 @@ export default function RunDetailsPage() {
                     {runDescription}
                   </p>
 
-                  <button
-                    type="button"
-                    onClick={() => setDescriptionExpanded((prev) => !prev)}
-                    className="app-text-muted mt-0.5 text-xs font-medium"
-                  >
-                    {descriptionExpanded ? 'Скрыть' : 'Читать'}
-                  </button>
+                  {descriptionExpanded ? (
+                    <button
+                      type="button"
+                      onClick={() => setDescriptionExpanded(false)}
+                      className="app-text-muted mt-1 inline text-xs font-medium transition-opacity hover:opacity-80"
+                    >
+                      Скрыть
+                    </button>
+                  ) : isDescriptionTruncated ? (
+                    <button
+                      type="button"
+                      onClick={() => setDescriptionExpanded(true)}
+                      className="app-text-muted mt-1 inline text-xs font-medium transition-opacity hover:opacity-80"
+                    >
+                      Читать
+                    </button>
+                  ) : null}
                 </div>
               ) : (
                 <p className="app-text-muted mt-2 text-sm">Пока без описания.</p>
@@ -1659,31 +1712,23 @@ export default function RunDetailsPage() {
             </div>
           ) : null}
 
-          <div className="mt-2.5 text-sm">
-            <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
+          <div className="mt-3 text-sm">
+            <p className="app-text-secondary font-medium">+{details.xpValue} XP</p>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
-            {summaryMetricItems.map((metric, index) => {
-              const isLastOddItem =
-                summaryMetricItems.length % 2 === 1 && index === summaryMetricItems.length - 1
-
-              return (
-                <div
-                  key={metric.label}
-                  className={`grid content-start gap-1 ${isLastOddItem ? 'col-span-2' : ''}`}
+          <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-5">
+            {summaryMetricItems.map((metric) => (
+              <div key={metric.label} className="grid content-start gap-1.5">
+                <p className="app-text-secondary text-xs font-medium leading-tight">{metric.label}</p>
+                <p
+                  className={`app-text-primary leading-tight ${
+                    metric.prominent ? 'text-2xl font-semibold tracking-tight' : 'text-xl font-semibold'
+                  }`}
                 >
-                  <p className="app-text-secondary text-xs font-medium leading-tight">{metric.label}</p>
-                  <p
-                    className={`app-text-primary leading-tight ${
-                      metric.prominent ? 'text-2xl font-semibold' : 'text-lg font-semibold'
-                    }`}
-                  >
-                    {metric.value}
-                  </p>
-                </div>
-              )
-            })}
+                  {metric.value}
+                </p>
+              </div>
+            ))}
           </div>
 
           {isMissingOfficialLaps ? (
