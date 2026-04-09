@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Heart, LoaderCircle } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -23,16 +22,10 @@ import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
 import {
-  countVisibleRunComments,
   loadRunComments,
   type RunCommentItem,
 } from '@/lib/run-comments'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
-import {
-  loadRunLikesSummaryForRunIds,
-  subscribeToRunLikes,
-  toggleRunLike,
-} from '@/lib/run-likes'
 import { useRunCommentsController } from '@/lib/use-run-comments-controller'
 import { updateRun, type UpdateRunInput } from '@/lib/runs'
 import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
@@ -548,9 +541,6 @@ export default function RunDetailsPage() {
   const [runPhotos, setRunPhotos] = useState<RunPhotoRow[]>([])
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
-  const [likesCount, setLikesCount] = useState(0)
-  const [likedByMe, setLikedByMe] = useState(false)
-  const [likeInFlight, setLikeInFlight] = useState(false)
   const [commentsError, setCommentsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
@@ -573,25 +563,12 @@ export default function RunDetailsPage() {
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const descriptionRef = useRef<HTMLParagraphElement | null>(null)
   const previousIsEditModeRef = useRef(false)
-  const currentUserIdRef = useRef<string | null>(null)
-  const likeInFlightRef = useRef(false)
-  const likeRequestVersionRef = useRef(0)
-  const likesCountRef = useRef(0)
-  const likedByMeRef = useRef(false)
   const handleAuthRequired = useMemo(
     () => () => {
       router.replace('/login')
     },
     [router]
   )
-
-  function applyRunLikeState(nextLikesCount: number, nextLikedByMe: boolean) {
-    const safeLikesCount = Math.max(0, nextLikesCount)
-    likesCountRef.current = safeLikesCount
-    likedByMeRef.current = nextLikedByMe
-    setLikesCount(safeLikesCount)
-    setLikedByMe(nextLikedByMe)
-  }
   const {
     comments,
     pendingLikeCommentIds,
@@ -783,10 +760,6 @@ export default function RunDetailsPage() {
   }, [router])
 
   useEffect(() => {
-    currentUserIdRef.current = user?.id ?? null
-  }, [user?.id])
-
-  useEffect(() => {
     let isMounted = true
 
     async function loadRunDetails() {
@@ -800,7 +773,6 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
-          applyRunLikeState(0, false)
           setLoading(false)
         }
         return
@@ -812,7 +784,6 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
-          applyRunLikeState(0, false)
           setLoading(false)
         }
         return
@@ -847,13 +818,12 @@ export default function RunDetailsPage() {
           return
         }
 
-        const [profileResult, likesSummary, seriesResult, lapsResult, photosResult, totalXpByUser] = await Promise.all([
+        const [profileResult, seriesResult, lapsResult, photosResult, totalXpByUser] = await Promise.all([
           supabase
             .from('profiles')
             .select('id, name, nickname, email, avatar_url')
             .eq('id', runData.user_id)
             .maybeSingle(),
-          loadRunLikesSummaryForRunIds([runData.id], user.id),
           supabase
             .from('run_detail_series')
             .select('pace_points, heartrate_points')
@@ -911,10 +881,6 @@ export default function RunDetailsPage() {
         )
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
         setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
-        applyRunLikeState(
-          likesSummary.likesByRunId[runData.id] ?? 0,
-          likesSummary.likedRunIds.has(runData.id)
-        )
         replaceComments(runComments)
         setCommentsError(nextCommentsError)
       } catch {
@@ -924,7 +890,6 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
-          applyRunLikeState(0, false)
           replaceComments([])
         }
       } finally {
@@ -940,53 +905,6 @@ export default function RunDetailsPage() {
       isMounted = false
     }
   }, [authLoading, reloadKey, replaceComments, runId, user])
-
-  useEffect(() => {
-    if (!runId) {
-      return
-    }
-
-    const unsubscribe = subscribeToRunLikes((payload) => {
-      if (payload.runId !== runId) {
-        return
-      }
-
-      const activeUserId = currentUserIdRef.current
-
-      if (likeInFlightRef.current && payload.userId === activeUserId) {
-        return
-      }
-
-      if (payload.eventType === 'INSERT') {
-        if (payload.userId === activeUserId) {
-          if (likedByMeRef.current) {
-            return
-          }
-
-          applyRunLikeState(likesCountRef.current + 1, true)
-          return
-        }
-
-        applyRunLikeState(likesCountRef.current + 1, likedByMeRef.current)
-        return
-      }
-
-      if (payload.userId === activeUserId) {
-        if (!likedByMeRef.current) {
-          return
-        }
-
-        applyRunLikeState(likesCountRef.current - 1, false)
-        return
-      }
-
-      applyRunLikeState(likesCountRef.current - 1, likedByMeRef.current)
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [runId])
 
   useEffect(() => {
     if (isEditMode) {
@@ -1094,7 +1012,6 @@ export default function RunDetailsPage() {
     }
   }, [run, user])
 
-  const commentsCount = useMemo(() => countVisibleRunComments(comments), [comments])
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
     () => mapSeriesPointsToElapsedMinutes(runSeries.pace_points, chartDurationSeconds),
@@ -1122,23 +1039,25 @@ export default function RunDetailsPage() {
     [heartRateSeriesForChart.data]
   )
   const elevationChartData = useMemo(() => {
-    let elapsedSeconds = 0
+    let cumulativeDistanceKm = 0
+    let cumulativeElevationGain = 0
 
-    return runLaps.reduce<Array<{ time: number; elevationGain: number }>>((points, lap) => {
+    return runLaps.reduce<Array<{ distanceKm: number; elevationGain: number }>>((points, lap) => {
       if (
-        !Number.isFinite(lap.elapsed_time_seconds) ||
-        (lap.elapsed_time_seconds ?? 0) <= 0 ||
+        !Number.isFinite(lap.distance_meters) ||
+        (lap.distance_meters ?? 0) <= 0 ||
         !Number.isFinite(lap.total_elevation_gain) ||
         (lap.total_elevation_gain ?? 0) < 0
       ) {
         return points
       }
 
-      elapsedSeconds += Number(lap.elapsed_time_seconds ?? 0)
+      cumulativeDistanceKm += Number(lap.distance_meters ?? 0) / 1000
+      cumulativeElevationGain += Number(lap.total_elevation_gain ?? 0)
 
       points.push({
-        time: elapsedSeconds / 60,
-        elevationGain: Number(lap.total_elevation_gain ?? 0),
+        distanceKm: cumulativeDistanceKm,
+        elevationGain: cumulativeElevationGain,
       })
 
       return points
@@ -1240,7 +1159,6 @@ export default function RunDetailsPage() {
   const hasTitleChanged = normalizedDraftName !== toNullableTrimmedText(currentEditableName)
   const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(run?.description)
   const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
-  const isLikeActive = isOwner ? likesCount > 0 : likedByMe
   const hasPendingChanges = hasTitleChanged || hasDescriptionChanged
 
   function handleEnterEditMode() {
@@ -1352,51 +1270,6 @@ export default function RunDetailsPage() {
       setStravaSupplementalError('Не удалось обновить данные из Strava')
     } finally {
       setRefreshingStravaSupplemental(false)
-    }
-  }
-
-  async function handleToggleLike() {
-    const activeUserId = currentUserIdRef.current
-
-    if (!activeUserId) {
-      router.replace('/login')
-      return
-    }
-
-    if (!run || likeInFlightRef.current || run.user_id === activeUserId) {
-      return
-    }
-
-    const previousLikesCount = likesCountRef.current
-    const wasLiked = likedByMeRef.current
-    const nextRequestVersion = likeRequestVersionRef.current + 1
-    likeRequestVersionRef.current = nextRequestVersion
-    likeInFlightRef.current = true
-    setLikeInFlight(true)
-
-    applyRunLikeState(previousLikesCount + (wasLiked ? -1 : 1), !wasLiked)
-
-    try {
-      const { error: likeError } = await toggleRunLike(run.id, activeUserId, wasLiked)
-
-      if (likeRequestVersionRef.current !== nextRequestVersion) {
-        return
-      }
-
-      if (likeError) {
-        applyRunLikeState(previousLikesCount, wasLiked)
-      }
-    } catch {
-      if (likeRequestVersionRef.current !== nextRequestVersion) {
-        return
-      }
-
-      applyRunLikeState(previousLikesCount, wasLiked)
-    } finally {
-      if (likeRequestVersionRef.current === nextRequestVersion) {
-        likeInFlightRef.current = false
-        setLikeInFlight(false)
-      }
     }
   }
 
@@ -1788,6 +1661,45 @@ export default function RunDetailsPage() {
 
       {!isEditMode ? (
         <>
+          {formattedBreakdownRows.length > 0 ? (
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <h2 className="app-text-primary text-base font-semibold">Разбивка</h2>
+              <div className="mt-3 overflow-hidden rounded-xl border">
+                <div
+                  className={`grid gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary ${
+                    shouldShowBreakdownHeartRate
+                      ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                      : 'grid-cols-[56px_1fr_1fr_1fr]'
+                  }`}
+                >
+                  <span>№</span>
+                  <span>Км</span>
+                  <span>Время</span>
+                  <span>Темп</span>
+                  {shouldShowBreakdownHeartRate ? <span>Пульс</span> : null}
+                </div>
+                <div className="divide-y">
+                  {formattedBreakdownRows.map((row) => (
+                    <div
+                      key={`${row.index}-${row.distanceMeters}-${row.elapsedTimeSeconds}`}
+                      className={`grid gap-3 px-3 py-2.5 text-sm app-text-primary ${
+                        shouldShowBreakdownHeartRate
+                          ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                          : 'grid-cols-[56px_1fr_1fr_1fr]'
+                      }`}
+                    >
+                      <span className="font-medium">{row.index}</span>
+                      <span>{row.distanceLabel}</span>
+                      <span>{row.durationLabel}</span>
+                      <span>{row.paceLabel}</span>
+                      {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {shouldRenderPaceChart ? (
             <section className="app-card rounded-2xl border p-4 shadow-sm">
               <h2 className="app-text-primary text-base font-semibold">Темп</h2>
@@ -1920,15 +1832,13 @@ export default function RunDetailsPage() {
 
           {shouldRenderElevationChart ? (
             <section className="app-card rounded-2xl border p-4 shadow-sm">
-              <h2 className="app-text-primary text-base font-semibold">Высота</h2>
+              <h2 className="app-text-primary text-base font-semibold">Набор высоты</h2>
               <div className="mt-3 h-[220px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={elevationChartData}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                     accessibilityLayer={false}
-                    syncId="run-detail-series"
-                    syncMethod="value"
                   >
                     <defs>
                       <linearGradient id="elevation-fill" x1="0" y1="0" x2="0" y2="1">
@@ -1938,7 +1848,7 @@ export default function RunDetailsPage() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
                     <XAxis
-                      dataKey="time"
+                      dataKey="distanceKm"
                       type="number"
                       domain={['dataMin', 'dataMax']}
                       tickCount={6}
@@ -1946,7 +1856,7 @@ export default function RunDetailsPage() {
                       axisLine={false}
                       minTickGap={24}
                       tickMargin={8}
-                      tickFormatter={formatElapsedMinutesLabel}
+                      tickFormatter={formatDistanceKm}
                       tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
                     />
                     <YAxis
@@ -1961,10 +1871,10 @@ export default function RunDetailsPage() {
                       cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
                       formatter={(value) => {
                         const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
-                        return [`${Math.round(numericValue)} м`, 'Высота']
+                        return [`${Math.round(numericValue)} м`, 'Набор высоты']
                       }}
                       labelFormatter={(value) =>
-                        formatElapsedMinutesLabel(typeof value === 'number' ? value : Number(value ?? 0))
+                        `${formatDistanceKm(typeof value === 'number' ? value : Number(value ?? 0))} км`
                       }
                     />
                     <Area
@@ -1982,69 +1892,6 @@ export default function RunDetailsPage() {
               </div>
             </section>
           ) : null}
-
-          {formattedBreakdownRows.length > 0 ? (
-            <section className="app-card rounded-2xl border p-4 shadow-sm">
-              <h2 className="app-text-primary text-base font-semibold">Разбивка</h2>
-              <div className="mt-3 overflow-hidden rounded-xl border">
-                <div
-                  className={`grid gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary ${
-                    shouldShowBreakdownHeartRate
-                      ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
-                      : 'grid-cols-[56px_1fr_1fr_1fr]'
-                  }`}
-                >
-                  <span>№</span>
-                  <span>Км</span>
-                  <span>Время</span>
-                  <span>Темп</span>
-                  {shouldShowBreakdownHeartRate ? <span>Пульс</span> : null}
-                </div>
-                <div className="divide-y">
-                  {formattedBreakdownRows.map((row) => (
-                    <div
-                      key={`${row.index}-${row.distanceMeters}-${row.elapsedTimeSeconds}`}
-                      className={`grid gap-3 px-3 py-2.5 text-sm app-text-primary ${
-                        shouldShowBreakdownHeartRate
-                          ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
-                          : 'grid-cols-[56px_1fr_1fr_1fr]'
-                      }`}
-                    >
-                      <span className="font-medium">{row.index}</span>
-                      <span>{row.distanceLabel}</span>
-                      <span>{row.durationLabel}</span>
-                      <span>{row.paceLabel}</span>
-                      {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          <section className="app-card rounded-2xl border p-4 shadow-sm">
-            <div className="app-text-secondary flex items-center gap-6 text-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  void handleToggleLike()
-                }}
-                disabled={likeInFlight || isOwner}
-                aria-pressed={likedByMe}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-full px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  isLikeActive ? 'text-[var(--like-active)]' : 'app-text-secondary'
-                }`}
-              >
-                {likeInFlight ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-                ) : (
-                  <Heart className="h-4 w-4" strokeWidth={1.9} fill={isLikeActive ? 'currentColor' : 'none'} />
-                )}
-                <span>{likesCount} лайков</span>
-              </button>
-              <span>{commentsCount} комментариев</span>
-            </div>
-          </section>
 
           <RunCommentsSection
             comments={comments}
