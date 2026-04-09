@@ -56,6 +56,17 @@ async function loadOwnedRaceEvent(
     .maybeSingle()
 }
 
+async function loadRaceEventById(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  raceEventId: string
+) {
+  return supabaseAdmin
+    .from('race_events')
+    .select(RACE_EVENT_SELECT)
+    .eq('id', raceEventId)
+    .maybeSingle()
+}
+
 async function loadLinkedRunIfOwned(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   userId: string,
@@ -97,7 +108,7 @@ export async function GET(
 
   const { id: raceEventId } = await context.params
   const supabaseAdmin = createSupabaseAdminClient()
-  const { data: existingRaceEvent, error: loadError } = await loadOwnedRaceEvent(supabaseAdmin, raceEventId, user.id)
+  const { data: existingRaceEvent, error: loadError } = await loadRaceEventById(supabaseAdmin, raceEventId)
 
   if (loadError) {
     return NextResponse.json(
