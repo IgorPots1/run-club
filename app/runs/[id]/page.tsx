@@ -116,6 +116,8 @@ type BreakdownRow = {
   averageHeartrate: number | null
 }
 
+const CADENCE_STEP_MULTIPLIER = 2
+
 const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
   exists: false,
   pace_points: null,
@@ -555,6 +557,14 @@ function mapDistanceSeriesPointsToDistanceKm(points: RunDetailDistanceSeriesPoin
       value: point.value,
     }))
     .filter((point) => Number.isFinite(point.distanceKm) && point.distanceKm >= 0 && Number.isFinite(point.value))
+}
+
+function scaleCadenceValue(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return value * CADENCE_STEP_MULTIPLIER
 }
 
 function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
@@ -1095,7 +1105,7 @@ export default function RunDetailsPage() {
     () =>
       cadenceSeriesForChart.data.map((point) => ({
         time: point.time,
-        cadence: point.value,
+        cadence: scaleCadenceValue(point.value),
       })),
     [cadenceSeriesForChart.data]
   )
@@ -1107,6 +1117,18 @@ export default function RunDetailsPage() {
       })),
     [altitudeSeriesForChart]
   )
+  const altitudeChartBaseline = useMemo(() => {
+    if (altitudeChartData.length === 0) {
+      return 0
+    }
+
+    const minAltitude = altitudeChartData.reduce(
+      (currentMin, point) => Math.min(currentMin, point.altitude),
+      altitudeChartData[0]?.altitude ?? 0
+    )
+
+    return Math.floor(minAltitude - 6)
+  }, [altitudeChartData])
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
   const shouldRenderCadenceChart = (runSeries.cadence_points?.length ?? 0) > 1
@@ -1753,8 +1775,6 @@ export default function RunDetailsPage() {
                     data={paceChartData}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                     accessibilityLayer={false}
-                    syncId="run-detail-series"
-                    syncMethod="value"
                   >
                     <defs>
                       <linearGradient id="pace-fill" x1="0" y1="0" x2="0" y2="1">
@@ -1820,8 +1840,6 @@ export default function RunDetailsPage() {
                     data={heartRateChartData}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                     accessibilityLayer={false}
-                    syncId="run-detail-series"
-                    syncMethod="value"
                   >
                     <defs>
                       <linearGradient id="heart-rate-fill" x1="0" y1="0" x2="0" y2="1">
@@ -1883,8 +1901,6 @@ export default function RunDetailsPage() {
                     data={cadenceChartData}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                     accessibilityLayer={false}
-                    syncId="run-detail-series"
-                    syncMethod="value"
                   >
                     <defs>
                       <linearGradient id="cadence-fill" x1="0" y1="0" x2="0" y2="1">
@@ -1951,16 +1967,16 @@ export default function RunDetailsPage() {
                   >
                     <defs>
                       <linearGradient id="altitude-fill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--accent-strong)" stopOpacity={0.12} />
-                        <stop offset="65%" stopColor="var(--accent-strong)" stopOpacity={0.05} />
-                        <stop offset="100%" stopColor="var(--accent-strong)" stopOpacity={0.01} />
+                        <stop offset="0%" stopColor="var(--accent-strong)" stopOpacity={0.22} />
+                        <stop offset="55%" stopColor="var(--accent-strong)" stopOpacity={0.12} />
+                        <stop offset="100%" stopColor="var(--accent-strong)" stopOpacity={0.03} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid
-                      strokeDasharray="2 6"
+                      strokeDasharray="2 8"
                       vertical={false}
                       stroke="var(--chart-grid)"
-                      strokeOpacity={0.28}
+                      strokeOpacity={0.16}
                     />
                     <XAxis
                       dataKey="distanceKm"
@@ -1980,7 +1996,7 @@ export default function RunDetailsPage() {
                       width={36}
                       tickFormatter={formatElevationTick}
                       tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                      domain={['dataMin - 5', 'dataMax + 5']}
+                      domain={['dataMin - 6', 'dataMax + 6']}
                     />
                     <Tooltip
                       cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
@@ -1995,11 +2011,14 @@ export default function RunDetailsPage() {
                     <Area
                       type="monotone"
                       dataKey="altitude"
+                      baseValue={altitudeChartBaseline}
                       stroke="var(--accent-strong)"
-                      strokeWidth={2.25}
+                      strokeWidth={2.8}
                       fill="url(#altitude-fill)"
                       fillOpacity={1}
                       dot={false}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
                     />
                   </AreaChart>
