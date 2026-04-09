@@ -992,6 +992,8 @@ export default function RunDetailsPage() {
     })
   }, [isEditMode, run?.description, run?.name, run?.title])
 
+  const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
+
   useEffect(() => {
     if (previousIsEditModeRef.current && !isEditMode) {
       window.requestAnimationFrame(() => {
@@ -1179,7 +1181,6 @@ export default function RunDetailsPage() {
       })),
     [breakdownRows]
   )
-  const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
   const runLocationLabel = useMemo(() => {
     const uniqueParts = [run?.city, run?.region, run?.country].reduce<string[]>((parts, value) => {
       const trimmedValue = toNullableTrimmedText(value)
