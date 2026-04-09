@@ -5,6 +5,7 @@ import { getProfileDisplayName } from '@/lib/profiles'
 
 export const INBOX_APP_EVENT_TYPES = [
   'run_like.created',
+  'race_event.liked',
   'run_comment.created',
   'run_comment.reply_created',
   'challenge.completed',
@@ -117,6 +118,11 @@ function getFallbackEventCopy(type: string) {
     case 'run_comment.reply_created':
       return {
         title: 'Новый ответ на ваш комментарий',
+        body: null,
+      }
+    case 'race_event.liked':
+      return {
+        title: 'Твой старт получил лайк',
         body: null,
       }
     case 'challenge.completed':

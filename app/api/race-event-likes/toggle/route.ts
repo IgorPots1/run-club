@@ -1,4 +1,7 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
+import { createAppEvent } from '@/lib/events/createAppEvent'
+import { buildRaceEventLikedEvent } from '@/lib/events/returnTriggerEvents'
+import { processAppEventPushDeliveries } from '@/lib/push/appEventPush'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -8,6 +11,12 @@ type ToggleRaceEventLikeRequestBody = {
 
 type RaceEventLikeCountRow = {
   race_event_id: string
+}
+
+type RaceEventOwnerRow = {
+  id: string
+  user_id: string | null
+  name: string | null
 }
 
 function isDuplicateRaceEventLikeError(error: { code?: string | null; message?: string | null }) {
@@ -36,6 +45,49 @@ async function loadRaceEventLikeCount(
   }
 
   return Number(count ?? 0)
+}
+
+async function emitRaceEventLikedNotification(input: {
+  actorUserId: string
+  raceEventId: string
+}) {
+  try {
+    const supabaseAdmin = createSupabaseAdminClient()
+    const { data, error } = await supabaseAdmin
+      .from('race_events')
+      .select('id, user_id, name')
+      .eq('id', input.raceEventId)
+      .maybeSingle()
+
+    if (error) {
+      throw error
+    }
+
+    const raceEvent = (data as RaceEventOwnerRow | null) ?? null
+
+    if (!raceEvent || !raceEvent.user_id || raceEvent.user_id === input.actorUserId) {
+      return
+    }
+
+    const createdEvent = await createAppEvent(
+      buildRaceEventLikedEvent({
+        actorUserId: input.actorUserId,
+        targetUserId: raceEvent.user_id,
+        raceEventId: raceEvent.id,
+        raceName: raceEvent.name,
+      })
+    )
+
+    await processAppEventPushDeliveries({
+      appEventIds: [createdEvent.id],
+    })
+  } catch (error) {
+    console.error('Failed to create race event like app event', {
+      raceEventId: input.raceEventId,
+      actorUserId: input.actorUserId,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+  }
 }
 
 export async function POST(request: Request) {
@@ -130,6 +182,13 @@ export async function POST(request: Request) {
   }
 
   const likeCount = await loadRaceEventLikeCount(supabaseAdmin, raceEventId)
+
+  after(async () => {
+    await emitRaceEventLikedNotification({
+      actorUserId: user.id,
+      raceEventId,
+    })
+  })
 
   return NextResponse.json({
     ok: true,

@@ -81,6 +81,37 @@ export function buildRunLikeCreatedEvent(input: {
   }
 }
 
+export function buildRaceEventLikedEvent(input: {
+  actorUserId: string
+  targetUserId: string
+  raceEventId: string
+  raceName?: string | null
+}): CreateAppEventInput {
+  return {
+    type: 'race_event.liked',
+    actorUserId: input.actorUserId,
+    targetUserId: input.targetUserId,
+    entityType: 'race_event',
+    entityId: input.raceEventId,
+    category: 'race',
+    channel: 'both',
+    priority: 'normal',
+    targetPath: `/races/${input.raceEventId}`,
+    payload: {
+      v: EVENT_PAYLOAD_VERSION,
+      targetPath: `/races/${input.raceEventId}`,
+      preview: {
+        title: 'Твой старт получил лайк',
+        body: getRaceLabel(input.raceName),
+      },
+      context: {
+        raceEventId: input.raceEventId,
+        raceName: getRaceLabel(input.raceName),
+      },
+    },
+  }
+}
+
 export function buildRunCommentCreatedEvent(input: {
   actorUserId: string
   targetUserId: string

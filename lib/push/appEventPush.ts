@@ -54,6 +54,14 @@ type ChatPushDeliveryPayload = {
   tag?: string
   timestamp?: number
 }
+type GenericPushDeliveryPayload = {
+  title: string
+  body: string
+  targetUrl: string
+  priority?: 'normal' | 'important'
+  tag?: string
+  timestamp?: number
+}
 type AppEventPushDeliveryRow = {
   app_event_id: string
   status: AppEventPushDeliveryStatus
@@ -220,7 +228,24 @@ async function loadPushEligibleAppEvents(
     new Set((options.appEventIds ?? []).map((value) => value.trim()).filter(Boolean))
   )
   const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_PROCESS_LIMIT, 200))
-  const query = supabaseAdmin
+
+  if (normalizedIds.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from('app_events')
+      .select(
+        'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
+      )
+      .in('id', normalizedIds)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      throw error
+    }
+
+    return ((data as PushCapableAppEventRow[] | null) ?? []).map(toAppEvent)
+  }
+
+  const { data, error } = await supabaseAdmin
     .from('app_events')
     .select(
       'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
@@ -229,14 +254,7 @@ async function loadPushEligibleAppEvents(
     .eq('type', 'chat_message.created')
     .in('channel', ['push', 'both'])
     .order('created_at', { ascending: true })
-
-  if (normalizedIds.length > 0) {
-    query.in('id', normalizedIds)
-  } else {
-    query.limit(limit)
-  }
-
-  const { data, error } = await query
+    .limit(limit)
 
   if (error) {
     throw error
@@ -344,6 +362,45 @@ async function loadUserSubscriptions(
       ((data as PushSubscriptionRow[] | null) ?? []).map((subscription) => [subscription.endpoint, subscription])
     ).values()
   )
+}
+
+function getGenericEventPreview(event: AppEvent) {
+  const payload = typeof event.payload === 'object' && event.payload !== null
+    ? event.payload as Record<string, unknown>
+    : null
+  const preview = payload?.preview
+  const previewRecord = typeof preview === 'object' && preview !== null
+    ? preview as Record<string, unknown>
+    : null
+
+  return {
+    title:
+      typeof previewRecord?.title === 'string' && previewRecord.title.trim()
+        ? previewRecord.title.trim()
+        : null,
+    body:
+      typeof previewRecord?.body === 'string' && previewRecord.body.trim()
+        ? previewRecord.body.trim()
+        : null,
+  }
+}
+
+function buildRaceEventLikedPushPayload(event: AppEvent): GenericPushDeliveryPayload | null {
+  if (!event.targetPath) {
+    return null
+  }
+
+  const preview = getGenericEventPreview(event)
+  const timestamp = Date.parse(event.createdAt)
+
+  return {
+    title: preview.title ?? 'Твой старт получил лайк',
+    body: preview.body ?? 'Поставили лайк на старт',
+    targetUrl: event.targetPath,
+    priority: 'normal',
+    tag: event.entityId ? `race_event_like:${event.entityId}` : undefined,
+    timestamp: Number.isNaN(timestamp) ? undefined : timestamp,
+  }
 }
 
 async function loadCoalescedChatPushGroup(
@@ -782,6 +839,124 @@ async function processSingleChatAppEventPush(supabaseAdmin: SupabaseAdminClient,
   }
 }
 
+async function processSingleGenericAppEventPush(
+  supabaseAdmin: SupabaseAdminClient,
+  event: AppEvent
+) {
+  const targetUserId = event.targetUserId
+
+  if (!targetUserId) {
+    return
+  }
+
+  let pushPayload: GenericPushDeliveryPayload | null = null
+  let preferenceEnabled = true
+  let preferenceDisabledError = 'notification_disabled'
+
+  if (event.type === 'race_event.liked') {
+    pushPayload = buildRaceEventLikedPushPayload(event)
+    preferenceEnabled = false
+    preferenceDisabledError = 'run_like_disabled'
+  }
+
+  if (!pushPayload) {
+    return
+  }
+
+  const userPreferences = await getUserPushPreferencesForUser(supabaseAdmin, targetUserId)
+
+  if (!userPreferences.push_enabled) {
+    await recordEventLevelOutcome({
+      supabaseAdmin,
+      appEventId: event.id,
+      userId: targetUserId,
+      status: 'skipped',
+      errorBody: 'push_disabled',
+    })
+    return
+  }
+
+  if (event.type === 'race_event.liked') {
+    preferenceEnabled = userPreferences.run_like_enabled
+  }
+
+  if (!preferenceEnabled) {
+    await recordEventLevelOutcome({
+      supabaseAdmin,
+      appEventId: event.id,
+      userId: targetUserId,
+      status: 'skipped',
+      errorBody: preferenceDisabledError,
+    })
+    return
+  }
+
+  const subscriptions = await loadUserSubscriptions(supabaseAdmin, targetUserId)
+
+  if (subscriptions.length === 0) {
+    await recordEventLevelOutcome({
+      supabaseAdmin,
+      appEventId: event.id,
+      userId: targetUserId,
+      status: 'skipped',
+      errorBody: 'no_push_subscriptions',
+    })
+    return
+  }
+
+  for (const subscription of subscriptions) {
+    const claim = await claimDeliveryAttempt({
+      supabaseAdmin,
+      appEventId: event.id,
+      userId: targetUserId,
+      subscriptionEndpoint: subscription.endpoint,
+    })
+
+    if (!claim.claimed || !claim.deliveryId) {
+      continue
+    }
+
+    const result = await sendWebPush({
+      endpoint: subscription.endpoint,
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+      payload: pushPayload,
+    })
+
+    if (result.ok) {
+      await finalizeDeliveryAttempt({
+        supabaseAdmin,
+        deliveryId: claim.deliveryId,
+        status: 'sent',
+      })
+      continue
+    }
+
+    const isExpiredEndpoint = result.statusCode === 404 || result.statusCode === 410
+
+    if (isExpiredEndpoint) {
+      try {
+        await deleteDeadSubscription(supabaseAdmin, subscription.endpoint)
+      } catch (error) {
+        console.error('Failed to delete expired push subscription', {
+          appEventId: event.id,
+          userId: targetUserId,
+          endpoint: subscription.endpoint,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      }
+    }
+
+    await finalizeDeliveryAttempt({
+      supabaseAdmin,
+      deliveryId: claim.deliveryId,
+      status: isExpiredEndpoint ? 'expired' : 'failed',
+      statusCode: result.statusCode ?? null,
+      errorBody: result.errorBody ?? null,
+    })
+  }
+}
+
 async function processCoalescedChatAppEventPush(
   supabaseAdmin: SupabaseAdminClient,
   event: AppEvent,
@@ -1019,7 +1194,11 @@ export async function processAppEventPushDeliveries(
     }
 
     try {
-      await processChatAppEventPush(supabaseAdmin, event)
+      if (event.type === 'chat_message.created') {
+        await processChatAppEventPush(supabaseAdmin, event)
+      } else {
+        await processSingleGenericAppEventPush(supabaseAdmin, event)
+      }
     } catch (error) {
       console.error('Failed to process app event push delivery', {
         appEventId: event.id,
