@@ -256,7 +256,7 @@ export default function MessagesPage() {
   const [error, setError] = useState('')
   const [openingCoachThread, setOpeningCoachThread] = useState(false)
   const [openingStudentId, setOpeningStudentId] = useState<string | null>(null)
-  const [isActiveOpen, setIsActiveOpen] = useState(true)
+  const [isActiveOpen, setIsActiveOpen] = useState(false)
   const [isAllStudentsOpen, setIsAllStudentsOpen] = useState(false)
 
   const isCoach = currentUserId === COACH_USER_ID
@@ -451,6 +451,7 @@ export default function MessagesPage() {
 
   const activeDialogItems = useMemo(() => {
     return directThreads
+      .filter((thread) => Boolean(thread.lastMessage))
       .slice()
       .sort((left, right) => {
         const leftLastMessageAt = left.lastMessage?.createdAt
