@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatMessageItem } from '@/lib/chat'
 
@@ -29,7 +29,7 @@ const PREVIEW_HEIGHT = 68
 const ACTION_ROW_HEIGHT = 40
 const FLOATING_GROUP_GAP = 8
 const FLOATING_GROUP_OFFSET = 8
-const MOBILE_SHEET_BREAKPOINT = 520
+const SWIPE_DISMISS_THRESHOLD_PX = 60
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -71,6 +71,7 @@ export default function ChatMessageActions({
 }: ChatMessageActionsProps) {
   const router = useRouter()
   const [viewportSize, setViewportSize] = useState({ width: 390, height: 844 })
+  const backdropPointerStartYRef = useRef<number | null>(null)
 
   const isOwnMessage = currentUserId === message.userId
   const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
@@ -126,7 +127,6 @@ export default function ChatMessageActions({
   const previewText = message.previewText || message.text || 'Сообщение'
   const reactionBarWidth = Math.min(REACTION_BAR_WIDTH, viewportWidth - (VIEWPORT_PADDING * 2))
   const actionCardWidth = Math.min(ACTION_CARD_WIDTH, viewportWidth - (VIEWPORT_PADDING * 2))
-  const useBottomSheetLayout = viewportWidth < MOBILE_SHEET_BREAKPOINT
   const estimatedCardHeight = PREVIEW_HEIGHT + actionCount * ACTION_ROW_HEIGHT + 12
   const totalFloatingGroupHeight = reactionBarHeight > 0
     ? reactionBarHeight + FLOATING_GROUP_GAP + estimatedCardHeight
@@ -152,7 +152,28 @@ export default function ChatMessageActions({
     VIEWPORT_PADDING,
     viewportWidth - actionCardWidth - VIEWPORT_PADDING
   )
-  const availableActionCardHeight = Math.max(220, viewportHeight - actionCardTop - VIEWPORT_PADDING)
+  const availableActionCardHeight = viewportHeight - actionCardTop - VIEWPORT_PADDING
+
+  function handleBackdropPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    backdropPointerStartYRef.current = event.clientY
+  }
+
+  function handleBackdropPointerUp(event: React.PointerEvent<HTMLButtonElement>) {
+    const startY = backdropPointerStartYRef.current
+    backdropPointerStartYRef.current = null
+
+    if (startY === null) {
+      return
+    }
+
+    if (event.clientY - startY > SWIPE_DISMISS_THRESHOLD_PX) {
+      onOpenChange(false)
+    }
+  }
+
+  function handleBackdropPointerCancel() {
+    backdropPointerStartYRef.current = null
+  }
 
   async function handleCopy() {
     try {
@@ -194,133 +215,15 @@ export default function ChatMessageActions({
     void onToggleReaction(message.id, emoji)
   }
 
-  if (useBottomSheetLayout) {
-    return (
-      <div className="chat-no-select fixed inset-0 z-50 flex items-end bg-black/40">
-        <button
-          type="button"
-          aria-label="Закрыть действия сообщения"
-          className="chat-no-select absolute inset-0"
-          onClick={() => onOpenChange(false)}
-        />
-        <div className="pointer-events-none relative w-full">
-          <div className="pointer-events-auto app-card relative max-h-[min(82svh,36rem)] w-full overflow-hidden rounded-t-3xl border border-black/[0.05] shadow-xl dark:border-white/10">
-            <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700" />
-            <div className="border-b border-black/[0.05] px-4 py-3 dark:border-white/10">
-              <div className="flex items-start gap-3">
-                {message.avatarUrl ? (
-                  <Image
-                    src={message.avatarUrl}
-                    alt=""
-                    width={40}
-                    height={40}
-                    className="h-10 w-10 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <AvatarFallback />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-                    <p className="app-text-primary min-w-0 break-words text-sm font-semibold">{message.displayName}</p>
-                    <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
-                  </div>
-                  <p className="app-text-secondary mt-1 break-words text-sm leading-5">
-                    {previewText}
-                  </p>
-                </div>
-              </div>
-              {canReact ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {QUICK_REACTIONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => handleQuickReaction(emoji)}
-                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-black/[0.05] px-3 text-[22px] transition-transform duration-150 active:scale-95 dark:border-white/10"
-                      aria-label={`Реакция ${emoji}`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <div className="max-h-[min(52svh,24rem)] overflow-y-auto p-2">
-              {canEditMessage ? (
-                <button
-                  type="button"
-                  onClick={handleEdit}
-                  className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium"
-                >
-                  Редактировать
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  void handleCopy()
-                }}
-                className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium"
-              >
-                Копировать
-              </button>
-              {canReply ? (
-                <button
-                  type="button"
-                  onClick={handleReply}
-                  className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium"
-                >
-                  Ответить
-                </button>
-              ) : null}
-              {canViewReaders ? (
-                <button
-                  type="button"
-                  onClick={handleViewReaders}
-                  className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium"
-                >
-                  Просмотрели
-                </button>
-              ) : null}
-              {canDeleteMessage ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleDelete()
-                  }}
-                  className="flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium text-red-500"
-                >
-                  Удалить
-                </button>
-              ) : canOpenProfile ? (
-                <button
-                  type="button"
-                  onClick={handleOpenProfile}
-                  className="app-text-primary flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium"
-                >
-                  Открыть профиль
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                className="app-text-secondary flex min-h-11 w-full items-center rounded-xl px-3 py-3 text-left text-sm font-medium"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="chat-no-select fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Закрыть действия сообщения"
         className="chat-no-select absolute inset-0 bg-black/10"
+        onPointerDown={handleBackdropPointerDown}
+        onPointerUp={handleBackdropPointerUp}
+        onPointerCancel={handleBackdropPointerCancel}
         onClick={() => onOpenChange(false)}
       />
       <div className="pointer-events-none absolute inset-0">
