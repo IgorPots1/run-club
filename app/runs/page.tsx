@@ -517,11 +517,22 @@ export default function RunsPage() {
 
         setAvailableShoes(selectionData.shoes)
         setSelectedShoeId((currentValue) => {
-          if (currentValue) {
+          if (currentValue && selectionData.shoes.some((shoe) => shoe.id === currentValue)) {
             return currentValue
           }
 
-          return selectionData.mostRecentlyUsedShoeId ?? ''
+          if (selectionData.shoes.length === 1) {
+            return selectionData.shoes[0]?.id ?? ''
+          }
+
+          if (
+            selectionData.mostRecentlyUsedShoeId &&
+            selectionData.shoes.some((shoe) => shoe.id === selectionData.mostRecentlyUsedShoeId)
+          ) {
+            return selectionData.mostRecentlyUsedShoeId
+          }
+
+          return ''
         })
       })
       .catch(() => {

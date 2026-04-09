@@ -512,64 +512,66 @@ function ShoeFormSheet({
                         Сбросить
                       </button>
                     ) : null}
+
+                    {normalizedCatalogSearchQuery ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-2xl border bg-[var(--surface)] shadow-xl">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                          <p className="app-text-primary text-sm font-medium">Результаты</p>
+                          <p className="app-text-secondary text-xs">
+                            {isCatalogSearchPending ? 'Ищем...' : `${filteredCatalogSearchResults.length} вариантов`}
+                          </p>
+                        </div>
+
+                        {isCatalogSearchPending ? (
+                          <div className="app-surface-muted px-4 py-4 text-sm app-text-secondary">
+                            Обновляем результаты...
+                          </div>
+                        ) : filteredCatalogSearchResults.length > 0 ? (
+                          <div className="max-h-[min(18rem,40svh)] overflow-y-auto">
+                            {filteredCatalogSearchResults.map((result, index) => (
+                              <button
+                                key={result.versionId}
+                                type="button"
+                                onClick={() => {
+                                  onCatalogSearchSelect({
+                                    brandId: result.brandId,
+                                    modelId: result.modelId,
+                                    versionId: result.versionId,
+                                  })
+                                  setCatalogSearchInput('')
+                                  setDebouncedCatalogSearchInput('')
+                                }}
+                                disabled={submitting}
+                                className={`w-full px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  index > 0 ? 'border-t border-black/[0.05] dark:border-white/[0.08]' : ''
+                                } hover:bg-black/[0.03] dark:hover:bg-white/[0.03]`}
+                              >
+                                <p className="app-text-primary text-sm font-medium">{result.fullName}</p>
+                                <p className="app-text-secondary mt-1 text-xs">
+                                  {result.brandName} · {result.modelName}
+                                  {result.versionName ? ` · ${result.versionName}` : ''}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="app-surface-muted px-4 py-4 text-sm app-text-secondary">
+                            Ничего не нашли. Попробуй другой запрос или выбери модель вручную.
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                   <p className="app-text-secondary mt-2 text-xs">
                     Ищи по бренду, модели или версии.
                   </p>
                 </div>
 
-                {normalizedCatalogSearchQuery ? (
-                  <div className="overflow-hidden rounded-2xl border">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-                      <p className="app-text-primary text-sm font-medium">Результаты</p>
-                      <p className="app-text-secondary text-xs">
-                        {isCatalogSearchPending ? 'Ищем...' : `${filteredCatalogSearchResults.length} вариантов`}
-                      </p>
-                    </div>
-
-                    {isCatalogSearchPending ? (
-                      <div className="app-surface-muted px-4 py-4 text-sm app-text-secondary">
-                        Обновляем результаты...
-                      </div>
-                    ) : filteredCatalogSearchResults.length > 0 ? (
-                      <div className="max-h-72 overflow-y-auto">
-                        {filteredCatalogSearchResults.map((result, index) => (
-                          <button
-                            key={result.versionId}
-                            type="button"
-                            onClick={() => {
-                              onCatalogSearchSelect({
-                                brandId: result.brandId,
-                                modelId: result.modelId,
-                                versionId: result.versionId,
-                              })
-                              setCatalogSearchInput('')
-                              setDebouncedCatalogSearchInput('')
-                            }}
-                            disabled={submitting}
-                            className={`w-full px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                              index > 0 ? 'border-t border-black/[0.05] dark:border-white/[0.08]' : ''
-                            } hover:bg-black/[0.03] dark:hover:bg-white/[0.03]`}
-                          >
-                            <p className="app-text-primary text-sm font-medium">{result.fullName}</p>
-                            <p className="app-text-secondary mt-1 text-xs">
-                              {result.brandName} · {result.modelName}
-                              {result.versionName ? ` · ${result.versionName}` : ''}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="app-surface-muted px-4 py-4 text-sm app-text-secondary">
-                        Ничего не нашли. Попробуй другой запрос или выбери модель вручную.
-                      </div>
-                    )}
-                  </div>
-                ) : (
+                {!normalizedCatalogSearchQuery ? (
                   <div className="app-surface-muted rounded-2xl border border-dashed px-4 py-4 text-sm app-text-secondary">
                     Начни вводить название модели, чтобы увидеть подходящие варианты.
                   </div>
-                )}
+                ) : null}
 
                 <div className="space-y-2">
                   <button
