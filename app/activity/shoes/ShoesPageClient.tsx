@@ -25,6 +25,14 @@ function toNullableTrimmedText(value: string) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
+function normalizeShoeMatchValue(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+}
+
 function parseDistanceKmInput(rawValue: string) {
   const normalizedValue = rawValue.trim().replace(',', '.')
 
@@ -260,6 +268,7 @@ function ShoeFormSheet({
   maxDistanceKmInput,
   isActive,
   formError,
+  duplicateWarning,
   onClose,
   onSubmit,
   onBrandChange,
@@ -290,6 +299,7 @@ function ShoeFormSheet({
   maxDistanceKmInput: string
   isActive: boolean
   formError: string
+  duplicateWarning: string
   onClose: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onBrandChange: (value: string) => void
@@ -811,6 +821,11 @@ function ShoeFormSheet({
               </div>
             ) : null}
 
+            {duplicateWarning ? (
+              <p className="rounded-xl border border-amber-300/70 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+                {duplicateWarning}
+              </p>
+            ) : null}
             {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           </div>
 
@@ -1004,6 +1019,49 @@ export default function ShoesPageClient({
     () => resolvedShoes.filter((shoe) => !shoe.isActive),
     [resolvedShoes]
   )
+  const draftShoeMatchKey = useMemo(() => {
+    if (editingShoeId) {
+      return ''
+    }
+
+    if (selectedVersion?.id) {
+      return `version:${selectedVersion.id}`
+    }
+
+    const normalizedSelectedLegacyModel = normalizeShoeMatchValue(selectedLegacyModelLabel)
+
+    if (normalizedSelectedLegacyModel) {
+      return `name:${normalizedSelectedLegacyModel}`
+    }
+
+    const normalizedCustomName = normalizeShoeMatchValue(customName)
+
+    if (normalizedCustomName) {
+      return `name:${normalizedCustomName}`
+    }
+
+    return ''
+  }, [customName, editingShoeId, selectedLegacyModelLabel, selectedVersion?.id])
+  const hasSimilarExistingShoe = useMemo(() => {
+    if (!draftShoeMatchKey) {
+      return false
+    }
+
+    return resolvedShoes.some((shoe) => {
+      if (draftShoeMatchKey.startsWith('version:')) {
+        return `version:${shoe.shoeVersionId ?? ''}` === draftShoeMatchKey
+      }
+
+      const normalizedDisplayName = normalizeShoeMatchValue(shoe.displayName)
+      const normalizedCustomName = normalizeShoeMatchValue(shoe.customName)
+
+      return (
+        `name:${normalizedDisplayName}` === draftShoeMatchKey ||
+        `name:${normalizedCustomName}` === draftShoeMatchKey
+      )
+    })
+  }, [draftShoeMatchKey, resolvedShoes])
+  const duplicateWarning = hasSimilarExistingShoe ? 'У вас уже есть такая пара' : ''
   const problematicSummaryLines = useMemo(() => {
     const warningCount = activeShoes.filter((shoe) => {
       const wearUi = getShoeWearUi({
@@ -1353,6 +1411,7 @@ export default function ShoesPageClient({
         maxDistanceKmInput={maxDistanceKmInput}
         isActive={isActive}
         formError={formError}
+        duplicateWarning={duplicateWarning}
         onClose={resetForm}
         onSubmit={handleCreateShoe}
         onBrandChange={(brandId) => {
