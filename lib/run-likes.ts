@@ -19,12 +19,15 @@ type ProfileRow = {
   avatar_url?: string | null
 }
 
-export type RunLikedUserItem = {
+export type LikedUserListItem = {
   userId: string
   displayName: string
   nickname: string | null
   avatarUrl: string | null
+  level?: number | null
 }
+
+export type RunLikedUserItem = LikedUserListItem
 
 export type RunLikeRealtimePayload = {
   eventType: 'INSERT' | 'DELETE'

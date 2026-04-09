@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import FeedActionButton from '@/components/FeedActionButton'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import {
+  loadRaceEventLikedUsers,
   subscribeToRaceEventLikes,
   toggleRaceEventLike,
   type RaceEventLikeRealtimePayload,
@@ -23,10 +24,10 @@ import {
   type RunCommentVisibilityRecord,
 } from '@/lib/run-comments'
 import {
+  type LikedUserListItem,
   loadRunLikedUsers,
   subscribeToRunLikes,
   type RunLikeRealtimePayload,
-  type RunLikedUserItem,
 } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
@@ -58,6 +59,10 @@ type FeedRestoreSnapshot = {
   nextOffset: number
   savedAt: number
 }
+
+type ActiveLikesTarget =
+  | { type: 'run'; id: string }
+  | { type: 'race_event'; id: string }
 
 function isRunFeedItem(item: FeedItem): item is RunFeedItem {
   return item.kind === 'run'
@@ -124,11 +129,12 @@ type RaceFeedCardProps = {
   item: FeedRaceEventItem
   isLikeInFlight: boolean
   onCommentClick: (raceEventId: string) => void
+  onOpenLikes: (raceEventId: string) => void
   onOpenRaceEvent: (raceEventId: string) => void
   onToggleLike: (raceEventId: string) => void
 }
 
-function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onOpenRaceEvent, onToggleLike }: RaceFeedCardProps) {
+function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onOpenLikes, onOpenRaceEvent, onToggleLike }: RaceFeedCardProps) {
   const resultLabel = formatClock(item.resultTimeSeconds)
   const targetLabel = formatClock(item.targetTimeSeconds)
   const linkedRunPreview = formatLinkedRunPreview(item)
@@ -224,6 +230,7 @@ function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onOpenRaceEvent, o
               active={item.raceEventLikedByViewer}
               actionDisabled={isLikeInFlight}
               onClick={() => onToggleLike(item.raceEventId)}
+              onCountClick={() => onOpenLikes(item.raceEventId)}
               icon={
                 <Heart
                   className="h-4 w-4"
@@ -262,10 +269,13 @@ export default function InfiniteWorkoutFeed({
     [currentUserId, pageSize, targetUserId]
   )
   const [items, setItems] = useState<FeedItem[]>([])
-  const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, RunLikedUserItem[]>>({})
+  const [likedUsersByRunId, setLikedUsersByRunId] = useState<Record<string, LikedUserListItem[]>>({})
+  const [likedUsersByRaceEventId, setLikedUsersByRaceEventId] = useState<Record<string, LikedUserListItem[]>>({})
   const [likedUsersErrorByRunId, setLikedUsersErrorByRunId] = useState<Record<string, string>>({})
+  const [likedUsersErrorByRaceEventId, setLikedUsersErrorByRaceEventId] = useState<Record<string, string>>({})
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
-  const [activeLikesRun, setActiveLikesRun] = useState<{ runId: string } | null>(null)
+  const [likedUsersLoadingRaceEventId, setLikedUsersLoadingRaceEventId] = useState<string | null>(null)
+  const [activeLikesTarget, setActiveLikesTarget] = useState<ActiveLikesTarget | null>(null)
   const [feedError, setFeedError] = useState('')
   const [initialLoading, setInitialLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -342,7 +352,7 @@ export default function InfiniteWorkoutFeed({
       setNextOffset(snapshot.nextOffset)
       setLikeInFlightByRunId({})
       setLikeInFlightByRaceEventId({})
-      setActiveLikesRun(null)
+      setActiveLikesTarget(null)
       setFeedError('')
       setInitialLoading(false)
     },
@@ -599,7 +609,7 @@ export default function InfiniteWorkoutFeed({
       setNextOffset(restoredSnapshotRef.current.nextOffset)
       setLikeInFlightByRunId({})
       setLikeInFlightByRaceEventId({})
-      setActiveLikesRun(null)
+      setActiveLikesTarget(null)
       setFeedError('')
       setInitialLoading(false)
       restoredSnapshotRef.current = null
@@ -620,7 +630,7 @@ export default function InfiniteWorkoutFeed({
     setNextOffset(0)
     setLikeInFlightByRunId({})
     setLikeInFlightByRaceEventId({})
-    setActiveLikesRun(null)
+    setActiveLikesTarget(null)
     void loadFirstPage()
   }, [enabled, feedQueryKey, hasRestoredSnapshot, loadFirstPage])
 
@@ -1003,6 +1013,37 @@ export default function InfiniteWorkoutFeed({
     }
   }, [likedUsersByRunId])
 
+  const loadLikedUsersForRaceEvent = useCallback(async (raceEventId: string, force = false) => {
+    if (!raceEventId) {
+      return
+    }
+
+    if (!force && Object.prototype.hasOwnProperty.call(likedUsersByRaceEventId, raceEventId)) {
+      return
+    }
+
+    setLikedUsersLoadingRaceEventId(raceEventId)
+    setLikedUsersErrorByRaceEventId((prev) => ({
+      ...prev,
+      [raceEventId]: '',
+    }))
+
+    try {
+      const likedUsers = await loadRaceEventLikedUsers(raceEventId)
+      setLikedUsersByRaceEventId((prev) => ({
+        ...prev,
+        [raceEventId]: likedUsers,
+      }))
+    } catch {
+      setLikedUsersErrorByRaceEventId((prev) => ({
+        ...prev,
+        [raceEventId]: 'Не удалось загрузить лайки',
+      }))
+    } finally {
+      setLikedUsersLoadingRaceEventId((currentRaceEventId) => (currentRaceEventId === raceEventId ? null : currentRaceEventId))
+    }
+  }, [likedUsersByRaceEventId])
+
   const handleCommentClick = useCallback((runId: string) => {
     if (!runId) {
       return
@@ -1013,7 +1054,7 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    setActiveLikesRun(null)
+    setActiveLikesTarget(null)
     router.push(`/runs/${runId}/discussion`)
   }, [onCommentClick, router])
 
@@ -1026,20 +1067,44 @@ export default function InfiniteWorkoutFeed({
   }, [navigateToRaceEvent])
 
   const handleOpenLikes = useCallback((item: FeedRunItem) => {
-    setActiveLikesRun({
-      runId: item.id,
+    setActiveLikesTarget({
+      type: 'run',
+      id: item.id,
     })
 
     void loadLikedUsersForRun(item.id)
   }, [loadLikedUsersForRun])
 
+  const handleOpenRaceEventLikes = useCallback((item: FeedRaceEventItem) => {
+    setActiveLikesTarget({
+      type: 'race_event',
+      id: item.raceEventId,
+    })
+
+    void loadLikedUsersForRaceEvent(item.raceEventId)
+  }, [loadLikedUsersForRaceEvent])
+
   const error = feedError
-  const activeLikesRunId = activeLikesRun?.runId ?? ''
-  const activeLikesItem = activeLikesRunId
+  const activeLikesRunId = activeLikesTarget?.type === 'run' ? activeLikesTarget.id : ''
+  const activeLikesRaceEventId = activeLikesTarget?.type === 'race_event' ? activeLikesTarget.id : ''
+  const activeLikesRunItem = activeLikesRunId
     ? items.find((item): item is RunFeedItem => item.kind === 'run' && item.id === activeLikesRunId) ?? null
     : null
-  const activeLikedUsers = activeLikesRunId ? likedUsersByRunId[activeLikesRunId] ?? [] : []
-  const activeLikesError = activeLikesRunId ? likedUsersErrorByRunId[activeLikesRunId] ?? '' : ''
+  const activeLikesRaceEventItem = activeLikesRaceEventId
+    ? items.find((item): item is RaceEventFeedItem => item.kind === 'race_event' && item.raceEventId === activeLikesRaceEventId) ?? null
+    : null
+  const activeLikedUsers = activeLikesTarget?.type === 'run'
+    ? (activeLikesRunId ? likedUsersByRunId[activeLikesRunId] ?? [] : [])
+    : (activeLikesRaceEventId ? likedUsersByRaceEventId[activeLikesRaceEventId] ?? [] : [])
+  const activeLikesError = activeLikesTarget?.type === 'run'
+    ? (activeLikesRunId ? likedUsersErrorByRunId[activeLikesRunId] ?? '' : '')
+    : (activeLikesRaceEventId ? likedUsersErrorByRaceEventId[activeLikesRaceEventId] ?? '' : '')
+  const activeLikesCount = activeLikesTarget?.type === 'run'
+    ? (activeLikesRunItem?.likesCount ?? 0)
+    : (activeLikesRaceEventItem?.raceEventLikeCount ?? 0)
+  const activeLikesLoading = activeLikesTarget?.type === 'run'
+    ? likedUsersLoadingRunId === activeLikesRunId
+    : likedUsersLoadingRaceEventId === activeLikesRaceEventId
 
   return (
     <>
@@ -1115,6 +1180,7 @@ export default function InfiniteWorkoutFeed({
                 item={item}
                 isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
                 onCommentClick={handleRaceEventCommentClick}
+                onOpenLikes={() => handleOpenRaceEventLikes(item)}
                 onOpenRaceEvent={navigateToRaceEvent}
                 onToggleLike={handleRaceEventLikeToggle}
               />
@@ -1128,15 +1194,19 @@ export default function InfiniteWorkoutFeed({
       </div>
 
       <RunLikesSheet
-        open={Boolean(activeLikesRun)}
-        likesCount={activeLikesItem?.likesCount ?? 0}
-        loading={likedUsersLoadingRunId === activeLikesRunId}
+        open={Boolean(activeLikesTarget)}
+        likesCount={activeLikesCount}
+        loading={activeLikesLoading}
         error={activeLikesError}
         users={activeLikedUsers}
-        onClose={() => setActiveLikesRun(null)}
+        onClose={() => setActiveLikesTarget(null)}
         onRetry={() => {
-          if (activeLikesRunId) {
+          if (activeLikesTarget?.type === 'run' && activeLikesRunId) {
             void loadLikedUsersForRun(activeLikesRunId, true)
+          }
+
+          if (activeLikesTarget?.type === 'race_event' && activeLikesRaceEventId) {
+            void loadLikedUsersForRaceEvent(activeLikesRaceEventId, true)
           }
         }}
       />

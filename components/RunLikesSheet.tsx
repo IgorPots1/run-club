@@ -3,14 +3,14 @@
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { RunLikedUserItem } from '@/lib/run-likes'
+import type { LikedUserListItem } from '@/lib/run-likes'
 
 type RunLikesSheetProps = {
   open: boolean
   likesCount: number
   loading?: boolean
   error?: string
-  users: RunLikedUserItem[]
+  users: LikedUserListItem[]
   onClose: () => void
   onRetry?: () => void
 }
@@ -47,11 +47,15 @@ function getLikesLabel(likesCount: number) {
   return 'лайков'
 }
 
-function LikesSheetRow({ user, onSelect }: { user: RunLikedUserItem; onSelect: (userId: string) => void }) {
+function LikesSheetRow({ user, onSelect }: { user: LikedUserListItem; onSelect: (userId: string) => void }) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarSrc = user.avatarUrl?.trim() ? user.avatarUrl : null
   const showAvatarImage = Boolean(avatarSrc) && failedAvatarUrl !== avatarSrc
-  const nicknameLabel = user.nickname?.trim() ? `@${user.nickname.trim()}` : null
+  const secondaryLabel = user.nickname?.trim()
+    ? `@${user.nickname.trim()}`
+    : Number.isFinite(user.level)
+      ? `Уровень ${Math.max(1, Math.round(user.level ?? 0))}`
+      : null
 
   return (
     <button
@@ -73,8 +77,8 @@ function LikesSheetRow({ user, onSelect }: { user: RunLikedUserItem; onSelect: (
       )}
       <div className="min-w-0">
         <p className="app-text-primary truncate text-sm font-semibold">{user.displayName}</p>
-        {nicknameLabel ? (
-          <p className="app-text-secondary truncate text-sm">{nicknameLabel}</p>
+        {secondaryLabel ? (
+          <p className="app-text-secondary truncate text-sm">{secondaryLabel}</p>
         ) : null}
       </div>
     </button>

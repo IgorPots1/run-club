@@ -1,8 +1,22 @@
+import { getProfileDisplayName } from './profiles'
+import type { LikedUserListItem } from './run-likes'
 import { supabase } from './supabase'
+import { getLevelFromXP } from './xp'
 
 type RaceEventLikeRow = {
   race_event_id: string
   user_id: string
+  created_at: string
+}
+
+type RaceEventLikeUserRow = Pick<RaceEventLikeRow, 'user_id' | 'created_at'>
+
+type ProfileRow = {
+  id: string
+  name: string | null
+  email: string | null
+  avatar_url?: string | null
+  total_xp?: number | null
 }
 
 type ToggleRaceEventLikeResponse =
@@ -60,6 +74,59 @@ export async function loadRaceEventLikesSummaryForRaceEventIds(
     likesByRaceEventId,
     likedRaceEventIds,
   }
+}
+
+export async function loadRaceEventLikedUsers(
+  raceEventId: string,
+  limit = 20
+): Promise<LikedUserListItem[]> {
+  if (!raceEventId.trim()) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('race_event_likes')
+    .select('user_id, created_at')
+    .eq('race_event_id', raceEventId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    throw error
+  }
+
+  const userIds = Array.from(
+    new Set(((data as RaceEventLikeUserRow[] | null) ?? []).map((row) => row.user_id))
+  )
+
+  if (userIds.length === 0) {
+    return []
+  }
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, name, email, avatar_url, total_xp')
+    .in('id', userIds)
+
+  if (profilesError) {
+    throw profilesError
+  }
+
+  const profilesByUserId = Object.fromEntries(
+    ((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])
+  )
+
+  return userIds.map((userId) => {
+    const profile = profilesByUserId[userId]
+
+    return {
+      userId,
+      displayName: getProfileDisplayName(profile, 'Бегун'),
+      nickname: null,
+      avatarUrl: profile?.avatar_url ?? null,
+      level: getLevelFromXP(Number(profile?.total_xp ?? 0)).level,
+    } satisfies LikedUserListItem
+  })
 }
 
 export async function toggleRaceEventLike(raceEventId: string) {
