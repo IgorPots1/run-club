@@ -165,7 +165,7 @@ export default function RaceDiscussionPage() {
       setCommentsError('')
 
       try {
-        const [loadedRaceEvent, loadedComments] = await Promise.all([
+        const [raceResult, commentsResult] = await Promise.allSettled([
           loadRaceEvent(raceId),
           loadRaceComments(raceId, user.id),
         ])
@@ -174,12 +174,18 @@ export default function RaceDiscussionPage() {
           return
         }
 
-        setRaceEvent(loadedRaceEvent)
-        replaceComments(loadedComments)
-      } catch {
-        if (isMounted) {
+        if (raceResult.status === 'fulfilled') {
+          setRaceEvent(raceResult.value)
+        } else {
           setPageError('Не удалось загрузить обсуждение старта')
           setRaceEvent(null)
+        }
+
+        if (commentsResult.status === 'fulfilled') {
+          replaceComments(commentsResult.value)
+        } else {
+          replaceComments([])
+          setCommentsError('Не удалось загрузить комментарии')
         }
       } finally {
         if (isMounted) {
@@ -475,46 +481,48 @@ export default function RaceDiscussionPage() {
     <ConversationScreenShell
       title="Обсуждение старта"
       fallbackHref={raceId ? '/races' : '/activity'}
-      footer={discussionComposer}
+      footer={pageError ? null : discussionComposer}
       scrollContainerRef={scrollContainerRef}
       scrollContainerClassName="scroll-smooth"
     >
       {discussionSummary}
-      <div className="flex min-h-[12rem] flex-1 flex-col">
-        {loadingComments ? (
-          <div className="space-y-4">
-            <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
-              <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
-              <span>Подтягиваем комментарии...</span>
+      {pageError || (!loadingRace && !raceEvent) ? null : (
+        <div className="flex min-h-[12rem] flex-1 flex-col">
+          {loadingComments ? (
+            <div className="space-y-4">
+              <div className="app-text-secondary inline-flex items-center gap-2 text-sm">
+                <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                <span>Подтягиваем комментарии...</span>
+              </div>
             </div>
-          </div>
-        ) : commentsError ? (
-          <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
-            <p className="text-sm text-red-600">{commentsError}</p>
-          </div>
-        ) : visibleCommentsCount === 0 ? (
-          <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
-            <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
-            <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
-          </div>
-        ) : (
-          <RunCommentThreadList
-            comments={comments}
-            commentDomIdPrefix="race-comment"
-            currentUserId={user?.id ?? null}
-            highlightedCommentId={highlightedCommentId}
-            pendingLikeCommentIds={pendingLikeCommentIds}
-            onToggleLikeComment={handleToggleLikeComment}
-            replyComposerMode="external"
-            activeReplyTargetId={replyTarget?.id ?? null}
-            onReplyTargetChange={handleSelectReplyTarget}
-            onReplyComment={handleReplyComment}
-            onEditComment={handleEditComment}
-            onDeleteComment={handleDeleteComment}
-          />
-        )}
-        <div ref={bottomRef} />
-      </div>
+          ) : commentsError ? (
+            <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
+              <p className="text-sm text-red-600">{commentsError}</p>
+            </div>
+          ) : visibleCommentsCount === 0 ? (
+            <div className="rounded-2xl border border-black/5 bg-black/[0.02] px-4 py-8 text-center dark:border-white/10 dark:bg-white/[0.03]">
+              <p className="app-text-primary text-sm font-medium">Пока нет комментариев</p>
+              <p className="app-text-secondary mt-1 text-sm">Напиши первым, чтобы начать обсуждение.</p>
+            </div>
+          ) : (
+            <RunCommentThreadList
+              comments={comments}
+              commentDomIdPrefix="race-comment"
+              currentUserId={user?.id ?? null}
+              highlightedCommentId={highlightedCommentId}
+              pendingLikeCommentIds={pendingLikeCommentIds}
+              onToggleLikeComment={handleToggleLikeComment}
+              replyComposerMode="external"
+              activeReplyTargetId={replyTarget?.id ?? null}
+              onReplyTargetChange={handleSelectReplyTarget}
+              onReplyComment={handleReplyComment}
+              onEditComment={handleEditComment}
+              onDeleteComment={handleDeleteComment}
+            />
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
     </ConversationScreenShell>
   )
 }
