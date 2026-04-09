@@ -1,5 +1,6 @@
 import type { DashboardOverview } from './dashboard-overview'
 import { getProfileDisplayName } from './profiles'
+import { loadRaceEventLikesSummaryForRaceEventIds } from './race-event-likes'
 import { getPersonalRecordRaceEventIds } from './race-events'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
@@ -140,6 +141,8 @@ export type FeedRaceEventItem = {
   displayName: string
   avatar_url: string | null
   totalXp: number
+  raceEventLikeCount: number
+  raceEventLikedByViewer: boolean
   linkedRun: {
     id: string
     name: string | null
@@ -677,6 +680,11 @@ export async function loadFeedRuns(
         .filter((event) => event.actor_user_id === currentUserId && Boolean(event.entity_id))
         .map((event) => event.entity_id as string)
     : []
+  const raceEventIds = Array.from(new Set(
+    pageRaceEvents
+      .map((event) => event.entity_id)
+      .filter((value): value is string => Boolean(value))
+  ))
   const userIds = Array.from(new Set([
     ...pageRuns.map((run) => run.user_id),
     ...pageRaceEvents.map((event) => event.actor_user_id).filter((value): value is string => Boolean(value)),
@@ -686,12 +694,14 @@ export async function loadFeedRuns(
   const [
     profileById,
     likesSummary,
+    raceEventLikesSummary,
     photosResult,
     currentRaceEventsResult,
     historicalRunsResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
+    loadRaceEventLikesSummaryForRaceEventIds(raceEventIds, currentUserId),
     runIds.length === 0
       ? Promise.resolve({ data: [] as RunPhotoRow[], error: null })
       : supabase
@@ -882,6 +892,8 @@ export async function loadFeedRuns(
       displayName: getProfileDisplayName(profile, 'Бегун'),
       avatar_url: profile?.avatar_url ?? null,
       totalXp: Number(profile?.total_xp ?? 0),
+      raceEventLikeCount: raceEventLikesSummary.likesByRaceEventId[event.entity_id] ?? 0,
+      raceEventLikedByViewer: raceEventLikesSummary.likedRaceEventIds.has(event.entity_id),
       linkedRun: linkedRunId ? {
         id: linkedRunId,
         name: linkedRunName,

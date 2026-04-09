@@ -1,9 +1,11 @@
 'use client'
 
+import { Heart } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
+import { toggleRaceEventLike } from '@/lib/race-event-likes'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import { loadFeedRuns, type FeedItem, type FeedRunItem, type FeedRaceEventItem } from '@/lib/dashboard'
@@ -44,6 +46,7 @@ type InfiniteWorkoutFeedProps = {
 
 type FeedCommentVisibilityById = Record<string, RunCommentVisibilityRecord>
 type RunFeedItem = Extract<FeedItem, { kind: 'run' }>
+type RaceEventFeedItem = Extract<FeedItem, { kind: 'race_event' }>
 type FeedRestoreSnapshot = {
   items: FeedItem[]
   hasMore: boolean
@@ -112,7 +115,14 @@ function formatLinkedRunPace(item: FeedRaceEventItem) {
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
 }
 
-function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
+type RaceFeedCardProps = {
+  item: FeedRaceEventItem
+  isLikeInFlight: boolean
+  onToggleLike: (raceEventId: string) => void
+}
+
+function RaceFeedCard({ item, isLikeInFlight, onToggleLike }: RaceFeedCardProps) {
+  const router = useRouter()
   const resultLabel = formatClock(item.resultTimeSeconds)
   const targetLabel = formatClock(item.targetTimeSeconds)
   const linkedRunPreview = formatLinkedRunPreview(item)
@@ -121,70 +131,115 @@ function RaceFeedCard({ item }: { item: FeedRaceEventItem }) {
   const isUpcoming = Boolean(item.raceDate && item.raceDate > new Date().toISOString().slice(0, 10))
 
   return (
-    <Link href={`/races/${item.raceEventId}`} className="block">
-      <article className="app-card relative overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10">
-        <ParticipantIdentity
-          avatarUrl={item.avatar_url}
-          displayName={item.displayName}
-          level={getLevelFromXP(item.totalXp).level}
-          size="sm"
-        />
+    <article
+      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        router.push(`/races/${item.raceEventId}`)
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        event.preventDefault()
+        router.push(`/races/${item.raceEventId}`)
+      }}
+    >
+      <ParticipantIdentity
+        avatarUrl={item.avatar_url}
+        displayName={item.displayName}
+        level={getLevelFromXP(item.totalXp).level}
+        href={`/users/${item.user_id}`}
+        size="sm"
+      />
 
-        <div className="mt-4 min-w-0">
-          <div className="mt-1 flex items-start justify-between gap-3">
-            <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
-            <p className="app-text-secondary shrink-0 text-right text-sm">
-              {formatRaceDateLabel(item.raceDate)}
-            </p>
+      <div className="mt-4 min-w-0">
+        <div className="mt-1 flex items-start justify-between gap-3">
+          <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
+          <p className="app-text-secondary shrink-0 text-right text-sm">
+            {formatRaceDateLabel(item.raceDate)}
+          </p>
+        </div>
+      </div>
+
+      {isUpcoming ? (
+        <div className="mt-4 min-w-0 space-y-2">
+          {distanceLabel ? (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className="app-text-secondary">Дистанция</span>
+              <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
+            </div>
+          ) : null}
+          {targetLabel ? (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className="app-text-secondary">Цель</span>
+              <span className="app-text-primary break-words font-medium">{targetLabel}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4 min-w-0 space-y-2.5">
+          {resultLabel ? (
+            <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+              <p className="app-text-primary text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[32px]">
+                {resultLabel}
+              </p>
+              <p className="app-text-secondary pb-0.5 text-sm">Результат</p>
+            </div>
+          ) : null}
+          <p className="app-text-secondary break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
+          {distanceLabel ? (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className="app-text-secondary">Дистанция</span>
+              <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {item.linkedRun ? (
+        <div className="mt-4 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
+          <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
+          <p className="app-text-secondary mt-1 break-words text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
+          {linkedRunPace ? (
+            <p className="app-text-secondary mt-1 break-words text-xs">{linkedRunPace}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div
+            className={`inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
+              item.raceEventLikedByViewer ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onToggleLike(item.raceEventId)}
+              disabled={isLikeInFlight}
+              aria-disabled={isLikeInFlight ? true : undefined}
+              className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label={item.raceEventLikedByViewer ? 'Убрать лайк' : 'Поставить лайк'}
+            >
+              <span aria-hidden="true" className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+                <Heart
+                  className="h-4 w-4"
+                  strokeWidth={1.9}
+                  fill={item.raceEventLikedByViewer ? 'currentColor' : 'none'}
+                />
+              </span>
+            </button>
+            <span className="inline-flex min-h-9 min-w-0 items-center justify-center rounded-full px-2 text-sm font-semibold">
+              {item.raceEventLikeCount}
+            </span>
           </div>
         </div>
-
-        {isUpcoming ? (
-          <div className="mt-4 min-w-0 space-y-2">
-            {distanceLabel ? (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                <span className="app-text-secondary">Дистанция</span>
-                <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
-              </div>
-            ) : null}
-            {targetLabel ? (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                <span className="app-text-secondary">Цель</span>
-                <span className="app-text-primary break-words font-medium">{targetLabel}</span>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="mt-4 min-w-0 space-y-2.5">
-            {resultLabel ? (
-              <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-                <p className="app-text-primary text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[32px]">
-                  {resultLabel}
-                </p>
-                <p className="app-text-secondary pb-0.5 text-sm">Результат</p>
-              </div>
-            ) : null}
-            <p className="app-text-secondary break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
-            {distanceLabel ? (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                <span className="app-text-secondary">Дистанция</span>
-                <span className="app-text-primary break-words font-medium">{distanceLabel}</span>
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        {item.linkedRun ? (
-          <div className="mt-4 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
-            <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
-            <p className="app-text-secondary mt-1 break-words text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
-            {linkedRunPace ? (
-              <p className="app-text-secondary mt-1 break-words text-xs">{linkedRunPace}</p>
-            ) : null}
-          </div>
-        ) : null}
-      </article>
-    </Link>
+      </div>
+    </article>
   )
 }
 
@@ -216,12 +271,15 @@ export default function InfiniteWorkoutFeed({
   const [hasMore, setHasMore] = useState(true)
   const [nextOffset, setNextOffset] = useState(0)
   const [likeInFlightByRunId, setLikeInFlightByRunId] = useState<Record<string, boolean>>({})
+  const [likeInFlightByRaceEventId, setLikeInFlightByRaceEventId] = useState<Record<string, boolean>>({})
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const feedRootRef = useRef<HTMLDivElement | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
   const itemsRef = useRef<FeedItem[]>([])
   const likeInFlightRef = useRef<Record<string, boolean>>({})
+  const raceEventLikeInFlightRef = useRef<Record<string, boolean>>({})
   const likeRequestVersionByRunIdRef = useRef<Record<string, number>>({})
+  const likeRequestVersionByRaceEventIdRef = useRef<Record<string, number>>({})
   const commentVisibilityByRunIdRef = useRef<Record<string, FeedCommentVisibilityById>>({})
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
@@ -254,35 +312,6 @@ export default function InfiniteWorkoutFeed({
     return window
   }, [])
 
-  const readCurrentScrollTop = useCallback(() => {
-    const scrollContainer = getActiveScrollContainer()
-
-    if (!scrollContainer) {
-      return 0
-    }
-
-    if (scrollContainer === window) {
-      return window.scrollY || window.pageYOffset || 0
-    }
-
-    return (scrollContainer as HTMLElement).scrollTop
-  }, [getActiveScrollContainer])
-
-  const writeCurrentScrollTop = useCallback((scrollTop: number) => {
-    const scrollContainer = getActiveScrollContainer()
-
-    if (!scrollContainer) {
-      return
-    }
-
-    if (scrollContainer === window) {
-      window.scrollTo({ top: scrollTop, behavior: 'auto' })
-      return
-    }
-
-    scrollContainer.scrollTo({ top: scrollTop, behavior: 'auto' })
-  }, [getActiveScrollContainer])
-
   useEffect(() => {
     currentUserIdRef.current = currentUserId
   }, [currentUserId])
@@ -305,11 +334,13 @@ export default function InfiniteWorkoutFeed({
       restoredSnapshotRef.current = snapshot
       commentVisibilityByRunIdRef.current = {}
       likeInFlightRef.current = {}
+      raceEventLikeInFlightRef.current = {}
       itemsRef.current = snapshot.items
       setItems(snapshot.items)
       setHasMore(snapshot.hasMore)
       setNextOffset(snapshot.nextOffset)
       setLikeInFlightByRunId({})
+      setLikeInFlightByRaceEventId({})
       setActiveLikesRun(null)
       setFeedError('')
       setInitialLoading(false)
@@ -321,6 +352,14 @@ export default function InfiniteWorkoutFeed({
   const updateRunItem = useCallback((runId: string, updater: (item: RunFeedItem) => RunFeedItem) => {
     const nextItems = itemsRef.current.map((item) => (
       item.kind === 'run' && item.id === runId ? updater(item) : item
+    ))
+    itemsRef.current = nextItems
+    setItems(nextItems)
+  }, [])
+
+  const updateRaceEventItem = useCallback((raceEventId: string, updater: (item: RaceEventFeedItem) => RaceEventFeedItem) => {
+    const nextItems = itemsRef.current.map((item) => (
+      item.kind === 'race_event' && item.raceEventId === raceEventId ? updater(item) : item
     ))
     itemsRef.current = nextItems
     setItems(nextItems)
@@ -360,6 +399,25 @@ export default function InfiniteWorkoutFeed({
         next[runId] = true
       } else {
         delete next[runId]
+      }
+
+      return next
+    })
+  }, [])
+
+  const setRaceEventLikeInFlight = useCallback((raceEventId: string, inFlight: boolean) => {
+    raceEventLikeInFlightRef.current[raceEventId] = inFlight
+    setLikeInFlightByRaceEventId((prev) => {
+      const isCurrentlyInFlight = prev[raceEventId] === true
+      if (isCurrentlyInFlight === inFlight) {
+        return prev
+      }
+
+      const next = { ...prev }
+      if (inFlight) {
+        next[raceEventId] = true
+      } else {
+        delete next[raceEventId]
       }
 
       return next
@@ -533,11 +591,13 @@ export default function InfiniteWorkoutFeed({
     if (restoredSnapshotRef.current) {
       commentVisibilityByRunIdRef.current = {}
       likeInFlightRef.current = {}
+      raceEventLikeInFlightRef.current = {}
       itemsRef.current = restoredSnapshotRef.current.items
       setItems(restoredSnapshotRef.current.items)
       setHasMore(restoredSnapshotRef.current.hasMore)
       setNextOffset(restoredSnapshotRef.current.nextOffset)
       setLikeInFlightByRunId({})
+      setLikeInFlightByRaceEventId({})
       setActiveLikesRun(null)
       setFeedError('')
       setInitialLoading(false)
@@ -553,10 +613,12 @@ export default function InfiniteWorkoutFeed({
     firstPageRequestPromiseRef.current = null
     commentVisibilityByRunIdRef.current = {}
     likeInFlightRef.current = {}
+    raceEventLikeInFlightRef.current = {}
     setItems([])
     setHasMore(true)
     setNextOffset(0)
     setLikeInFlightByRunId({})
+    setLikeInFlightByRaceEventId({})
     setActiveLikesRun(null)
     void loadFirstPage()
   }, [enabled, feedQueryKey, hasRestoredSnapshot, loadFirstPage])
@@ -769,6 +831,72 @@ export default function InfiniteWorkoutFeed({
     }
   }, [clearRunLikesCache, router, setLikeInFlight])
 
+  const handleRaceEventLikeToggle = useCallback(async (raceEventId: string) => {
+    const activeUserId = currentUserIdRef.current
+
+    if (!activeUserId) {
+      router.replace('/login')
+      return
+    }
+
+    const currentItem = itemsRef.current.find(
+      (item): item is RaceEventFeedItem => item.kind === 'race_event' && item.raceEventId === raceEventId
+    )
+
+    if (!currentItem) return
+    if (raceEventLikeInFlightRef.current[raceEventId]) return
+    if (currentItem.user_id === activeUserId) return
+
+    const wasLiked = currentItem.raceEventLikedByViewer
+    const previousItems = itemsRef.current
+    const nextRequestVersion = (likeRequestVersionByRaceEventIdRef.current[raceEventId] ?? 0) + 1
+    likeRequestVersionByRaceEventIdRef.current[raceEventId] = nextRequestVersion
+
+    try {
+      setRaceEventLikeInFlight(raceEventId, true)
+
+      updateRaceEventItem(raceEventId, (item) => ({
+        ...item,
+        raceEventLikedByViewer: !wasLiked,
+        raceEventLikeCount: Math.max(0, item.raceEventLikeCount + (wasLiked ? -1 : 1)),
+      }))
+
+      void toggleRaceEventLike(raceEventId)
+        .then(({ error: likeError, liked, likeCount }) => {
+          if (likeRequestVersionByRaceEventIdRef.current[raceEventId] !== nextRequestVersion) {
+            return
+          }
+
+          if (likeError || liked == null || likeCount == null) {
+            itemsRef.current = previousItems
+            setItems(previousItems)
+            return
+          }
+
+          updateRaceEventItem(raceEventId, (item) => ({
+            ...item,
+            raceEventLikedByViewer: liked,
+            raceEventLikeCount: Math.max(0, likeCount),
+          }))
+        })
+        .catch(() => {
+          if (likeRequestVersionByRaceEventIdRef.current[raceEventId] !== nextRequestVersion) {
+            return
+          }
+
+          itemsRef.current = previousItems
+          setItems(previousItems)
+        })
+        .finally(() => {
+          setRaceEventLikeInFlight(raceEventId, false)
+        })
+    } catch {
+      setRaceEventLikeInFlight(raceEventId, false)
+      itemsRef.current = previousItems
+      setItems(previousItems)
+    }
+  }, [router, setRaceEventLikeInFlight, updateRaceEventItem])
+
   const loadLikedUsersForRun = useCallback(async (runId: string, force = false) => {
     if (!runId) {
       return
@@ -899,7 +1027,12 @@ export default function InfiniteWorkoutFeed({
                 profileHref={`/users/${item.user_id}`}
               />
             ) : (
-              <RaceFeedCard key={item.id} item={item} />
+              <RaceFeedCard
+                key={item.id}
+                item={item}
+                isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
+                onToggleLike={handleRaceEventLikeToggle}
+              />
             )
           ))
         )}
