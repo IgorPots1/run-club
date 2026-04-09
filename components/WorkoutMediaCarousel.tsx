@@ -10,8 +10,8 @@ const PORTRAIT_HEIGHT_OVER_WIDTH_THRESHOLD = 1.1
 const SLIDE_SURFACE_CLASS_NAME =
   'overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10'
 const SLIDE_VIEWPORT_CLASS_NAME = 'relative aspect-[2.15/1] w-full'
-const SLIDE_DEPTH_OVERLAY_CLASS_NAME =
-  'pointer-events-none absolute inset-x-0 bottom-0 h-[36%] bg-gradient-to-t from-black/14 via-black/[0.05] to-transparent dark:from-black/22 dark:via-black/[0.08]'
+const MAP_SLIDE_OVERLAY_CLASS_NAME =
+  'pointer-events-none absolute inset-x-0 bottom-0 h-[34%] bg-gradient-to-t from-black/10 via-black/[0.035] to-transparent dark:from-black/16 dark:via-black/[0.055]'
 
 type WorkoutMediaCarouselProps = {
   mapPolyline?: string | null
@@ -205,7 +205,7 @@ export default function WorkoutMediaCarousel({
           ) : (
             <RunRouteMapPreview polyline={slide.mapPolyline} className="h-full w-full" />
           )}
-          <div aria-hidden="true" className={SLIDE_DEPTH_OVERLAY_CLASS_NAME} />
+          <div aria-hidden="true" className={MAP_SLIDE_OVERLAY_CLASS_NAME} />
           {mapOverlay}
         </div>
       </div>
@@ -220,7 +220,6 @@ export default function WorkoutMediaCarousel({
             src={slide.src}
             alt={photoAlt(slide.photoIndex)}
           />
-          <div aria-hidden="true" className={SLIDE_DEPTH_OVERLAY_CLASS_NAME} />
           {showBadge ? (
             <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
               +{additionalPhotosCount}
