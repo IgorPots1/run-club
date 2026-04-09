@@ -13,6 +13,7 @@ type RunLikesSheetProps = {
   users: LikedUserListItem[]
   onClose: () => void
   onRetry?: () => void
+  onSelectUser?: (userId: string) => void
 }
 
 function AvatarFallback() {
@@ -93,6 +94,7 @@ export default function RunLikesSheet({
   users,
   onClose,
   onRetry,
+  onSelectUser,
 }: RunLikesSheetProps) {
   const router = useRouter()
 
@@ -192,6 +194,11 @@ export default function RunLikesSheet({
                   user={user}
                   onSelect={(userId) => {
                     onClose()
+                    if (onSelectUser) {
+                      onSelectUser(userId)
+                      return
+                    }
+
                     router.push(`/users/${userId}`)
                   }}
                 />

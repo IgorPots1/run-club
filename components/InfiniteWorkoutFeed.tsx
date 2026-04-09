@@ -130,11 +130,20 @@ type RaceFeedCardProps = {
   isLikeInFlight: boolean
   onCommentClick: (raceEventId: string) => void
   onOpenLikes: (raceEventId: string) => void
+  onOpenProfile: (href: string) => void
   onOpenRaceEvent: (raceEventId: string) => void
   onToggleLike: (raceEventId: string) => void
 }
 
-function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onOpenLikes, onOpenRaceEvent, onToggleLike }: RaceFeedCardProps) {
+function RaceFeedCard({
+  item,
+  isLikeInFlight,
+  onCommentClick,
+  onOpenLikes,
+  onOpenProfile,
+  onOpenRaceEvent,
+  onToggleLike,
+}: RaceFeedCardProps) {
   const resultLabel = formatClock(item.resultTimeSeconds)
   const targetLabel = formatClock(item.targetTimeSeconds)
   const linkedRunPreview = formatLinkedRunPreview(item)
@@ -165,6 +174,7 @@ function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onOpenLikes, onOpe
         displayName={item.displayName}
         level={getLevelFromXP(item.totalXp).level}
         href={`/users/${item.user_id}`}
+        onNavigate={onOpenProfile}
         size="sm"
       />
 
@@ -359,6 +369,15 @@ export default function InfiniteWorkoutFeed({
     restoreReady: !initialLoading && items.length > 0,
     debugLabel: 'InfiniteWorkoutFeed',
   })
+
+  const navigateFromFeed = useCallback((href: string) => {
+    if (!href) {
+      return
+    }
+
+    prepareForRunDetailNavigation()
+    router.push(href)
+  }, [prepareForRunDetailNavigation, router])
 
   const updateRunItem = useCallback((runId: string, updater: (item: RunFeedItem) => RunFeedItem) => {
     const nextItems = itemsRef.current.map((item) => (
@@ -639,20 +658,20 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    prepareForRunDetailNavigation()
-
-    router.push(`/runs/${runId}`)
-  }, [prepareForRunDetailNavigation, router])
+    navigateFromFeed(`/runs/${runId}`)
+  }, [navigateFromFeed])
 
   const navigateToRaceEvent = useCallback((raceEventId: string) => {
     if (!raceEventId) {
       return
     }
 
-    prepareForRunDetailNavigation()
+    navigateFromFeed(`/races/${raceEventId}`)
+  }, [navigateFromFeed])
 
-    router.push(`/races/${raceEventId}`)
-  }, [prepareForRunDetailNavigation, router])
+  const navigateToProfile = useCallback((href: string) => {
+    navigateFromFeed(href)
+  }, [navigateFromFeed])
 
   useEffect(() => {
     if (!enabled) {
@@ -1055,8 +1074,8 @@ export default function InfiniteWorkoutFeed({
     }
 
     setActiveLikesTarget(null)
-    router.push(`/runs/${runId}/discussion`)
-  }, [onCommentClick, router])
+    navigateFromFeed(`/runs/${runId}/discussion`)
+  }, [navigateFromFeed, onCommentClick])
 
   const handleRaceEventCommentClick = useCallback((raceEventId: string) => {
     if (!raceEventId) {
@@ -1173,6 +1192,7 @@ export default function InfiniteWorkoutFeed({
                 onCommentClick={handleCommentClick}
                 onNavigateToRun={navigateToRun}
                 profileHref={`/users/${item.user_id}`}
+                onNavigateToProfile={navigateToProfile}
               />
             ) : (
               <RaceFeedCard
@@ -1181,6 +1201,7 @@ export default function InfiniteWorkoutFeed({
                 isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
                 onCommentClick={handleRaceEventCommentClick}
                 onOpenLikes={() => handleOpenRaceEventLikes(item)}
+                onOpenProfile={navigateToProfile}
                 onOpenRaceEvent={navigateToRaceEvent}
                 onToggleLike={handleRaceEventLikeToggle}
               />
@@ -1209,6 +1230,7 @@ export default function InfiniteWorkoutFeed({
             void loadLikedUsersForRaceEvent(activeLikesRaceEventId, true)
           }
         }}
+        onSelectUser={(userId) => navigateFromFeed(`/users/${userId}`)}
       />
     </>
   )

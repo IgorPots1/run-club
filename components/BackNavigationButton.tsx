@@ -2,7 +2,7 @@
 
 import { ChevronLeft } from 'lucide-react'
 import { useEffect } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { hydrateRunDetailSourceHistoryState, readRunDetailSource } from '@/lib/run-detail-navigation'
 
 type BackNavigationButtonProps = {
@@ -10,6 +10,7 @@ type BackNavigationButtonProps = {
   className?: string
   label?: string
   variant?: 'inline' | 'icon'
+  enableSourceRestore?: boolean
 }
 
 export default function BackNavigationButton({
@@ -17,29 +18,26 @@ export default function BackNavigationButton({
   className = '',
   label = 'Назад',
   variant = 'inline',
+  enableSourceRestore = false,
 }: BackNavigationButtonProps) {
   const router = useRouter()
-  const pathname = usePathname()
 
   useEffect(() => {
-    if (!pathname || !/^\/runs\/[^/]+$/.test(pathname)) {
+    if (!enableSourceRestore) {
       return
     }
 
     hydrateRunDetailSourceHistoryState()
-  }, [pathname])
+  }, [enableSourceRestore])
 
   function resolveFallbackHref() {
-    if (!pathname || !/^\/runs\/[^/]+$/.test(pathname)) {
+    if (!enableSourceRestore) {
       return fallbackHref
     }
 
-    const historySourceHref = typeof window !== 'undefined' && typeof window.history.state?.runDetailSourceHref === 'string'
-      ? window.history.state.runDetailSourceHref
-      : null
     const storedSource = readRunDetailSource()
 
-    return historySourceHref || storedSource?.href || fallbackHref
+    return storedSource?.href || fallbackHref
   }
 
   function handleBackNavigation() {

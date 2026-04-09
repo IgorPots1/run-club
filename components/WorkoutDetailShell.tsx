@@ -4,6 +4,7 @@ import InnerPageHeader from '@/components/InnerPageHeader'
 type WorkoutDetailShellProps = {
   title: string
   fallbackHref?: string
+  enableSourceRestore?: boolean
   headerRightSlot?: ReactNode
   topContent?: ReactNode
   footer?: ReactNode
@@ -15,6 +16,7 @@ type WorkoutDetailShellProps = {
 export default function WorkoutDetailShell({
   title,
   fallbackHref,
+  enableSourceRestore = false,
   headerRightSlot,
   topContent,
   footer,
@@ -51,7 +53,12 @@ export default function WorkoutDetailShell({
       className={`flex ${mobileShellHeightClassName} min-w-0 flex-col overflow-x-hidden overflow-y-hidden bg-[color:var(--background)] md:h-auto md:min-h-screen md:overflow-visible`}
     >
       <div className="mx-auto flex h-full min-h-0 min-w-0 w-full max-w-xl flex-col overflow-x-hidden md:h-auto md:min-h-screen md:overflow-visible">
-        <InnerPageHeader title={title} fallbackHref={fallbackHref} rightSlot={headerRightSlot} />
+        <InnerPageHeader
+          title={title}
+          fallbackHref={fallbackHref}
+          enableSourceRestore={enableSourceRestore}
+          rightSlot={headerRightSlot}
+        />
         {topContent ? (
           <div className="min-w-0 shrink-0 px-4 pb-3 pt-3 md:pt-4">
             {topContent}

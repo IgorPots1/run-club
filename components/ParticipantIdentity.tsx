@@ -9,6 +9,7 @@ type ParticipantIdentityProps = {
   displayName: string
   level: number
   href?: string | null
+  onNavigate?: (href: string) => void
   size: 'sm' | 'md'
   nameWeightClass?: 'font-medium' | 'font-semibold' | 'font-bold'
   nameSizeClass?: string
@@ -43,6 +44,7 @@ export default function ParticipantIdentity({
   displayName,
   level,
   href = null,
+  onNavigate,
   size,
   nameWeightClass = 'font-semibold',
   nameSizeClass,
@@ -76,6 +78,18 @@ export default function ParticipantIdentity({
       </div>
     </>
   )
+
+  if (href && onNavigate) {
+    return (
+      <button
+        type="button"
+        onClick={() => onNavigate(href)}
+        className="flex min-w-0 items-center gap-3 text-left"
+      >
+        {content}
+      </button>
+    )
+  }
 
   if (href) {
     return (

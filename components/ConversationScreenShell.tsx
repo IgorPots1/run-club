@@ -7,6 +7,7 @@ import { useIsolatedViewportHeight } from '@/components/useIsolatedViewportHeigh
 type ConversationScreenShellProps = {
   title: string
   fallbackHref?: string
+  enableSourceRestore?: boolean
   rightSlot?: ReactNode
   headerBottom?: ReactNode
   footer?: ReactNode
@@ -19,6 +20,7 @@ type ConversationScreenShellProps = {
 export default function ConversationScreenShell({
   title,
   fallbackHref,
+  enableSourceRestore = false,
   rightSlot,
   headerBottom,
   footer,
@@ -56,7 +58,13 @@ export default function ConversationScreenShell({
       style={isolatedViewportStyle}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-        <InnerPageHeader title={title} fallbackHref={fallbackHref} minimal rightSlot={rightSlot} />
+        <InnerPageHeader
+          title={title}
+          fallbackHref={fallbackHref}
+          enableSourceRestore={enableSourceRestore}
+          minimal
+          rightSlot={rightSlot}
+        />
         {headerBottom ? <div className="shrink-0 px-4 pb-2">{headerBottom}</div> : null}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div

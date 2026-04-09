@@ -661,6 +661,7 @@ export default function RunDiscussionPage() {
     <ConversationScreenShell
       title="Обсуждение"
       fallbackHref={runId ? `/runs/${runId}` : '/dashboard'}
+      enableSourceRestore
       footer={discussionComposer}
       scrollContainerRef={scrollContainerRef}
       scrollContainerClassName="scroll-smooth"

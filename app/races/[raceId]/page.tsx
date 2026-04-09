@@ -1,7 +1,6 @@
 'use client'
 
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
-import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ConversationScreenShell from '@/components/ConversationScreenShell'
@@ -481,6 +480,7 @@ export default function RaceDiscussionPage() {
     <ConversationScreenShell
       title="Обсуждение старта"
       fallbackHref={raceId ? '/races' : '/activity'}
+      enableSourceRestore
       footer={pageError ? null : discussionComposer}
       scrollContainerRef={scrollContainerRef}
       scrollContainerClassName="scroll-smooth"

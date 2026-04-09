@@ -51,6 +51,7 @@ type WorkoutFeedCardProps = {
   onCommentClick?: (runId: string) => void
   onNavigateToRun?: (runId: string) => void
   profileHref?: string | null
+  onNavigateToProfile?: (href: string) => void
   photos?: WorkoutMediaPhoto[]
 }
 
@@ -150,6 +151,7 @@ function WorkoutFeedCard({
   onCommentClick,
   onNavigateToRun,
   profileHref = null,
+  onNavigateToProfile,
   photos = [],
 }: WorkoutFeedCardProps) {
   const router = useRouter()
@@ -285,6 +287,7 @@ function WorkoutFeedCard({
             displayName={displayName}
             level={level}
             href={profileHref}
+            onNavigate={onNavigateToProfile}
             size="sm"
             nameWeightClass="font-medium"
             nameSizeClass="text-[15px]"

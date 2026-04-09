@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 type MobileBackHeaderProps = {
   title: string
   fallbackHref?: string
+  enableSourceRestore?: boolean
   className?: string
   sticky?: boolean
   fullBleedOnMobile?: boolean
@@ -14,6 +15,7 @@ type MobileBackHeaderProps = {
 export default function MobileBackHeader({
   title,
   fallbackHref = '/dashboard',
+  enableSourceRestore = false,
   className = '',
   sticky = true,
   fullBleedOnMobile = true,
@@ -43,7 +45,11 @@ export default function MobileBackHeader({
     <header className={layoutClassName}>
       <div className="grid min-h-12 grid-cols-[5rem_minmax(0,1fr)_5rem] items-center gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)_5.5rem]">
         <div className="flex items-center justify-start">
-          <BackNavigationButton fallbackHref={fallbackHref} variant="icon" />
+          <BackNavigationButton
+            fallbackHref={fallbackHref}
+            enableSourceRestore={enableSourceRestore}
+            variant="icon"
+          />
         </div>
         <div className="min-w-0">
           <h1 className="app-text-primary truncate text-center text-base font-semibold">
