@@ -64,6 +64,7 @@ type RunDetailsRow = {
   elevation_gain_meters?: number | null
   average_heartrate?: number | null
   max_heartrate?: number | null
+  calories?: number | null
   xp?: number | null
   map_polyline?: string | null
   created_at: string
@@ -1335,22 +1336,62 @@ export default function RunDetailsPage() {
     const averagePaceSeconds = Number.isFinite(run.average_pace_seconds) && (run.average_pace_seconds ?? 0) > 0
       ? Math.round(run.average_pace_seconds ?? 0)
       : computedAveragePace
+    const distanceLabel = distanceKm > 0 ? `${formatDistanceKm(distanceKm)} км` : null
+    const durationLabel = totalDurationSeconds > 0 ? formatDurationLabel(totalDurationSeconds) : null
+    const movingTimeLabel =
+      movingTimeSeconds && movingTimeSeconds > 0 ? formatDurationLabel(movingTimeSeconds) : null
+    const paceLabel = averagePaceSeconds && averagePaceSeconds > 0 ? formatPaceLabel(averagePaceSeconds) : null
+    const elevationLabel =
+      Number.isFinite(run.elevation_gain_meters) && (run.elevation_gain_meters ?? 0) > 0
+        ? `${Math.round(run.elevation_gain_meters ?? 0)} м`
+        : null
+    const heartRateLabel =
+      Number.isFinite(run.average_heartrate) && (run.average_heartrate ?? 0) > 0
+        ? `${Math.round(run.average_heartrate ?? 0)} уд/мин`
+        : null
+    const caloriesLabel =
+      Number.isFinite(run.calories) && (run.calories ?? 0) > 0
+        ? `${Math.round(run.calories ?? 0)} ккал`
+        : null
+    const summaryLine =
+      [
+        distanceLabel,
+        paceLabel ? paceLabel.replace(' /км', '/км') : null,
+        movingTimeLabel || durationLabel,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(' • ') || null
 
     return {
-      distanceLabel: distanceKm > 0 ? `${formatDistanceKm(distanceKm)} км` : null,
-      durationLabel: totalDurationSeconds > 0 ? formatDurationLabel(totalDurationSeconds) : null,
-      movingTimeLabel: movingTimeSeconds && movingTimeSeconds > 0 ? formatDurationLabel(movingTimeSeconds) : null,
-      paceLabel: averagePaceSeconds && averagePaceSeconds > 0 ? formatPaceLabel(averagePaceSeconds) : null,
-      elevationLabel:
-        Number.isFinite(run.elevation_gain_meters) && (run.elevation_gain_meters ?? 0) > 0
-          ? `${Math.round(run.elevation_gain_meters ?? 0)} м`
-          : null,
+      distanceLabel,
+      durationLabel,
+      movingTimeLabel,
+      paceLabel,
+      elevationLabel,
+      heartRateLabel,
+      caloriesLabel,
+      summaryLine,
       xpValue: Number.isFinite(run.xp) && (run.xp ?? 0) > 0
         ? Math.round(run.xp ?? 0)
         : Math.max(0, Math.round(50 + distanceKm * 10)),
       mapPreviewUrl: run.map_polyline ? getStaticMapUrl(run.map_polyline) : null,
     }
   }, [run])
+
+  const summaryMetricItems = useMemo(() => {
+    if (!details) {
+      return []
+    }
+
+    return [
+      { label: 'Расстояние', value: details.distanceLabel ?? '—', prominent: true },
+      { label: 'Время', value: details.movingTimeLabel || details.durationLabel || '—' },
+      { label: 'Темп', value: details.paceLabel ?? '—' },
+      { label: 'Высота', value: details.elevationLabel ?? '—' },
+      ...(details.heartRateLabel ? [{ label: 'Пульс', value: details.heartRateLabel }] : []),
+      ...(details.caloriesLabel ? [{ label: 'Калории', value: details.caloriesLabel }] : []),
+    ]
+  }, [details])
 
   if (authLoading || loading) {
     return (
@@ -1577,6 +1618,9 @@ export default function RunDetailsPage() {
 
           <div className="mt-3">
             <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
+            {details.summaryLine ? (
+              <p className="app-text-secondary mt-1 text-sm leading-tight">{details.summaryLine}</p>
+            ) : null}
           </div>
 
           {currentAssignedShoe ? (
@@ -1619,23 +1663,27 @@ export default function RunDetailsPage() {
             <p className="app-text-primary font-medium">+{details.xpValue} XP</p>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Расстояние</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.distanceLabel ?? '—'}</p>
-            </div>
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Время в движении</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.movingTimeLabel || details.durationLabel || '—'}</p>
-            </div>
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Средний темп</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.paceLabel ?? '—'}</p>
-            </div>
-            <div className="grid content-start gap-1.5">
-              <p className="app-text-secondary text-sm leading-tight">Набор высоты</p>
-              <p className="app-text-primary text-lg font-semibold leading-tight">{details.elevationLabel ?? '—'}</p>
-            </div>
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
+            {summaryMetricItems.map((metric, index) => {
+              const isLastOddItem =
+                summaryMetricItems.length % 2 === 1 && index === summaryMetricItems.length - 1
+
+              return (
+                <div
+                  key={metric.label}
+                  className={`grid content-start gap-1 ${isLastOddItem ? 'col-span-2' : ''}`}
+                >
+                  <p className="app-text-secondary text-xs font-medium leading-tight">{metric.label}</p>
+                  <p
+                    className={`app-text-primary leading-tight ${
+                      metric.prominent ? 'text-2xl font-semibold' : 'text-lg font-semibold'
+                    }`}
+                  >
+                    {metric.value}
+                  </p>
+                </div>
+              )
+            })}
           </div>
 
           {isMissingOfficialLaps ? (
