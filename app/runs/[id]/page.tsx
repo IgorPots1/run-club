@@ -1469,21 +1469,7 @@ export default function RunDetailsPage() {
     >
     <div className="min-w-0 overflow-x-hidden space-y-4">
       {hasMedia || isEditMode ? (
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="app-text-primary text-base font-semibold">Медиа</h2>
-            {isOwner && isEditMode ? (
-              <button
-                type="button"
-                onClick={handleOpenPhotoPicker}
-                disabled={uploadingPhotos}
-                className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {uploadingPhotos ? 'Загружаем...' : 'Добавить фото'}
-              </button>
-            ) : null}
-          </div>
-
+        <section className={isEditMode ? 'space-y-3' : undefined}>
           <input
             ref={photoInputRef}
             type="file"
@@ -1493,11 +1479,23 @@ export default function RunDetailsPage() {
             className="hidden"
           />
 
-          {isEditMode && uploadPhotosError ? <p className="mt-3 text-sm text-red-600">{uploadPhotosError}</p> : null}
+          {isOwner && isEditMode ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleOpenPhotoPicker}
+                disabled={uploadingPhotos}
+                className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {uploadingPhotos ? 'Загружаем...' : 'Добавить фото'}
+              </button>
+            </div>
+          ) : null}
+
+          {isEditMode && uploadPhotosError ? <p className="text-sm text-red-600">{uploadPhotosError}</p> : null}
 
           {hasMedia ? (
             <WorkoutMediaCarousel
-              className="mt-3"
               mapPolyline={run.map_polyline}
               mapPreviewUrl={details.mapPreviewUrl}
               photos={runPhotos}
@@ -1506,9 +1504,11 @@ export default function RunDetailsPage() {
               onOpenPhoto={setSelectedPhotoIndex}
             />
           ) : (
-            <p className="app-text-secondary mt-3 text-sm">
-              Добавьте фотографии тренировки, чтобы они появились в галерее.
-            </p>
+            <div className="app-card rounded-2xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm">
+                Добавьте фотографии тренировки, чтобы они появились в галерее.
+              </p>
+            </div>
           )}
         </section>
       ) : null}
