@@ -73,13 +73,18 @@ export async function calculateRunXp({
   const runFrequencyWindowStart = new Date(
     createdAtDate.getTime() - RUN_XP_FREQUENCY_WINDOW_MS
   ).toISOString()
-  const { count: recentRunCount, error: recentRunsError } = await supabase
+  let recentRunsQuery = supabase
     .from('runs')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .gte('created_at', runFrequencyWindowStart)
     .lte('created_at', normalizedCreatedAt)
-    .neq('id', excludeRunId ?? '')
+
+  if (excludeRunId) {
+    recentRunsQuery = recentRunsQuery.neq('id', excludeRunId)
+  }
+
+  const { count: recentRunCount, error: recentRunsError } = await recentRunsQuery
 
   if (recentRunsError) {
     throw recentRunsError
@@ -98,13 +103,18 @@ export async function calculateRunXp({
 
   const windowStart = new Date(createdAtDate.getTime() - WEEKLY_WINDOW_MS).toISOString()
 
-  const { count, error } = await supabase
+  let weeklyRunsQuery = supabase
     .from('runs')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .gte('created_at', windowStart)
     .lte('created_at', normalizedCreatedAt)
-    .neq('id', excludeRunId ?? '')
+
+  if (excludeRunId) {
+    weeklyRunsQuery = weeklyRunsQuery.neq('id', excludeRunId)
+  }
+
+  const { count, error } = await weeklyRunsQuery
 
   if (error) {
     throw error

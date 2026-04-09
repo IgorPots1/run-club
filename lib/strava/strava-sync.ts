@@ -1936,6 +1936,22 @@ function isUniqueViolationError(error: { code?: string | null } | null | undefin
   return error?.code === '23505'
 }
 
+function formatSupabaseError(error: {
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+  code?: string | null
+} | null | undefined) {
+  const parts = [
+    error?.message?.trim(),
+    error?.details?.trim() ? `details=${error.details.trim()}` : null,
+    error?.hint?.trim() ? `hint=${error.hint.trim()}` : null,
+    error?.code?.trim() ? `code=${error.code.trim()}` : null,
+  ].filter((part): part is string => Boolean(part))
+
+  return parts.join(' | ') || 'Unknown Supabase error'
+}
+
 function isStravaTokenExpiringSoon(expiresAt: string) {
   const expiresAtMs = new Date(expiresAt).getTime()
 
@@ -2136,29 +2152,58 @@ export async function importStravaActivityForUser(
     .maybeSingle()
 
   if (existingRunError) {
-    throw new Error(existingRunError.message)
+    console.error('[strava-sync-debug] existing_run_lookup_failed', {
+      userId,
+      externalId: payload.external_id,
+      message: existingRunError.message,
+      details: existingRunError.details ?? null,
+      hint: existingRunError.hint ?? null,
+      code: existingRunError.code ?? null,
+    })
+    throw new Error(formatSupabaseError(existingRunError))
   }
 
   const normalizedExistingRun = (existingRun as ExistingStravaRunRow | null) ?? null
   const shouldAttemptXpRecovery = normalizedExistingRun
     ? Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0))) === 0
     : false
-  const runXp = normalizedExistingRun
-    ? shouldAttemptXpRecovery
-      ? await calculateRunXp({
+  let runXp = null as Awaited<ReturnType<typeof calculateRunXp>> | null
+
+  if (normalizedExistingRun) {
+    if (shouldAttemptXpRecovery) {
+      try {
+        runXp = await calculateRunXp({
           userId,
           createdAt: payload.created_at,
           distanceKm: payload.distance_km,
           excludeRunId: normalizedExistingRun.id,
           supabase,
         })
-      : null
-    : await calculateRunXp({
-        userId,
-        createdAt: payload.created_at,
-        distanceKm: payload.distance_km,
-        supabase,
-      })
+      } catch (runXpRecoveryError) {
+        console.error('[strava-sync-debug] xp_recovery_failed', {
+          userId,
+          runId: normalizedExistingRun.id,
+          externalId: payload.external_id,
+          createdAt: payload.created_at,
+          error: runXpRecoveryError instanceof Error
+            ? runXpRecoveryError.message
+            : formatSupabaseError(runXpRecoveryError as {
+                message?: string | null
+                details?: string | null
+                hint?: string | null
+                code?: string | null
+              }),
+        })
+      }
+    }
+  } else {
+    runXp = await calculateRunXp({
+      userId,
+      createdAt: payload.created_at,
+      distanceKm: payload.distance_km,
+      supabase,
+    })
+  }
 
   payload.xp = normalizedExistingRun
     ? shouldAttemptXpRecovery
@@ -2287,6 +2332,15 @@ export async function importStravaActivityForUser(
       .single()
 
     if (insertError) {
+      console.error('[strava-sync-debug] run_insert_failed', {
+        userId,
+        activityId: activityForImport.id,
+        externalId: payload.external_id,
+        message: insertError.message,
+        details: insertError.details ?? null,
+        hint: insertError.hint ?? null,
+        code: insertError.code ?? null,
+      })
       // #region agent log
       if (options.debugRunId) {
         fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:insert_error', message: 'Run insert failed', data: { userId, externalId: payload.external_id, errorCode: insertError.code ?? null, errorMessage: insertError.message }, timestamp: Date.now() }) }).catch(() => {})
@@ -2331,7 +2385,7 @@ export async function importStravaActivityForUser(
         }
       }
 
-      throw new Error(insertError.message)
+      throw new Error(formatSupabaseError(insertError))
     }
 
     console.info('[strava-location-debug] after_db_write', {
@@ -2542,6 +2596,16 @@ export async function importStravaActivityForUser(
     .eq('id', normalizedExistingRun.id)
 
   if (updateError) {
+    console.error('[strava-sync-debug] run_update_failed', {
+      userId,
+      runId: normalizedExistingRun.id,
+      activityId: activityForImport.id,
+      externalId: payload.external_id,
+      message: updateError.message,
+      details: updateError.details ?? null,
+      hint: updateError.hint ?? null,
+      code: updateError.code ?? null,
+    })
     await updateRunShoeImpact(supabase, {
       previousRun: {
         userId: normalizedExistingRun.user_id,
@@ -2555,7 +2619,7 @@ export async function importStravaActivityForUser(
       },
     }).catch(() => {})
 
-    throw new Error(updateError.message)
+    throw new Error(formatSupabaseError(updateError))
   }
 
   console.info('[strava-location-debug] after_db_write', {
@@ -3035,7 +3099,14 @@ export async function syncStravaRuns(
     } catch (caughtError) {
       const errorDetail: StravaSyncRowErrorDetail = {
         activityId: String(activity.id),
-        error: caughtError instanceof Error ? caughtError.message : 'Unknown row insert error',
+        error: caughtError instanceof Error
+          ? caughtError.message
+          : formatSupabaseError(caughtError as {
+              message?: string | null
+              details?: string | null
+              hint?: string | null
+              code?: string | null
+            }),
       }
 
       if (caughtError instanceof StravaSyncRowError) {
