@@ -2,6 +2,7 @@ import type { DashboardOverview } from './dashboard-overview'
 import { getProfileDisplayName } from './profiles'
 import { loadRaceEventLikesSummaryForRaceEventIds } from './race-event-likes'
 import { getPersonalRecordRaceEventIds } from './race-events'
+import { loadEntityCommentVisibilitySummaryForEntityIds } from './run-comments'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { supabase } from './supabase'
 
@@ -143,6 +144,7 @@ export type FeedRaceEventItem = {
   totalXp: number
   raceEventLikeCount: number
   raceEventLikedByViewer: boolean
+  commentsCount: number
   linkedRun: {
     id: string
     name: string | null
@@ -695,6 +697,7 @@ export async function loadFeedRuns(
     profileById,
     likesSummary,
     raceEventLikesSummary,
+    raceEventCommentSummary,
     photosResult,
     currentRaceEventsResult,
     historicalRunsResult,
@@ -702,6 +705,7 @@ export async function loadFeedRuns(
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
     loadRaceEventLikesSummaryForRaceEventIds(raceEventIds, currentUserId),
+    loadEntityCommentVisibilitySummaryForEntityIds('race', raceEventIds),
     runIds.length === 0
       ? Promise.resolve({ data: [] as RunPhotoRow[], error: null })
       : supabase
@@ -894,6 +898,7 @@ export async function loadFeedRuns(
       totalXp: Number(profile?.total_xp ?? 0),
       raceEventLikeCount: raceEventLikesSummary.likesByRaceEventId[event.entity_id] ?? 0,
       raceEventLikedByViewer: raceEventLikesSummary.likedRaceEventIds.has(event.entity_id),
+      commentsCount: raceEventCommentSummary.countsByEntityId[event.entity_id] ?? 0,
       linkedRun: linkedRunId ? {
         id: linkedRunId,
         name: linkedRunName,

@@ -1,9 +1,10 @@
 'use client'
 
-import { Heart } from 'lucide-react'
+import { Heart, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import FeedActionButton from '@/components/FeedActionButton'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import {
   subscribeToRaceEventLikes,
@@ -122,10 +123,11 @@ function formatLinkedRunPace(item: FeedRaceEventItem) {
 type RaceFeedCardProps = {
   item: FeedRaceEventItem
   isLikeInFlight: boolean
+  onCommentClick: (raceEventId: string) => void
   onToggleLike: (raceEventId: string) => void
 }
 
-function RaceFeedCard({ item, isLikeInFlight, onToggleLike }: RaceFeedCardProps) {
+function RaceFeedCard({ item, isLikeInFlight, onCommentClick, onToggleLike }: RaceFeedCardProps) {
   const router = useRouter()
   const resultLabel = formatClock(item.resultTimeSeconds)
   const targetLabel = formatClock(item.targetTimeSeconds)
@@ -216,30 +218,25 @@ function RaceFeedCard({ item, isLikeInFlight, onToggleLike }: RaceFeedCardProps)
 
       <div className="mt-4 border-t border-black/5 pt-3.5 dark:border-white/10">
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div
-            className={`inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
-              item.raceEventLikedByViewer ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
-            }`}
-          >
-            <button
-              type="button"
+          <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
+            <FeedActionButton
+              count={item.raceEventLikeCount}
+              active={item.raceEventLikedByViewer}
+              actionDisabled={isLikeInFlight}
               onClick={() => onToggleLike(item.raceEventId)}
-              disabled={isLikeInFlight}
-              aria-disabled={isLikeInFlight ? true : undefined}
-              className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-              aria-label={item.raceEventLikedByViewer ? 'Убрать лайк' : 'Поставить лайк'}
-            >
-              <span aria-hidden="true" className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+              icon={
                 <Heart
                   className="h-4 w-4"
                   strokeWidth={1.9}
                   fill={item.raceEventLikedByViewer ? 'currentColor' : 'none'}
                 />
-              </span>
-            </button>
-            <span className="inline-flex min-h-9 min-w-0 items-center justify-center rounded-full px-2 text-sm font-semibold">
-              {item.raceEventLikeCount}
-            </span>
+              }
+            />
+            <FeedActionButton
+              count={item.commentsCount}
+              onClick={() => onCommentClick(item.raceEventId)}
+              icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
+            />
           </div>
         </div>
       </div>
@@ -1010,6 +1007,14 @@ export default function InfiniteWorkoutFeed({
     router.push(`/runs/${runId}/discussion`)
   }, [onCommentClick, router])
 
+  const handleRaceEventCommentClick = useCallback((raceEventId: string) => {
+    if (!raceEventId) {
+      return
+    }
+
+    router.push(`/races/${raceEventId}`)
+  }, [router])
+
   const handleOpenLikes = useCallback((item: FeedRunItem) => {
     setActiveLikesRun({
       runId: item.id,
@@ -1099,6 +1104,7 @@ export default function InfiniteWorkoutFeed({
                 key={item.id}
                 item={item}
                 isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
+                onCommentClick={handleRaceEventCommentClick}
                 onToggleLike={handleRaceEventLikeToggle}
               />
             )
