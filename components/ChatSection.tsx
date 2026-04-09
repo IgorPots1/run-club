@@ -8493,7 +8493,7 @@ export default function ChatSection({
                   <p className="text-sm text-red-600">{error}</p>
                 </section>
               ) : messages.length === 0 ? (
-                <section className="flex flex-1 flex-col px-1 py-4">
+                <section className="flex flex-1 flex-col px-1 pb-4 pt-10 md:pt-12">
                   <p className="app-text-secondary text-sm">Пока нет сообщений.</p>
                   <p className="app-text-secondary mt-2 text-sm">
                     Когда в базе появятся сообщения, они отобразятся здесь.
