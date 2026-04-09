@@ -1951,11 +1951,17 @@ export default function RunDetailsPage() {
                   >
                     <defs>
                       <linearGradient id="altitude-fill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.14} />
-                        <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
+                        <stop offset="0%" stopColor="var(--accent-strong)" stopOpacity={0.12} />
+                        <stop offset="65%" stopColor="var(--accent-strong)" stopOpacity={0.05} />
+                        <stop offset="100%" stopColor="var(--accent-strong)" stopOpacity={0.01} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                    <CartesianGrid
+                      strokeDasharray="2 6"
+                      vertical={false}
+                      stroke="var(--chart-grid)"
+                      strokeOpacity={0.28}
+                    />
                     <XAxis
                       dataKey="distanceKm"
                       type="number"
@@ -1990,7 +1996,7 @@ export default function RunDetailsPage() {
                       type="monotone"
                       dataKey="altitude"
                       stroke="var(--accent-strong)"
-                      strokeWidth={2.5}
+                      strokeWidth={2.25}
                       fill="url(#altitude-fill)"
                       fillOpacity={1}
                       dot={false}
