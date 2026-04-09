@@ -7,6 +7,7 @@ import {
   type ShoeWearUiLabel,
   type ShoeWearUiStatus,
 } from './shoe-wear-ui'
+import { createSupabaseAdminClient } from './supabase-admin'
 import { createSupabaseServerClient } from './supabase-server'
 
 type ShoeModelDbRow = {
@@ -100,6 +101,8 @@ export type UserShoeRecord = {
   createdAt: string
 }
 
+export type UserShoeSummary = Pick<UserShoeRecord, 'id' | 'displayName' | 'nickname' | 'isActive'>
+
 export type UserShoeInput = {
   shoeModelId?: string | null
   shoeVersionId?: string | null
@@ -152,6 +155,10 @@ const SHOE_BRAND_SELECT = 'id, slug, name, is_active'
 const USER_SHOE_SELECT =
   'id, user_id, shoe_model_id, shoe_version_id, custom_name, nickname, current_distance_meters, max_distance_meters, photo_url, is_active, created_at'
 export const DEFAULT_MAX_DISTANCE_METERS = 800000
+
+type ShoesSupabaseClient =
+  | Awaited<ReturnType<typeof createSupabaseServerClient>>
+  | ReturnType<typeof createSupabaseAdminClient>
 
 function toNullableTrimmedText(value: string | null | undefined) {
   if (typeof value !== 'string') {
@@ -716,8 +723,11 @@ export async function listUserShoes(userId: string): Promise<UserShoeRecord[]> {
   return rows.map((row) => mapUserShoe(row, shoeVersionById, shoeModelById))
 }
 
-export async function getUserShoeById(userId: string, shoeId: string): Promise<UserShoeRecord | null> {
-  const supabase = await createSupabaseServerClient()
+async function loadUserShoeByIdWithClient(
+  supabase: ShoesSupabaseClient,
+  userId: string,
+  shoeId: string
+): Promise<UserShoeRecord | null> {
   const { data, error } = await supabase
     .from('user_shoes')
     .select(USER_SHOE_SELECT)
@@ -741,6 +751,30 @@ export async function getUserShoeById(userId: string, shoeId: string): Promise<U
   ])
 
   return mapUserShoe(row, shoeVersionById, shoeModelById)
+}
+
+export async function getUserShoeById(userId: string, shoeId: string): Promise<UserShoeRecord | null> {
+  const supabase = await createSupabaseServerClient()
+  return loadUserShoeByIdWithClient(supabase, userId, shoeId)
+}
+
+export async function getUserShoeByIdWithAdminAccess(
+  userId: string,
+  shoeId: string
+): Promise<UserShoeRecord | null> {
+  const supabase = createSupabaseAdminClient()
+  return loadUserShoeByIdWithClient(supabase, userId, shoeId)
+}
+
+export function toUserShoeSummary(
+  shoe: Pick<UserShoeRecord, 'id' | 'displayName' | 'nickname' | 'isActive'>
+): UserShoeSummary {
+  return {
+    id: shoe.id,
+    displayName: shoe.displayName,
+    nickname: shoe.nickname,
+    isActive: shoe.isActive,
+  }
 }
 
 export async function createUserShoe(userId: string, input: UserShoeInput): Promise<UserShoeRecord> {

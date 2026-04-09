@@ -87,6 +87,8 @@ export type UserShoeSelectionData = {
   mostRecentlyUsedShoeId: string | null
 }
 
+export type RunAssignedShoeSummary = Pick<UserShoeRecord, 'id' | 'displayName' | 'nickname' | 'isActive'>
+
 type LoadUserShoeSelectionOptions = {
   activeOnly?: boolean
   includeShoeId?: string | null
@@ -135,9 +137,39 @@ type CreateUserShoeResponse =
 
 type UpdateUserShoeResponse = CreateUserShoeResponse
 
+type LoadRunAssignedShoeResponse =
+  | {
+      ok: true
+      shoe: RunAssignedShoeSummary | null
+    }
+  | {
+      ok: false
+      error?: string
+    }
+
 export async function loadUserShoes(): Promise<UserShoeRecord[]> {
   const selectionData = await loadUserShoeSelectionData()
   return selectionData.shoes
+}
+
+export async function loadRunAssignedShoe(runId: string): Promise<RunAssignedShoeSummary | null> {
+  const response = await fetch(`/api/runs/${runId}/shoe`, {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  const payload = await response.json().catch(() => null) as LoadRunAssignedShoeResponse | null
+
+  if (!response.ok || !payload?.ok) {
+    throw new Error(
+      payload && 'error' in payload && typeof payload.error === 'string'
+        ? payload.error
+        : 'Не удалось загрузить кроссовки тренировки'
+    )
+  }
+
+  return payload.shoe ?? null
 }
 
 export async function loadUserShoeSelectionData(

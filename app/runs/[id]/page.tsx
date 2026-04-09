@@ -29,7 +29,12 @@ import {
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import { useRunCommentsController } from '@/lib/use-run-comments-controller'
 import { updateRun, type UpdateRunInput } from '@/lib/runs'
-import { loadUserShoeSelectionData, type UserShoeRecord } from '@/lib/shoes-client'
+import {
+  loadRunAssignedShoe,
+  loadUserShoeSelectionData,
+  type RunAssignedShoeSummary,
+  type UserShoeRecord,
+} from '@/lib/shoes-client'
 import { uploadRunPhoto } from '@/lib/storage/uploadRunPhoto'
 import { supabase } from '@/lib/supabase'
 import { getLevelFromXP } from '@/lib/xp'
@@ -647,6 +652,7 @@ export default function RunDetailsPage() {
   const [saveError, setSaveError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
+  const [fallbackAssignedShoe, setFallbackAssignedShoe] = useState<RunAssignedShoeSummary | null>(null)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
@@ -1108,6 +1114,33 @@ export default function RunDetailsPage() {
     }
   }, [run, user])
 
+  useEffect(() => {
+    let isMounted = true
+
+    if (!run?.shoe_id || !user || user.id === run.user_id) {
+      setFallbackAssignedShoe(null)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    void loadRunAssignedShoe(run.id)
+      .then((shoe) => {
+        if (isMounted) {
+          setFallbackAssignedShoe(shoe)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setFallbackAssignedShoe(null)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [run, user])
+
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
     () => mapSeriesPointsToElapsedMinutes(runSeries.pace_points, chartDurationSeconds),
@@ -1266,7 +1299,8 @@ export default function RunDetailsPage() {
   const normalizedDraftDescription = toNullableTrimmedText(draft.description)
   const hasTitleChanged = normalizedDraftName !== toNullableTrimmedText(currentEditableName)
   const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(run?.description)
-  const currentAssignedShoe = availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? null
+  const currentAssignedShoe =
+    availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? fallbackAssignedShoe
   const hasPendingChanges = hasTitleChanged || hasDescriptionChanged
 
   function handleEnterEditMode() {
