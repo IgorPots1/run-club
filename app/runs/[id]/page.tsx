@@ -248,10 +248,6 @@ function formatHeartRateTick(value: number) {
   return `${Math.round(value)}`
 }
 
-function formatElevationTick(value: number) {
-  return `${Math.round(value)}`
-}
-
 function buildSeriesAnchors(
   points: RunDetailSeriesPoint[] | null | undefined,
   totalDurationSeconds: number
@@ -1038,35 +1034,8 @@ export default function RunDetailsPage() {
       })),
     [heartRateSeriesForChart.data]
   )
-  const elevationChartData = useMemo(() => {
-    let cumulativeDistanceKm = 0
-    let cumulativeElevationGain = 0
-
-    return runLaps.reduce<Array<{ distanceKm: number; elevationGain: number }>>((points, lap) => {
-      if (
-        !Number.isFinite(lap.distance_meters) ||
-        (lap.distance_meters ?? 0) <= 0 ||
-        !Number.isFinite(lap.total_elevation_gain) ||
-        (lap.total_elevation_gain ?? 0) < 0
-      ) {
-        return points
-      }
-
-      cumulativeDistanceKm += Number(lap.distance_meters ?? 0) / 1000
-      cumulativeElevationGain += Number(lap.total_elevation_gain ?? 0)
-
-      points.push({
-        distanceKm: cumulativeDistanceKm,
-        elevationGain: cumulativeElevationGain,
-      })
-
-      return points
-    }, [])
-  }, [runLaps])
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
-  const shouldRenderElevationChart =
-    elevationChartData.length > 1 && elevationChartData.some((point) => point.elevationGain > 0)
   const breakdownRows = useMemo(() => {
     if (runLaps.length > 0) {
       return runLaps
@@ -1820,69 +1789,6 @@ export default function RunDetailsPage() {
                       stroke="var(--accent-strong)"
                       strokeWidth={2.5}
                       fill="url(#heart-rate-fill)"
-                      fillOpacity={1}
-                      dot={false}
-                      activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
-          ) : null}
-
-          {shouldRenderElevationChart ? (
-            <section className="app-card rounded-2xl border p-4 shadow-sm">
-              <h2 className="app-text-primary text-base font-semibold">Набор высоты</h2>
-              <div className="mt-3 h-[220px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={elevationChartData}
-                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                    accessibilityLayer={false}
-                  >
-                    <defs>
-                      <linearGradient id="elevation-fill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent-strong)" stopOpacity={0.14} />
-                        <stop offset="95%" stopColor="var(--accent-strong)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
-                    <XAxis
-                      dataKey="distanceKm"
-                      type="number"
-                      domain={['dataMin', 'dataMax']}
-                      tickCount={6}
-                      tickLine={false}
-                      axisLine={false}
-                      minTickGap={24}
-                      tickMargin={8}
-                      tickFormatter={formatDistanceKm}
-                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      width={36}
-                      tickFormatter={formatElevationTick}
-                      tick={{ fill: 'var(--chart-tick)', fontSize: 12 }}
-                      domain={['dataMin', 'dataMax + 5']}
-                    />
-                    <Tooltip
-                      cursor={{ stroke: 'var(--chart-grid)', strokeDasharray: '3 3' }}
-                      formatter={(value) => {
-                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
-                        return [`${Math.round(numericValue)} м`, 'Набор высоты']
-                      }}
-                      labelFormatter={(value) =>
-                        `${formatDistanceKm(typeof value === 'number' ? value : Number(value ?? 0))} км`
-                      }
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="elevationGain"
-                      stroke="var(--accent-strong)"
-                      strokeWidth={2.5}
-                      fill="url(#elevation-fill)"
                       fillOpacity={1}
                       dot={false}
                       activeDot={{ r: 4, fill: 'var(--accent-strong)', stroke: 'var(--surface)' }}
