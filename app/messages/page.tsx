@@ -1046,9 +1046,20 @@ export default function MessagesPage() {
                             const isOpeningThisStudent = openingStudentId === student.id
 
                             return (
-                              <div
+                              <button
                                 key={student.id}
-                                className="flex items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 dark:border-white/[0.08]"
+                                type="button"
+                                onClick={() => {
+                                  void handleOpenStudentThread(student.id)
+                                }}
+                                disabled={isOpeningThisStudent}
+                                aria-label={
+                                  existingThread
+                                    ? `Открыть чат с ${getProfileDisplayName(student, 'Ученик')}`
+                                    : `Начать чат с ${getProfileDisplayName(student, 'Ученик')}`
+                                }
+                                aria-busy={isOpeningThisStudent}
+                                className="flex w-full items-center gap-3 rounded-2xl border border-black/[0.05] px-3 py-3 text-left transition-colors hover:bg-black/[0.03] active:bg-black/[0.05] disabled:opacity-60 dark:border-white/[0.08] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.06]"
                               >
                                 <StudentAvatar student={student} />
                                 <div className="min-w-0 flex-1">
@@ -1056,20 +1067,12 @@ export default function MessagesPage() {
                                     {getProfileDisplayName(student, 'Ученик')}
                                   </p>
                                   <p className="app-text-secondary truncate text-xs">
-                                    {student.nickname?.trim() || 'Профиль участника'}
+                                    {isOpeningThisStudent
+                                      ? 'Открываем чат...'
+                                      : student.nickname?.trim() || 'Профиль участника'}
                                   </p>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void handleOpenStudentThread(student.id)
-                                  }}
-                                  disabled={isOpeningThisStudent}
-                                  className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-xs font-medium disabled:opacity-60"
-                                >
-                                  {isOpeningThisStudent ? '...' : existingThread ? 'Открыть' : 'Начать'}
-                                </button>
-                              </div>
+                              </button>
                             )
                           })}
                         </div>
