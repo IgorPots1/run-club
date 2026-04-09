@@ -102,9 +102,10 @@ export default function ChatMessageActions({
     }
 
     function updateViewportSize() {
+      const visualViewport = window.visualViewport
       setViewportSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
+        width: visualViewport?.width ?? window.innerWidth,
+        height: visualViewport?.height ?? window.innerHeight,
       })
     }
 
