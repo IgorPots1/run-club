@@ -7,6 +7,11 @@ import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMed
 const DEFAULT_PHOTO_OBJECT_POSITION = '50% 50%'
 const PORTRAIT_PHOTO_OBJECT_POSITION = '50% 30%'
 const PORTRAIT_HEIGHT_OVER_WIDTH_THRESHOLD = 1.1
+const SLIDE_SURFACE_CLASS_NAME =
+  'overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10'
+const SLIDE_VIEWPORT_CLASS_NAME = 'relative aspect-[2.15/1] w-full'
+const SLIDE_DEPTH_OVERLAY_CLASS_NAME =
+  'pointer-events-none absolute inset-x-0 bottom-0 h-[36%] bg-gradient-to-t from-black/14 via-black/[0.05] to-transparent dark:from-black/22 dark:via-black/[0.08]'
 
 type WorkoutMediaCarouselProps = {
   mapPolyline?: string | null
@@ -182,25 +187,26 @@ export default function WorkoutMediaCarousel({
 
   function renderMapSlide(slide: Extract<WorkoutMediaSlide, { type: 'map' }>) {
     return (
-      <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-        <div className="relative aspect-[2.15/1] w-full">
+      <div className={SLIDE_SURFACE_CLASS_NAME}>
+        <div className={SLIDE_VIEWPORT_CLASS_NAME}>
           {slide.usesStaticPreview && mapPreviewUrl ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={mapPreviewUrl}
                 alt={mapAlt}
-                className="h-full w-full rounded-xl object-cover"
+                className="h-full w-full object-cover"
                 loading="lazy"
                 decoding="async"
                 draggable={false}
                 onError={() => setFailedMapPreviewUrl(mapPreviewUrl)}
               />
-              {mapOverlay}
             </>
           ) : (
-            <RunRouteMapPreview polyline={slide.mapPolyline} className="h-full w-full overflow-hidden rounded-xl" />
+            <RunRouteMapPreview polyline={slide.mapPolyline} className="h-full w-full" />
           )}
+          <div aria-hidden="true" className={SLIDE_DEPTH_OVERLAY_CLASS_NAME} />
+          {mapOverlay}
         </div>
       </div>
     )
@@ -208,12 +214,13 @@ export default function WorkoutMediaCarousel({
 
   function renderPhotoSlide(slide: Extract<WorkoutMediaSlide, { type: 'photo' }>, showBadge: boolean) {
     const photoContent = (
-      <div className="overflow-hidden rounded-2xl bg-[var(--surface-muted)] shadow-sm ring-1 ring-black/5 dark:ring-white/10">
-        <div className="relative aspect-[2.15/1] w-full">
+      <div className={SLIDE_SURFACE_CLASS_NAME}>
+        <div className={SLIDE_VIEWPORT_CLASS_NAME}>
           <WorkoutMediaPhotoImage
             src={slide.src}
             alt={photoAlt(slide.photoIndex)}
           />
+          <div aria-hidden="true" className={SLIDE_DEPTH_OVERLAY_CLASS_NAME} />
           {showBadge ? (
             <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
               +{additionalPhotosCount}
@@ -256,7 +263,7 @@ export default function WorkoutMediaCarousel({
     <>
       <div
         ref={mediaScrollRef}
-        className="overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="overflow-x-auto overflow-y-hidden snap-x snap-mandatory overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [-webkit-overflow-scrolling:touch] touch-pan-x [&::-webkit-scrollbar]:hidden"
         onScroll={handleMediaScroll}
       >
         <div className="grid grid-flow-col auto-cols-[100%]">
