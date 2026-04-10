@@ -320,6 +320,7 @@ function ProfilePageContent() {
   const levelProgress = getLevelProgressFromXP(totalXp)
   const currentLevel = getLevelFromXP(totalXp).level
   const currentRankTitle = getRankTitleFromLevel(currentLevel)
+  const accountDescription = user?.email ?? 'Имя, никнейм и вход'
 
   if (effectiveProfileDataLoading) {
     return (
@@ -424,7 +425,7 @@ function ProfilePageContent() {
             <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
               <HubRow
                 title="Аккаунт"
-                description={user.email ?? 'Имя, никнейм и вход'}
+                description={accountDescription}
                 href="/profile/account"
               />
               <HubRow
