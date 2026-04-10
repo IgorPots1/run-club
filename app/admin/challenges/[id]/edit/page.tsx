@@ -22,6 +22,7 @@ type EditChallengePageProps = {
     end_at?: string
     badge_url?: string
     badge_storage_path?: string
+    template_id?: string
   }>
 }
 
@@ -40,6 +41,7 @@ type ChallengeRow = {
   goal_km: number | null
   goal_runs: number | null
   xp_reward: number | null
+  template_id: string | null
 }
 
 export default async function EditChallengePage({
@@ -56,7 +58,7 @@ export default async function EditChallengePage({
   const supabase = createSupabaseAdminClient()
   const { data, error: challengeError } = await supabase
     .from('challenges')
-    .select('id, title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward')
+    .select('id, title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward, template_id')
     .eq('id', id)
     .maybeSingle()
 
@@ -71,9 +73,10 @@ export default async function EditChallengePage({
   }
 
   const formValues = {
-    challengeId: challenge.id,
+    recordId: challenge.id,
     title: resolvedSearchParams?.title ?? challenge.title,
     description: resolvedSearchParams?.description ?? challenge.description ?? '',
+    templateId: resolvedSearchParams?.template_id ?? challenge.template_id ?? '',
     visibility: resolvedSearchParams?.visibility === 'restricted'
       ? 'restricted'
       : challenge.visibility === 'restricted'

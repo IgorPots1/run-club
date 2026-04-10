@@ -19,10 +19,24 @@ type ChallengeAuditSnapshot = {
   goal_km: number | null
   goal_runs: number | null
   xp_reward: number
+  template_id: string | null
+  archived_at?: string | null
 }
 
 type ChallengePeriodType = 'lifetime' | 'challenge' | 'weekly' | 'monthly'
 type ChallengeGoalUnit = 'distance_km' | 'run_count'
+
+type ChallengeTemplateAuditSnapshot = {
+  title: string
+  description: string | null
+  period_type: ChallengePeriodType
+  goal_unit: ChallengeGoalUnit
+  goal_target: number
+  starts_at: string | null
+  end_at: string | null
+  badge_url: string | null
+  xp_reward: number
+}
 
 function normalizeOptionalPositiveNumber(value: FormDataEntryValue | null) {
   if (typeof value !== 'string') {
@@ -97,6 +111,15 @@ function normalizeGoalUnit(value: FormDataEntryValue | null): ChallengeGoalUnit 
   return null
 }
 
+function normalizeOptionalText(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 function buildLegacyGoalFields(input: {
   goalUnit: ChallengeGoalUnit
   goalTarget: number
@@ -127,6 +150,7 @@ function buildChallengeFormSearchParams(input: {
   endAt?: string
   badgeUrl?: string
   badgeStoragePath?: string
+  templateId?: string
 }) {
   const searchParams = new URLSearchParams()
 
@@ -142,6 +166,7 @@ function buildChallengeFormSearchParams(input: {
   if (input.endAt) searchParams.set('end_at', input.endAt)
   if (input.badgeUrl) searchParams.set('badge_url', input.badgeUrl)
   if (input.badgeStoragePath) searchParams.set('badge_storage_path', input.badgeStoragePath)
+  if (input.templateId) searchParams.set('template_id', input.templateId)
 
   return searchParams.toString()
 }
@@ -159,6 +184,7 @@ function redirectToNewChallengeForm(input: {
   endAt?: string
   badgeUrl?: string
   badgeStoragePath?: string
+  templateId?: string
 }): never {
   const query = buildChallengeFormSearchParams(input)
   redirect(`/admin/challenges/new${query ? `?${query}` : ''}`)
@@ -179,6 +205,7 @@ function redirectToEditChallengeForm(
     endAt?: string
     badgeUrl?: string
     badgeStoragePath?: string
+    templateId?: string
   }
 ): never {
   const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}/edit`
@@ -195,6 +222,7 @@ function redirectToEditChallengeForm(
     endAt: input?.endAt,
     badgeUrl: input?.badgeUrl,
     badgeStoragePath: input?.badgeStoragePath,
+    templateId: input?.templateId,
   })
   redirect(query ? `${basePath}?${query}` : basePath)
 }
@@ -202,6 +230,56 @@ function redirectToEditChallengeForm(
 function redirectToChallengeAccessPage(challengeId: string, error?: string): never {
   const basePath = `/admin/challenges/${encodeURIComponent(challengeId)}`
   redirect(error ? `${basePath}?error=${encodeURIComponent(error)}` : basePath)
+}
+
+function redirectToNewChallengeTemplateForm(input: {
+  error: string
+  title?: string
+  description?: string
+  periodType?: string
+  goalUnit?: string
+  goalTarget?: string
+  xpReward?: string
+  startsAt?: string
+  endAt?: string
+  badgeUrl?: string
+  badgeStoragePath?: string
+}): never {
+  const query = buildChallengeFormSearchParams(input)
+  redirect(`/admin/challenge-templates/new${query ? `?${query}` : ''}`)
+}
+
+function redirectToEditChallengeTemplateForm(
+  templateId: string,
+  input?: {
+    error?: string
+    title?: string
+    description?: string
+    periodType?: string
+    goalUnit?: string
+    goalTarget?: string
+    xpReward?: string
+    startsAt?: string
+    endAt?: string
+    badgeUrl?: string
+    badgeStoragePath?: string
+  }
+): never {
+  const basePath = `/admin/challenge-templates/${encodeURIComponent(templateId)}/edit`
+  const query = buildChallengeFormSearchParams({
+    error: input?.error,
+    title: input?.title,
+    description: input?.description,
+    periodType: input?.periodType,
+    goalUnit: input?.goalUnit,
+    goalTarget: input?.goalTarget,
+    xpReward: input?.xpReward,
+    startsAt: input?.startsAt,
+    endAt: input?.endAt,
+    badgeUrl: input?.badgeUrl,
+    badgeStoragePath: input?.badgeStoragePath,
+  })
+  redirect(query ? `${basePath}?${query}` : basePath)
 }
 
 export async function createChallengeAction(formData: FormData) {
@@ -218,6 +296,7 @@ export async function createChallengeAction(formData: FormData) {
   const endAtInput = formData.get('end_at')
   const badgeUrlInput = formData.get('badge_url')
   const badgeStoragePathInput = formData.get('badge_storage_path')
+  const templateIdInput = formData.get('template_id')
 
   const title = typeof titleValue === 'string' ? titleValue.trim() : ''
   const descriptionValue = typeof descriptionInput === 'string'
@@ -236,6 +315,7 @@ export async function createChallengeAction(formData: FormData) {
   const endAtValue = typeof endAtInput === 'string' ? endAtInput.trim() : ''
   const badgeUrl = typeof badgeUrlInput === 'string' ? badgeUrlInput.trim() : ''
   const badgeStoragePath = typeof badgeStoragePathInput === 'string' ? badgeStoragePathInput.trim() : ''
+  const templateId = normalizeOptionalText(templateIdInput)
   const formValues = {
     title,
     description: descriptionValue,
@@ -248,6 +328,7 @@ export async function createChallengeAction(formData: FormData) {
     endAt: endAtValue,
     badgeUrl,
     badgeStoragePath,
+    templateId: templateId ?? '',
   }
 
   if (!title) {
@@ -342,6 +423,7 @@ export async function createChallengeAction(formData: FormData) {
     goal_km: legacyGoalFields.goal_km,
     goal_runs: legacyGoalFields.goal_runs,
     xp_reward: xpReward,
+    template_id: templateId,
   }
   const supabase = createSupabaseAdminClient()
   const { data, error } = await supabase
@@ -360,6 +442,7 @@ export async function createChallengeAction(formData: FormData) {
       goal_km: legacyGoalFields.goal_km,
       goal_runs: legacyGoalFields.goal_runs,
       xp_reward: xpReward,
+      template_id: templateId,
     })
     .select('id, visibility')
     .single()
@@ -399,6 +482,7 @@ export async function updateChallengeAction(formData: FormData) {
   const endAtInput = formData.get('end_at')
   const badgeUrlInput = formData.get('badge_url')
   const badgeStoragePathInput = formData.get('badge_storage_path')
+  const templateIdInput = formData.get('template_id')
 
   const challengeId = typeof challengeIdValue === 'string' ? challengeIdValue.trim() : ''
   const title = typeof titleValue === 'string' ? titleValue.trim() : ''
@@ -418,6 +502,7 @@ export async function updateChallengeAction(formData: FormData) {
   const endAtValue = typeof endAtInput === 'string' ? endAtInput.trim() : ''
   const badgeUrl = typeof badgeUrlInput === 'string' ? badgeUrlInput.trim() : ''
   const badgeStoragePath = typeof badgeStoragePathInput === 'string' ? badgeStoragePathInput.trim() : ''
+  const templateId = normalizeOptionalText(templateIdInput)
   const formValues = {
     title,
     description: descriptionValue,
@@ -430,6 +515,7 @@ export async function updateChallengeAction(formData: FormData) {
     endAt: endAtValue,
     badgeUrl,
     badgeStoragePath,
+    templateId: templateId ?? '',
   }
 
   if (!challengeId) {
@@ -517,7 +603,7 @@ export async function updateChallengeAction(formData: FormData) {
   const supabase = createSupabaseAdminClient()
   const { data: existingChallenge, error: existingChallengeError } = await supabase
     .from('challenges')
-    .select('title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward')
+    .select('title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward, template_id, archived_at')
     .eq('id', challengeId)
     .maybeSingle()
 
@@ -545,6 +631,7 @@ export async function updateChallengeAction(formData: FormData) {
     goal_km: legacyGoalFields.goal_km,
     goal_runs: legacyGoalFields.goal_runs,
     xp_reward: xpReward,
+    template_id: templateId,
   }
 
   const { error } = await supabase
@@ -563,6 +650,7 @@ export async function updateChallengeAction(formData: FormData) {
       goal_km: legacyGoalFields.goal_km,
       goal_runs: legacyGoalFields.goal_runs,
       xp_reward: xpReward,
+      template_id: templateId,
     })
     .eq('id', challengeId)
 
@@ -590,6 +678,8 @@ export async function updateChallengeAction(formData: FormData) {
           goal_km: existingChallenge.goal_km,
           goal_runs: existingChallenge.goal_runs,
           xp_reward: existingChallenge.xp_reward,
+          template_id: existingChallenge.template_id,
+          archived_at: existingChallenge.archived_at,
         }
       : {},
     payloadAfter: nextChallengeSnapshot,
@@ -698,4 +788,424 @@ export async function revokeChallengeAccessAction(formData: FormData) {
   })
 
   redirectToChallengeAccessPage(challengeId)
+}
+
+export async function createChallengeTemplateAction(formData: FormData) {
+  const { profile } = await requireAdmin()
+
+  const titleValue = formData.get('title')
+  const descriptionInput = formData.get('description')
+  const periodTypeInput = formData.get('period_type')
+  const goalUnitInput = formData.get('goal_unit')
+  const goalTargetInput = formData.get('goal_target')
+  const xpRewardInput = formData.get('xp_reward')
+  const startsAtInput = formData.get('starts_at')
+  const endAtInput = formData.get('end_at')
+  const badgeUrlInput = formData.get('badge_url')
+  const badgeStoragePathInput = formData.get('badge_storage_path')
+
+  const title = typeof titleValue === 'string' ? titleValue.trim() : ''
+  const descriptionValue = typeof descriptionInput === 'string'
+    ? descriptionInput.trim()
+    : ''
+  const periodType = normalizePeriodType(periodTypeInput)
+  const goalUnit = normalizeGoalUnit(goalUnitInput)
+  const goalTarget = normalizeOptionalPositiveNumber(goalTargetInput)
+  const xpRewardValue = typeof xpRewardInput === 'string'
+    ? xpRewardInput.trim()
+    : ''
+  const startsAtValue = typeof startsAtInput === 'string' ? startsAtInput.trim() : ''
+  const endAtValue = typeof endAtInput === 'string' ? endAtInput.trim() : ''
+  const badgeUrl = typeof badgeUrlInput === 'string' ? badgeUrlInput.trim() : ''
+  const badgeStoragePath = typeof badgeStoragePathInput === 'string' ? badgeStoragePathInput.trim() : ''
+  const formValues = {
+    title,
+    description: descriptionValue,
+    periodType: typeof periodTypeInput === 'string' ? periodTypeInput.trim() : '',
+    goalUnit: typeof goalUnitInput === 'string' ? goalUnitInput.trim() : '',
+    goalTarget: typeof goalTargetInput === 'string' ? goalTargetInput.trim() : '',
+    xpReward: xpRewardValue,
+    startsAt: startsAtValue,
+    endAt: endAtValue,
+    badgeUrl,
+    badgeStoragePath,
+  }
+
+  if (!title) {
+    redirectToNewChallengeTemplateForm({
+      error: 'Укажите название шаблона.',
+      ...formValues,
+    })
+  }
+
+  if (!periodType) {
+    redirectToNewChallengeTemplateForm({
+      error: 'Выберите тип челленджа.',
+      ...formValues,
+    })
+  }
+
+  if (!goalUnit) {
+    redirectToNewChallengeTemplateForm({
+      error: 'Выберите тип цели.',
+      ...formValues,
+    })
+  }
+
+  if ((goalTarget ?? 0) <= 0) {
+    redirectToNewChallengeTemplateForm({
+      error: 'Укажите цель больше 0.',
+      ...formValues,
+    })
+  }
+
+  const xpRewardNumber = xpRewardValue ? Number(xpRewardValue) : 0
+
+  if (!Number.isFinite(xpRewardNumber) || xpRewardNumber < 0) {
+    redirectToNewChallengeTemplateForm({
+      error: 'Награда XP должна быть неотрицательным числом.',
+      ...formValues,
+    })
+  }
+
+  const normalizedStartsAt = normalizeOptionalIsoDateTime(startsAtInput)
+  const normalizedEndAt = normalizeOptionalIsoDateTime(endAtInput)
+
+  if (periodType === 'challenge') {
+    if (!normalizedStartsAt || !normalizedEndAt) {
+      redirectToNewChallengeTemplateForm({
+        error: 'Для челленджа с расписанием укажите дату начала и окончания.',
+        ...formValues,
+      })
+    }
+
+    if (new Date(normalizedStartsAt).getTime() >= new Date(normalizedEndAt).getTime()) {
+      redirectToNewChallengeTemplateForm({
+        error: 'Дата начала должна быть раньше даты окончания.',
+        ...formValues,
+      })
+    }
+  }
+
+  const xpReward = Math.max(0, Math.round(xpRewardNumber))
+  const normalizedGoalTarget = goalUnit === 'run_count'
+    ? Math.round(goalTarget ?? 0)
+    : Number(goalTarget ?? 0)
+  const description = descriptionValue.length > 0 ? descriptionValue : null
+  const auditSnapshot: ChallengeTemplateAuditSnapshot = {
+    title,
+    description,
+    period_type: periodType,
+    goal_unit: goalUnit,
+    goal_target: normalizedGoalTarget,
+    starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+    end_at: periodType === 'challenge' ? normalizedEndAt : null,
+    badge_url: badgeUrl || null,
+    xp_reward: xpReward,
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { data, error } = await supabase
+    .from('challenge_templates')
+    .insert({
+      title,
+      description,
+      period_type: periodType,
+      goal_unit: goalUnit,
+      goal_target: normalizedGoalTarget,
+      starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+      end_at: periodType === 'challenge' ? normalizedEndAt : null,
+      badge_url: badgeUrl || null,
+      xp_reward: xpReward,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge_template.create',
+    entityType: 'challenge_template',
+    entityId: data.id,
+    payloadBefore: {},
+    payloadAfter: auditSnapshot,
+  })
+
+  redirect('/admin/challenge-templates')
+}
+
+export async function updateChallengeTemplateAction(formData: FormData) {
+  const { profile } = await requireAdmin()
+
+  const templateIdValue = formData.get('template_id')
+  const titleValue = formData.get('title')
+  const descriptionInput = formData.get('description')
+  const periodTypeInput = formData.get('period_type')
+  const goalUnitInput = formData.get('goal_unit')
+  const goalTargetInput = formData.get('goal_target')
+  const xpRewardInput = formData.get('xp_reward')
+  const startsAtInput = formData.get('starts_at')
+  const endAtInput = formData.get('end_at')
+  const badgeUrlInput = formData.get('badge_url')
+  const badgeStoragePathInput = formData.get('badge_storage_path')
+
+  const templateId = typeof templateIdValue === 'string' ? templateIdValue.trim() : ''
+  const title = typeof titleValue === 'string' ? titleValue.trim() : ''
+  const descriptionValue = typeof descriptionInput === 'string'
+    ? descriptionInput.trim()
+    : ''
+  const periodType = normalizePeriodType(periodTypeInput)
+  const goalUnit = normalizeGoalUnit(goalUnitInput)
+  const goalTarget = normalizeOptionalPositiveNumber(goalTargetInput)
+  const xpRewardValue = typeof xpRewardInput === 'string'
+    ? xpRewardInput.trim()
+    : ''
+  const startsAtValue = typeof startsAtInput === 'string' ? startsAtInput.trim() : ''
+  const endAtValue = typeof endAtInput === 'string' ? endAtInput.trim() : ''
+  const badgeUrl = typeof badgeUrlInput === 'string' ? badgeUrlInput.trim() : ''
+  const badgeStoragePath = typeof badgeStoragePathInput === 'string' ? badgeStoragePathInput.trim() : ''
+  const formValues = {
+    title,
+    description: descriptionValue,
+    periodType: typeof periodTypeInput === 'string' ? periodTypeInput.trim() : '',
+    goalUnit: typeof goalUnitInput === 'string' ? goalUnitInput.trim() : '',
+    goalTarget: typeof goalTargetInput === 'string' ? goalTargetInput.trim() : '',
+    xpReward: xpRewardValue,
+    startsAt: startsAtValue,
+    endAt: endAtValue,
+    badgeUrl,
+    badgeStoragePath,
+  }
+
+  if (!templateId) {
+    redirect('/admin/challenge-templates')
+  }
+
+  if (!title) {
+    redirectToEditChallengeTemplateForm(templateId, {
+      error: 'Укажите название шаблона.',
+      ...formValues,
+    })
+  }
+
+  if (!periodType) {
+    redirectToEditChallengeTemplateForm(templateId, {
+      error: 'Выберите тип челленджа.',
+      ...formValues,
+    })
+  }
+
+  if (!goalUnit) {
+    redirectToEditChallengeTemplateForm(templateId, {
+      error: 'Выберите тип цели.',
+      ...formValues,
+    })
+  }
+
+  if ((goalTarget ?? 0) <= 0) {
+    redirectToEditChallengeTemplateForm(templateId, {
+      error: 'Укажите цель больше 0.',
+      ...formValues,
+    })
+  }
+
+  const xpRewardNumber = xpRewardValue ? Number(xpRewardValue) : 0
+
+  if (!Number.isFinite(xpRewardNumber) || xpRewardNumber < 0) {
+    redirectToEditChallengeTemplateForm(templateId, {
+      error: 'Награда XP должна быть неотрицательным числом.',
+      ...formValues,
+    })
+  }
+
+  const normalizedStartsAt = normalizeOptionalIsoDateTime(startsAtInput)
+  const normalizedEndAt = normalizeOptionalIsoDateTime(endAtInput)
+
+  if (periodType === 'challenge') {
+    if (!normalizedStartsAt || !normalizedEndAt) {
+      redirectToEditChallengeTemplateForm(templateId, {
+        error: 'Для челленджа с расписанием укажите дату начала и окончания.',
+        ...formValues,
+      })
+    }
+
+    if (new Date(normalizedStartsAt).getTime() >= new Date(normalizedEndAt).getTime()) {
+      redirectToEditChallengeTemplateForm(templateId, {
+        error: 'Дата начала должна быть раньше даты окончания.',
+        ...formValues,
+      })
+    }
+  }
+
+  const xpReward = Math.max(0, Math.round(xpRewardNumber))
+  const normalizedGoalTarget = goalUnit === 'run_count'
+    ? Math.round(goalTarget ?? 0)
+    : Number(goalTarget ?? 0)
+  const description = descriptionValue.length > 0 ? descriptionValue : null
+  const nextTemplateSnapshot: ChallengeTemplateAuditSnapshot = {
+    title,
+    description,
+    period_type: periodType,
+    goal_unit: goalUnit,
+    goal_target: normalizedGoalTarget,
+    starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+    end_at: periodType === 'challenge' ? normalizedEndAt : null,
+    badge_url: badgeUrl || null,
+    xp_reward: xpReward,
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { data: existingTemplate, error: existingTemplateError } = await supabase
+    .from('challenge_templates')
+    .select('title, description, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, xp_reward')
+    .eq('id', templateId)
+    .maybeSingle()
+
+  if (existingTemplateError) {
+    console.error('[admin-challenge-templates] failed to load previous template state', {
+      actorUserId: profile.id,
+      templateId,
+      code: existingTemplateError.code ?? null,
+      message: existingTemplateError.message,
+      details: existingTemplateError.details ?? null,
+    })
+  }
+
+  const { error } = await supabase
+    .from('challenge_templates')
+    .update({
+      title,
+      description,
+      period_type: periodType,
+      goal_unit: goalUnit,
+      goal_target: normalizedGoalTarget,
+      starts_at: periodType === 'challenge' ? normalizedStartsAt : null,
+      end_at: periodType === 'challenge' ? normalizedEndAt : null,
+      badge_url: badgeUrl || null,
+      xp_reward: xpReward,
+    })
+    .eq('id', templateId)
+
+  if (error) {
+    throw error
+  }
+
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge_template.update',
+    entityType: 'challenge_template',
+    entityId: templateId,
+    payloadBefore: existingTemplate ?? {},
+    payloadAfter: nextTemplateSnapshot,
+  })
+
+  redirect('/admin/challenge-templates')
+}
+
+export async function deleteOrArchiveChallengeAction(formData: FormData) {
+  const { profile } = await requireAdmin()
+
+  const challengeIdValue = formData.get('challenge_id')
+  const challengeId = typeof challengeIdValue === 'string' ? challengeIdValue.trim() : ''
+
+  if (!challengeId) {
+    redirect('/admin/challenges')
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { data: existingChallenge, error: existingChallengeError } = await supabase
+    .from('challenges')
+    .select('title, description, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, badge_storage_path, goal_km, goal_runs, xp_reward, template_id, archived_at')
+    .eq('id', challengeId)
+    .maybeSingle()
+
+  if (existingChallengeError) {
+    throw existingChallengeError
+  }
+
+  if (!existingChallenge) {
+    redirect('/admin/challenges')
+  }
+
+  const [
+    { count: userChallengesCount, error: userChallengesError },
+    { count: appEventsCount, error: appEventsError },
+  ] = await Promise.all([
+    supabase
+      .from('user_challenges')
+      .select('challenge_id', { count: 'exact', head: true })
+      .eq('challenge_id', challengeId),
+    supabase
+      .from('app_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('entity_type', 'challenge')
+      .eq('entity_id', challengeId),
+  ])
+
+  if (userChallengesError) {
+    throw userChallengesError
+  }
+
+  if (appEventsError) {
+    throw appEventsError
+  }
+
+  const hasUsage = Number(userChallengesCount ?? 0) > 0 || Number(appEventsCount ?? 0) > 0
+
+  if (!hasUsage) {
+    const { error } = await supabase
+      .from('challenges')
+      .delete()
+      .eq('id', challengeId)
+
+    if (error) {
+      throw error
+    }
+
+    await writeAdminAuditEntry({
+      actorUserId: profile.id,
+      action: 'challenge.delete',
+      entityType: 'challenge',
+      entityId: challengeId,
+      payloadBefore: existingChallenge,
+      payloadAfter: {
+        deleted: true,
+        strategy: 'hard_delete',
+      },
+    })
+
+    redirect('/admin/challenges')
+  }
+
+  const archivedAt = new Date().toISOString()
+  const { error } = await supabase
+    .from('challenges')
+    .update({
+      archived_at: archivedAt,
+    })
+    .eq('id', challengeId)
+
+  if (error) {
+    throw error
+  }
+
+  await writeAdminAuditEntry({
+    actorUserId: profile.id,
+    action: 'challenge.archive',
+    entityType: 'challenge',
+    entityId: challengeId,
+    payloadBefore: existingChallenge,
+    payloadAfter: {
+      ...existingChallenge,
+      archived_at: archivedAt,
+      archive_strategy: 'used_challenge',
+      user_challenges_count: Number(userChallengesCount ?? 0),
+      app_events_count: Number(appEventsCount ?? 0),
+    },
+  })
+
+  redirect('/admin/challenges')
 }

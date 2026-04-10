@@ -4,7 +4,7 @@ import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { grantChallengeAccessAction, revokeChallengeAccessAction } from '../actions'
+import { deleteOrArchiveChallengeAction, grantChallengeAccessAction, revokeChallengeAccessAction } from '../actions'
 
 type ChallengeDetailsPageProps = {
   params: Promise<{
@@ -28,6 +28,7 @@ type ChallengeRow = {
   xp_reward: number | null
   goal_km: number | null
   goal_runs: number | null
+  archived_at: string | null
 }
 
 type ChallengeAccessRow = {
@@ -135,7 +136,7 @@ export default async function AdminChallengeDetailsPage({
   const supabase = createSupabaseAdminClient()
   const { data: challenge, error: challengeError } = await supabase
     .from('challenges')
-    .select('id, title, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, xp_reward, goal_km, goal_runs')
+    .select('id, title, visibility, period_type, goal_unit, goal_target, starts_at, end_at, badge_url, xp_reward, goal_km, goal_runs, archived_at')
     .eq('id', id)
     .maybeSingle()
 
@@ -204,6 +205,12 @@ export default async function AdminChallengeDetailsPage({
             <dd className="app-text-primary mt-1 font-medium">{formatVisibility(challengeRow.visibility)}</dd>
           </div>
           <div>
+            <dt className="app-text-secondary text-sm">Состояние</dt>
+            <dd className="app-text-primary mt-1 font-medium">
+              {challengeRow.archived_at ? 'В архиве' : 'Активен в админке'}
+            </dd>
+          </div>
+          <div>
             <dt className="app-text-secondary text-sm">Тип челленджа</dt>
             <dd className="app-text-primary mt-1 font-medium">{formatPeriodType(challengeRow.period_type)}</dd>
           </div>
@@ -249,6 +256,21 @@ export default async function AdminChallengeDetailsPage({
           </div>
         </div>
       </div>
+
+      <section className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
+        <div className="space-y-1">
+          <h2 className="app-text-primary text-lg font-semibold">Действия</h2>
+          <p className="app-text-secondary text-sm">
+            Неиспользованный челлендж будет удалён. Если есть записи в `user_challenges` или `app_events`, он будет перенесён в архив.
+          </p>
+        </div>
+        <form action={deleteOrArchiveChallengeAction}>
+          <input type="hidden" name="challenge_id" value={challengeRow.id} />
+          <button type="submit" className="rounded-2xl border border-red-200 px-4 py-2 text-sm font-medium text-red-700 shadow-sm transition-opacity hover:opacity-80">
+            {challengeRow.archived_at ? 'Архивировать снова' : 'Удалить или архивировать'}
+          </button>
+        </form>
+      </section>
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

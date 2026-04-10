@@ -9,7 +9,8 @@ type ChallengePeriodType = 'lifetime' | 'challenge' | 'weekly' | 'monthly'
 type ChallengeGoalUnit = 'distance_km' | 'run_count'
 
 export type ChallengeFormValues = {
-  challengeId?: string
+  recordId?: string
+  templateId?: string
   title: string
   description: string
   visibility: 'public' | 'restricted'
@@ -23,12 +24,27 @@ export type ChallengeFormValues = {
   badgeStoragePath: string
 }
 
+export type ChallengeFormTemplateOption = {
+  id: string
+  title: string
+  description: string
+  periodType: ChallengePeriodType
+  goalUnit: ChallengeGoalUnit
+  goalTarget: string
+  xpReward: string
+  startsAt: string
+  endAt: string
+  badgeUrl: string
+}
+
 type ChallengeFormProps = {
+  entityType?: 'challenge' | 'template'
   mode: 'create' | 'edit'
   action: (formData: FormData) => void | Promise<void>
   cancelHref: string
   currentUserId: string
   initialValues: ChallengeFormValues
+  availableTemplates?: ChallengeFormTemplateOption[]
 }
 
 const PERIOD_TYPE_OPTIONS: Array<{ value: ChallengePeriodType; label: string; help: string }> = [
@@ -102,12 +118,15 @@ function toDateTimeLocalValue(value: string) {
 }
 
 export function ChallengeForm({
+  entityType = 'challenge',
   mode,
   action,
   cancelHref,
   currentUserId,
   initialValues,
+  availableTemplates = [],
 }: ChallengeFormProps) {
+  const [templateId, setTemplateId] = useState(initialValues.templateId ?? '')
   const [title, setTitle] = useState(initialValues.title)
   const [description, setDescription] = useState(initialValues.description)
   const [visibility, setVisibility] = useState<'public' | 'restricted'>(initialValues.visibility)
@@ -123,14 +142,49 @@ export function ChallengeForm({
   const [isUploadingBadge, setIsUploadingBadge] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const selectedTemplate = useMemo(
+    () => availableTemplates.find((item) => item.id === templateId) ?? null,
+    [availableTemplates, templateId]
+  )
   const selectedGoalUnit = useMemo(
     () => GOAL_UNIT_OPTIONS.find((item) => item.value === goalUnit) ?? GOAL_UNIT_OPTIONS[0],
     [goalUnit]
   )
 
+  const isChallengeForm = entityType === 'challenge'
+  const showTemplateSelector = isChallengeForm && mode === 'create' && availableTemplates.length > 0
   const showScheduleSection = periodType === 'challenge'
   const previewReward = xpReward.trim() ? `${xpReward.trim()} XP` : '0 XP'
   const previewGoal = formatGoalLabel(goalUnit, goalTarget)
+  const submitLabel = entityType === 'template'
+    ? mode === 'create'
+      ? 'Создать шаблон'
+      : 'Сохранить шаблон'
+    : mode === 'create'
+      ? 'Создать челлендж'
+      : 'Сохранить изменения'
+
+  function applyTemplate(nextTemplateId: string) {
+    setTemplateId(nextTemplateId)
+
+    const nextTemplate = availableTemplates.find((item) => item.id === nextTemplateId) ?? null
+
+    if (!nextTemplate) {
+      return
+    }
+
+    setTitle(nextTemplate.title)
+    setDescription(nextTemplate.description)
+    setPeriodType(nextTemplate.periodType)
+    setGoalUnit(nextTemplate.goalUnit)
+    setGoalTarget(nextTemplate.goalTarget)
+    setXpReward(nextTemplate.xpReward)
+    setStartsAt(toDateTimeLocalValue(nextTemplate.startsAt))
+    setEndAt(toDateTimeLocalValue(nextTemplate.endAt))
+    setBadgeUrl(nextTemplate.badgeUrl)
+    setBadgeStoragePath('')
+    setClientError('')
+  }
 
   async function handleBadgeChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0] ?? null
@@ -229,9 +283,10 @@ export function ChallengeForm({
 
   return (
     <form action={action} onSubmit={handleSubmit} className="space-y-6">
-      {initialValues.challengeId ? (
-        <input type="hidden" name="challenge_id" value={initialValues.challengeId} />
+      {initialValues.recordId ? (
+        <input type="hidden" name={isChallengeForm ? 'challenge_id' : 'template_id'} value={initialValues.recordId} />
       ) : null}
+      {isChallengeForm ? <input type="hidden" name="template_id" value={templateId} /> : null}
       <input type="hidden" name="badge_url" value={badgeUrl} />
       <input type="hidden" name="badge_storage_path" value={badgeStoragePath} />
 
@@ -247,9 +302,37 @@ export function ChallengeForm({
             <div className="space-y-1">
               <h2 className="app-text-primary text-lg font-semibold">Basics</h2>
               <p className="app-text-secondary text-sm">
-                Основные настройки челленджа и доступность для участников.
+                {isChallengeForm
+                  ? 'Основные настройки челленджа и доступность для участников.'
+                  : 'Основные настройки шаблона, который можно быстро применить при создании челленджа.'}
               </p>
             </div>
+
+            {showTemplateSelector ? (
+              <div className="space-y-1">
+                <label htmlFor="template_selector" className="app-text-secondary block text-sm">
+                  Использовать шаблон
+                </label>
+                <select
+                  id="template_selector"
+                  value={templateId}
+                  onChange={(event) => applyTemplate(event.currentTarget.value)}
+                  className="app-input w-full rounded-2xl border px-3 py-2"
+                >
+                  <option value="">Без шаблона</option>
+                  {availableTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="app-text-secondary text-sm">
+                  {selectedTemplate
+                    ? 'Поля ниже заполнены данными выбранного шаблона и их можно изменить перед сохранением.'
+                    : 'Шаблон подставит название, цель, награду, окно и бейдж.'}
+                </p>
+              </div>
+            ) : null}
 
             <div className="space-y-1">
               <label htmlFor="title" className="app-text-secondary block text-sm">
@@ -281,21 +364,23 @@ export function ChallengeForm({
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label htmlFor="visibility" className="app-text-secondary block text-sm">
-                  Видимость
-                </label>
-                <select
-                  id="visibility"
-                  name="visibility"
-                  value={visibility}
-                  onChange={(event) => setVisibility(event.currentTarget.value === 'restricted' ? 'restricted' : 'public')}
-                  className="app-input w-full rounded-2xl border px-3 py-2"
-                >
-                  <option value="public">Открытый</option>
-                  <option value="restricted">По доступу</option>
-                </select>
-              </div>
+              {isChallengeForm ? (
+                <div className="space-y-1">
+                  <label htmlFor="visibility" className="app-text-secondary block text-sm">
+                    Видимость
+                  </label>
+                  <select
+                    id="visibility"
+                    name="visibility"
+                    value={visibility}
+                    onChange={(event) => setVisibility(event.currentTarget.value === 'restricted' ? 'restricted' : 'public')}
+                    className="app-input w-full rounded-2xl border px-3 py-2"
+                  >
+                    <option value="public">Открытый</option>
+                    <option value="restricted">По доступу</option>
+                  </select>
+                </div>
+              ) : null}
 
               <div className="space-y-1">
                 <label htmlFor="period_type" className="app-text-secondary block text-sm">
@@ -529,12 +614,14 @@ export function ChallengeForm({
                   <dt className="app-text-secondary">Награда</dt>
                   <dd className="app-text-primary text-right font-medium">{previewReward}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="app-text-secondary">Видимость</dt>
-                  <dd className="app-text-primary text-right font-medium">
-                    {visibility === 'restricted' ? 'По доступу' : 'Открытый'}
-                  </dd>
-                </div>
+                {isChallengeForm ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="app-text-secondary">Видимость</dt>
+                    <dd className="app-text-primary text-right font-medium">
+                      {visibility === 'restricted' ? 'По доступу' : 'Открытый'}
+                    </dd>
+                  </div>
+                ) : null}
                 {showScheduleSection ? (
                   <div className="flex items-start justify-between gap-3">
                     <dt className="app-text-secondary">Окно</dt>
@@ -551,7 +638,7 @@ export function ChallengeForm({
 
       <div className="flex items-center gap-3">
         <button type="submit" className="app-button-primary rounded-2xl border px-4 py-2 text-sm font-medium shadow-sm">
-          {mode === 'create' ? 'Создать челлендж' : 'Сохранить изменения'}
+          {submitLabel}
         </button>
         <Link
           href={cancelHref}

@@ -1,7 +1,11 @@
 import Link from 'next/link'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { createChallengeAction } from '../actions'
-import { ChallengeForm } from '../ChallengeForm'
+import { ChallengeForm, type ChallengeFormTemplateOption } from '../ChallengeForm'
+
+type ChallengePeriodType = 'lifetime' | 'challenge' | 'weekly' | 'monthly'
+type ChallengeGoalUnit = 'distance_km' | 'run_count'
 
 type NewChallengePageProps = {
   searchParams?: Promise<{
@@ -17,6 +21,7 @@ type NewChallengePageProps = {
     end_at?: string
     badge_url?: string
     badge_storage_path?: string
+    template_id?: string
   }>
 }
 
@@ -24,21 +29,64 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
   const { profile } = await requireAdmin()
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined
+  const supabase = createSupabaseAdminClient()
+  const templateId = resolvedSearchParams?.template_id?.trim() ?? ''
   const error = resolvedSearchParams?.error?.trim() || ''
-  const title = resolvedSearchParams?.title ?? ''
-  const description = resolvedSearchParams?.description ?? ''
+  const { data: templateRows, error: templatesError } = await supabase
+    .from('challenge_templates')
+    .select('id, title, description, period_type, goal_unit, goal_target, xp_reward, starts_at, end_at, badge_url')
+    .order('created_at', { ascending: false })
+
+  if (templatesError) {
+    throw templatesError
+  }
+
+  const templates: ChallengeFormTemplateOption[] = (templateRows ?? []).flatMap((template) => {
+    if (!template || typeof template.id !== 'string' || typeof template.title !== 'string') {
+      return []
+    }
+
+    const periodType: ChallengePeriodType = template.period_type === 'challenge'
+      || template.period_type === 'weekly'
+      || template.period_type === 'monthly'
+      || template.period_type === 'lifetime'
+      ? template.period_type
+      : 'lifetime'
+    const goalUnit: ChallengeGoalUnit = template.goal_unit === 'run_count' ? 'run_count' : 'distance_km'
+
+    return [{
+      id: template.id,
+      title: template.title,
+      description: template.description ?? '',
+      periodType,
+      goalUnit,
+      goalTarget: String(template.goal_target ?? ''),
+      xpReward: String(template.xp_reward ?? 0),
+      startsAt: template.starts_at ?? '',
+      endAt: template.end_at ?? '',
+      badgeUrl: template.badge_url ?? '',
+    }]
+  })
+  const selectedTemplate = templates.find((template) => template.id === templateId) ?? null
+  const title = resolvedSearchParams?.title ?? selectedTemplate?.title ?? ''
+  const description = resolvedSearchParams?.description ?? selectedTemplate?.description ?? ''
   const visibility = resolvedSearchParams?.visibility === 'restricted' ? 'restricted' : 'public'
-  const periodType = resolvedSearchParams?.period_type === 'challenge'
+  const periodType: ChallengePeriodType = resolvedSearchParams?.period_type === 'challenge'
     || resolvedSearchParams?.period_type === 'weekly'
     || resolvedSearchParams?.period_type === 'monthly'
+    || resolvedSearchParams?.period_type === 'lifetime'
     ? resolvedSearchParams.period_type
-    : 'lifetime'
-  const goalUnit = resolvedSearchParams?.goal_unit === 'run_count' ? 'run_count' : 'distance_km'
-  const goalTarget = resolvedSearchParams?.goal_target ?? ''
-  const xpReward = resolvedSearchParams?.xp_reward ?? '0'
-  const startsAt = resolvedSearchParams?.starts_at ?? ''
-  const endAt = resolvedSearchParams?.end_at ?? ''
-  const badgeUrl = resolvedSearchParams?.badge_url ?? ''
+    : selectedTemplate?.periodType ?? 'lifetime'
+  const goalUnit: ChallengeGoalUnit = resolvedSearchParams?.goal_unit === 'run_count'
+    ? 'run_count'
+    : resolvedSearchParams?.goal_unit === 'distance_km'
+      ? 'distance_km'
+      : selectedTemplate?.goalUnit ?? 'distance_km'
+  const goalTarget = resolvedSearchParams?.goal_target ?? selectedTemplate?.goalTarget ?? ''
+  const xpReward = resolvedSearchParams?.xp_reward ?? selectedTemplate?.xpReward ?? '0'
+  const startsAt = resolvedSearchParams?.starts_at ?? selectedTemplate?.startsAt ?? ''
+  const endAt = resolvedSearchParams?.end_at ?? selectedTemplate?.endAt ?? ''
+  const badgeUrl = resolvedSearchParams?.badge_url ?? selectedTemplate?.badgeUrl ?? ''
   const badgeStoragePath = resolvedSearchParams?.badge_storage_path ?? ''
 
   return (
@@ -65,7 +113,10 @@ export default async function NewChallengePage({ searchParams }: NewChallengePag
         action={createChallengeAction}
         cancelHref="/admin/challenges"
         currentUserId={profile.id}
+        availableTemplates={templates}
         initialValues={{
+          recordId: undefined,
+          templateId,
           title,
           description,
           visibility,

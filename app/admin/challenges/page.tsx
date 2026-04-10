@@ -7,6 +7,7 @@ type ChallengeRow = {
   title: string
   visibility: string | null
   status?: string | null
+  archived_at?: string | null
   xp_reward: number | null
   goal_km: number | null
   goal_runs: number | null
@@ -23,7 +24,8 @@ function formatVisibility(value: string | null | undefined) {
   return formatNullableValue(value)
 }
 
-function formatChallengeStatus(value: string | null | undefined) {
+function formatChallengeStatus(value: string | null | undefined, archivedAt?: string | null) {
+  if (archivedAt) return 'В архиве'
   if (value === 'draft') return 'Черновик'
   if (value === 'active') return 'Активный'
   if (value === 'completed') return 'Завершён'
@@ -47,7 +49,7 @@ export default async function AdminChallengesPage() {
   let hasStatusColumn = true
   const primaryResult = await supabase
     .from('challenges')
-    .select('id, title, visibility, status, xp_reward, goal_km, goal_runs, created_at')
+    .select('id, title, visibility, status, archived_at, xp_reward, goal_km, goal_runs, created_at')
     .order('created_at', { ascending: false })
 
   let data: ChallengeRow[] | null = (primaryResult.data as ChallengeRow[] | null) ?? null
@@ -60,7 +62,7 @@ export default async function AdminChallengesPage() {
     hasStatusColumn = false
     const fallbackResult = await supabase
       .from('challenges')
-      .select('id, title, visibility, xp_reward, goal_km, goal_runs, created_at')
+      .select('id, title, visibility, archived_at, xp_reward, goal_km, goal_runs, created_at')
       .order('created_at', { ascending: false })
 
     if (fallbackResult.error) {
@@ -124,11 +126,14 @@ export default async function AdminChallengesPage() {
                       >
                         Редактировать
                       </Link>
+                      {challenge.archived_at ? (
+                        <span className="app-text-secondary text-xs">В архиве</span>
+                      ) : null}
                     </div>
                   </td>
                   <td className="w-[140px] px-4 py-3">{formatVisibility(challenge.visibility)}</td>
                   {hasStatusColumn ? (
-                    <td className="w-[140px] px-4 py-3">{formatChallengeStatus(challenge.status)}</td>
+                    <td className="w-[140px] px-4 py-3">{formatChallengeStatus(challenge.status, challenge.archived_at)}</td>
                   ) : null}
                   <td className="w-[120px] px-4 py-3">{formatNullableValue(challenge.xp_reward)}</td>
                   <td className="w-[120px] px-4 py-3">{formatNullableValue(challenge.goal_km)}</td>

@@ -29,6 +29,7 @@ type ChallengeRow = {
   end_at: string | null
   created_at: string | null
   visibility: string | null
+  archived_at: string | null
 }
 
 type ChallengeAccessRow = {
@@ -237,7 +238,8 @@ export async function loadChallengesOverviewServer(
   ] = await Promise.all([
     supabaseAdmin
       .from('challenges')
-      .select('id, title, description, badge_url, period_type, goal_unit, goal_target, xp_reward, starts_at, end_at, created_at, visibility')
+      .select('id, title, description, badge_url, period_type, goal_unit, goal_target, xp_reward, starts_at, end_at, created_at, visibility, archived_at')
+      .is('archived_at', null)
       .order('created_at', { ascending: true }),
     supabaseAdmin
       .from('challenge_access_users')
