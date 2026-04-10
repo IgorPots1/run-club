@@ -12,6 +12,14 @@ type WeeklyLeaderboardProps = {
   error?: string
 }
 
+function getMotivationHint(gapToNext: number | null) {
+  if (typeof gapToNext !== 'number' || gapToNext <= 0 || gapToNext > 50) {
+    return ''
+  }
+
+  return 'Ещё 1 тренировка - и ты выше'
+}
+
 export default function WeeklyLeaderboard({
   leaderboard,
   currentUserId,
@@ -22,11 +30,17 @@ export default function WeeklyLeaderboard({
   const topRows = Array.isArray(leaderboard?.topRows) ? leaderboard.topRows : []
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
+  const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
   const isCurrentUserInTop = topRows.some((row) => row.user_id === currentUserId)
   const shouldShowCurrentUserRow =
     Boolean(currentUserRow) &&
     !isCurrentUserInTop &&
     (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
+  const currentUserSummary =
+    currentUserRow && currentUserRow.rank > 0
+      ? `Ты — ${currentUserRow.rank} место · ${currentUserRow.totalXp} XP`
+      : ''
+  const motivationHint = getMotivationHint(gapToNext)
 
   return (
     <div className="app-card mb-4 min-h-[188px] overflow-hidden rounded-xl border p-4 shadow-sm">
@@ -41,6 +55,9 @@ export default function WeeklyLeaderboard({
           </span>
           <span className="app-text-secondary text-sm">{formatRaceWeekDateRange(week)}</span>
         </div>
+      ) : null}
+      {!loading && !error && currentUserSummary ? (
+        <p className="app-text-primary mt-3 text-sm font-medium">{currentUserSummary}</p>
       ) : null}
 
       {loading ? (
@@ -75,25 +92,70 @@ export default function WeeklyLeaderboard({
         <p className="app-text-secondary mt-3 text-sm">Пока в текущей неделе нет результатов.</p>
       ) : (
         <div className="mt-3 space-y-2">
-          {topRows.map((row) => (
-            <div key={row.user_id} className="flex items-center justify-between gap-3 text-sm">
-              <Link href={`/users/${row.user_id}`} className="app-text-primary min-w-0 flex-1 truncate">
-                {row.rank}. {row.displayName}
-              </Link>
-              <p className="app-text-primary shrink-0 font-medium">{row.totalXp} XP</p>
-            </div>
-          ))}
+          {topRows.map((row) => {
+            const isCurrentUser = row.user_id === currentUserId
+
+            return (
+              <div
+                key={row.user_id}
+                className={
+                  isCurrentUser
+                    ? 'app-surface-muted rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15'
+                    : 'px-3 py-2'
+                }
+              >
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <Link href={`/users/${row.user_id}`} className="app-text-primary min-w-0 flex-1 truncate">
+                    {row.rank}. {row.displayName}
+                    {isCurrentUser ? (
+                      <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                        Ты
+                      </span>
+                    ) : null}
+                  </Link>
+                  <p className="app-text-primary shrink-0 font-medium">{row.totalXp} XP</p>
+                </div>
+                {isCurrentUser ? (
+                  <div className="mt-2 space-y-1">
+                    {gapToNext !== null && gapToNext > 0 ? (
+                      <p className="app-text-secondary text-xs">До следующего места: +{gapToNext} XP</p>
+                    ) : null}
+                    {gapToBehind !== null && gapToBehind > 0 ? (
+                      <p className="app-text-secondary text-xs">Отрыв от следующего: {gapToBehind} XP</p>
+                    ) : null}
+                    {motivationHint ? (
+                      <p className="app-text-secondary text-xs">{motivationHint}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       )}
 
       {!loading && !error && shouldShowCurrentUserRow ? (
-        <div className="mt-4 border-t pt-3">
-          <p className="app-text-primary text-sm font-medium">
-            Ты — {currentUserRow?.rank} место · {currentUserRow?.totalXp} XP
-          </p>
-          {gapToNext !== null && gapToNext > 0 ? (
-            <p className="app-text-secondary mt-1 text-sm">До следующего места: {gapToNext} XP</p>
-          ) : null}
+        <div className="app-surface-muted mt-4 rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <p className="app-text-primary min-w-0 flex-1 font-medium">
+              {currentUserRow?.rank}. {currentUserRow?.displayName}
+              <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                Ты
+              </span>
+            </p>
+            <p className="app-text-primary shrink-0 font-medium">{currentUserRow?.totalXp} XP</p>
+          </div>
+          <div className="mt-2 space-y-1">
+            {gapToNext !== null && gapToNext > 0 ? (
+              <p className="app-text-secondary text-xs">До следующего места: +{gapToNext} XP</p>
+            ) : null}
+            {gapToBehind !== null && gapToBehind > 0 ? (
+              <p className="app-text-secondary text-xs">Отрыв от следующего: {gapToBehind} XP</p>
+            ) : null}
+            {motivationHint ? (
+              <p className="app-text-secondary text-xs">{motivationHint}</p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
