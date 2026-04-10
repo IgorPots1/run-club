@@ -1630,9 +1630,25 @@ export default function RunDetailsPage() {
           void handleSaveEditMode()
         }}
         disabled={isSaving || !hasPendingChanges}
-        className="app-text-primary inline-flex min-h-11 max-w-full items-center justify-end truncate rounded-full px-0 text-right text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+        className="app-text-primary relative inline-flex min-h-11 w-full min-w-0 items-center justify-end overflow-hidden rounded-full px-0 text-right text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isSaving ? 'Сохраняем...' : 'Сохранить'}
+        <span aria-hidden="true" className="invisible whitespace-nowrap">
+          Сохраняем...
+        </span>
+        <span
+          className={`pointer-events-none absolute inset-0 inline-flex items-center justify-end whitespace-nowrap ${
+            isSaving ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          Сохранить
+        </span>
+        <span
+          className={`pointer-events-none absolute inset-0 inline-flex items-center justify-end whitespace-nowrap ${
+            isSaving ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          Сохраняем...
+        </span>
       </button>
     ) : (
       <button
@@ -1805,7 +1821,7 @@ export default function RunDetailsPage() {
           </div>
 
           <div className="mt-3">
-            <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
+            <h1 className="app-text-primary min-w-0 break-words text-base font-semibold">{getRunTitle(run)}</h1>
           </div>
 
           {runLocationLabel || currentAssignedShoeLabel ? (
@@ -1825,7 +1841,7 @@ export default function RunDetailsPage() {
             <div className="mt-3">
               <p
                 ref={descriptionRef}
-                className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
+                className={`app-text-primary break-words whitespace-pre-wrap text-sm font-medium leading-5 ${
                   descriptionExpanded ? '' : 'line-clamp-2'
                 }`}
               >
@@ -1852,9 +1868,9 @@ export default function RunDetailsPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-5">
+          <div className={`${runDescription ? 'mt-3' : 'mt-4'} grid grid-cols-2 gap-x-4 gap-y-4`}>
             {summaryMetricItems.map((metric) => (
-              <div key={metric.label} className="grid content-start gap-1.5">
+              <div key={metric.label} className="grid content-start gap-1">
                 <p className="app-text-secondary text-xs font-medium leading-tight">{metric.label}</p>
                 <p
                   className={`app-text-primary leading-tight ${
