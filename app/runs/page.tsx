@@ -699,9 +699,16 @@ export default function RunsPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
+    <main className="min-h-screen">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+        <div className="pointer-events-auto mx-auto max-w-xl px-4 md:px-4">
+          <InnerPageHeader title="Тренировки" fallbackHref="/activity" />
+        </div>
+      </div>
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <InnerPageHeader title="Тренировки" fallbackHref="/activity" sticky />
+        <div aria-hidden="true" className="invisible">
+          <InnerPageHeader title="Тренировки" fallbackHref="/activity" />
+        </div>
         <div className="mt-4">
           <form onSubmit={handleSubmit} className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
         <div>
