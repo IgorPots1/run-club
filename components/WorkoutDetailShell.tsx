@@ -24,19 +24,16 @@ export default function WorkoutDetailShell({
   scrollContainerRef,
   scrollContentClassName = '',
 }: WorkoutDetailShellProps) {
-  const mobileShellHeightClassName =
-    'h-[calc(100dvh-(5.75rem+env(safe-area-inset-bottom)))] min-h-[calc(100dvh-(5.75rem+env(safe-area-inset-bottom)))]'
   const scrollLayoutClassName = [
-    'min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 [overscroll-behavior-y:contain]',
+    'min-w-0 overflow-x-hidden px-4',
     footer ? 'pb-5 pt-3' : 'pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5',
-    'md:overflow-visible md:px-4 md:pb-5 md:pt-5',
     scrollContentClassName,
   ]
     .filter(Boolean)
     .join(' ')
   const footerWrapperClassName = [
     'shrink-0 px-4 pt-1',
-    'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+    'pb-[calc(5.75rem+max(0.75rem,env(safe-area-inset-bottom)))]',
     'md:px-4 md:pb-5',
   ]
     .filter(Boolean)
@@ -50,9 +47,9 @@ export default function WorkoutDetailShell({
 
   return (
     <main
-      className={`flex ${mobileShellHeightClassName} min-w-0 flex-col overflow-x-hidden overflow-y-hidden bg-[color:var(--background)] md:h-auto md:min-h-screen md:overflow-visible`}
+      className="min-h-[100svh] min-w-0 bg-[color:var(--background)] md:min-h-screen"
     >
-      <div className="mx-auto flex h-full min-h-0 min-w-0 w-full max-w-xl flex-col overflow-x-hidden md:h-auto md:min-h-screen md:overflow-visible">
+      <div className="mx-auto flex min-h-[100svh] min-w-0 w-full max-w-xl flex-col overflow-x-hidden md:min-h-screen">
         <InnerPageHeader
           title={title}
           fallbackHref={fallbackHref}

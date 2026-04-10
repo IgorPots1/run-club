@@ -626,6 +626,25 @@ function toNullableTrimmedText(value: string | null | undefined) {
   return trimmedValue.length > 0 ? trimmedValue : null
 }
 
+function resolveWorkoutDetailScrollTarget(scrollContainer: HTMLDivElement | null) {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  if (!scrollContainer) {
+    return window
+  }
+
+  const computedStyle = window.getComputedStyle(scrollContainer)
+  const isScrollableContainer = /(auto|scroll|overlay)/.test(computedStyle.overflowY)
+
+  if (isScrollableContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight + 1) {
+    return scrollContainer
+  }
+
+  return window
+}
+
 export default function RunDetailsPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -1024,14 +1043,7 @@ export default function RunDetailsPage() {
   useEffect(() => {
     if (previousIsEditModeRef.current && !isEditMode) {
       window.requestAnimationFrame(() => {
-        const scrollContainer = scrollContainerRef.current
-
-        if (scrollContainer) {
-          scrollContainer.scrollTo({ top: 0, behavior: 'auto' })
-          return
-        }
-
-        window.scrollTo({ top: 0, behavior: 'auto' })
+        ;(resolveWorkoutDetailScrollTarget(scrollContainerRef.current) ?? window).scrollTo({ top: 0, behavior: 'auto' })
       })
     }
 

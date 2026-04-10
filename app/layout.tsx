@@ -99,7 +99,7 @@ export default async function RootLayout({
 
   return (
     <html lang="ru">
-      <body className={isRunDetailRoute ? "min-h-screen overflow-hidden md:overflow-visible" : "min-h-screen"}>
+      <body className="min-h-screen">
         <PwaRegister />
         <VoiceStreamLifecycle />
         <UnreadBadgeSync />
