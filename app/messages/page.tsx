@@ -713,6 +713,8 @@ export default function MessagesPage() {
       return
     }
 
+    const guaranteedCurrentUserId = currentUserId
+
     let cancelled = false
     let timeoutId: number | null = null
     let idleId: number | null = null
@@ -724,7 +726,7 @@ export default function MessagesPage() {
 
     async function loadDeferredSections() {
       try {
-        if (currentUserId === COACH_USER_ID) {
+        if (guaranteedCurrentUserId === COACH_USER_ID) {
           const [nextDirectThreads, nextStudents] = await Promise.all([
             getCoachDirectThreads(),
             getStudents(),
@@ -737,7 +739,7 @@ export default function MessagesPage() {
           setDirectThreads(nextDirectThreads)
           setStudents(nextStudents)
           seedMessagesListCache({
-            currentUserId,
+            currentUserId: guaranteedCurrentUserId,
             commonThreads,
             coachThread: null,
             directThreads: nextDirectThreads,
@@ -745,7 +747,7 @@ export default function MessagesPage() {
             unreadCountsByThread,
           })
         } else {
-          const nextCoachThread = await getDirectCoachThread(currentUserId)
+          const nextCoachThread = await getDirectCoachThread(guaranteedCurrentUserId)
 
           if (cancelled) {
             return
@@ -753,7 +755,7 @@ export default function MessagesPage() {
 
           setCoachThread(nextCoachThread)
           seedMessagesListCache({
-            currentUserId,
+            currentUserId: guaranteedCurrentUserId,
             commonThreads,
             coachThread: nextCoachThread,
             directThreads: [],
