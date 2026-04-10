@@ -34,6 +34,8 @@ export default function WeeklyLeaderboard({
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
   const isCurrentUserInTop = topRows.some((row) => row.user_id === currentUserId)
+  const compactTopRows = topRows.slice(0, 3)
+  const isCurrentUserInCompactTop = compactTopRows.some((row) => row.user_id === currentUserId)
   const compactCurrentUserRow = topRows.find((row) => row.user_id === currentUserId) ?? currentUserRow
   const shouldShowCurrentUserRow =
     Boolean(currentUserRow) &&
@@ -53,14 +55,27 @@ export default function WeeklyLeaderboard({
       : gapToBehind !== null && gapToBehind > 0
         ? `Отрыв от следующего: ${gapToBehind} XP`
         : ''
+  const compactRows = shouldShowCompactCurrentUserRow && compactCurrentUserRow && !isCurrentUserInCompactTop
+    ? [...compactTopRows, compactCurrentUserRow]
+    : compactTopRows
 
   return (
     <div className="app-card mb-4 min-h-[188px] overflow-hidden rounded-xl border p-4 shadow-sm">
-      <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-        <Flame className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-        <span>Гонка недели</span>
-      </p>
-      {!loading && !error && week ? (
+      {compact && !loading && !error && week ? (
+        <div className="flex items-center justify-between gap-3">
+          <p className="app-text-secondary flex min-w-0 items-center gap-2 text-sm font-medium">
+            <Flame className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+            <span>Гонка недели</span>
+          </p>
+          <span className="app-text-secondary shrink-0 text-sm">{formatRaceWeekDateRange(week)}</span>
+        </div>
+      ) : (
+        <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+          <Flame className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+          <span>Гонка недели</span>
+        </p>
+      )}
+      {!compact && !loading && !error && week ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
             Текущая неделя
@@ -101,18 +116,37 @@ export default function WeeklyLeaderboard({
           <p className="app-text-secondary mt-2 text-sm">Открой экран гонки, чтобы посмотреть статус и последние итоги.</p>
         </div>
       ) : compact ? (
-        shouldShowCompactCurrentUserRow ? (
-          <div className="app-surface-muted mt-3 rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <p className="app-text-primary min-w-0 flex-1 font-medium">
-                {compactCurrentUserRow?.rank}. {compactCurrentUserRow?.displayName}
-                <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
-                  Ты
-                </span>
-              </p>
-              <p className="app-text-primary shrink-0 font-medium">{compactCurrentUserRow?.totalXp} XP</p>
-            </div>
-            {compactGapLine ? <p className="app-text-secondary mt-2 text-xs">{compactGapLine}</p> : null}
+        compactRows.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {compactRows.map((row) => {
+              const isCurrentUser = row.user_id === currentUserId
+
+              return (
+                <div
+                  key={row.user_id}
+                  className={
+                    isCurrentUser
+                      ? 'app-surface-muted rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15'
+                      : 'px-3 py-2'
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <p className="app-text-primary min-w-0 flex-1 truncate font-medium">
+                      {row.rank}. {row.displayName}
+                      {isCurrentUser ? (
+                        <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                          Ты
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="app-text-primary shrink-0 font-medium">{row.totalXp} XP</p>
+                  </div>
+                  {isCurrentUser && compactGapLine ? (
+                    <p className="app-text-secondary mt-2 text-xs">{compactGapLine}</p>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
         ) : (
           <p className="app-text-secondary mt-3 text-sm">Пока в текущей неделе нет результатов.</p>

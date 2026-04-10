@@ -644,11 +644,19 @@ export default function DashboardPageClient({
               </p>
             </div>
             {showChallengesPlaceholder ? (
-              <div className="app-card rounded-xl border p-4 shadow-sm" aria-hidden="true">
+              <div
+                className="app-card rounded-xl border p-4 shadow-sm"
+                role="status"
+                aria-live="polite"
+                aria-label="Загружаем челленджи"
+              >
                 <div className="flex items-start gap-3">
-                  <div className="skeleton-line h-14 w-14 shrink-0 rounded-2xl" />
+                  <div className="app-surface-muted flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ring-1 ring-black/10 dark:ring-white/15">
+                    <div className="skeleton-line h-8 w-8 rounded-xl" />
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <div className="skeleton-line h-5 w-36" />
+                    <p className="app-text-primary text-sm font-medium">Загружаем челленджи…</p>
+                    <div className="mt-2 skeleton-line h-5 w-36" />
                     <div className="mt-2 flex items-center gap-2">
                       <div className="skeleton-line h-6 w-24 rounded-full" />
                       <div className="skeleton-line h-4 w-20" />
@@ -658,9 +666,9 @@ export default function DashboardPageClient({
                 <div className="mt-3">
                   <div className="skeleton-line h-2 w-full" />
                   <div className="mt-2 space-y-2">
+                    <div className="skeleton-line h-4 w-44" />
                     <div className="skeleton-line h-4 w-40" />
-                    <div className="skeleton-line h-4 w-36" />
-                    <div className="skeleton-line h-4 w-28" />
+                    <div className="skeleton-line h-4 w-32" />
                   </div>
                 </div>
               </div>
@@ -704,7 +712,6 @@ export default function DashboardPageClient({
                   </p>
                   <p className="app-text-secondary mt-1 text-sm">{currentRankTitle}</p>
                 </div>
-                <span className="app-text-secondary shrink-0 text-xs font-medium">Открыть</span>
               </div>
               <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
                 <div
