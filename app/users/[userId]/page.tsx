@@ -184,7 +184,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
   if (!publicProfile && !hasLoadError) {
     return (
-      <WorkoutDetailShell title="Профиль участника" enableSourceRestore stickyHeader>
+      <WorkoutDetailShell title="Профиль участника" enableSourceRestore pinnedHeader>
         <div className="app-card rounded-2xl border p-4 shadow-sm">
           <p className="app-text-secondary text-sm">Пользователь не найден.</p>
           <Link href="/feed" className="app-button-secondary mt-4 inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm">
@@ -197,7 +197,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
   if (hasLoadError) {
     return (
-      <WorkoutDetailShell title="Профиль участника" enableSourceRestore stickyHeader>
+      <WorkoutDetailShell title="Профиль участника" enableSourceRestore pinnedHeader>
         <div className="app-card rounded-2xl border p-4 shadow-sm">
           <p className="text-sm text-red-600">Не удалось загрузить профиль.</p>
         </div>
@@ -245,7 +245,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   ]
 
   return (
-    <WorkoutDetailShell title="Профиль участника" enableSourceRestore stickyHeader>
+    <WorkoutDetailShell title="Профиль участника" enableSourceRestore pinnedHeader>
       <div className="space-y-7">
         <section className="app-card rounded-3xl border px-5 py-6 shadow-sm sm:px-6 sm:py-7">
           <div className="flex flex-col items-center text-center">

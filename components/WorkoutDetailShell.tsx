@@ -5,7 +5,7 @@ type WorkoutDetailShellProps = {
   title: string
   fallbackHref?: string
   enableSourceRestore?: boolean
-  stickyHeader?: boolean
+  pinnedHeader?: boolean
   headerRightSlot?: ReactNode
   topContent?: ReactNode
   footer?: ReactNode
@@ -18,7 +18,7 @@ export default function WorkoutDetailShell({
   title,
   fallbackHref,
   enableSourceRestore = false,
-  stickyHeader = false,
+  pinnedHeader = false,
   headerRightSlot,
   topContent,
   footer,
@@ -48,19 +48,37 @@ export default function WorkoutDetailShell({
     .join(' ')
 
   return (
-    <main
-      className={`min-h-[100svh] min-w-0 bg-[color:var(--background)] md:min-h-screen ${
-        stickyHeader ? 'pt-[env(safe-area-inset-top)] md:pt-0' : ''
-      }`}
-    >
+    <main className="min-h-[100svh] min-w-0 bg-[color:var(--background)] md:min-h-screen">
       <div className="mx-auto flex min-h-[100svh] min-w-0 w-full max-w-xl flex-col overflow-x-hidden md:min-h-screen">
-        <InnerPageHeader
-          title={title}
-          fallbackHref={fallbackHref}
-          enableSourceRestore={enableSourceRestore}
-          sticky={stickyHeader}
-          rightSlot={headerRightSlot}
-        />
+        {pinnedHeader ? (
+          <>
+            <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+              <div className="pointer-events-auto mx-auto max-w-xl">
+                <InnerPageHeader
+                  title={title}
+                  fallbackHref={fallbackHref}
+                  enableSourceRestore={enableSourceRestore}
+                  rightSlot={headerRightSlot}
+                />
+              </div>
+            </div>
+            <div aria-hidden="true" className="invisible">
+              <InnerPageHeader
+                title={title}
+                fallbackHref={fallbackHref}
+                enableSourceRestore={enableSourceRestore}
+                rightSlot={headerRightSlot}
+              />
+            </div>
+          </>
+        ) : (
+          <InnerPageHeader
+            title={title}
+            fallbackHref={fallbackHref}
+            enableSourceRestore={enableSourceRestore}
+            rightSlot={headerRightSlot}
+          />
+        )}
         {topContent ? (
           <div className="min-w-0 shrink-0 px-4 pb-3 pt-3 md:pt-4">
             {topContent}

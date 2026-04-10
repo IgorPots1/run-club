@@ -1496,7 +1496,7 @@ export default function RunDetailsPage() {
 
   if (authLoading || loading) {
     return (
-      <WorkoutDetailShell title="Тренировка" enableSourceRestore stickyHeader>
+      <WorkoutDetailShell title="Тренировка" enableSourceRestore pinnedHeader>
       <div className="min-w-0 overflow-x-hidden space-y-4">
         <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
           <div className="flex items-start justify-between gap-3">
@@ -1556,7 +1556,7 @@ export default function RunDetailsPage() {
 
   if (!run || !details) {
     return (
-      <WorkoutDetailShell title="Тренировка" enableSourceRestore stickyHeader>
+      <WorkoutDetailShell title="Тренировка" enableSourceRestore pinnedHeader>
       <div className="min-w-0 overflow-x-hidden app-card rounded-xl border p-4 shadow-sm">
         <p className="text-sm text-red-600">{error || 'Тренировка не найдена'}</p>
       </div>
@@ -1605,7 +1605,7 @@ export default function RunDetailsPage() {
     <WorkoutDetailShell
       title="Тренировка"
       enableSourceRestore
-      stickyHeader
+      pinnedHeader
       headerRightSlot={headerRightSlot}
       footer={editActionBar}
       scrollContainerRef={scrollContainerRef}

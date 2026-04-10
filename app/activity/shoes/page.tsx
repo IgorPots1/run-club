@@ -25,9 +25,9 @@ export default async function ActivityShoesPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <InnerPageHeader title="Кроссовки" fallbackHref="/activity" sticky />
+        <InnerPageHeader title="Кроссовки" fallbackHref="/activity" />
         <div className="mt-4">
           {loadFailed ? (
             <div className="app-card rounded-2xl border p-4 shadow-sm">
