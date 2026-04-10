@@ -130,6 +130,7 @@ export default function ClubPage() {
       return
     }
 
+    const userId = user.id
     let isMounted = true
 
     async function loadClubData() {
@@ -139,7 +140,7 @@ export default function ClubPage() {
       setStatsLoading(true)
 
       try {
-        const nextLeaderboard = await loadWeeklyXpLeaderboard(user.id)
+        const nextLeaderboard = await loadWeeklyXpLeaderboard(userId)
 
         if (!isMounted) return
 
@@ -167,7 +168,7 @@ export default function ClubPage() {
           return
         }
 
-        setClubStats(buildClubWeeklyStats((runsData ?? []) as WeeklyRunRow[], user.id))
+        setClubStats(buildClubWeeklyStats((runsData ?? []) as WeeklyRunRow[], userId))
       } catch {
         if (!isMounted) return
 
