@@ -16,6 +16,15 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
+  const isPrefetchRequest =
+    request.headers.get('purpose') === 'prefetch' ||
+    request.headers.has('next-router-prefetch') ||
+    request.headers.has('x-middleware-prefetch')
+
+  if (isPrefetchRequest || request.method === 'HEAD' || request.method === 'OPTIONS') {
+    return response
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
