@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -1776,33 +1775,35 @@ export default function RunDetailsPage() {
             <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
           </div>
 
-          {currentAssignedShoe || runLocationLabel || isOwner ? (
+          {runLocationLabel || currentAssignedShoeLabel || isOwner ? (
             <div className="mt-2 space-y-1">
               {runLocationLabel ? (
                 <p className="app-text-secondary text-sm leading-5">{runLocationLabel}</p>
               ) : null}
               {currentAssignedShoeLabel || isOwner ? (
                 <div>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowShoePicker((currentValue) => !currentValue)
+                        setShoeUpdateError('')
+                      }}
+                      disabled={shoeUpdateInFlight}
+                      className="app-text-secondary -mx-2 flex min-h-10 w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 text-left text-sm leading-5 transition-colors hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/[0.04]"
+                      aria-expanded={showShoePicker}
+                      aria-label="Изменить кроссовки тренировки"
+                    >
+                      <span className="break-words">Кроссовки: {currentAssignedShoeLabel || 'не выбраны'}</span>
+                      <span className="app-text-muted shrink-0 text-xs font-medium">
+                        {showShoePicker ? 'Скрыть' : 'Изменить'}
+                      </span>
+                    </button>
+                  ) : (
                     <p className="app-text-secondary text-sm leading-5">
-                      Кроссовки: {currentAssignedShoeLabel || 'не выбраны'}
+                      Кроссовки: {currentAssignedShoeLabel}
                     </p>
-                    {isOwner ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowShoePicker((currentValue) => !currentValue)
-                          setShoeUpdateError('')
-                        }}
-                        disabled={shoeUpdateInFlight}
-                        className="app-text-muted inline-flex min-h-8 items-center gap-1 rounded-full border border-black/[0.07] px-2 py-1 text-xs font-medium transition-colors hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
-                        aria-label="Изменить кроссовки"
-                      >
-                        <Pencil className="h-3.5 w-3.5" strokeWidth={1.9} />
-                        <span>{showShoePicker ? 'Скрыть' : 'Изменить'}</span>
-                      </button>
-                    ) : null}
-                  </div>
+                  )}
 
                   {showShoePicker && isOwner ? (
                     <div className="mt-3 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
