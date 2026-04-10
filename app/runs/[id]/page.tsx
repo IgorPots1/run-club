@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Pencil } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -12,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import MyShoesPicker from '@/components/MyShoesPicker'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import { hasRenderableRoutePolyline } from '@/components/RunRouteMapPreview'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
@@ -672,6 +674,9 @@ export default function RunDetailsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
   const [fallbackAssignedShoe, setFallbackAssignedShoe] = useState<RunAssignedShoeSummary | null>(null)
+  const [showShoePicker, setShowShoePicker] = useState(false)
+  const [shoeUpdateError, setShoeUpdateError] = useState('')
+  const [shoeUpdateInFlight, setShoeUpdateInFlight] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
@@ -1316,6 +1321,9 @@ export default function RunDetailsPage() {
   const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(run?.description)
   const currentAssignedShoe =
     availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? fallbackAssignedShoe
+  const currentAssignedShoeLabel = currentAssignedShoe
+    ? `${currentAssignedShoe.displayName}${currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}${!currentAssignedShoe.isActive ? ' • архив' : ''}`
+    : ''
   const hasPendingChanges = hasTitleChanged || hasDescriptionChanged
 
   function handleEnterEditMode() {
@@ -1384,6 +1392,51 @@ export default function RunDetailsPage() {
       setSaveError('Не удалось сохранить изменения')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleUpdateAssignedShoe(nextShoeId: string) {
+    if (!run || !isOwner || shoeUpdateInFlight || nextShoeId === (run.shoe_id ?? '')) {
+      return
+    }
+
+    setShoeUpdateInFlight(true)
+    setShoeUpdateError('')
+
+    try {
+      const { error: updateError } = await updateRun(run.id, {
+        shoeId: nextShoeId || null,
+      })
+
+      if (updateError) {
+        setShoeUpdateError('Не удалось обновить кроссовки')
+        return
+      }
+
+      const nextAssignedShoe = nextShoeId
+        ? availableShoes.find((shoe) => shoe.id === nextShoeId) ?? null
+        : null
+
+      setRun((currentRun) => (
+        currentRun
+          ? {
+              ...currentRun,
+              shoe_id: nextShoeId || null,
+            }
+          : currentRun
+      ))
+      setFallbackAssignedShoe(nextAssignedShoe ? {
+        id: nextAssignedShoe.id,
+        displayName: nextAssignedShoe.displayName,
+        nickname: nextAssignedShoe.nickname,
+        isActive: nextAssignedShoe.isActive,
+      } : null)
+      setShowShoePicker(false)
+      dispatchRunsUpdatedEvent()
+    } catch {
+      setShoeUpdateError('Не удалось обновить кроссовки')
+    } finally {
+      setShoeUpdateInFlight(false)
     }
   }
 
@@ -1723,17 +1776,52 @@ export default function RunDetailsPage() {
             <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
           </div>
 
-          {currentAssignedShoe || runLocationLabel ? (
+          {currentAssignedShoe || runLocationLabel || isOwner ? (
             <div className="mt-2 space-y-1">
               {runLocationLabel ? (
                 <p className="app-text-secondary text-sm leading-5">{runLocationLabel}</p>
               ) : null}
-              {currentAssignedShoe ? (
-                <p className="app-text-secondary text-sm leading-5">
-                  Кроссовки: {currentAssignedShoe.displayName}
-                  {currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}
-                  {!currentAssignedShoe.isActive ? ' • архив' : ''}
-                </p>
+              {currentAssignedShoeLabel || isOwner ? (
+                <div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="app-text-secondary text-sm leading-5">
+                      Кроссовки: {currentAssignedShoeLabel || 'не выбраны'}
+                    </p>
+                    {isOwner ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowShoePicker((currentValue) => !currentValue)
+                          setShoeUpdateError('')
+                        }}
+                        disabled={shoeUpdateInFlight}
+                        className="app-text-muted inline-flex min-h-8 items-center gap-1 rounded-full border border-black/[0.07] px-2 py-1 text-xs font-medium transition-colors hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
+                        aria-label="Изменить кроссовки"
+                      >
+                        <Pencil className="h-3.5 w-3.5" strokeWidth={1.9} />
+                        <span>{showShoePicker ? 'Скрыть' : 'Изменить'}</span>
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {showShoePicker && isOwner ? (
+                    <div className="mt-3 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
+                      <MyShoesPicker
+                        shoes={availableShoes}
+                        selectedShoeId={run.shoe_id ?? ''}
+                        onSelect={(nextShoeId) => {
+                          void handleUpdateAssignedShoe(nextShoeId)
+                        }}
+                        disabled={shoeUpdateInFlight}
+                        loading={false}
+                        hint="Выберите пару для этой тренировки."
+                      />
+                      {shoeUpdateError ? (
+                        <p className="mt-3 text-sm text-red-600">{shoeUpdateError}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}
