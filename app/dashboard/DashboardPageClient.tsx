@@ -449,6 +449,12 @@ export default function DashboardPageClient({
     ? `Уровень ${levelProgress.level}`
     : 'Загружаем прогресс...'
   const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
+  const showChallengesPlaceholder = !shouldLoadSecondaryContent
+    || (
+      overview === initialOverview
+      && activeChallenges.length === 0
+      && !allChallengesCompleted
+    )
   const weeklyLeaderboardLoading = !shouldLoadSecondaryContent || weeklyRaceLoading
   const lastWeekResultsCard = latestFinalizedRaceWeek && lastWeekResults
     ? {
@@ -630,14 +636,35 @@ export default function DashboardPageClient({
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </Link>
           )}
-          {activeChallenges.length > 0 ? (
-            <section className="mb-4">
-              <div className="mb-3 flex items-center gap-2">
-                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                  <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                  <span>Челленджи</span>
-                </p>
+          <section className={`mb-4 ${showChallengesPlaceholder ? 'min-h-[236px]' : ''}`}>
+            <div className="mb-3 flex items-center gap-2">
+              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span>Челленджи</span>
+              </p>
+            </div>
+            {showChallengesPlaceholder ? (
+              <div className="app-card rounded-xl border p-4 shadow-sm" aria-hidden="true">
+                <div className="flex items-start gap-3">
+                  <div className="skeleton-line h-14 w-14 shrink-0 rounded-2xl" />
+                  <div className="min-w-0 flex-1">
+                    <div className="skeleton-line h-5 w-36" />
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="skeleton-line h-6 w-24 rounded-full" />
+                      <div className="skeleton-line h-4 w-20" />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="skeleton-line h-2 w-full" />
+                  <div className="mt-2 space-y-2">
+                    <div className="skeleton-line h-4 w-40" />
+                    <div className="skeleton-line h-4 w-36" />
+                    <div className="skeleton-line h-4 w-28" />
+                  </div>
+                </div>
               </div>
+            ) : activeChallenges.length > 0 ? (
               <div
                 ref={challengeRailRef}
                 className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -652,17 +679,17 @@ export default function DashboardPageClient({
                   ))}
                 </div>
               </div>
-            </section>
-          ) : allChallengesCompleted ? (
-            <Link href="/challenges" className={dashboardClickableCardClass}>
-              <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                <span>Челленджи</span>
-              </p>
-              <p className="app-text-secondary mt-3 text-sm">Все активные челленджи уже выполнены</p>
-              <p className="app-text-secondary mt-2 text-sm">Открой достижения и новые цели</p>
-            </Link>
-          ) : null}
+            ) : allChallengesCompleted ? (
+              <Link href="/challenges" className={dashboardClickableCardClass}>
+                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                  <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                  <span>Челленджи</span>
+                </p>
+                <p className="app-text-secondary mt-3 text-sm">Все активные челленджи уже выполнены</p>
+                <p className="app-text-secondary mt-2 text-sm">Открой достижения и новые цели</p>
+              </Link>
+            ) : null}
+          </section>
           {stats && levelProgress ? (
             <button
               type="button"
