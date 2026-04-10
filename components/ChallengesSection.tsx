@@ -18,6 +18,7 @@ import {
 
 type ChallengesSectionProps = {
   showTitle?: boolean
+  showAchievements?: boolean
 }
 
 const challengeKindLabel: Record<ChallengeKind, string> = {
@@ -72,7 +73,10 @@ function ChallengeCard({ item, completed }: { item: ChallengeWithProgress; compl
   )
 }
 
-export default function ChallengesSection({ showTitle = true }: ChallengesSectionProps) {
+export default function ChallengesSection({
+  showTitle = true,
+  showAchievements = true,
+}: ChallengesSectionProps) {
   const router = useRouter()
   const [items, setItems] = useState<ChallengeWithProgress[]>([])
   const [loading, setLoading] = useState(true)
@@ -192,21 +196,23 @@ export default function ChallengesSection({ showTitle = true }: ChallengesSectio
                 </div>
               </section>
 
-              <section>
-                <h2 className="app-text-primary mb-3 text-lg font-semibold">Достижения</h2>
-                <div className="space-y-4">
-                  {achievementItems.length === 0 ? (
-                    <div className="app-card rounded-2xl border p-4 shadow-sm">
-                      <p className="app-text-secondary text-sm">Достижений пока нет.</p>
-                      <p className="app-text-secondary mt-2 text-sm">Выполняйте челленджи и собирайте коллекцию.</p>
-                    </div>
-                  ) : (
-                    achievementItems.map((item) => (
-                      <ChallengeCard key={item.id} item={item} completed />
-                    ))
-                  )}
-                </div>
-              </section>
+              {showAchievements ? (
+                <section>
+                  <h2 className="app-text-primary mb-3 text-lg font-semibold">Достижения</h2>
+                  <div className="space-y-4">
+                    {achievementItems.length === 0 ? (
+                      <div className="app-card rounded-2xl border p-4 shadow-sm">
+                        <p className="app-text-secondary text-sm">Достижений пока нет.</p>
+                        <p className="app-text-secondary mt-2 text-sm">Выполняйте челленджи и собирайте коллекцию.</p>
+                      </div>
+                    ) : (
+                      achievementItems.map((item) => (
+                        <ChallengeCard key={item.id} item={item} completed />
+                      ))
+                    )}
+                  </div>
+                </section>
+              ) : null}
             </div>
           )}
         </>
