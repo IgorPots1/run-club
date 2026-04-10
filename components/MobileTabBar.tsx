@@ -165,6 +165,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
           <Link
             key={tab.href}
             href={tab.href}
+            prefetch={false}
             onPointerDown={() => handleTabPrefetch(tab.href)}
             onClick={(event) => handleTabClick(event, tab.isActive)}
             className={`mx-0.5 flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors ${

@@ -72,13 +72,14 @@ export default function Navbar({ initialUser }: { initialUser: NavbarUser | null
   return (
     <nav className="flex items-center justify-between border-b p-4">
       <div className="flex gap-4">
-          <Link href="/dashboard">Главная</Link>
-          <Link href="/activity">Активность</Link>
-          <Link href="/runs">Тренировки</Link>
-          <Link href="/leaderboard">Рейтинг</Link>
-          <Link href="/challenges">Челленджи</Link>
+          <Link href="/dashboard" prefetch={false}>Главная</Link>
+          <Link href="/activity" prefetch={false}>Активность</Link>
+          <Link href="/runs" prefetch={false}>Тренировки</Link>
+          <Link href="/leaderboard" prefetch={false}>Рейтинг</Link>
+          <Link href="/challenges" prefetch={false}>Челленджи</Link>
           <Link
             href="/messages"
+            prefetch={false}
             onPointerDown={() => {
               setIsUnreadTrackingEnabled(true)
               void initializeRealtimeTotalUnreadCount()
@@ -89,8 +90,8 @@ export default function Navbar({ initialUser }: { initialUser: NavbarUser | null
             <span>Сообщения</span>
             <UnreadBadge count={totalUnreadCount} />
           </Link>
-          <Link href="/feed">Лента</Link>
-          <Link href="/profile">Профиль</Link>
+          <Link href="/feed" prefetch={false}>Лента</Link>
+          <Link href="/profile" prefetch={false}>Профиль</Link>
       </div>
       <button onClick={handleLogout}>Выйти</button>
     </nav>
