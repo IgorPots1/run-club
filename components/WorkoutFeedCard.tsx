@@ -27,6 +27,7 @@ type WorkoutFeedCardMediaSlide =
 type WorkoutFeedCardProps = {
   runId?: string
   rawTitle: string | null
+  shoeId?: string | null
   city?: string | null
   country?: string | null
   description?: string | null
@@ -127,6 +128,7 @@ const WorkoutFeedPhotoPreviewImage = memo(function WorkoutFeedPhotoPreviewImage(
 function WorkoutFeedCard({
   runId = '',
   rawTitle,
+  shoeId = null,
   city = null,
   country = null,
   description = null,
@@ -219,6 +221,7 @@ function WorkoutFeedCard({
   const isManualRun = externalSource !== 'strava'
   const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
+  void shoeId
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
     const container = event.currentTarget

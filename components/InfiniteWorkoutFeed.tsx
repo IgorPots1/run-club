@@ -1168,6 +1168,7 @@ export default function InfiniteWorkoutFeed({
                 key={item.id}
                 runId={item.id}
                 rawTitle={item.title}
+                shoeId={item.shoe_id}
                 city={item.city}
                 country={item.country}
                 description={item.description}

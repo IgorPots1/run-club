@@ -21,6 +21,7 @@ type RunRow = {
   name: string | null
   title?: string | null
   description?: string | null
+  shoe_id?: string | null
   city?: string | null
   region?: string | null
   country?: string | null
@@ -99,6 +100,7 @@ export type DashboardRunItem = {
   user_id: string
   title: string
   description: string | null
+  shoe_id: string | null
   city?: string | null
   country?: string | null
   external_source?: string | null
@@ -644,7 +646,7 @@ export async function loadFeedRuns(
   const end = start + pageFetchSize - 1
   let runsQuery = supabase
     .from('runs')
-    .select('id, user_id, name, title, description, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, map_polyline, xp, created_at')
+    .select('id, user_id, name, title, description, shoe_id, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, map_polyline, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
@@ -813,6 +815,7 @@ export async function loadFeedRuns(
         user_id: run.user_id,
         title: mappedTitle,
         description: toNullableTrimmedText(run.description),
+        shoe_id: toNullableTrimmedText(run.shoe_id),
         city: toNullableTrimmedText(run.city),
         country: toNullableTrimmedText(run.country),
         external_source: run.external_source ?? null,
