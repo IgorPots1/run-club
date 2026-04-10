@@ -677,6 +677,7 @@ export default function RunDetailsPage() {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
+  const [isShoePickerOpen, setIsShoePickerOpen] = useState(false)
   const [refreshingStravaSupplemental, setRefreshingStravaSupplemental] = useState(false)
   const [stravaSupplementalError, setStravaSupplementalError] = useState('')
   const [stravaSupplementalInfoMessage, setStravaSupplementalInfoMessage] = useState('')
@@ -684,6 +685,7 @@ export default function RunDetailsPage() {
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const descriptionRef = useRef<HTMLParagraphElement | null>(null)
   const previousIsEditModeRef = useRef(false)
+  const shouldScrollToTopOnEditExitRef = useRef(true)
   const handleAuthRequired = useMemo(
     () => () => {
       router.replace('/login')
@@ -1047,10 +1049,14 @@ export default function RunDetailsPage() {
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
 
   useEffect(() => {
-    if (previousIsEditModeRef.current && !isEditMode) {
+    if (previousIsEditModeRef.current && !isEditMode && shouldScrollToTopOnEditExitRef.current) {
       window.requestAnimationFrame(() => {
         ;(resolveWorkoutDetailScrollTarget(scrollContainerRef.current) ?? window).scrollTo({ top: 0, behavior: 'auto' })
       })
+    }
+
+    if (!isEditMode) {
+      shouldScrollToTopOnEditExitRef.current = true
     }
 
     previousIsEditModeRef.current = isEditMode
@@ -1349,6 +1355,12 @@ export default function RunDetailsPage() {
   const currentAssignedShoeLabel = currentAssignedShoe
     ? `${currentAssignedShoe.displayName}${currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}${!currentAssignedShoe.isActive ? ' • архив' : ''}`
     : ''
+  const selectedDraftShoe =
+    availableShoes.find((shoe) => shoe.id === draft.shoeId) ??
+    (draft.shoeId && draft.shoeId === (run?.shoe_id ?? '') ? currentAssignedShoe : null)
+  const selectedDraftShoeLabel = selectedDraftShoe
+    ? `${selectedDraftShoe.displayName}${selectedDraftShoe.nickname ? ` (${selectedDraftShoe.nickname})` : ''}${!selectedDraftShoe.isActive ? ' • архив' : ''}`
+    : 'Без кроссовок'
   const hasPendingChanges = hasTitleChanged || hasDescriptionChanged || hasShoeChanged
 
   function handleEnterEditMode() {
@@ -1363,6 +1375,8 @@ export default function RunDetailsPage() {
     })
     setSaveError('')
     setUploadPhotosError('')
+    setIsShoePickerOpen(false)
+    shouldScrollToTopOnEditExitRef.current = true
     setIsEditMode(true)
   }
 
@@ -1374,6 +1388,8 @@ export default function RunDetailsPage() {
     })
     setSaveError('')
     setUploadPhotosError('')
+    setIsShoePickerOpen(false)
+    shouldScrollToTopOnEditExitRef.current = true
     setIsEditMode(false)
   }
 
@@ -1415,8 +1431,10 @@ export default function RunDetailsPage() {
         return
       }
 
+      shouldScrollToTopOnEditExitRef.current = false
       setRun((currentRun) => (currentRun ? { ...currentRun, ...nextRunUpdates } : currentRun))
       setDescriptionExpanded(false)
+      setIsShoePickerOpen(false)
       setSaveError('')
       setIsEditMode(false)
       dispatchRunsUpdatedEvent()
@@ -1604,37 +1622,27 @@ export default function RunDetailsPage() {
     )
   }
 
-  const headerRightSlot = isOwner && !isEditMode ? (
-    <button
-      type="button"
-      onClick={handleEnterEditMode}
-      className="app-text-primary inline-flex min-h-11 max-w-full items-center justify-end truncate rounded-full px-0 text-right text-sm font-medium"
-    >
-      Изменить
-    </button>
-  ) : null
-
-  const editActionBar = isEditMode ? (
-    <div className="flex items-center justify-between gap-3">
-      <button
-        type="button"
-        onClick={handleCancelEditMode}
-        disabled={isSaving}
-        className="app-button-secondary min-h-11 rounded-2xl border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        Отмена
-      </button>
+  const headerRightSlot = isOwner ? (
+    isEditMode ? (
       <button
         type="button"
         onClick={() => {
           void handleSaveEditMode()
         }}
         disabled={isSaving || !hasPendingChanges}
-        className="app-button-primary min-h-11 rounded-2xl border px-5 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+        className="app-text-primary inline-flex min-h-11 max-w-full items-center justify-end truncate rounded-full px-0 text-right text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSaving ? 'Сохраняем...' : 'Сохранить'}
       </button>
-    </div>
+    ) : (
+      <button
+        type="button"
+        onClick={handleEnterEditMode}
+        className="app-text-primary inline-flex min-h-11 max-w-full items-center justify-end truncate rounded-full px-0 text-right text-sm font-medium"
+      >
+        Изменить
+      </button>
+    )
   ) : null
 
   const detailScrollContentClassName =
@@ -1647,13 +1655,12 @@ export default function RunDetailsPage() {
       enableSourceRestore
       pinnedHeader
       headerRightSlot={headerRightSlot}
-      footer={editActionBar}
       scrollContainerRef={scrollContainerRef}
       scrollContentClassName={detailScrollContentClassName}
     >
     <div className="min-w-0 overflow-x-hidden space-y-4">
       {hasMedia || isEditMode ? (
-        <section className={isEditMode ? 'space-y-3' : undefined}>
+        <section className={isEditMode ? 'relative space-y-3' : undefined}>
           <input
             ref={photoInputRef}
             type="file"
@@ -1664,16 +1671,16 @@ export default function RunDetailsPage() {
           />
 
           {isOwner && isEditMode ? (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleOpenPhotoPicker}
-                disabled={uploadingPhotos}
-                className="app-button-secondary min-h-10 rounded-full border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {uploadingPhotos ? 'Загружаем...' : 'Добавить фото'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleOpenPhotoPicker}
+              disabled={uploadingPhotos}
+              aria-label={uploadingPhotos ? 'Загружаем фото' : 'Добавить фото'}
+              title={uploadingPhotos ? 'Загружаем фото' : 'Добавить фото'}
+              className="app-button-secondary absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border p-0 text-xl leading-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              +
+            </button>
           ) : null}
 
           {isEditMode && uploadPhotosError ? <p className="text-sm text-red-600">{uploadPhotosError}</p> : null}
@@ -1721,26 +1728,6 @@ export default function RunDetailsPage() {
           </div>
 
           <div className="mt-4">
-            <p className="app-text-secondary text-sm font-medium">Кроссовки</p>
-            <div className="mt-2 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
-              <MyShoesPicker
-                shoes={availableShoes}
-                selectedShoeId={draft.shoeId}
-                onSelect={(nextShoeId) => {
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    shoeId: nextShoeId,
-                  }))
-                  setSaveError('')
-                }}
-                disabled={isSaving}
-                loading={false}
-                hint="Выберите пару для этой тренировки."
-              />
-            </div>
-          </div>
-
-          <div className="mt-4">
             <p className="app-text-secondary text-sm font-medium">Описание</p>
 
             <div className="mt-2">
@@ -1760,6 +1747,41 @@ export default function RunDetailsPage() {
               />
               {saveError ? <p className="mt-2 text-sm text-red-600">{saveError}</p> : null}
             </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="app-text-secondary text-sm font-medium">Кроссовки</p>
+            <button
+              type="button"
+              onClick={() => setIsShoePickerOpen((currentValue) => !currentValue)}
+              disabled={isSaving}
+              className="mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border border-black/[0.05] px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.08]"
+            >
+              <span className="app-text-primary min-w-0 break-words text-sm font-medium">
+                {selectedDraftShoeLabel}
+              </span>
+              <span className="app-text-secondary shrink-0 text-sm">{isShoePickerOpen ? 'Скрыть' : 'Выбрать'}</span>
+            </button>
+
+            {isShoePickerOpen ? (
+              <div className="mt-2 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
+                <MyShoesPicker
+                  shoes={availableShoes}
+                  selectedShoeId={draft.shoeId}
+                  onSelect={(nextShoeId) => {
+                    setDraft((currentDraft) => ({
+                      ...currentDraft,
+                      shoeId: nextShoeId,
+                    }))
+                    setSaveError('')
+                    setIsShoePickerOpen(false)
+                  }}
+                  disabled={isSaving}
+                  loading={false}
+                  hint="Выберите пару для этой тренировки."
+                />
+              </div>
+            ) : null}
           </div>
         </section>
       ) : (
