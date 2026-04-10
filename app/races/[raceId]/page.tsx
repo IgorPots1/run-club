@@ -20,6 +20,7 @@ import {
   type RaceEventLinkedRunSummary,
 } from '@/lib/race-events'
 import { countVisibleRunComments, loadRaceComments, type RunCommentItem } from '@/lib/run-comments'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import { useEntityCommentsController } from '@/lib/use-entity-comments-controller'
 import type { User } from '@supabase/supabase-js'
 
@@ -317,6 +318,7 @@ export default function RaceDiscussionPage() {
       await createComment(trimmedDraft, replyTarget?.id ?? null)
       setDraft('')
       setReplyTargetId(null)
+      dispatchRunsUpdatedEvent()
     } catch {
       setSubmitError(replyTarget ? 'Не удалось отправить ответ' : 'Не удалось отправить комментарий')
     } finally {
@@ -343,6 +345,7 @@ export default function RaceDiscussionPage() {
 
     await createComment(trimmedComment, parentId)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleEditComment(commentId: string, comment: string) {
@@ -359,6 +362,7 @@ export default function RaceDiscussionPage() {
   async function handleDeleteComment(commentId: string) {
     await deleteComment(commentId)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleToggleLikeComment(commentId: string) {

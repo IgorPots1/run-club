@@ -715,6 +715,7 @@ export default function RunDetailsPage() {
 
     await createComment(trimmedComment)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleReplySubmit(parentId: string, comment: string) {
@@ -730,6 +731,7 @@ export default function RunDetailsPage() {
 
     await createComment(trimmedComment, parentId)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleEditComment(commentId: string, comment: string) {
@@ -746,6 +748,7 @@ export default function RunDetailsPage() {
   async function handleDeleteComment(commentId: string) {
     await deleteComment(commentId)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleToggleLikeComment(commentId: string) {

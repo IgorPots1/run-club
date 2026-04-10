@@ -632,6 +632,7 @@ export default function InfiniteWorkoutFeed({
       setFeedError('')
       setInitialLoading(false)
       restoredSnapshotRef.current = null
+      void loadFirstPage()
       return
     }
 

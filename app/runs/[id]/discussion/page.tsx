@@ -16,6 +16,7 @@ import {
   type RunCommentAuthorIdentity,
   type RunCommentItem,
 } from '@/lib/run-comments'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import { useRunCommentsController } from '@/lib/use-run-comments-controller'
 import { supabase } from '@/lib/supabase'
 import { getLevelFromXP } from '@/lib/xp'
@@ -489,6 +490,7 @@ export default function RunDiscussionPage() {
       await createComment(trimmedDraft, replyTarget?.id ?? null)
       setDraft('')
       setReplyTargetId(null)
+      dispatchRunsUpdatedEvent()
     } catch {
       setSubmitError(replyTarget ? 'Не удалось отправить ответ' : 'Не удалось отправить комментарий')
     } finally {
@@ -515,6 +517,7 @@ export default function RunDiscussionPage() {
 
     await createComment(trimmedComment, parentId)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleEditComment(commentId: string, comment: string) {
@@ -531,6 +534,7 @@ export default function RunDiscussionPage() {
   async function handleDeleteComment(commentId: string) {
     await deleteComment(commentId)
     setCommentsError('')
+    dispatchRunsUpdatedEvent()
   }
 
   async function handleToggleLikeComment(commentId: string) {
