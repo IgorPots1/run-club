@@ -56,7 +56,7 @@ type RunPhotoRow = {
 
 type AppEventFeedRow = {
   id: string
-  type: 'race_event.created' | 'race_event.completed'
+  type: 'race_event.created' | 'race_event.completed' | 'challenge.completed'
   actor_user_id: string | null
   entity_id: string | null
   payload: Record<string, unknown> | null
@@ -156,9 +156,24 @@ export type FeedRaceEventItem = {
   } | null
 }
 
+export type FeedChallengeItem = {
+  id: string
+  type: 'challenge.completed'
+  user_id: string
+  challengeId: string | null
+  challengeTitle: string
+  xpAwarded: number | null
+  created_at: string
+  displayName: string
+  avatar_url: string | null
+  totalXp: number
+  targetPath: string | null
+}
+
 export type FeedItem =
   | ({ kind: 'run' } & FeedRunItem)
   | ({ kind: 'race_event' } & FeedRaceEventItem)
+  | ({ kind: 'challenge' } & FeedChallengeItem)
 
 export type FeedRunPage = {
   items: FeedItem[]
@@ -225,6 +240,17 @@ function asRecord(value: unknown) {
 
 function getContextRecord(payload: Record<string, unknown> | null | undefined) {
   return asRecord(payload?.context)
+}
+
+function getPayloadPreviewRecord(payload: Record<string, unknown> | null | undefined) {
+  return asRecord(asRecord(payload)?.preview)
+}
+
+function getPayloadTargetPath(payload: Record<string, unknown> | null | undefined) {
+  const record = asRecord(payload)
+  return typeof record?.targetPath === 'string' && record.targetPath.startsWith('/')
+    ? record.targetPath
+    : null
 }
 
 function getFeedLinkedRun(
@@ -654,7 +680,7 @@ export async function loadFeedRuns(
   let raceEventsQuery = supabase
     .from('app_events')
     .select('id, type, actor_user_id, entity_id, payload, created_at')
-    .in('type', ['race_event.created', 'race_event.completed'])
+    .in('type', ['race_event.created', 'race_event.completed', 'challenge.completed'])
     .is('target_user_id', null)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
@@ -678,20 +704,22 @@ export async function loadFeedRuns(
   }
 
   const pageRuns = (runs as RunRow[] | null) ?? []
-  const pageRaceEvents = (appEvents as AppEventFeedRow[] | null) ?? []
+  const pageAppEvents = (appEvents as AppEventFeedRow[] | null) ?? []
   const editableRaceEventIds = currentUserId
-    ? pageRaceEvents
+    ? pageAppEvents
+        .filter((event) => event.type !== 'challenge.completed')
         .filter((event) => event.actor_user_id === currentUserId && Boolean(event.entity_id))
         .map((event) => event.entity_id as string)
     : []
   const raceEventIds = Array.from(new Set(
-    pageRaceEvents
+    pageAppEvents
+      .filter((event) => event.type !== 'challenge.completed')
       .map((event) => event.entity_id)
       .filter((value): value is string => Boolean(value))
   ))
   const userIds = Array.from(new Set([
     ...pageRuns.map((run) => run.user_id),
-    ...pageRaceEvents.map((event) => event.actor_user_id).filter((value): value is string => Boolean(value)),
+    ...pageAppEvents.map((event) => event.actor_user_id).filter((value): value is string => Boolean(value)),
   ]))
   const runIds = pageRuns.map((run) => run.id)
 
@@ -836,7 +864,11 @@ export async function loadFeedRuns(
       }
     })
 
-  const raceEventItemsRaw = pageRaceEvents.flatMap((event) => {
+  const raceEventItemsRaw = pageAppEvents.flatMap((event) => {
+    if (event.type === 'challenge.completed') {
+      return []
+    }
+
     if (!event.actor_user_id || !event.entity_id) {
       return []
     }
@@ -912,6 +944,35 @@ export async function loadFeedRuns(
     }]
   })
 
+  const challengeItems: FeedItem[] = pageAppEvents.flatMap((event) => {
+    if (event.type !== 'challenge.completed' || !event.actor_user_id) {
+      return []
+    }
+
+    const profile = profileById[event.actor_user_id]
+    const context = getContextRecord(event.payload)
+    const preview = getPayloadPreviewRecord(event.payload)
+    const challengeTitle =
+      (typeof preview?.body === 'string' && preview.body.trim() ? preview.body.trim() : '')
+      || (typeof preview?.title === 'string' && preview.title.trim() ? preview.title.trim() : '')
+      || 'Челлендж'
+
+    return [{
+      kind: 'challenge' as const,
+      id: event.id,
+      type: 'challenge.completed' as const,
+      user_id: event.actor_user_id,
+      challengeId: event.entity_id,
+      challengeTitle,
+      xpAwarded: parseFiniteNumber(context?.xpAwarded),
+      created_at: event.created_at,
+      displayName: getProfileDisplayName(profile, 'Бегун'),
+      avatar_url: profile?.avatar_url ?? null,
+      totalXp: Number(profile?.total_xp ?? 0),
+      targetPath: getPayloadTargetPath(event.payload),
+    }]
+  })
+
   const personalRecordRaceEventIds = getPersonalRecordRaceEventIds(
     raceEventItemsRaw.map((item) => ({
       id: item.id,
@@ -931,12 +992,12 @@ export async function loadFeedRuns(
     isPersonalRecord: personalRecordRaceEventIds.has(item.id),
   }))
 
-  const combinedItems = [...runItems, ...raceEventItems]
+  const combinedItems = [...runItems, ...raceEventItems, ...challengeItems]
     .sort(compareFeedItemsByCreatedAt)
     .slice(0, limit)
 
   return {
     items: combinedItems,
-    hasMore: (pageRuns.length + pageRaceEvents.length) > limit,
+    hasMore: (pageRuns.length + pageAppEvents.length) > limit,
   }
 }

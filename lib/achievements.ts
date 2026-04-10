@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { getChallengeKind } from './challenges'
 import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel } from './race-badges'
 import { createSupabaseServerClient } from './supabase-server'
 
@@ -27,6 +26,7 @@ type RaceWeekResultWeekIdDbRow = {
 type ChallengeCompletionDbRow = {
   challenge_id: string
   completed_at: string
+  period_key: string | null
 }
 
 type ChallengeDbRow = {
@@ -164,7 +164,7 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
     (async () => {
       let query = supabase
         .from('user_challenges')
-        .select('challenge_id, completed_at')
+        .select('challenge_id, completed_at, period_key')
         .eq('user_id', userId)
         .order('completed_at', { ascending: false })
 
@@ -268,12 +268,12 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
   const challengeAchievements = safeChallengeCompletions.reduce<UserAchievement[]>((achievements, completion) => {
     const challenge = challengesById.get(completion.challenge_id)
 
-    if (!challenge || getChallengeKind(challenge) !== 'milestone') {
+    if (!challenge) {
       return achievements
     }
 
     achievements.push({
-      id: `challenge-${completion.challenge_id}`,
+      id: `challenge-${completion.challenge_id}-${completion.period_key ?? 'legacy'}`,
       source_type: 'challenge',
       badge_code: 'challenge_completion',
       label: challenge.title,

@@ -14,7 +14,12 @@ import {
 } from '@/lib/race-event-likes'
 import RunLikesSheet from '@/components/RunLikesSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
-import { loadFeedRuns, type FeedItem, type FeedRunItem, type FeedRaceEventItem } from '@/lib/dashboard'
+import {
+  loadFeedRuns,
+  type FeedItem,
+  type FeedRaceEventItem,
+  type FeedRunItem,
+} from '@/lib/dashboard'
 import { getRaceDistanceLabel } from '@/lib/race-result-share'
 import {
   countVisibleRunCommentRecords,
@@ -53,6 +58,7 @@ type InfiniteWorkoutFeedProps = {
 type FeedCommentVisibilityById = Record<string, RunCommentVisibilityRecord>
 type RunFeedItem = Extract<FeedItem, { kind: 'run' }>
 type RaceEventFeedItem = Extract<FeedItem, { kind: 'race_event' }>
+type ChallengeFeedItem = Extract<FeedItem, { kind: 'challenge' }>
 type FeedRestoreSnapshot = {
   items: FeedItem[]
   hasMore: boolean
@@ -123,6 +129,21 @@ function formatLinkedRunPace(item: FeedRaceEventItem) {
   const seconds = paceSeconds % 60
 
   return `${minutes}:${String(seconds).padStart(2, '0')} /км`
+}
+
+function formatFeedTimestamp(value: string) {
+  const parsedDate = new Date(value)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return ''
+  }
+
+  return parsedDate.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 type RaceFeedCardProps = {
@@ -255,6 +276,64 @@ function RaceFeedCard({
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
           </div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+type ChallengeFeedCardProps = {
+  item: ChallengeFeedItem
+  onOpenProfile: (href: string) => void
+  onOpenChallenge: (targetPath: string) => void
+}
+
+function ChallengeFeedCard({
+  item,
+  onOpenProfile,
+  onOpenChallenge,
+}: ChallengeFeedCardProps) {
+  const completedAtLabel = formatFeedTimestamp(item.created_at)
+  const xpLabel = Number.isFinite(item.xpAwarded) && (item.xpAwarded ?? 0) > 0
+    ? `+${Math.round(Number(item.xpAwarded ?? 0))} XP`
+    : null
+
+  return (
+    <article
+      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        onOpenChallenge(item.targetPath ?? '/challenges')
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        const target = event.target as HTMLElement
+        if (target.closest('a,button')) return
+        event.preventDefault()
+        onOpenChallenge(item.targetPath ?? '/challenges')
+      }}
+    >
+      <ParticipantIdentity
+        avatarUrl={item.avatar_url}
+        displayName={item.displayName}
+        level={getLevelFromXP(item.totalXp).level}
+        href={`/users/${item.user_id}`}
+        onNavigate={onOpenProfile}
+        size="sm"
+      />
+
+      <div className="mt-4 min-w-0">
+        <p className="app-text-secondary text-sm">Челлендж выполнен</p>
+        <p className="app-text-primary mt-1 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">
+          {item.challengeTitle}
+        </p>
+        <div className="app-text-secondary mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          {xpLabel ? <span>{xpLabel}</span> : null}
+          {xpLabel && completedAtLabel ? <span>•</span> : null}
+          {completedAtLabel ? <span>{completedAtLabel}</span> : null}
         </div>
       </div>
     </article>
@@ -672,6 +751,10 @@ export default function InfiniteWorkoutFeed({
 
   const navigateToProfile = useCallback((href: string) => {
     navigateFromFeed(href)
+  }, [navigateFromFeed])
+
+  const navigateToChallenge = useCallback((targetPath: string) => {
+    navigateFromFeed(targetPath)
   }, [navigateFromFeed])
 
   useEffect(() => {
@@ -1196,7 +1279,7 @@ export default function InfiniteWorkoutFeed({
                 profileHref={`/users/${item.user_id}`}
                 onNavigateToProfile={navigateToProfile}
               />
-            ) : (
+            ) : item.kind === 'race_event' ? (
               <RaceFeedCard
                 key={item.id}
                 item={item}
@@ -1206,6 +1289,13 @@ export default function InfiniteWorkoutFeed({
                 onOpenProfile={navigateToProfile}
                 onOpenRaceEvent={navigateToRaceEvent}
                 onToggleLike={handleRaceEventLikeToggle}
+              />
+            ) : (
+              <ChallengeFeedCard
+                key={item.id}
+                item={item}
+                onOpenProfile={navigateToProfile}
+                onOpenChallenge={navigateToChallenge}
               />
             )
           ))
