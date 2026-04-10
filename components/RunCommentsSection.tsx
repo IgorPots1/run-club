@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import RunCommentThreadList from '@/components/RunCommentThreadList'
 import { countVisibleRunComments, type RunCommentItem } from '@/lib/run-comments'
 
@@ -32,6 +32,7 @@ export default function RunCommentsSection({
   const [comment, setComment] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const trimmedComment = comment.trim()
   const visibleCommentsCount = countVisibleRunComments(comments)
 
@@ -53,6 +54,9 @@ export default function RunCommentsSection({
     try {
       await onSubmitComment(trimmedComment)
       setComment('')
+      window.requestAnimationFrame(() => {
+        textareaRef.current?.blur()
+      })
     } catch {
       setSubmitError('Не удалось отправить комментарий')
     } finally {
@@ -68,6 +72,7 @@ export default function RunCommentsSection({
           <label htmlFor="run-comment" className="sr-only">Комментарий</label>
           <textarea
             id="run-comment"
+            ref={textareaRef}
             value={comment}
             onChange={(event) => {
               setComment(event.target.value)
