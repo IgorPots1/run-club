@@ -107,6 +107,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
     pathname.startsWith('/runs/')
   const isClubRoute = pathname === '/club' || pathname === '/challenges' || pathname === '/leaderboard'
   const isMessagesRoute = pathname === '/messages' || pathname.startsWith('/messages/')
+  const isProfileRoute = pathname === '/profile' || pathname.startsWith('/profile/')
   const tabs: TabItem[] = [
     {
       href: '/dashboard',
@@ -135,7 +136,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
     {
       href: '/profile',
       label: 'Профиль',
-      isActive: pathname === '/profile',
+      isActive: isProfileRoute,
       icon: <TabIcon><User className="h-5 w-5" strokeWidth={1.9} /></TabIcon>,
     },
   ]

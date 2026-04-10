@@ -602,10 +602,7 @@ function ProfilePageContent() {
               <HubRow
                 title="Аккаунт"
                 description={user.email ?? 'Имя, никнейм и вход'}
-                onClick={() => {
-                  setPageError('')
-                  setHubMessage('Раздел "Аккаунт" позже вынесем на отдельный экран.')
-                }}
+                href="/profile/account"
               />
               <HubRow
                 title="Уведомления"
