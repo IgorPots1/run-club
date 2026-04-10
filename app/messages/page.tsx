@@ -15,7 +15,6 @@ import {
 } from '@/lib/chat/reads'
 import {
   getMessagesListCacheSnapshot,
-  getPrefetchedMessagesListData,
   peekMessagesListCache,
   revalidateMessagesListCache,
   seedMessagesListCache,
@@ -232,6 +231,28 @@ function MessagesSection({
   )
 }
 
+function ThreadListSkeleton({
+  count = 1,
+}: {
+  count?: number
+}) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="app-card rounded-2xl border p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-full skeleton-line" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="skeleton-line h-4 w-28" />
+              <div className="skeleton-line h-4 w-20" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function MessagesPage() {
   const router = useRouter()
   const processedInsertedMessageIdsRef = useRef<Set<string>>(new Set())
@@ -240,7 +261,7 @@ export default function MessagesPage() {
   const unreadCountsRefreshTimeoutRef = useRef<number | null>(null)
   const lastUnreadFetchAtRef = useRef(0)
   const initialCacheSnapshot = readInitialMessagesListState()
-  const [loading, setLoading] = useState(() => initialCacheSnapshot === null)
+  const [loadingCommon, setLoadingCommon] = useState(() => initialCacheSnapshot === null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => initialCacheSnapshot?.currentUserId ?? null)
   const [commonThreads, setCommonThreads] = useState<ClubThread[]>(() => initialCacheSnapshot?.commonThreads ?? [])
   const [coachThread, setCoachThread] = useState<DirectCoachThreadItem | null>(
@@ -258,6 +279,9 @@ export default function MessagesPage() {
   const [openingStudentId, setOpeningStudentId] = useState<string | null>(null)
   const [isActiveOpen, setIsActiveOpen] = useState(false)
   const [isAllStudentsOpen, setIsAllStudentsOpen] = useState(false)
+  const [shouldLoadDeferredSections, setShouldLoadDeferredSections] = useState(false)
+  const [deferredSectionsReady, setDeferredSectionsReady] = useState(() => initialCacheSnapshot !== null)
+  const [realtimeReady, setRealtimeReady] = useState(() => initialCacheSnapshot !== null)
 
   const isCoach = currentUserId === COACH_USER_ID
 
@@ -541,7 +565,10 @@ export default function MessagesPage() {
           setDirectThreads(peek.data.directThreads)
           setStudents(peek.data.students)
           applyUnreadCountsByThread(peek.data.unreadCountsByThread)
-          setLoading(false)
+          setLoadingCommon(false)
+          setDeferredSectionsReady(true)
+          setShouldLoadDeferredSections(false)
+          setRealtimeReady(true)
           setError('')
 
           if (peek.needsBackgroundRevalidate) {
@@ -558,6 +585,9 @@ export default function MessagesPage() {
             setDirectThreads(fresh.directThreads)
             setStudents(fresh.students)
             applyUnreadCountsByThread(fresh.unreadCountsByThread)
+            setDeferredSectionsReady(true)
+            setShouldLoadDeferredSections(false)
+            setRealtimeReady(true)
             setError('')
           }
 
@@ -566,25 +596,10 @@ export default function MessagesPage() {
 
         logMessagesListLoad('cache_miss', {})
 
-        setLoading(true)
-
-        const prefetchedPromise = getPrefetchedMessagesListData()
-        const prefetchedData = prefetchedPromise ? await prefetchedPromise : null
-
-        if (!isMounted) {
-          return
-        }
-
-        if (prefetchedData) {
-          setCurrentUserId(prefetchedData.currentUserId)
-          setCommonThreads(prefetchedData.commonThreads)
-          setCoachThread(prefetchedData.coachThread)
-          setDirectThreads(prefetchedData.directThreads)
-          setStudents(prefetchedData.students)
-          applyUnreadCountsByThread(prefetchedData.unreadCountsByThread)
-          setError('')
-          return
-        }
+        setLoadingCommon(true)
+        setDeferredSectionsReady(false)
+        setShouldLoadDeferredSections(false)
+        setRealtimeReady(false)
 
         const user = await getBootstrapUser()
 
@@ -610,53 +625,15 @@ export default function MessagesPage() {
 
         setCommonThreads(nextCommonThreads)
         applyUnreadCountsByThread(unreadCounts)
-
-        let seededCoachThread: DirectCoachThreadItem | null = null
-        let seededDirectThreads: CoachDirectThreadItem[] = []
-        let seededStudents: StudentProfile[] = []
-
-        if (user.id === COACH_USER_ID) {
-          const [coachThreads, registeredStudents] = await Promise.all([
-            getCoachDirectThreads(),
-            getStudents(),
-          ])
-
-          if (!isMounted) {
-            return
-          }
-
-          setDirectThreads(coachThreads)
-          setStudents(registeredStudents)
-          seededDirectThreads = coachThreads
-          seededStudents = registeredStudents
-        } else {
-          const directCoachThread = await getDirectCoachThread(user.id)
-
-          if (!isMounted) {
-            return
-          }
-
-          setCoachThread(directCoachThread)
-          seededCoachThread = directCoachThread
-        }
-
-        seedMessagesListCache({
-          currentUserId: user.id,
-          commonThreads: nextCommonThreads,
-          coachThread: seededCoachThread,
-          directThreads: seededDirectThreads,
-          students: seededStudents,
-          unreadCountsByThread: unreadCounts,
-        })
-
         setError('')
+        setShouldLoadDeferredSections(true)
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить сообщения')
         }
       } finally {
         if (isMounted) {
-          setLoading(false)
+          setLoadingCommon(false)
         }
       }
     }
@@ -708,7 +685,7 @@ export default function MessagesPage() {
   }, [scheduleUnreadCountsRefresh, setThreadUnreadCount])
 
   useEffect(() => {
-    if (loading || !currentUserId) {
+    if (loadingCommon || !currentUserId) {
       return
     }
 
@@ -729,10 +706,159 @@ export default function MessagesPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [currentUserId, loading, scheduleUnreadCountsRefreshFromWindowAttention])
+  }, [currentUserId, loadingCommon, scheduleUnreadCountsRefreshFromWindowAttention])
 
   useEffect(() => {
-    if (loading || !currentUserId) {
+    if (!shouldLoadDeferredSections || loadingCommon || !currentUserId || deferredSectionsReady) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    let idleId: number | null = null
+
+    const win = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+
+    async function loadDeferredSections() {
+      try {
+        if (currentUserId === COACH_USER_ID) {
+          const [nextDirectThreads, nextStudents] = await Promise.all([
+            getCoachDirectThreads(),
+            getStudents(),
+          ])
+
+          if (cancelled) {
+            return
+          }
+
+          setDirectThreads(nextDirectThreads)
+          setStudents(nextStudents)
+          seedMessagesListCache({
+            currentUserId,
+            commonThreads,
+            coachThread: null,
+            directThreads: nextDirectThreads,
+            students: nextStudents,
+            unreadCountsByThread,
+          })
+        } else {
+          const nextCoachThread = await getDirectCoachThread(currentUserId)
+
+          if (cancelled) {
+            return
+          }
+
+          setCoachThread(nextCoachThread)
+          seedMessagesListCache({
+            currentUserId,
+            commonThreads,
+            coachThread: nextCoachThread,
+            directThreads: [],
+            students: [],
+            unreadCountsByThread,
+          })
+        }
+
+        setError('')
+      } catch {
+        if (!cancelled) {
+          setError('Не удалось загрузить сообщения')
+        }
+      } finally {
+        if (!cancelled) {
+          setDeferredSectionsReady(true)
+          setShouldLoadDeferredSections(false)
+        }
+      }
+    }
+
+    const scheduleDeferredSectionsLoad = () => {
+      if (typeof win.requestIdleCallback === 'function') {
+        idleId = win.requestIdleCallback(() => {
+          idleId = null
+          void loadDeferredSections()
+        }, { timeout: 700 })
+        return
+      }
+
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null
+        void loadDeferredSections()
+      }, 180)
+    }
+
+    scheduleDeferredSectionsLoad()
+
+    return () => {
+      cancelled = true
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+
+      if (idleId !== null && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId)
+      }
+    }
+  }, [
+    commonThreads,
+    currentUserId,
+    deferredSectionsReady,
+    loadingCommon,
+    shouldLoadDeferredSections,
+    unreadCountsByThread,
+  ])
+
+  useEffect(() => {
+    if (loadingCommon || !currentUserId || realtimeReady) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    let idleId: number | null = null
+
+    const win = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+
+    const enableRealtime = () => {
+      if (!cancelled) {
+        setRealtimeReady(true)
+      }
+    }
+
+    if (typeof win.requestIdleCallback === 'function') {
+      idleId = win.requestIdleCallback(() => {
+        idleId = null
+        enableRealtime()
+      }, { timeout: 900 })
+    } else {
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null
+        enableRealtime()
+      }, 250)
+    }
+
+    return () => {
+      cancelled = true
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+
+      if (idleId !== null && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId)
+      }
+    }
+  }, [currentUserId, loadingCommon, realtimeReady])
+
+  useEffect(() => {
+    if (loadingCommon || !currentUserId || !realtimeReady) {
       return
     }
 
@@ -825,7 +951,14 @@ export default function MessagesPage() {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [applyThreadLastMessage, currentUserId, knownThreadIdsSignature, loading, scheduleUnreadCountsRefresh])
+  }, [
+    applyThreadLastMessage,
+    currentUserId,
+    knownThreadIdsSignature,
+    loadingCommon,
+    realtimeReady,
+    scheduleUnreadCountsRefresh,
+  ])
 
   async function handleOpenCoachChat() {
     if (!currentUserId || openingCoachThread) {
@@ -893,29 +1026,6 @@ export default function MessagesPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <main className="min-h-screen">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4">
-          <InnerPageHeader title="Сообщения" />
-          <div className="space-y-3">
-            {[0, 1, 2].map((item) => (
-              <div key={item} className="app-card rounded-2xl border p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-full skeleton-line" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="skeleton-line h-4 w-28" />
-                    <div className="skeleton-line h-4 w-20" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </main>
-    )
-  }
-
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4">
@@ -932,7 +1042,9 @@ export default function MessagesPage() {
             title="Общие чаты"
             description="Отдельные общие каналы клуба для отчетов, общения и важной информации."
           >
-            {commonChatItems.length > 0 ? (
+            {loadingCommon ? (
+              <ThreadListSkeleton count={3} />
+            ) : commonChatItems.length > 0 ? (
               <div className="space-y-3">
                 {commonChatItems.map((item) => (
                   <ThreadListRow
@@ -949,39 +1061,43 @@ export default function MessagesPage() {
             )}
           </MessagesSection>
 
-          {!isCoach ? (
+          {currentUserId && !isCoach ? (
             <MessagesSection
               title="Тренер"
               description="Отдельный блок для личного чата с тренером."
             >
-              <section className="app-card rounded-2xl border p-4 shadow-sm">
-                <div className="space-y-3">
-                  {coachChatItem ? (
-                    <ThreadListRow
-                      key={coachChatItem.listKey}
-                      item={coachChatItem}
-                      onPrefetch={handlePrefetchThreadMessages}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleOpenCoachChat()
-                      }}
-                      disabled={openingCoachThread}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-black/[0.05] p-4 text-left shadow-sm disabled:opacity-60 dark:border-white/[0.08]"
-                    >
-                      <ThreadAvatar>C</ThreadAvatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="app-text-primary text-sm font-medium">Тренер</p>
-                        <p className="app-text-secondary text-xs">
-                          {openingCoachThread ? 'Открываем чат...' : 'Личный чат со своим тренером'}
-                        </p>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              </section>
+              {loadingCommon || !currentUserId || !deferredSectionsReady ? (
+                <ThreadListSkeleton />
+              ) : (
+                <section className="app-card rounded-2xl border p-4 shadow-sm">
+                  <div className="space-y-3">
+                    {coachChatItem ? (
+                      <ThreadListRow
+                        key={coachChatItem.listKey}
+                        item={coachChatItem}
+                        onPrefetch={handlePrefetchThreadMessages}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleOpenCoachChat()
+                        }}
+                        disabled={openingCoachThread}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-black/[0.05] p-4 text-left shadow-sm disabled:opacity-60 dark:border-white/[0.08]"
+                      >
+                        <ThreadAvatar>C</ThreadAvatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="app-text-primary text-sm font-medium">Тренер</p>
+                          <p className="app-text-secondary text-xs">
+                            {openingCoachThread ? 'Открываем чат...' : 'Личный чат со своим тренером'}
+                          </p>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
             </MessagesSection>
           ) : null}
 
@@ -1003,7 +1119,9 @@ export default function MessagesPage() {
 
                   {isActiveOpen ? (
                     <div className="mt-4">
-                      {activeDialogItems.length > 0 ? (
+                      {!deferredSectionsReady ? (
+                        <ThreadListSkeleton />
+                      ) : activeDialogItems.length > 0 ? (
                         <div className="space-y-3">
                           {activeDialogItems.map((item) => (
                             <ThreadListRow
@@ -1037,7 +1155,9 @@ export default function MessagesPage() {
 
                   {isAllStudentsOpen ? (
                     <div className="mt-4">
-                      {students.length === 0 ? (
+                      {!deferredSectionsReady ? (
+                        <ThreadListSkeleton />
+                      ) : students.length === 0 ? (
                         <p className="app-text-secondary text-sm">Пока нет зарегистрированных учеников.</p>
                       ) : (
                         <div className="space-y-2">
