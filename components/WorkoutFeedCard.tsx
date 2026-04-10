@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Heart, MapPin, MessageCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import FeedActionButton from '@/components/FeedActionButton'
@@ -10,6 +10,7 @@ import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMed
 import type { FeedRunInsight } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
+import { loadRunAssignedShoe, type RunAssignedShoeSummary } from '@/lib/shoes-client'
 
 type WorkoutFeedCardMediaSlide =
   | {
@@ -59,6 +60,8 @@ type WorkoutFeedCardProps = {
 const DEFAULT_PHOTO_OBJECT_POSITION = '50% 50%'
 const PORTRAIT_PHOTO_OBJECT_POSITION = '50% 30%'
 const PORTRAIT_HEIGHT_OVER_WIDTH_THRESHOLD = 1.1
+const assignedShoeSummaryByCardKey = new Map<string, RunAssignedShoeSummary | null>()
+const assignedShoeRequestByCardKey = new Map<string, Promise<RunAssignedShoeSummary | null>>()
 
 function formatDistanceLabel(distanceKm: number) {
   return formatDistanceKm(distanceKm)
@@ -161,6 +164,7 @@ function WorkoutFeedCard({
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [activeMediaIndex, setActiveMediaIndex] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [assignedShoe, setAssignedShoe] = useState<RunAssignedShoeSummary | null>(null)
   const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const trimmedDescription = description?.trim() || ''
@@ -221,7 +225,58 @@ function WorkoutFeedCard({
   const isManualRun = externalSource !== 'strava'
   const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
-  void shoeId
+  const assignedShoeCacheKey = runId && shoeId ? `${runId}:${shoeId}` : ''
+  const assignedShoeLabel = assignedShoe
+    ? `${assignedShoe.displayName}${assignedShoe.nickname ? ` (${assignedShoe.nickname})` : ''}${!assignedShoe.isActive ? ' • архив' : ''}`
+    : ''
+
+  useEffect(() => {
+    let isMounted = true
+
+    if (!runId || !shoeId) {
+      setAssignedShoe(null)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    const cachedAssignedShoe = assignedShoeSummaryByCardKey.get(assignedShoeCacheKey)
+    if (cachedAssignedShoe !== undefined) {
+      setAssignedShoe(cachedAssignedShoe)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setAssignedShoe(null)
+
+    const existingRequest = assignedShoeRequestByCardKey.get(assignedShoeCacheKey)
+    const request = existingRequest ?? loadRunAssignedShoe(runId)
+
+    if (!existingRequest) {
+      assignedShoeRequestByCardKey.set(assignedShoeCacheKey, request)
+    }
+
+    request
+      .then((shoeSummary) => {
+        assignedShoeSummaryByCardKey.set(assignedShoeCacheKey, shoeSummary)
+        if (isMounted) {
+          setAssignedShoe(shoeSummary)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAssignedShoe(null)
+        }
+      })
+      .finally(() => {
+        assignedShoeRequestByCardKey.delete(assignedShoeCacheKey)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [assignedShoeCacheKey, runId, shoeId])
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
     const container = event.currentTarget
@@ -349,6 +404,12 @@ function WorkoutFeedCard({
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {assignedShoeLabel ? (
+        <p className="app-text-muted mt-2 break-words text-sm leading-5">
+          Кроссовки: {assignedShoeLabel}
+        </p>
       ) : null}
 
       {shouldRenderMediaCarousel && mapPreviewUrl ? (
