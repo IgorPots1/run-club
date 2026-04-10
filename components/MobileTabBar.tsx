@@ -168,7 +168,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
             prefetch={false}
             onPointerDown={() => handleTabPrefetch(tab.href)}
             onClick={(event) => handleTabClick(event, tab.isActive)}
-            className={`mx-0.5 flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors ${
+            className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors after:absolute after:left-0 after:right-0 after:top-full after:h-[calc(0.35rem+env(safe-area-inset-bottom))] after:content-[''] ${
               tab.isActive ? 'app-bottom-nav-active' : 'app-bottom-nav-inactive'
             }`}
           >
