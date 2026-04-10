@@ -13,10 +13,12 @@ import { supabase } from '@/lib/supabase'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 
 type ClubTab = 'challenges' | 'leaderboard'
+type ClubStatsPeriod = 'week' | 'month'
 
 type WeeklyRunRow = {
   user_id: string
   distance_km: number | null
+  created_at?: string | null
   duration_minutes?: number | null
   duration_seconds?: number | null
   moving_time_seconds?: number | null
@@ -30,6 +32,8 @@ type ClubWeeklyStats = {
   totalElevationGainMeters: number
   userDistanceKm: number
 }
+
+type ClubStatsByPeriod = Record<ClubStatsPeriod, ClubWeeklyStats>
 
 function toSafeNumber(value: number | null | undefined) {
   return Number.isFinite(value) ? Number(value) : 0
@@ -81,13 +85,41 @@ function formatContributionPercent(value: number) {
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(safeValue)}%`
 }
 
+function getCurrentMonthRange() {
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+
+  return {
+    startsAt: monthStart.toISOString(),
+    endsAt: nextMonthStart.toISOString(),
+  }
+}
+
+function isRunInRange(runCreatedAt: string | null | undefined, startsAt: string, endsAt: string) {
+  if (!runCreatedAt) {
+    return false
+  }
+
+  const runTimestamp = new Date(runCreatedAt).getTime()
+  const startTimestamp = new Date(startsAt).getTime()
+  const endTimestamp = new Date(endsAt).getTime()
+
+  if (Number.isNaN(runTimestamp) || Number.isNaN(startTimestamp) || Number.isNaN(endTimestamp)) {
+    return false
+  }
+
+  return runTimestamp >= startTimestamp && runTimestamp < endTimestamp
+}
+
 export default function ClubPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<ClubTab>('challenges')
+  const [statsPeriod, setStatsPeriod] = useState<ClubStatsPeriod>('week')
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [leaderboard, setLeaderboard] = useState<WeeklyXpLeaderboard | null>(null)
-  const [clubStats, setClubStats] = useState<ClubWeeklyStats | null>(null)
+  const [clubStats, setClubStats] = useState<ClubStatsByPeriod | null>(null)
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [leaderboardError, setLeaderboardError] = useState('')
@@ -153,11 +185,19 @@ export default function ClubPage() {
           return
         }
 
+        const currentMonth = getCurrentMonthRange()
+        const queryStartsAt = new Date(
+          Math.min(new Date(nextLeaderboard.week.startsAt).getTime(), new Date(currentMonth.startsAt).getTime())
+        ).toISOString()
+        const queryEndsAt = new Date(
+          Math.max(new Date(nextLeaderboard.week.endsAt).getTime(), new Date(currentMonth.endsAt).getTime())
+        ).toISOString()
+
         const { data: runsData, error: runsError } = await supabase
           .from('runs')
-          .select('user_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters')
-          .gte('created_at', nextLeaderboard.week.startsAt)
-          .lt('created_at', nextLeaderboard.week.endsAt)
+          .select('user_id, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, created_at')
+          .gte('created_at', queryStartsAt)
+          .lt('created_at', queryEndsAt)
 
         if (!isMounted) return
 
@@ -168,7 +208,18 @@ export default function ClubPage() {
           return
         }
 
-        setClubStats(buildClubWeeklyStats((runsData ?? []) as WeeklyRunRow[], userId))
+        const allRuns = (runsData ?? []) as WeeklyRunRow[]
+        const weekRuns = allRuns.filter((run) =>
+          isRunInRange(run.created_at, nextLeaderboard.week!.startsAt, nextLeaderboard.week!.endsAt)
+        )
+        const monthRuns = allRuns.filter((run) =>
+          isRunInRange(run.created_at, currentMonth.startsAt, currentMonth.endsAt)
+        )
+
+        setClubStats({
+          week: buildClubWeeklyStats(weekRuns, userId),
+          month: buildClubWeeklyStats(monthRuns, userId),
+        })
       } catch {
         if (!isMounted) return
 
@@ -198,11 +249,14 @@ export default function ClubPage() {
     )
   }
 
-  const totalDistanceKm = clubStats?.totalDistanceKm ?? 0
-  const userDistanceKm = clubStats?.userDistanceKm ?? 0
+  const selectedClubStats = clubStats?.[statsPeriod] ?? null
+  const totalDistanceKm = selectedClubStats?.totalDistanceKm ?? 0
+  const userDistanceKm = selectedClubStats?.userDistanceKm ?? 0
   const contributionPercent = totalDistanceKm > 0 ? (userDistanceKm / totalDistanceKm) * 100 : 0
   const hasActiveRaceWeek = Boolean(leaderboard?.week)
   const currentUserId = user?.id ?? ''
+  const statsPeriodLabel = statsPeriod === 'week' ? 'неделю' : 'месяц'
+  const contributionPeriodLabel = statsPeriod === 'week' ? 'текущую неделю' : 'текущий месяц'
 
   return (
     <main className="min-h-screen">
@@ -282,26 +336,47 @@ export default function ClubPage() {
                 </div>
               </div>
             </>
-          ) : hasActiveRaceWeek && clubStats ? (
+          ) : hasActiveRaceWeek && selectedClubStats ? (
             <>
+              <div className="app-surface-muted mb-4 inline-grid grid-cols-2 rounded-xl p-1">
+                <button
+                  type="button"
+                  onClick={() => setStatsPeriod('week')}
+                  className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
+                    statsPeriod === 'week' ? 'app-card shadow-sm' : 'app-text-secondary'
+                  }`}
+                >
+                  Неделя
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatsPeriod('month')}
+                  className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
+                    statsPeriod === 'month' ? 'app-card shadow-sm' : 'app-text-secondary'
+                  }`}
+                >
+                  Месяц
+                </button>
+              </div>
+
               <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
-                <p className="app-text-primary text-lg font-semibold">Статистика клуба за неделю</p>
+                <p className="app-text-primary text-lg font-semibold">Статистика клуба за {statsPeriodLabel}</p>
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div>
                     <p className="app-text-secondary text-sm">Дистанция</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(clubStats.totalDistanceKm)} км</p>
+                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(selectedClubStats.totalDistanceKm)} км</p>
                   </div>
                   <div>
                     <p className="app-text-secondary text-sm">Тренировки</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{clubStats.totalRuns}</p>
+                    <p className="app-text-primary mt-1 text-lg font-semibold">{selectedClubStats.totalRuns}</p>
                   </div>
                   <div>
                     <p className="app-text-secondary text-sm">Средний темп</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatAveragePace(clubStats.totalMovingTimeSeconds, clubStats.totalDistanceKm)}</p>
+                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatAveragePace(selectedClubStats.totalMovingTimeSeconds, selectedClubStats.totalDistanceKm)}</p>
                   </div>
                   <div>
                     <p className="app-text-secondary text-sm">Набор высоты</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{Math.round(clubStats.totalElevationGainMeters)} м</p>
+                    <p className="app-text-primary mt-1 text-lg font-semibold">{Math.round(selectedClubStats.totalElevationGainMeters)} м</p>
                   </div>
                 </div>
               </section>
@@ -319,7 +394,7 @@ export default function ClubPage() {
                   </div>
                 </div>
                 <p className="app-text-secondary mt-3 text-sm">
-                  {formatDistanceKm(userDistanceKm)} из {formatDistanceKm(totalDistanceKm)} км за текущую неделю.
+                  {formatDistanceKm(userDistanceKm)} из {formatDistanceKm(totalDistanceKm)} км за {contributionPeriodLabel}.
                 </p>
               </section>
             </>
