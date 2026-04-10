@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2 } from 'lucide-react'
+import { ChevronDown, CheckCircle2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
@@ -14,7 +14,6 @@ import { formatDistanceKm } from '@/lib/format'
 
 type ChallengesSectionProps = {
   showTitle?: boolean
-  showAchievements?: boolean
 }
 
 const challengeTypeLabel: Record<ChallengeListItem['period_type'], string> = {
@@ -152,12 +151,13 @@ function ChallengeCard({ item }: { item: ChallengeListItem }) {
 
 export default function ChallengesSection({
   showTitle = true,
-  showAchievements = true,
 }: ChallengesSectionProps) {
   const router = useRouter()
   const [overview, setOverview] = useState<ChallengesOverview>(buildEmptyOverview)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [activeExpanded, setActiveExpanded] = useState(true)
+  const [upcomingExpanded, setUpcomingExpanded] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -201,11 +201,6 @@ export default function ChallengesSection({
 
   const activeItems = overview.active
   const upcomingItems = overview.upcoming
-  const completedItems = showAchievements
-    ? overview.completed
-    : overview.completed.filter((item) => item.period_type !== 'lifetime')
-  const hasAnyItems = activeItems.length > 0 || upcomingItems.length > 0 || completedItems.length > 0
-
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
       {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Челленджи</h1> : null}
@@ -214,21 +209,31 @@ export default function ChallengesSection({
       ) : (
         <>
           {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-          {!hasAnyItems ? (
-            <div className="app-text-secondary mt-10 text-center">
-              <p>Челленджи скоро появятся.</p>
-              <p className="mt-2 text-sm">Загляните позже за новыми целями.</p>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="app-text-primary text-lg font-semibold">Активные</h2>
-                  <span className="app-text-secondary text-sm">{activeItems.length}</span>
+          <div className="space-y-5">
+            <section className="app-card overflow-hidden rounded-2xl border shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveExpanded((current) => !current)}
+                className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                aria-expanded={activeExpanded}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="app-surface-muted flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-black/[0.06] dark:border-white/[0.08]">
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${activeExpanded ? 'rotate-0' : '-rotate-90'}`}
+                      strokeWidth={2}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="app-text-primary text-base font-semibold">Активные</h2>
+                  </div>
                 </div>
-                <div className="space-y-4">
+                <span className="app-text-secondary shrink-0 text-sm">{activeItems.length}</span>
+              </button>
+              {activeExpanded ? (
+                <div className="space-y-4 border-t border-black/[0.06] px-4 py-4 dark:border-white/[0.08]">
                   {activeItems.length === 0 ? (
-                    <div className="app-card rounded-2xl border p-4 shadow-sm">
+                    <div className="app-surface-muted rounded-2xl border p-4">
                       <p className="app-text-secondary text-sm">Все активные челленджи уже закрыты.</p>
                       <p className="app-text-secondary mt-2 text-sm">Скоро появятся новые цели.</p>
                     </div>
@@ -238,16 +243,33 @@ export default function ChallengesSection({
                     ))
                   )}
                 </div>
-              </section>
+              ) : null}
+            </section>
 
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="app-text-primary text-lg font-semibold">Скоро</h2>
-                  <span className="app-text-secondary text-sm">{upcomingItems.length}</span>
+            <section className="app-card overflow-hidden rounded-2xl border shadow-sm">
+              <button
+                type="button"
+                onClick={() => setUpcomingExpanded((current) => !current)}
+                className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                aria-expanded={upcomingExpanded}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="app-surface-muted flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-black/[0.06] dark:border-white/[0.08]">
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${upcomingExpanded ? 'rotate-0' : '-rotate-90'}`}
+                      strokeWidth={2}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="app-text-primary text-base font-semibold">Скоро</h2>
+                  </div>
                 </div>
-                <div className="space-y-4">
+                <span className="app-text-secondary shrink-0 text-sm">{upcomingItems.length}</span>
+              </button>
+              {upcomingExpanded ? (
+                <div className="space-y-4 border-t border-black/[0.06] px-4 py-4 dark:border-white/[0.08]">
                   {upcomingItems.length === 0 ? (
-                    <div className="app-card rounded-2xl border p-4 shadow-sm">
+                    <div className="app-surface-muted rounded-2xl border p-4">
                       <p className="app-text-secondary text-sm">Скоро стартующих челленджей пока нет.</p>
                       <p className="app-text-secondary mt-2 text-sm">Как только появятся новые окна, они будут здесь.</p>
                     </div>
@@ -257,28 +279,9 @@ export default function ChallengesSection({
                     ))
                   )}
                 </div>
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="app-text-primary text-lg font-semibold">Завершенные</h2>
-                  <span className="app-text-secondary text-sm">{completedItems.length}</span>
-                </div>
-                <div className="space-y-4">
-                  {completedItems.length === 0 ? (
-                    <div className="app-card rounded-2xl border p-4 shadow-sm">
-                      <p className="app-text-secondary text-sm">Завершенных челленджей пока нет.</p>
-                      <p className="app-text-secondary mt-2 text-sm">Закрытые цели появятся в этом разделе.</p>
-                    </div>
-                  ) : (
-                    completedItems.map((item) => (
-                      <ChallengeCard key={`${item.id}:${item.period_start ?? 'completed'}`} item={item} />
-                    ))
-                  )}
-                </div>
-              </section>
-            </div>
-          )}
+              ) : null}
+            </section>
+          </div>
         </>
       )}
     </div>

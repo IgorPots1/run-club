@@ -296,7 +296,7 @@ export default function ClubPage() {
       </div>
 
       {activeTab === 'challenges' ? (
-        <ChallengesSection showTitle={false} showAchievements={false} />
+        <ChallengesSection showTitle={false} />
       ) : (
         <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
           {statsLoading ? (

@@ -338,6 +338,28 @@ function getCompactAchievementSubtitle(achievement: Pick<UserAchievement, 'sourc
   return achievement.subtitle
 }
 
+function compareAchievementsByDateDesc(
+  left: Pick<UserAchievement, 'date' | 'id'>,
+  right: Pick<UserAchievement, 'date' | 'id'>
+) {
+  const leftTime = new Date(left.date).getTime()
+  const rightTime = new Date(right.date).getTime()
+
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime
+  }
+
+  if (Number.isFinite(leftTime) && !Number.isFinite(rightTime)) {
+    return -1
+  }
+
+  if (!Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
+    return 1
+  }
+
+  return right.id.localeCompare(left.id)
+}
+
 export default function ActivityPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -610,6 +632,29 @@ export default function ActivityPage() {
     () => (raceEvents ?? []).filter((raceEvent) => !isRaceEventUpcoming(raceEvent)).length,
     [raceEvents]
   )
+  const sortedAchievements = useMemo(
+    () => [...(achievements ?? [])].sort(compareAchievementsByDateDesc),
+    [achievements]
+  )
+  const challengeAchievements = useMemo(
+    () => sortedAchievements.filter((achievement) => achievement.source_type === 'challenge'),
+    [sortedAchievements]
+  )
+  const nonChallengeAchievements = useMemo(
+    () => sortedAchievements.filter((achievement) => achievement.source_type !== 'challenge'),
+    [sortedAchievements]
+  )
+  const latestChallengeAchievement = challengeAchievements[0] ?? null
+  const totalChallengeAchievements = challengeAchievements.length
+  const compactAchievements = useMemo(() => {
+    const items = [...nonChallengeAchievements.slice(0, 2)]
+
+    if (latestChallengeAchievement) {
+      items.push(latestChallengeAchievement)
+    }
+
+    return items.sort(compareAchievementsByDateDesc)
+  }, [latestChallengeAchievement, nonChallengeAchievements])
 
   useEffect(() => {
     if (!user) return
@@ -869,13 +914,13 @@ export default function ActivityPage() {
               <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                 <p className="text-sm text-red-600">Не удалось загрузить достижения</p>
               </div>
-            ) : !achievements || achievements.length === 0 ? (
+            ) : compactAchievements.length === 0 ? (
               <div className="app-card rounded-2xl p-5 text-center shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-6">
                 <p className="app-text-secondary text-sm">Пока нет достижений</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {achievements.slice(0, 3).map((achievement) => (
+                {compactAchievements.map((achievement) => (
                   achievement.source_type === 'weekly_race' && achievement.href ? (
                     <button
                       key={achievement.id}
@@ -898,6 +943,11 @@ export default function ActivityPage() {
                             <p className="app-text-secondary mt-1 text-sm">
                               {getCompactAchievementSubtitle(achievement)}
                             </p>
+                            {achievement.source_type === 'challenge' && latestChallengeAchievement?.id === achievement.id ? (
+                              <p className="app-text-secondary mt-2 text-xs">
+                                Всего завершённых челленджей: {totalChallengeAchievements}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                         {achievement.rank ? (
@@ -929,6 +979,11 @@ export default function ActivityPage() {
                             <p className="app-text-secondary mt-1 text-sm">
                               {getCompactAchievementSubtitle(achievement)}
                             </p>
+                            {achievement.source_type === 'challenge' && latestChallengeAchievement?.id === achievement.id ? (
+                              <p className="app-text-secondary mt-2 text-xs">
+                                Всего завершённых челленджей: {totalChallengeAchievements}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                         {achievement.source_type === 'weekly_race' && achievement.rank ? (

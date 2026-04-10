@@ -38,7 +38,6 @@ type PublicRunStatRow = {
 }
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
-const PROFILE_ACHIEVEMENTS_LIMIT = 4
 
 function formatDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -151,6 +150,28 @@ function AchievementPreviewIcon({ sourceType }: { sourceType: UserAchievement['s
   return <CheckCircle2 className="h-[18px] w-[18px]" strokeWidth={2} />
 }
 
+function compareAchievementsByDateDesc(
+  left: Pick<UserAchievement, 'date' | 'id'>,
+  right: Pick<UserAchievement, 'date' | 'id'>
+) {
+  const leftTime = new Date(left.date).getTime()
+  const rightTime = new Date(right.date).getTime()
+
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime
+  }
+
+  if (Number.isFinite(leftTime) && !Number.isFinite(rightTime)) {
+    return -1
+  }
+
+  if (!Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
+    return 1
+  }
+
+  return right.id.localeCompare(left.id)
+}
+
 export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ user, error, supabase }, { userId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -168,7 +189,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .from('runs')
       .select('distance_km, created_at, moving_time_seconds, elevation_gain_meters')
       .eq('user_id', userId),
-    loadUserAchievements(userId, { limit: PROFILE_ACHIEVEMENTS_LIMIT })
+    loadUserAchievements(userId)
       .then((data) => ({ data, error: null as string | null }))
       .catch(() => ({
         data: [] as UserAchievement[],
@@ -181,6 +202,17 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const hasLoadError = Boolean(profileError || runsError)
   const recentAchievements = achievementsResult.data
   const achievementsLoadError = achievementsResult.error
+  const sortedAchievements = [...recentAchievements].sort(compareAchievementsByDateDesc)
+  const challengeAchievements = sortedAchievements.filter((achievement) => achievement.source_type === 'challenge')
+  const nonChallengeAchievements = sortedAchievements.filter((achievement) => achievement.source_type !== 'challenge')
+  const latestChallengeAchievement = challengeAchievements[0] ?? null
+  const remainingChallengeAchievementsCount = Math.max(challengeAchievements.length - 1, 0)
+  const profileAchievementsPreview = [
+    nonChallengeAchievements[0] ?? null,
+    latestChallengeAchievement,
+  ].filter((achievement, index, items): achievement is UserAchievement =>
+    Boolean(achievement) && items.findIndex((item) => item?.id === achievement?.id) === index
+  ).sort(compareAchievementsByDateDesc)
 
   if (!publicProfile && !hasLoadError) {
     return (
@@ -362,13 +394,13 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
           {achievementsLoadError ? (
             <p className="mt-4 text-sm text-red-600">{achievementsLoadError}</p>
-          ) : recentAchievements.length === 0 ? (
+          ) : profileAchievementsPreview.length === 0 ? (
             <div className="app-surface-muted mt-4 rounded-2xl border border-black/[0.06] px-4 py-4 text-center dark:border-white/[0.08]">
               <p className="app-text-secondary text-sm">Пока нет достижений.</p>
             </div>
           ) : (
             <div className="mt-4 space-y-3">
-              {recentAchievements.map((achievement) => {
+              {profileAchievementsPreview.map((achievement) => {
                 const content = (
                   <div className="flex items-start gap-3">
                     <div
@@ -393,6 +425,11 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                       </div>
                       <p className="app-text-secondary mt-1 text-sm">{achievement.subtitle}</p>
                       <p className="app-text-secondary mt-2 text-xs">{formatAchievementDate(achievement.date)}</p>
+                      {achievement.source_type === 'challenge' ? (
+                        <p className="app-text-secondary mt-2 text-xs">
+                          Всего достижений: {challengeAchievements.length}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 )
@@ -415,6 +452,11 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                   </div>
                 )
               })}
+              {remainingChallengeAchievementsCount > 0 ? (
+                <div className="app-surface-muted rounded-2xl border border-black/[0.06] px-4 py-3 dark:border-white/[0.08]">
+                  <p className="app-text-secondary text-sm">Еще {remainingChallengeAchievementsCount} достижений</p>
+                </div>
+              ) : null}
             </div>
           )}
         </section>

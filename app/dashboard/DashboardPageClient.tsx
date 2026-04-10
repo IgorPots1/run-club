@@ -157,8 +157,10 @@ function isDashboardChallengeNearCompletion(challenge: DashboardActiveChallenge)
 
 function DashboardChallengeCard({
   challenge,
+  rail = false,
 }: {
   challenge: DashboardActiveChallenge
+  rail?: boolean
 }) {
   const dateRange = formatDashboardChallengeRange(challenge)
   const daysLeft = formatDashboardChallengeDaysLeft(challenge)
@@ -167,20 +169,20 @@ function DashboardChallengeCard({
     <Link
       href="/challenges"
       aria-label={`Открыть челленджи: ${challenge.title}`}
-      className={`app-card block overflow-hidden rounded-xl border p-4 shadow-md ring-1 ring-black/5 transition-all duration-200 ease-out motion-reduce:transition-none dark:ring-white/10 ${dashboardCardFocusRingClass}`}
+      className={`app-card block overflow-hidden rounded-2xl border p-3.5 shadow-sm ring-1 ring-black/5 transition-all duration-200 ease-out motion-reduce:transition-none dark:ring-white/10 ${rail ? 'w-[84vw] max-w-[320px] shrink-0 snap-start sm:w-[320px]' : ''} ${dashboardCardFocusRingClass}`}
     >
       <div className="flex items-start gap-3">
         <ChallengeBadgeArtwork
           badgeUrl={challenge.badge_url}
           title={challenge.title}
-          className="h-14 w-14 shrink-0 rounded-2xl"
+          className="h-12 w-12 shrink-0 rounded-2xl"
           placeholderLabel="Badge"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="app-text-primary break-words text-base font-semibold">{challenge.title}</h3>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h3 className="app-text-primary break-words text-sm font-semibold sm:text-[15px]">{challenge.title}</h3>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <span className="app-text-secondary rounded-full border px-2 py-1 text-[11px] font-medium">
                   {dashboardChallengeTypeLabels[challenge.period_type]}
                 </span>
@@ -190,7 +192,7 @@ function DashboardChallengeCard({
               </div>
             </div>
             {isDashboardChallengeNearCompletion(challenge) ? (
-              <span className="shrink-0 text-xs font-medium text-orange-600">Почти готово 🔥</span>
+              <span className="shrink-0 text-xs font-medium text-orange-600">Почти готово</span>
             ) : null}
           </div>
         </div>
@@ -206,35 +208,9 @@ function DashboardChallengeCard({
           <p className="app-text-secondary text-sm">Прогресс: {formatDashboardChallengeProgress(challenge)}</p>
           <p className="app-text-secondary text-sm">{formatDashboardChallengeRemaining(challenge)}</p>
           {daysLeft !== null ? (
-            <p className="app-text-secondary text-sm">{daysLeft}</p>
+            <p className="app-text-secondary text-xs">{daysLeft}</p>
           ) : null}
         </div>
-      </div>
-    </Link>
-  )
-}
-
-function DashboardMoreChallengesCard({
-  count,
-  titles,
-}: {
-  count: number
-  titles: string[]
-}) {
-  const summary = titles.join(' • ')
-
-  return (
-    <Link href="/challenges" className={dashboardClickableCardClass}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="app-text-primary text-sm font-semibold">Еще челленджи</p>
-          <p className="app-text-secondary mt-1 break-words text-sm">
-            {summary || 'Открой список всех активных челленджей'}
-          </p>
-        </div>
-        <span className="app-text-secondary shrink-0 rounded-full border px-2.5 py-1 text-sm font-medium">
-          +{count}
-        </span>
       </div>
     </Link>
   )
@@ -484,8 +460,7 @@ export default function DashboardPageClient({
     : 0
   const currentRankTitle = levelProgress ? getRankTitleFromLevel(levelProgress.level) : ''
   const featuredChallenge = activeChallenges[0] ?? null
-  const additionalChallenges = activeChallenges.slice(1)
-  const additionalChallengeTitles = additionalChallenges.slice(0, 2).map((challenge) => challenge.title)
+  const hasMultipleActiveChallenges = activeChallenges.length > 1
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
@@ -622,15 +597,21 @@ export default function DashboardPageClient({
                 </div>
               </div>
             ) : featuredChallenge ? (
-              <div className="space-y-3">
+              hasMultipleActiveChallenges ? (
+                <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex snap-x snap-mandatory gap-3">
+                    {activeChallenges.map((challenge) => (
+                      <DashboardChallengeCard
+                        key={`${challenge.id}:${challenge.period_start ?? 'active'}`}
+                        challenge={challenge}
+                        rail
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : (
                 <DashboardChallengeCard challenge={featuredChallenge} />
-                {additionalChallenges.length > 0 ? (
-                  <DashboardMoreChallengesCard
-                    count={additionalChallenges.length}
-                    titles={additionalChallengeTitles}
-                  />
-                ) : null}
-              </div>
+              )
             ) : allChallengesCompleted ? (
               <Link href="/challenges" className={dashboardClickableCardClass}>
                 <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
