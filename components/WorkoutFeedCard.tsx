@@ -1,16 +1,24 @@
 'use client'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Heart, MapPin, MessageCircle } from 'lucide-react'
+import { Heart, MapPin, MessageCircle, Pencil } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import FeedActionButton from '@/components/FeedActionButton'
+import MyShoesPicker from '@/components/MyShoesPicker'
 import ParticipantIdentity from '@/components/ParticipantIdentity'
 import RunPhotoLightbox from '@/components/RunPhotoLightbox'
 import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMedia'
 import type { FeedRunInsight } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
-import { loadRunAssignedShoe, type RunAssignedShoeSummary } from '@/lib/shoes-client'
+import { updateRun } from '@/lib/runs'
+import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
+import {
+  loadRunAssignedShoe,
+  loadUserShoeSelectionData,
+  type RunAssignedShoeSummary,
+  type UserShoeRecord,
+} from '@/lib/shoes-client'
 
 type WorkoutFeedCardMediaSlide =
   | {
@@ -160,11 +168,17 @@ function WorkoutFeedCard({
   photos = [],
 }: WorkoutFeedCardProps) {
   const router = useRouter()
+  const [activeShoeId, setActiveShoeId] = useState(shoeId)
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [activeMediaIndex, setActiveMediaIndex] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [assignedShoe, setAssignedShoe] = useState<RunAssignedShoeSummary | null>(null)
+  const [showShoePicker, setShowShoePicker] = useState(false)
+  const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
+  const [loadingShoes, setLoadingShoes] = useState(false)
+  const [shoeUpdateInFlight, setShoeUpdateInFlight] = useState(false)
+  const [shoeUpdateError, setShoeUpdateError] = useState('')
   const mediaScrollRef = useRef<HTMLDivElement | null>(null)
   const displayTitle = buildDisplayTitle(rawTitle)
   const trimmedDescription = description?.trim() || ''
@@ -225,15 +239,21 @@ function WorkoutFeedCard({
   const isManualRun = externalSource !== 'strava'
   const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
-  const assignedShoeCacheKey = runId && shoeId ? `${runId}:${shoeId}` : ''
+  const assignedShoeCacheKey = runId && activeShoeId ? `${runId}:${activeShoeId}` : ''
   const assignedShoeLabel = assignedShoe
     ? `${assignedShoe.displayName}${assignedShoe.nickname ? ` (${assignedShoe.nickname})` : ''}${!assignedShoe.isActive ? ' • архив' : ''}`
     : ''
+  const shoeLabelText = assignedShoeLabel || (isOwnRun ? 'не выбраны' : '')
+
+  useEffect(() => {
+    setActiveShoeId(shoeId)
+    setShoeUpdateError('')
+  }, [shoeId])
 
   useEffect(() => {
     let isMounted = true
 
-    if (!runId || !shoeId) {
+    if (!runId || !activeShoeId) {
       setAssignedShoe(null)
       return () => {
         isMounted = false
@@ -276,7 +296,92 @@ function WorkoutFeedCard({
     return () => {
       isMounted = false
     }
-  }, [assignedShoeCacheKey, runId, shoeId])
+  }, [activeShoeId, assignedShoeCacheKey, runId])
+
+  useEffect(() => {
+    let isMounted = true
+
+    if (!showShoePicker || !isOwnRun) {
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setLoadingShoes(true)
+    setShoeUpdateError('')
+
+    void loadUserShoeSelectionData({
+      activeOnly: true,
+      includeShoeId: activeShoeId ?? null,
+    })
+      .then((selectionData) => {
+        if (isMounted) {
+          setAvailableShoes(selectionData.shoes)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAvailableShoes([])
+          setShoeUpdateError('Не удалось загрузить кроссовки')
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingShoes(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeShoeId, isOwnRun, showShoePicker])
+
+  const handleShoeChange = useCallback(async (nextShoeId: string) => {
+    if (!runId || shoeUpdateInFlight || nextShoeId === (activeShoeId ?? '')) {
+      return
+    }
+
+    setShoeUpdateInFlight(true)
+    setShoeUpdateError('')
+
+    try {
+      const { error } = await updateRun(runId, {
+        shoeId: nextShoeId || null,
+      })
+
+      if (error) {
+        setShoeUpdateError('Не удалось обновить кроссовки')
+        return
+      }
+
+      const nextAssignedShoe = nextShoeId
+        ? availableShoes.find((shoe) => shoe.id === nextShoeId) ?? null
+        : null
+
+      if (nextShoeId) {
+        assignedShoeSummaryByCardKey.set(`${runId}:${nextShoeId}`, nextAssignedShoe ? {
+          id: nextAssignedShoe.id,
+          displayName: nextAssignedShoe.displayName,
+          nickname: nextAssignedShoe.nickname,
+          isActive: nextAssignedShoe.isActive,
+        } : null)
+      }
+
+      setActiveShoeId(nextShoeId || null)
+      setAssignedShoe(nextAssignedShoe ? {
+        id: nextAssignedShoe.id,
+        displayName: nextAssignedShoe.displayName,
+        nickname: nextAssignedShoe.nickname,
+        isActive: nextAssignedShoe.isActive,
+      } : null)
+      setShowShoePicker(false)
+      dispatchRunsUpdatedEvent()
+    } catch {
+      setShoeUpdateError('Не удалось обновить кроссовки')
+    } finally {
+      setShoeUpdateInFlight(false)
+    }
+  }, [activeShoeId, availableShoes, runId, shoeUpdateInFlight])
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
     const container = event.currentTarget
@@ -406,10 +511,47 @@ function WorkoutFeedCard({
         </div>
       ) : null}
 
-      {assignedShoeLabel ? (
-        <p className="app-text-muted mt-2 break-words text-sm leading-5">
-          Кроссовки: {assignedShoeLabel}
-        </p>
+      {shoeLabelText || isOwnRun ? (
+        <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="app-text-muted break-words text-sm leading-5">
+              Кроссовки: {shoeLabelText || 'не выбраны'}
+            </p>
+            {isOwnRun ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowShoePicker((currentValue) => !currentValue)
+                  setShoeUpdateError('')
+                }}
+                className="app-text-muted inline-flex min-h-8 items-center gap-1 rounded-full border border-black/[0.07] px-2 py-1 text-xs font-medium transition-colors hover:bg-black/[0.03] dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
+                aria-label="Изменить кроссовки"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={1.9} />
+                <span>{showShoePicker ? 'Скрыть' : 'Изменить'}</span>
+              </button>
+            ) : null}
+          </div>
+
+          {showShoePicker && isOwnRun ? (
+            <div className="mt-3 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
+              <MyShoesPicker
+                shoes={availableShoes}
+                selectedShoeId={activeShoeId ?? ''}
+                onSelect={(nextShoeId) => {
+                  void handleShoeChange(nextShoeId)
+                }}
+                disabled={loadingShoes || shoeUpdateInFlight}
+                loading={loadingShoes}
+                hint="Выберите пару для этой тренировки."
+                className="mt-0"
+              />
+              {shoeUpdateError ? (
+                <p className="mt-3 text-sm text-red-600">{shoeUpdateError}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {shouldRenderMediaCarousel && mapPreviewUrl ? (
