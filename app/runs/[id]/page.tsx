@@ -668,14 +668,12 @@ export default function RunDetailsPage() {
   const [draft, setDraft] = useState({
     name: '',
     description: '',
+    shoeId: '',
   })
   const [saveError, setSaveError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [availableShoes, setAvailableShoes] = useState<UserShoeRecord[]>([])
   const [fallbackAssignedShoe, setFallbackAssignedShoe] = useState<RunAssignedShoeSummary | null>(null)
-  const [showShoePicker, setShowShoePicker] = useState(false)
-  const [shoeUpdateError, setShoeUpdateError] = useState('')
-  const [shoeUpdateInFlight, setShoeUpdateInFlight] = useState(false)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null)
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [uploadPhotosError, setUploadPhotosError] = useState('')
@@ -1042,8 +1040,9 @@ export default function RunDetailsPage() {
     setDraft({
       name: run?.name ?? run?.title ?? '',
       description: run?.description ?? '',
+      shoeId: run?.shoe_id ?? '',
     })
-  }, [isEditMode, run?.description, run?.name, run?.title])
+  }, [isEditMode, run?.description, run?.name, run?.shoe_id, run?.title])
 
   const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
 
@@ -1056,6 +1055,31 @@ export default function RunDetailsPage() {
 
     previousIsEditModeRef.current = isEditMode
   }, [isEditMode])
+
+  useEffect(() => {
+    if (!isEditMode || typeof document === 'undefined') {
+      return
+    }
+
+    const backButton = document.querySelector('header button[aria-label="Назад"]')
+
+    if (!(backButton instanceof HTMLButtonElement)) {
+      return
+    }
+
+    const handleBackButtonClick = (event: MouseEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      handleCancelEditMode()
+    }
+
+    backButton.addEventListener('click', handleBackButtonClick, true)
+
+    return () => {
+      backButton.removeEventListener('click', handleBackButtonClick, true)
+    }
+  }, [isEditMode, run?.description, run?.name, run?.shoe_id, run?.title])
 
   useEffect(() => {
     setDescriptionExpanded(false)
@@ -1316,14 +1340,16 @@ export default function RunDetailsPage() {
   const currentEditableName = run?.name ?? run?.title ?? ''
   const normalizedDraftName = toNullableTrimmedText(draft.name)
   const normalizedDraftDescription = toNullableTrimmedText(draft.description)
+  const normalizedDraftShoeId = draft.shoeId || null
   const hasTitleChanged = normalizedDraftName !== toNullableTrimmedText(currentEditableName)
   const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(run?.description)
+  const hasShoeChanged = normalizedDraftShoeId !== (run?.shoe_id ?? null)
   const currentAssignedShoe =
     availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? fallbackAssignedShoe
   const currentAssignedShoeLabel = currentAssignedShoe
     ? `${currentAssignedShoe.displayName}${currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}${!currentAssignedShoe.isActive ? ' • архив' : ''}`
     : ''
-  const hasPendingChanges = hasTitleChanged || hasDescriptionChanged
+  const hasPendingChanges = hasTitleChanged || hasDescriptionChanged || hasShoeChanged
 
   function handleEnterEditMode() {
     if (!isOwner || !run) {
@@ -1333,6 +1359,7 @@ export default function RunDetailsPage() {
     setDraft({
       name: run.name ?? run.title ?? '',
       description: run.description ?? '',
+      shoeId: run.shoe_id ?? '',
     })
     setSaveError('')
     setUploadPhotosError('')
@@ -1343,6 +1370,7 @@ export default function RunDetailsPage() {
     setDraft({
       name: run?.name ?? run?.title ?? '',
       description: run?.description ?? '',
+      shoeId: run?.shoe_id ?? '',
     })
     setSaveError('')
     setUploadPhotosError('')
@@ -1371,6 +1399,11 @@ export default function RunDetailsPage() {
       nextRunUpdates.description_manually_edited = true
     }
 
+    if (hasShoeChanged) {
+      updates.shoeId = normalizedDraftShoeId
+      nextRunUpdates.shoe_id = normalizedDraftShoeId
+    }
+
     setIsSaving(true)
     setSaveError('')
 
@@ -1391,51 +1424,6 @@ export default function RunDetailsPage() {
       setSaveError('Не удалось сохранить изменения')
     } finally {
       setIsSaving(false)
-    }
-  }
-
-  async function handleUpdateAssignedShoe(nextShoeId: string) {
-    if (!run || !isOwner || shoeUpdateInFlight || nextShoeId === (run.shoe_id ?? '')) {
-      return
-    }
-
-    setShoeUpdateInFlight(true)
-    setShoeUpdateError('')
-
-    try {
-      const { error: updateError } = await updateRun(run.id, {
-        shoeId: nextShoeId || null,
-      })
-
-      if (updateError) {
-        setShoeUpdateError('Не удалось обновить кроссовки')
-        return
-      }
-
-      const nextAssignedShoe = nextShoeId
-        ? availableShoes.find((shoe) => shoe.id === nextShoeId) ?? null
-        : null
-
-      setRun((currentRun) => (
-        currentRun
-          ? {
-              ...currentRun,
-              shoe_id: nextShoeId || null,
-            }
-          : currentRun
-      ))
-      setFallbackAssignedShoe(nextAssignedShoe ? {
-        id: nextAssignedShoe.id,
-        displayName: nextAssignedShoe.displayName,
-        nickname: nextAssignedShoe.nickname,
-        isActive: nextAssignedShoe.isActive,
-      } : null)
-      setShowShoePicker(false)
-      dispatchRunsUpdatedEvent()
-    } catch {
-      setShoeUpdateError('Не удалось обновить кроссовки')
-    } finally {
-      setShoeUpdateInFlight(false)
     }
   }
 
@@ -1733,6 +1721,26 @@ export default function RunDetailsPage() {
           </div>
 
           <div className="mt-4">
+            <p className="app-text-secondary text-sm font-medium">Кроссовки</p>
+            <div className="mt-2 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
+              <MyShoesPicker
+                shoes={availableShoes}
+                selectedShoeId={draft.shoeId}
+                onSelect={(nextShoeId) => {
+                  setDraft((currentDraft) => ({
+                    ...currentDraft,
+                    shoeId: nextShoeId,
+                  }))
+                  setSaveError('')
+                }}
+                disabled={isSaving}
+                loading={false}
+                hint="Выберите пару для этой тренировки."
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
             <p className="app-text-secondary text-sm font-medium">Описание</p>
 
             <div className="mt-2">
@@ -1768,6 +1776,9 @@ export default function RunDetailsPage() {
               <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
                 {formatRunTimestampLabel(run.created_at, run.external_source)}
               </p>
+              <p className="app-text-muted mt-1 text-right text-xs font-medium">
+                +{details.xpValue} XP
+              </p>
             </div>
           </div>
 
@@ -1775,100 +1786,49 @@ export default function RunDetailsPage() {
             <h1 className="app-text-primary min-w-0 break-words text-base font-medium">{getRunTitle(run)}</h1>
           </div>
 
-          {runLocationLabel || currentAssignedShoeLabel || isOwner ? (
+          {runLocationLabel || currentAssignedShoeLabel ? (
             <div className="mt-2 space-y-1">
               {runLocationLabel ? (
                 <p className="app-text-secondary text-sm leading-5">{runLocationLabel}</p>
               ) : null}
-              {currentAssignedShoeLabel || isOwner ? (
-                <div>
-                  {isOwner ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowShoePicker((currentValue) => !currentValue)
-                        setShoeUpdateError('')
-                      }}
-                      disabled={shoeUpdateInFlight}
-                      className="app-text-secondary -mx-2 flex min-h-10 w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 text-left text-sm leading-5 transition-colors hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/[0.04]"
-                      aria-expanded={showShoePicker}
-                      aria-label="Изменить кроссовки тренировки"
-                    >
-                      <span className="break-words">Кроссовки: {currentAssignedShoeLabel || 'не выбраны'}</span>
-                      <span className="app-text-muted shrink-0 text-xs font-medium">
-                        {showShoePicker ? 'Скрыть' : 'Изменить'}
-                      </span>
-                    </button>
-                  ) : (
-                    <p className="app-text-secondary text-sm leading-5">
-                      Кроссовки: {currentAssignedShoeLabel}
-                    </p>
-                  )}
-
-                  {showShoePicker && isOwner ? (
-                    <div className="mt-3 rounded-2xl border border-black/[0.05] p-3 dark:border-white/[0.08]">
-                      <MyShoesPicker
-                        shoes={availableShoes}
-                        selectedShoeId={run.shoe_id ?? ''}
-                        onSelect={(nextShoeId) => {
-                          void handleUpdateAssignedShoe(nextShoeId)
-                        }}
-                        disabled={shoeUpdateInFlight}
-                        loading={false}
-                        hint="Выберите пару для этой тренировки."
-                      />
-                      {shoeUpdateError ? (
-                        <p className="mt-3 text-sm text-red-600">{shoeUpdateError}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
+              {currentAssignedShoeLabel ? (
+                <p className="app-text-secondary text-sm leading-5">
+                  Кроссовки: {currentAssignedShoeLabel}
+                </p>
               ) : null}
             </div>
           ) : null}
 
-          {runDescription || isOwner ? (
+          {runDescription ? (
             <div className="mt-3">
-              <p className="app-text-secondary text-sm font-medium">Описание</p>
+              <p
+                ref={descriptionRef}
+                className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
+                  descriptionExpanded ? '' : 'line-clamp-2'
+                }`}
+              >
+                {runDescription}
+              </p>
 
-              {runDescription ? (
-                <div className="mt-2">
-                  <p
-                    ref={descriptionRef}
-                    className={`app-text-secondary break-words whitespace-pre-wrap text-sm leading-5 ${
-                      descriptionExpanded ? '' : 'line-clamp-2'
-                    }`}
-                  >
-                    {runDescription}
-                  </p>
-
-                  {descriptionExpanded ? (
-                    <button
-                      type="button"
-                      onClick={() => setDescriptionExpanded(false)}
-                      className="app-text-muted mt-1 inline text-xs font-medium transition-opacity hover:opacity-80"
-                    >
-                      Скрыть
-                    </button>
-                  ) : isDescriptionTruncated ? (
-                    <button
-                      type="button"
-                      onClick={() => setDescriptionExpanded(true)}
-                      className="app-text-muted mt-1 inline text-xs font-medium transition-opacity hover:opacity-80"
-                    >
-                      Читать
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="app-text-muted mt-2 text-sm">Пока без описания.</p>
-              )}
+              {descriptionExpanded ? (
+                <button
+                  type="button"
+                  onClick={() => setDescriptionExpanded(false)}
+                  className="app-text-muted mt-1 inline text-xs font-medium transition-opacity hover:opacity-80"
+                >
+                  Скрыть
+                </button>
+              ) : isDescriptionTruncated ? (
+                <button
+                  type="button"
+                  onClick={() => setDescriptionExpanded(true)}
+                  className="app-text-muted mt-1 inline text-xs font-medium transition-opacity hover:opacity-80"
+                >
+                  Читать
+                </button>
+              ) : null}
             </div>
           ) : null}
-
-          <div className="mt-3 text-sm">
-            <p className="app-text-secondary font-medium">+{details.xpValue} XP</p>
-          </div>
 
           <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-5">
             {summaryMetricItems.map((metric) => (
