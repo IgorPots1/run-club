@@ -11,7 +11,6 @@ import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import XpGainToast from '@/components/XpGainToast'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { getProfileDisplayName, updateProfileById } from '@/lib/profiles'
-import { getPushSubscriptionState } from '@/lib/push/subscribeToPush'
 import { supabase } from '../../lib/supabase'
 import { getLevelFromXP, getLevelProgressFromXP, getRankTitleFromLevel, type XpBreakdownItem } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
@@ -124,9 +123,6 @@ function ProfilePageContent() {
   const [hubMessage, setHubMessage] = useState('')
   const [showStravaConnectedToast, setShowStravaConnectedToast] = useState(false)
   const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
-  const [loadingNotificationsStatus, setLoadingNotificationsStatus] = useState(true)
-  const [notificationsSupported, setNotificationsSupported] = useState(false)
-  const [isNotificationsEnabled, setNotificationsEnabled] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const hasShownStravaConnectedToastRef = useRef(false)
 
@@ -217,28 +213,6 @@ function ProfilePageContent() {
     }
   }, [])
 
-  const loadPushStatus = useCallback(async (isMounted = true) => {
-    setLoadingNotificationsStatus(true)
-
-    try {
-      const nextPushState = await getPushSubscriptionState()
-
-      if (!isMounted) return
-
-      setNotificationsSupported(nextPushState.supported)
-      setNotificationsEnabled(nextPushState.subscribed)
-    } catch {
-      if (!isMounted) return
-
-      setNotificationsSupported(false)
-      setNotificationsEnabled(false)
-    } finally {
-      if (isMounted) {
-        setLoadingNotificationsStatus(false)
-      }
-    }
-  }, [])
-
   useEffect(() => {
     let isMounted = true
 
@@ -289,18 +263,6 @@ function ProfilePageContent() {
       isMounted = false
     }
   }, [loadStravaStatus, user])
-
-  useEffect(() => {
-    if (!user) return
-
-    let isMounted = true
-
-    void loadPushStatus(isMounted)
-
-    return () => {
-      isMounted = false
-    }
-  }, [loadPushStatus, user])
 
   useEffect(() => {
     const stravaStatus = searchParams.get('strava')
@@ -490,13 +452,6 @@ function ProfilePageContent() {
       : stravaConnectionState === 'reconnect_required'
         ? 'Нужно переподключить аккаунт'
         : 'Подключение пока не настроено'
-  const notificationsRowDescription = loadingNotificationsStatus
-    ? 'Проверяем статус уведомлений...'
-    : !notificationsSupported
-      ? 'Уведомления недоступны на этом устройстве'
-      : isNotificationsEnabled
-        ? 'Push-уведомления включены на этом устройстве'
-        : 'Push-уведомления пока выключены'
   if (profileDataLoading) {
     return (
       <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
@@ -606,11 +561,8 @@ function ProfilePageContent() {
               />
               <HubRow
                 title="Уведомления"
-                description={notificationsRowDescription}
-                onClick={() => {
-                  setPageError('')
-                  setHubMessage('Раздел "Уведомления" позже вынесем на отдельный экран.')
-                }}
+                description="Push и настройки доставки"
+                href="/profile/notifications"
               />
               <HubRow
                 title="Strava"
