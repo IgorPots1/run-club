@@ -321,6 +321,7 @@ function ProfilePageContent() {
   const currentLevel = getLevelFromXP(totalXp).level
   const currentRankTitle = getRankTitleFromLevel(currentLevel)
   const accountDescription = user?.email ?? 'Имя, никнейм и вход'
+  const currentUserId = user?.id ?? null
 
   if (effectiveProfileDataLoading) {
     return (
@@ -438,11 +439,13 @@ function ProfilePageContent() {
                 description="Подключение и синхронизация"
                 href="/profile/strava"
               />
-              <HubRow
-                title="Мой профиль для других"
-                description="Посмотреть публичную страницу"
-                href={`/users/${user.id}`}
-              />
+              {currentUserId ? (
+                <HubRow
+                  title="Мой профиль для других"
+                  description="Посмотреть публичную страницу"
+                  href={`/users/${currentUserId}`}
+                />
+              ) : null}
             </div>
           </div>
         </section>
