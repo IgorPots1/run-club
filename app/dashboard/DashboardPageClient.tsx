@@ -239,7 +239,7 @@ export default function DashboardPageClient({
 }) {
   const router = useRouter()
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
-  const [hasLoadedOverviewDetails, setHasLoadedOverviewDetails] = useState(false)
+  const [hasLoadedOverviewDetails] = useState(true)
   const [showXpModal, setShowXpModal] = useState(false)
   const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
   const [featuredChallengeId, setFeaturedChallengeId] = useState<string | null>(
@@ -351,24 +351,6 @@ export default function DashboardPageClient({
       }
     })
   }, [mutateOverview, mutateWeeklyRace])
-
-  useEffect(() => {
-    if (!shouldLoadSecondaryContent) {
-      return
-    }
-
-    let isActive = true
-
-    void mutateOverview().finally(() => {
-      if (isActive) {
-        setHasLoadedOverviewDetails(true)
-      }
-    })
-
-    return () => {
-      isActive = false
-    }
-  }, [mutateOverview, shouldLoadSecondaryContent])
 
   useEffect(() => {
     function handleRunsUpdated() {
