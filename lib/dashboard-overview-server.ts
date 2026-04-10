@@ -173,8 +173,12 @@ function stripInternalChallenge(challenge: InternalDashboardChallenge): Dashboar
   }
 }
 
-export async function loadDashboardOverviewServer(userId: string): Promise<DashboardOverview> {
+export async function loadDashboardOverviewServer(
+  userId: string,
+  options?: { includeChallenges?: boolean }
+): Promise<DashboardOverview> {
   const supabaseAdmin = createSupabaseAdminClient()
+  const includeChallenges = options?.includeChallenges ?? true
   const referenceAt = new Date()
   const referenceAtIso = referenceAt.toISOString()
   const referenceTimestamp = referenceAt.getTime()
@@ -195,14 +199,18 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
       .select('distance_km, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false }),
-    supabaseAdmin
-      .from('challenges')
-      .select('id, title, badge_url, period_type, goal_unit, goal_target, starts_at, end_at, created_at, visibility')
-      .order('created_at', { ascending: true }),
-    supabaseAdmin
-      .from('challenge_access_users')
-      .select('challenge_id')
-      .eq('user_id', userId),
+    includeChallenges
+      ? supabaseAdmin
+          .from('challenges')
+          .select('id, title, badge_url, period_type, goal_unit, goal_target, starts_at, end_at, created_at, visibility')
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: null, error: null }),
+    includeChallenges
+      ? supabaseAdmin
+          .from('challenge_access_users')
+          .select('challenge_id')
+          .eq('user_id', userId)
+      : Promise.resolve({ data: null, error: null }),
   ])
 
   if (profileError || runsError || challengesError || accessRowsError) {
@@ -225,6 +233,23 @@ export async function loadDashboardOverviewServer(userId: string): Promise<Dashb
 
     return sum + toSafeNumber(run.distance_km)
   }, 0)
+
+  if (!includeChallenges) {
+    return {
+      stats: {
+        totalKmThisMonth,
+        runsCount: runRows.length,
+        totalXp: toSafeNumber(profileRow?.total_xp ?? 0),
+      },
+      profileSummary: {
+        name: profileRow?.name?.trim() || null,
+        nickname: profileRow?.nickname?.trim() || null,
+        email: profileRow?.email ?? null,
+      },
+      activeChallenges: [],
+      allChallengesCompleted: false,
+    }
+  }
 
   const accessibleChallenges = challengeRows.filter((challenge) => {
     const visibility = challenge.visibility ?? 'public'

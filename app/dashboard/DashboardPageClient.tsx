@@ -315,7 +315,7 @@ export default function DashboardPageClient({
     dedupingInterval: 15000,
     focusThrottleInterval: 15000,
   }), [])
-  const overviewKey = ['dashboard-overview', initialUser.id] as const
+  const overviewKey = shouldLoadSecondaryContent ? (['dashboard-overview', initialUser.id] as const) : null
   const weeklyRaceKey = shouldLoadSecondaryContent ? (['weekly-race', initialUser.id] as const) : null
   const latestFinalizedRaceWeekKey = shouldLoadSecondaryContent ? (['latest-finalized-race-week'] as const) : null
   const initialOverview = useMemo<DashboardOverview>(() => ({
@@ -333,7 +333,6 @@ export default function DashboardPageClient({
   } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), {
     ...swrBaseOptions,
     fallbackData: initialOverview,
-    revalidateOnMount: false,
   })
 
   const {
