@@ -190,15 +190,7 @@ export default function ClubPage() {
     }
   }, [user])
 
-  if (authLoading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
-        Загрузка...
-      </main>
-    )
-  }
-
-  if (!user) {
+  if (!authLoading && !user) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
@@ -210,6 +202,7 @@ export default function ClubPage() {
   const userDistanceKm = clubStats?.userDistanceKm ?? 0
   const contributionPercent = totalDistanceKm > 0 ? (userDistanceKm / totalDistanceKm) * 100 : 0
   const hasActiveRaceWeek = Boolean(leaderboard?.week)
+  const currentUserId = user?.id ?? ''
 
   return (
     <main className="min-h-screen">
@@ -344,8 +337,8 @@ export default function ClubPage() {
 
           <WeeklyLeaderboard
             leaderboard={leaderboard}
-            currentUserId={user.id}
-            loading={leaderboardLoading}
+            currentUserId={currentUserId}
+            loading={authLoading || leaderboardLoading}
             error={leaderboardError}
           />
 

@@ -307,17 +307,16 @@ export default function RacePage() {
   const showHistoryLink = !latestFinalizedRaceWeekLoading && Boolean(latestFinalizedRaceWeek?.id)
   const weekStatusMeta = week ? getWeekStatusMeta(week.status) : null
 
-  if (loadingUser) {
-    return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
-  }
-
-  if (!user) {
+  if (!loadingUser && !user) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
       </main>
     )
   }
+
+  const currentUserId = user?.id ?? ''
+  const isPageLoading = loadingUser || isLoading
 
   return (
     <WorkoutDetailShell
@@ -385,7 +384,7 @@ export default function RacePage() {
           </div>
         </section>
 
-        {isLoading ? (
+        {isPageLoading ? (
           <section className="app-card rounded-[28px] border p-4 shadow-sm">
             <div className="space-y-3">
               <div className="skeleton-line h-5 w-32" />
@@ -438,13 +437,13 @@ export default function RacePage() {
               </div>
 
               {featuredRow ? (
-                <PodiumCard row={featuredRow} isCurrentUser={featuredRow.user_id === user.id} featured />
+                <PodiumCard row={featuredRow} isCurrentUser={featuredRow.user_id === currentUserId} featured />
               ) : null}
 
               {supportingPodiumRows.length > 0 ? (
                 <div className={`grid gap-3 ${supportingPodiumRows.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                   {supportingPodiumRows.map((row) => (
-                    <PodiumCard key={row.user_id} row={row} isCurrentUser={row.user_id === user.id} />
+                    <PodiumCard key={row.user_id} row={row} isCurrentUser={row.user_id === currentUserId} />
                   ))}
                 </div>
               ) : null}
@@ -500,7 +499,7 @@ export default function RacePage() {
                 <div className="mt-4 space-y-2">
                   {remainingRows.map((row, index) => {
                     const absoluteIndex = index + podiumRows.length
-                    const isCurrentUser = row.user_id === user.id
+                    const isCurrentUser = row.user_id === currentUserId
                     const previousRow = absoluteIndex > 0 ? rows[absoluteIndex - 1] : null
                     const nextRow = absoluteIndex < rows.length - 1 ? rows[absoluteIndex + 1] : null
                     const gapAbove = previousRow ? Math.max(previousRow.totalXp - row.totalXp, 0) : null

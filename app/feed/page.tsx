@@ -5,7 +5,7 @@ import { getBootstrapUser } from '@/lib/auth'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 
 export default function FeedPage() {
-  const [loading, setLoading] = useState(true)
+  const [hasResolvedUser, setHasResolvedUser] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export default function FeedPage() {
         setCurrentUserId(user?.id ?? null)
       } finally {
         if (isMounted) {
-          setLoading(false)
+          setHasResolvedUser(true)
         }
       }
     }
@@ -31,8 +31,6 @@ export default function FeedPage() {
     }
   }, [])
 
-  if (loading) return <main className="min-h-screen p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
-
   const emptyCtaHref = currentUserId ? '/runs' : '/login'
   const emptyCtaLabel = currentUserId ? 'Добавить тренировку' : 'Войти'
 
@@ -42,6 +40,7 @@ export default function FeedPage() {
         <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
         <InfiniteWorkoutFeed
           currentUserId={currentUserId}
+          enabled={hasResolvedUser}
           pageSize={10}
           scrollRestorationKey="main-feed"
           emptyTitle="Лента пока пуста."

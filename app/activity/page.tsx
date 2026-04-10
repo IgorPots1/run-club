@@ -691,17 +691,15 @@ export default function ActivityPage() {
     router.push(`/runs/${runId}`)
   }, [router])
 
-  if (loadingUser) {
-    return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
-  }
-
-  if (!user) {
+  if (!loadingUser && !user) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
       </main>
     )
   }
+
+  const shouldShowPrimaryLoading = loadingUser || (isLoading && !runs)
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
@@ -788,7 +786,7 @@ export default function ActivityPage() {
           ))}
         </div>
 
-        {isLoading && !runs ? (
+        {shouldShowPrimaryLoading ? (
           <>
             <div className="app-card rounded-2xl p-4 shadow-sm ring-1 ring-black/5 dark:ring-white/10 md:p-5">
               <div className="skeleton-line h-4 w-28" />
@@ -853,7 +851,7 @@ export default function ActivityPage() {
           </>
         )}
 
-        {!isLoading && !error ? (
+        {!loadingUser && !isLoading && !error ? (
           <section className="mt-5 md:mt-8">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="app-text-primary text-lg font-semibold">Достижения</h2>
@@ -948,7 +946,7 @@ export default function ActivityPage() {
           </section>
         ) : null}
 
-        {!isLoading && !error ? (
+        {!loadingUser && !isLoading && !error ? (
           <section className="mt-5 md:mt-8">
             <h2 className="app-text-primary mb-3 text-lg font-semibold">Тренировки</h2>
             {actionError ? <p className="mb-3 text-sm text-red-600">{actionError}</p> : null}

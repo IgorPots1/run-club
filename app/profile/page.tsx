@@ -300,8 +300,7 @@ function ProfilePageContent() {
     }
   }
 
-  if (loading) return <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">Загрузка...</main>
-  if (!user) {
+  if (!loading && !user) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
         <Link href="/login" className="text-sm underline">Открыть вход</Link>
@@ -309,18 +308,20 @@ function ProfilePageContent() {
     )
   }
 
+  const effectiveProfileDataLoading = loading || profileDataLoading
   const profileDisplayName = getProfileDisplayName(
     {
       name: profile?.name ?? null,
       nickname: profile?.nickname ?? null,
-      email: user.email ?? null,
+      email: user?.email ?? null,
     },
     'Бегун'
   )
   const levelProgress = getLevelProgressFromXP(totalXp)
   const currentLevel = getLevelFromXP(totalXp).level
   const currentRankTitle = getRankTitleFromLevel(currentLevel)
-  if (profileDataLoading) {
+
+  if (effectiveProfileDataLoading) {
     return (
       <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
         <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
