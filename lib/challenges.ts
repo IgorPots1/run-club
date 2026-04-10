@@ -1,61 +1,61 @@
-export type Challenge = {
-  id: string
-  title: string
-  description: string | null
-  goal_km: number | null
-  goal_runs: number | null
-  xp_reward?: number | null
-  created_at?: string | null
-  kind?: string | null
-}
+import type { DashboardActiveChallenge } from './dashboard-overview'
 
-export type RunRecord = {
-  distance_km: number | null
-  created_at: string
-}
-
+export type ChallengeStatus = 'active' | 'upcoming' | 'completed'
 export type ChallengeKind = 'weekly' | 'monthly' | 'milestone'
 
-export type ChallengeProgressMetric = {
-  label: string
-  percent: number
-  completed: boolean
+export type ChallengeListItem = DashboardActiveChallenge & {
+  description: string | null
+  xp_reward: number
+  created_at: string | null
+  status: ChallengeStatus
 }
 
-export type ChallengeWithProgress = Challenge & {
-  kind: ChallengeKind
-  progressItems: ChallengeProgressMetric[]
-  isCompleted: boolean
+export type ChallengesOverview = {
+  active: ChallengeListItem[]
+  upcoming: ChallengeListItem[]
+  completed: ChallengeListItem[]
 }
 
-function formatProgressValue(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+function buildEmptyChallengesOverview(): ChallengesOverview {
+  return {
+    active: [],
+    upcoming: [],
+    completed: [],
+  }
 }
 
-function normalizeChallengeText(challenge: Pick<Challenge, 'title' | 'description' | 'kind'>) {
+function normalizeChallengeText(challenge: {
+  title: string
+  description: string | null
+  kind?: string | null
+}) {
   return [challenge.kind, challenge.title, challenge.description]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
 }
 
-export function getChallengeKind(challenge: Pick<Challenge, 'title' | 'description' | 'kind'>): ChallengeKind {
+export function getChallengeKind(challenge: {
+  title: string
+  description: string | null
+  kind?: string | null
+}): ChallengeKind {
   const normalized = normalizeChallengeText(challenge)
 
   if (
-    normalized.includes('weekly') ||
-    normalized.includes('week') ||
-    normalized.includes('еженед') ||
-    normalized.includes('недел')
+    normalized.includes('weekly')
+    || normalized.includes('week')
+    || normalized.includes('еженед')
+    || normalized.includes('недел')
   ) {
     return 'weekly'
   }
 
   if (
-    normalized.includes('monthly') ||
-    normalized.includes('month') ||
-    normalized.includes('ежемесяч') ||
-    normalized.includes('месяц')
+    normalized.includes('monthly')
+    || normalized.includes('month')
+    || normalized.includes('ежемесяч')
+    || normalized.includes('месяц')
   ) {
     return 'monthly'
   }
@@ -63,56 +63,74 @@ export function getChallengeKind(challenge: Pick<Challenge, 'title' | 'descripti
   return 'milestone'
 }
 
-function getChallengeKindPriority(kind: ChallengeKind) {
-  if (kind === 'weekly') return 0
-  if (kind === 'monthly') return 1
-  return 2
+function isChallengeStatus(value: unknown): value is ChallengeStatus {
+  return value === 'active' || value === 'upcoming' || value === 'completed'
 }
 
-export function sortChallengesByPriority<T extends { kind: ChallengeKind; created_at?: string | null }>(items: T[]) {
-  return [...items].sort((left, right) => {
-    const priorityDelta = getChallengeKindPriority(left.kind) - getChallengeKindPriority(right.kind)
+function isChallengeListItem(value: unknown): value is ChallengeListItem {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
 
-    if (priorityDelta !== 0) {
-      return priorityDelta
+  const candidate = value as Partial<ChallengeListItem>
+
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.title === 'string' &&
+    (candidate.badge_url == null || typeof candidate.badge_url === 'string') &&
+    (candidate.description == null || typeof candidate.description === 'string') &&
+    (candidate.created_at == null || typeof candidate.created_at === 'string') &&
+    typeof candidate.xp_reward === 'number' &&
+    typeof candidate.goal_target === 'number' &&
+    typeof candidate.progress_value === 'number' &&
+    typeof candidate.percent === 'number' &&
+    typeof candidate.isCompleted === 'boolean' &&
+    isChallengeStatus(candidate.status) &&
+    (candidate.period_start == null || typeof candidate.period_start === 'string') &&
+    (candidate.period_end == null || typeof candidate.period_end === 'string') &&
+    (candidate.period_type === 'lifetime'
+      || candidate.period_type === 'challenge'
+      || candidate.period_type === 'weekly'
+      || candidate.period_type === 'monthly') &&
+    (candidate.goal_unit === 'distance_km' || candidate.goal_unit === 'run_count')
+  )
+}
+
+function isChallengesOverview(value: unknown): value is ChallengesOverview {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<ChallengesOverview>
+
+  return (
+    Array.isArray(candidate.active) &&
+    Array.isArray(candidate.upcoming) &&
+    Array.isArray(candidate.completed) &&
+    candidate.active.every(isChallengeListItem) &&
+    candidate.upcoming.every(isChallengeListItem) &&
+    candidate.completed.every(isChallengeListItem)
+  )
+}
+
+export async function loadChallengesOverview(): Promise<ChallengesOverview> {
+  try {
+    const response = await fetch('/api/challenges/overview', {
+      credentials: 'include',
+    })
+    const payload = await response.json().catch(() => null) as unknown
+
+    if (response.ok && isChallengesOverview(payload)) {
+      return payload
     }
 
-    const leftTime = left.created_at ? new Date(left.created_at).getTime() : 0
-    const rightTime = right.created_at ? new Date(right.created_at).getTime() : 0
-
-    return leftTime - rightTime
-  })
-}
-
-export function isAchievementChallenge(challenge: Pick<ChallengeWithProgress, 'kind'>) {
-  return challenge.kind === 'milestone'
-}
-
-export function getChallengeProgress(challenge: Challenge, runs: RunRecord[]): ChallengeWithProgress {
-  const totalKm = runs.reduce((sum, run) => sum + Number(run.distance_km ?? 0), 0)
-  const totalRuns = runs.length
-  const progressItems: ChallengeProgressMetric[] = []
-
-  if (challenge.goal_km != null && challenge.goal_km > 0) {
-    progressItems.push({
-      label: `${formatProgressValue(totalKm)} / ${formatProgressValue(challenge.goal_km)} км`,
-      percent: Math.min((totalKm / challenge.goal_km) * 100, 100),
-      completed: totalKm >= challenge.goal_km,
+    console.error('[challenges] invalid overview payload', {
+      status: response.status,
+      payload,
     })
+  } catch (error) {
+    console.error('[challenges] failed to load overview', error)
   }
 
-  if (challenge.goal_runs != null && challenge.goal_runs > 0) {
-    progressItems.push({
-      label: `${totalRuns} / ${challenge.goal_runs} тренировок`,
-      percent: Math.min((totalRuns / challenge.goal_runs) * 100, 100),
-      completed: totalRuns >= challenge.goal_runs,
-    })
-  }
-
-  return {
-    ...challenge,
-    kind: getChallengeKind(challenge),
-    progressItems,
-    isCompleted: progressItems.some((item) => item.completed),
-  }
+  return buildEmptyChallengesOverview()
 }

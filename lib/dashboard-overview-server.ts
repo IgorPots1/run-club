@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createSupabaseAdminClient } from './supabase-admin'
+import type { ChallengeListItem, ChallengesOverview } from './challenges'
 import type { DashboardActiveChallenge, DashboardOverview } from './dashboard-overview'
 
 type ProfileRow = {
@@ -18,10 +19,12 @@ type RunRow = {
 type ChallengeRow = {
   id: string
   title: string | null
+  description: string | null
   badge_url: string | null
   period_type: string | null
   goal_unit: string | null
   goal_target: number | string | null
+  xp_reward: number | null
   starts_at: string | null
   end_at: string | null
   created_at: string | null
@@ -37,10 +40,6 @@ type ResolvedChallengePeriodRow = {
   period_key?: string | null
   period_start?: string | null
   period_end?: string | null
-}
-
-type InternalDashboardChallenge = DashboardActiveChallenge & {
-  created_at: string | null
 }
 
 function getMonthStart(date: Date) {
@@ -90,26 +89,6 @@ function isRunInsideWindow(run: RunRow, periodStart: string | null, periodEnd: s
   return true
 }
 
-function isChallengeWindowCurrent(
-  periodType: DashboardActiveChallenge['period_type'],
-  periodStart: string | null,
-  periodEnd: string | null,
-  referenceTimestamp: number
-) {
-  if (periodType !== 'challenge') {
-    return true
-  }
-
-  const startTimestamp = toTimestamp(periodStart)
-  const endTimestamp = toTimestamp(periodEnd)
-
-  if (startTimestamp === null || endTimestamp === null || endTimestamp <= startTimestamp) {
-    return false
-  }
-
-  return referenceTimestamp >= startTimestamp && referenceTimestamp < endTimestamp
-}
-
 function getChallengePriority(periodType: DashboardActiveChallenge['period_type']) {
   if (periodType === 'challenge') return 0
   if (periodType === 'weekly') return 1
@@ -117,7 +96,7 @@ function getChallengePriority(periodType: DashboardActiveChallenge['period_type'
   return 3
 }
 
-function compareActiveChallenges(left: InternalDashboardChallenge, right: InternalDashboardChallenge) {
+function compareChallengesByPriority(left: Pick<ChallengeListItem, 'period_type' | 'period_end' | 'created_at'>, right: Pick<ChallengeListItem, 'period_type' | 'period_end' | 'created_at'>) {
   const priorityDelta = getChallengePriority(left.period_type) - getChallengePriority(right.period_type)
 
   if (priorityDelta !== 0) {
@@ -139,6 +118,17 @@ function compareActiveChallenges(left: InternalDashboardChallenge, right: Intern
   return leftCreatedAt - rightCreatedAt
 }
 
+function compareUpcomingChallenges(left: ChallengeListItem, right: ChallengeListItem) {
+  const leftStart = toTimestamp(left.period_start) ?? Number.MAX_SAFE_INTEGER
+  const rightStart = toTimestamp(right.period_start) ?? Number.MAX_SAFE_INTEGER
+
+  if (leftStart !== rightStart) {
+    return leftStart - rightStart
+  }
+
+  return compareChallengesByPriority(left, right)
+}
+
 async function resolveChallengePeriod(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   challenge: ChallengeRow,
@@ -158,10 +148,38 @@ async function resolveChallengePeriod(
   return ((data as ResolvedChallengePeriodRow[] | null) ?? [])[0] ?? null
 }
 
-function stripInternalChallenge(challenge: InternalDashboardChallenge): DashboardActiveChallenge {
+function getChallengeStatus(
+  periodType: DashboardActiveChallenge['period_type'],
+  periodStart: string | null,
+  periodEnd: string | null,
+  referenceTimestamp: number,
+  isCompleted: boolean
+): 'active' | 'upcoming' | 'completed' | null {
+  if (periodType === 'challenge') {
+    const startTimestamp = toTimestamp(periodStart)
+    const endTimestamp = toTimestamp(periodEnd)
+
+    if (startTimestamp === null || endTimestamp === null || endTimestamp <= startTimestamp) {
+      return null
+    }
+
+    if (referenceTimestamp < startTimestamp) {
+      return 'upcoming'
+    }
+
+    if (referenceTimestamp >= endTimestamp) {
+      return null
+    }
+  }
+
+  return isCompleted ? 'completed' : 'active'
+}
+
+function stripInternalChallenge(challenge: ChallengeListItem): DashboardActiveChallenge {
   return {
     id: challenge.id,
     title: challenge.title,
+    badge_url: challenge.badge_url ?? null,
     period_type: challenge.period_type,
     goal_unit: challenge.goal_unit,
     goal_target: challenge.goal_target,
@@ -173,6 +191,132 @@ function stripInternalChallenge(challenge: InternalDashboardChallenge): Dashboar
   }
 }
 
+function buildChallengesOverview(challenges: ChallengeListItem[]): ChallengesOverview {
+  return {
+    active: challenges
+      .filter((challenge) => challenge.status === 'active')
+      .sort(compareChallengesByPriority),
+    upcoming: challenges
+      .filter((challenge) => challenge.status === 'upcoming')
+      .sort(compareUpcomingChallenges),
+    completed: challenges
+      .filter((challenge) => challenge.status === 'completed')
+      .sort(compareChallengesByPriority),
+  }
+}
+
+export async function loadChallengesOverviewServer(
+  userId: string,
+  options?: {
+    supabaseAdmin?: ReturnType<typeof createSupabaseAdminClient>
+    referenceAt?: Date
+    runRows?: RunRow[]
+  }
+): Promise<ChallengesOverview> {
+  const supabaseAdmin = options?.supabaseAdmin ?? createSupabaseAdminClient()
+  const referenceAt = options?.referenceAt ?? new Date()
+  const referenceAtIso = referenceAt.toISOString()
+  const referenceTimestamp = referenceAt.getTime()
+  const runRows = options?.runRows ?? await (async () => {
+    const { data, error } = await supabaseAdmin
+      .from('runs')
+      .select('distance_km, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw error
+    }
+
+    return (data as RunRow[] | null) ?? []
+  })()
+
+  const [
+    { data: challenges, error: challengesError },
+    { data: accessRows, error: accessRowsError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('challenges')
+      .select('id, title, description, badge_url, period_type, goal_unit, goal_target, xp_reward, starts_at, end_at, created_at, visibility')
+      .order('created_at', { ascending: true }),
+    supabaseAdmin
+      .from('challenge_access_users')
+      .select('challenge_id')
+      .eq('user_id', userId),
+  ])
+
+  if (challengesError || accessRowsError) {
+    throw new Error('Не удалось загрузить челленджи')
+  }
+
+  const challengeRows = (challenges as ChallengeRow[] | null) ?? []
+  const accessibleRestrictedChallengeIds = new Set(
+    ((accessRows as ChallengeAccessRow[] | null) ?? []).map((row) => row.challenge_id)
+  )
+  const accessibleChallenges = challengeRows.filter((challenge) => {
+    const visibility = challenge.visibility ?? 'public'
+    return visibility === 'public' || accessibleRestrictedChallengeIds.has(challenge.id)
+  })
+  const resolvedPeriods = await Promise.all(
+    accessibleChallenges.map(async (challenge) => ({
+      challenge,
+      resolvedPeriod: await resolveChallengePeriod(supabaseAdmin, challenge, referenceAtIso),
+    }))
+  )
+
+  const challengeItems = resolvedPeriods.flatMap(({ challenge, resolvedPeriod }) => {
+    if (!isSupportedPeriodType(challenge.period_type) || !isSupportedGoalUnit(challenge.goal_unit)) {
+      return []
+    }
+
+    const goalTarget = toSafeNumber(challenge.goal_target)
+
+    if (goalTarget <= 0 || !resolvedPeriod?.is_eligible) {
+      return []
+    }
+
+    const periodStart = resolvedPeriod.period_start ?? null
+    const periodEnd = resolvedPeriod.period_end ?? null
+    const runsInWindow = runRows.filter((run) => isRunInsideWindow(run, periodStart, periodEnd))
+    const progressValue = challenge.goal_unit === 'distance_km'
+      ? runsInWindow.reduce((sum, run) => sum + toSafeNumber(run.distance_km), 0)
+      : runsInWindow.length
+    const percent = Math.min((progressValue / goalTarget) * 100, 100)
+    const isCompleted = progressValue >= goalTarget
+    const status = getChallengeStatus(
+      challenge.period_type,
+      periodStart,
+      periodEnd,
+      referenceTimestamp,
+      isCompleted
+    )
+
+    if (status === null) {
+      return []
+    }
+
+    return [{
+      id: challenge.id,
+      title: challenge.title?.trim() || 'Челлендж',
+      description: challenge.description?.trim() || null,
+      badge_url: challenge.badge_url ?? null,
+      xp_reward: toSafeNumber(challenge.xp_reward),
+      period_type: challenge.period_type,
+      goal_unit: challenge.goal_unit,
+      goal_target: goalTarget,
+      progress_value: progressValue,
+      percent: Number.isFinite(percent) ? percent : 0,
+      isCompleted,
+      status,
+      period_start: periodStart,
+      period_end: periodEnd,
+      created_at: challenge.created_at ?? null,
+    } satisfies ChallengeListItem]
+  })
+
+  return buildChallengesOverview(challengeItems)
+}
+
 export async function loadDashboardOverviewServer(
   userId: string,
   options?: { includeChallenges?: boolean }
@@ -180,14 +324,10 @@ export async function loadDashboardOverviewServer(
   const supabaseAdmin = createSupabaseAdminClient()
   const includeChallenges = options?.includeChallenges ?? true
   const referenceAt = new Date()
-  const referenceAtIso = referenceAt.toISOString()
-  const referenceTimestamp = referenceAt.getTime()
 
   const [
     { data: profile, error: profileError },
     { data: runs, error: runsError },
-    { data: challenges, error: challengesError },
-    { data: accessRows, error: accessRowsError },
   ] = await Promise.all([
     supabaseAdmin
       .from('profiles')
@@ -199,30 +339,14 @@ export async function loadDashboardOverviewServer(
       .select('distance_km, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false }),
-    includeChallenges
-      ? supabaseAdmin
-          .from('challenges')
-          .select('id, title, badge_url, period_type, goal_unit, goal_target, starts_at, end_at, created_at, visibility')
-          .order('created_at', { ascending: true })
-      : Promise.resolve({ data: null, error: null }),
-    includeChallenges
-      ? supabaseAdmin
-          .from('challenge_access_users')
-          .select('challenge_id')
-          .eq('user_id', userId)
-      : Promise.resolve({ data: null, error: null }),
   ])
 
-  if (profileError || runsError || challengesError || accessRowsError) {
+  if (profileError || runsError) {
     throw new Error('Не удалось загрузить дашборд')
   }
 
   const profileRow = (profile as ProfileRow | null) ?? null
   const runRows = (runs as RunRow[] | null) ?? []
-  const challengeRows = (challenges as ChallengeRow[] | null) ?? []
-  const accessibleRestrictedChallengeIds = new Set(
-    ((accessRows as ChallengeAccessRow[] | null) ?? []).map((row) => row.challenge_id)
-  )
 
   const monthStartTimestamp = getMonthStart(referenceAt).getTime()
   const totalKmThisMonth = runRows.reduce((sum, run) => {
@@ -251,63 +375,15 @@ export async function loadDashboardOverviewServer(
     }
   }
 
-  const accessibleChallenges = challengeRows.filter((challenge) => {
-    const visibility = challenge.visibility ?? 'public'
-    return visibility === 'public' || accessibleRestrictedChallengeIds.has(challenge.id)
+  const challengesOverview = await loadChallengesOverviewServer(userId, {
+    supabaseAdmin,
+    referenceAt,
+    runRows,
   })
-
-  const resolvedPeriods = await Promise.all(
-    accessibleChallenges.map(async (challenge) => ({
-      challenge,
-      resolvedPeriod: await resolveChallengePeriod(supabaseAdmin, challenge, referenceAtIso),
-    }))
-  )
-
-  const challengeItems = resolvedPeriods.flatMap(({ challenge, resolvedPeriod }) => {
-    if (!isSupportedPeriodType(challenge.period_type) || !isSupportedGoalUnit(challenge.goal_unit)) {
-      return []
-    }
-
-    const goalTarget = toSafeNumber(challenge.goal_target)
-
-    if (goalTarget <= 0) {
-      return []
-    }
-
-    if (!resolvedPeriod?.is_eligible) {
-      return []
-    }
-
-    const periodStart = resolvedPeriod.period_start ?? null
-    const periodEnd = resolvedPeriod.period_end ?? null
-
-    if (!isChallengeWindowCurrent(challenge.period_type, periodStart, periodEnd, referenceTimestamp)) {
-      return []
-    }
-
-    const runsInWindow = runRows.filter((run) => isRunInsideWindow(run, periodStart, periodEnd))
-    const progressValue = challenge.goal_unit === 'distance_km'
-      ? runsInWindow.reduce((sum, run) => sum + toSafeNumber(run.distance_km), 0)
-      : runsInWindow.length
-    const percent = Math.min((progressValue / goalTarget) * 100, 100)
-
-    return [{
-      id: challenge.id,
-      title: challenge.title?.trim() || 'Челлендж',
-      badge_url: challenge.badge_url ?? null,
-      period_type: challenge.period_type,
-      goal_unit: challenge.goal_unit,
-      goal_target: goalTarget,
-      progress_value: progressValue,
-      percent: Number.isFinite(percent) ? percent : 0,
-      isCompleted: progressValue >= goalTarget,
-      period_start: periodStart,
-      period_end: periodEnd,
-      created_at: challenge.created_at ?? null,
-    } satisfies InternalDashboardChallenge]
-  })
-
-  const sortedChallenges = [...challengeItems].sort(compareActiveChallenges)
+  const sortedChallenges = [
+    ...challengesOverview.active,
+    ...challengesOverview.completed,
+  ].sort(compareChallengesByPriority)
   const incompleteChallenges = sortedChallenges.filter((challenge) => !challenge.isCompleted)
 
   return {
@@ -322,6 +398,6 @@ export async function loadDashboardOverviewServer(
       email: profileRow?.email ?? null,
     },
     activeChallenges: sortedChallenges.map(stripInternalChallenge),
-    allChallengesCompleted: challengeItems.length > 0 && incompleteChallenges.length === 0,
+    allChallengesCompleted: sortedChallenges.length > 0 && incompleteChallenges.length === 0,
   }
 }

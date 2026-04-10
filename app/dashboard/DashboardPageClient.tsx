@@ -157,10 +157,8 @@ function isDashboardChallengeNearCompletion(challenge: DashboardActiveChallenge)
 
 function DashboardChallengeCard({
   challenge,
-  featured,
 }: {
   challenge: DashboardActiveChallenge
-  featured: boolean
 }) {
   const dateRange = formatDashboardChallengeRange(challenge)
   const daysLeft = formatDashboardChallengeDaysLeft(challenge)
@@ -169,12 +167,7 @@ function DashboardChallengeCard({
     <Link
       href="/challenges"
       aria-label={`Открыть челленджи: ${challenge.title}`}
-      data-challenge-card={challenge.id}
-      className={`app-card block w-[86%] shrink-0 snap-center overflow-hidden rounded-xl border p-4 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none sm:w-[420px] ${dashboardCardFocusRingClass} ${
-        featured
-          ? 'scale-100 opacity-100 shadow-md ring-1 ring-black/5 dark:ring-white/10'
-          : 'scale-[0.985] opacity-80 shadow-sm hover:opacity-100'
-      }`}
+      className={`app-card block overflow-hidden rounded-xl border p-4 shadow-md ring-1 ring-black/5 transition-all duration-200 ease-out motion-reduce:transition-none dark:ring-white/10 ${dashboardCardFocusRingClass}`}
     >
       <div className="flex items-start gap-3">
         <ChallengeBadgeArtwork
@@ -221,6 +214,32 @@ function DashboardChallengeCard({
   )
 }
 
+function DashboardMoreChallengesCard({
+  count,
+  titles,
+}: {
+  count: number
+  titles: string[]
+}) {
+  const summary = titles.join(' • ')
+
+  return (
+    <Link href="/challenges" className={dashboardClickableCardClass}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="app-text-primary text-sm font-semibold">Еще челленджи</p>
+          <p className="app-text-secondary mt-1 break-words text-sm">
+            {summary || 'Открой список всех активных челленджей'}
+          </p>
+        </div>
+        <span className="app-text-secondary shrink-0 rounded-full border px-2.5 py-1 text-sm font-medium">
+          +{count}
+        </span>
+      </div>
+    </Link>
+  )
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
@@ -244,11 +263,7 @@ export default function DashboardPageClient({
   const [showXpModal, setShowXpModal] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(initialInboxUnreadCount)
   const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
-  const [featuredChallengeId, setFeaturedChallengeId] = useState<string | null>(
-    initialActiveChallenges.find((challenge) => !challenge.isCompleted)?.id ?? null
-  )
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
-  const challengeRailRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -468,75 +483,9 @@ export default function DashboardPageClient({
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
     : 0
   const currentRankTitle = levelProgress ? getRankTitleFromLevel(levelProgress.level) : ''
-  const resolvedFeaturedChallengeId = featuredChallengeId && activeChallenges.some((challenge) => challenge.id === featuredChallengeId)
-    ? featuredChallengeId
-    : activeChallenges[0]?.id ?? null
-
-  useEffect(() => {
-    const railElement = challengeRailRef.current
-
-    if (!railElement || activeChallenges.length === 0 || typeof IntersectionObserver === 'undefined') {
-      return
-    }
-
-    const cardElements = Array.from(railElement.querySelectorAll<HTMLElement>('[data-challenge-card]'))
-
-    if (cardElements.length === 0) {
-      return
-    }
-
-    const visibleRatios = new Map<string, number>()
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let hasVisibleEntry = false
-
-        for (const entry of entries) {
-          const challengeId = entry.target.getAttribute('data-challenge-card')
-
-          if (!challengeId) {
-            continue
-          }
-
-          const ratio = entry.isIntersecting ? entry.intersectionRatio : 0
-          visibleRatios.set(challengeId, ratio)
-
-          if (ratio > 0) {
-            hasVisibleEntry = true
-          }
-        }
-
-        if (!hasVisibleEntry && visibleRatios.size === 0) {
-          return
-        }
-
-        let nextFeaturedChallengeId = activeChallenges[0]?.id ?? null
-        let nextFeaturedRatio = -1
-
-        for (const challenge of activeChallenges) {
-          const ratio = visibleRatios.get(challenge.id) ?? 0
-
-          if (ratio > nextFeaturedRatio) {
-            nextFeaturedRatio = ratio
-            nextFeaturedChallengeId = challenge.id
-          }
-        }
-
-        setFeaturedChallengeId(nextFeaturedChallengeId)
-      },
-      {
-        root: railElement,
-        threshold: [0.35, 0.5, 0.65, 0.8, 0.95],
-      }
-    )
-
-    for (const cardElement of cardElements) {
-      observer.observe(cardElement)
-    }
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [activeChallenges])
+  const featuredChallenge = activeChallenges[0] ?? null
+  const additionalChallenges = activeChallenges.slice(1)
+  const additionalChallengeTitles = additionalChallenges.slice(0, 2).map((challenge) => challenge.title)
 
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
@@ -672,20 +621,15 @@ export default function DashboardPageClient({
                   </div>
                 </div>
               </div>
-            ) : activeChallenges.length > 0 ? (
-              <div
-                ref={challengeRailRef}
-                className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-              >
-                <div className="flex snap-x snap-mandatory gap-3 pr-12">
-                  {activeChallenges.map((challenge) => (
-                    <DashboardChallengeCard
-                      key={challenge.id}
-                      challenge={challenge}
-                      featured={resolvedFeaturedChallengeId === challenge.id}
-                    />
-                  ))}
-                </div>
+            ) : featuredChallenge ? (
+              <div className="space-y-3">
+                <DashboardChallengeCard challenge={featuredChallenge} />
+                {additionalChallenges.length > 0 ? (
+                  <DashboardMoreChallengesCard
+                    count={additionalChallenges.length}
+                    titles={additionalChallengeTitles}
+                  />
+                ) : null}
               </div>
             ) : allChallengesCompleted ? (
               <Link href="/challenges" className={dashboardClickableCardClass}>
