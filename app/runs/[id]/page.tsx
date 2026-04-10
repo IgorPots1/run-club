@@ -1063,31 +1063,6 @@ export default function RunDetailsPage() {
   }, [isEditMode])
 
   useEffect(() => {
-    if (!isEditMode || typeof document === 'undefined') {
-      return
-    }
-
-    const backButton = document.querySelector('header button[aria-label="Назад"]')
-
-    if (!(backButton instanceof HTMLButtonElement)) {
-      return
-    }
-
-    const handleBackButtonClick = (event: MouseEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-      event.stopImmediatePropagation()
-      handleCancelEditMode()
-    }
-
-    backButton.addEventListener('click', handleBackButtonClick, true)
-
-    return () => {
-      backButton.removeEventListener('click', handleBackButtonClick, true)
-    }
-  }, [isEditMode, run?.description, run?.name, run?.shoe_id, run?.title])
-
-  useEffect(() => {
     setDescriptionExpanded(false)
   }, [runDescription])
 
@@ -1632,22 +1607,8 @@ export default function RunDetailsPage() {
         disabled={isSaving || !hasPendingChanges}
         className="app-text-primary relative inline-flex min-h-11 w-full min-w-0 items-center justify-end overflow-hidden rounded-full px-0 text-right text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span aria-hidden="true" className="invisible whitespace-nowrap">
-          Сохраняем...
-        </span>
-        <span
-          className={`pointer-events-none absolute inset-0 inline-flex items-center justify-end whitespace-nowrap ${
-            isSaving ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
+        <span className="whitespace-nowrap">
           Сохранить
-        </span>
-        <span
-          className={`pointer-events-none absolute inset-0 inline-flex items-center justify-end whitespace-nowrap ${
-            isSaving ? 'opacity-100' : 'opacity-0'
-          }`}
-        >
-          Сохраняем...
         </span>
       </button>
     ) : (
@@ -1669,6 +1630,7 @@ export default function RunDetailsPage() {
     <WorkoutDetailShell
       title="Тренировка"
       enableSourceRestore
+      onBack={isEditMode ? handleCancelEditMode : undefined}
       pinnedHeader
       headerRightSlot={headerRightSlot}
       scrollContainerRef={scrollContainerRef}

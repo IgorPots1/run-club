@@ -5,6 +5,7 @@ type WorkoutDetailShellProps = {
   title: string
   fallbackHref?: string
   enableSourceRestore?: boolean
+  onBack?: () => void
   pinnedHeader?: boolean
   headerRightSlot?: ReactNode
   topContent?: ReactNode
@@ -18,6 +19,7 @@ export default function WorkoutDetailShell({
   title,
   fallbackHref,
   enableSourceRestore = false,
+  onBack,
   pinnedHeader = false,
   headerRightSlot,
   topContent,
@@ -58,6 +60,7 @@ export default function WorkoutDetailShell({
                   title={title}
                   fallbackHref={fallbackHref}
                   enableSourceRestore={enableSourceRestore}
+                  onBack={onBack}
                   rightSlot={headerRightSlot}
                 />
               </div>
@@ -67,6 +70,7 @@ export default function WorkoutDetailShell({
                 title={title}
                 fallbackHref={fallbackHref}
                 enableSourceRestore={enableSourceRestore}
+                onBack={onBack}
                 rightSlot={headerRightSlot}
               />
             </div>
@@ -76,6 +80,7 @@ export default function WorkoutDetailShell({
             title={title}
             fallbackHref={fallbackHref}
             enableSourceRestore={enableSourceRestore}
+            onBack={onBack}
             rightSlot={headerRightSlot}
           />
         )}

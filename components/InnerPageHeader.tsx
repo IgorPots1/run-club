@@ -5,6 +5,7 @@ type InnerPageHeaderProps = {
   title: string
   fallbackHref?: string
   enableSourceRestore?: boolean
+  onBack?: () => void
   minimal?: boolean
   sticky?: boolean
   rightSlot?: ReactNode
@@ -14,6 +15,7 @@ export default function InnerPageHeader({
   title,
   fallbackHref,
   enableSourceRestore = false,
+  onBack,
   minimal = false,
   sticky = false,
   rightSlot,
@@ -25,6 +27,7 @@ export default function InnerPageHeader({
       title={title}
       fallbackHref={fallbackHref}
       enableSourceRestore={enableSourceRestore}
+      onBack={onBack}
       sticky={sticky}
       fullBleedOnMobile={false}
       minimal={minimal}

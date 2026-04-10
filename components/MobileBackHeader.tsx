@@ -5,6 +5,7 @@ type MobileBackHeaderProps = {
   title: string
   fallbackHref?: string
   enableSourceRestore?: boolean
+  onBack?: () => void
   className?: string
   sticky?: boolean
   fullBleedOnMobile?: boolean
@@ -16,6 +17,7 @@ export default function MobileBackHeader({
   title,
   fallbackHref = '/dashboard',
   enableSourceRestore = false,
+  onBack,
   className = '',
   sticky = true,
   fullBleedOnMobile = true,
@@ -48,6 +50,7 @@ export default function MobileBackHeader({
           <BackNavigationButton
             fallbackHref={fallbackHref}
             enableSourceRestore={enableSourceRestore}
+            onBack={onBack}
             variant="icon"
           />
         </div>

@@ -11,6 +11,7 @@ type BackNavigationButtonProps = {
   label?: string
   variant?: 'inline' | 'icon'
   enableSourceRestore?: boolean
+  onBack?: () => void
 }
 
 export default function BackNavigationButton({
@@ -19,6 +20,7 @@ export default function BackNavigationButton({
   label = 'Назад',
   variant = 'inline',
   enableSourceRestore = false,
+  onBack,
 }: BackNavigationButtonProps) {
   const router = useRouter()
 
@@ -41,6 +43,11 @@ export default function BackNavigationButton({
   }
 
   function handleBackNavigation() {
+    if (onBack) {
+      onBack()
+      return
+    }
+
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back()
       return
