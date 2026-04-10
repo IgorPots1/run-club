@@ -162,23 +162,47 @@ async function loadLastMessageByThreadId(threadIds: string[]) {
   }
 
   const { data, error } = await supabase
-    .from('chat_messages')
-    .select('id, thread_id, user_id, text, message_type, image_url, media_url, media_duration_seconds, created_at')
-    .eq('is_deleted', false)
-    .in('thread_id', threadIds)
-    .order('created_at', { ascending: false })
+    .from('chat_threads')
+    .select(`
+      id,
+      chat_messages!chat_messages_thread_id_fkey (
+        id,
+        thread_id,
+        user_id,
+        text,
+        message_type,
+        image_url,
+        media_url,
+        media_duration_seconds,
+        created_at
+      )
+    `)
+    .in('id', threadIds)
+    .eq('chat_messages.is_deleted', false)
+    .order('created_at', { ascending: false, foreignTable: 'chat_messages' })
+    .order('id', { ascending: false, foreignTable: 'chat_messages' })
+    .limit(1, { foreignTable: 'chat_messages' })
 
   if (error) {
     throw error
   }
 
-  const latestMessageRowByThreadId: Record<string, ChatThreadLastMessageRow> = {}
+  const latestMessageRowByThreadId = Object.fromEntries(
+    (((data as Array<{
+      id: string
+      chat_messages: ChatThreadLastMessageRow[] | null
+    }> | null) ?? [])
+      .map((thread) => {
+        const latestMessage = thread.chat_messages?.[0] ?? null
 
-  for (const row of (data as ChatThreadLastMessageRow[] | null) ?? []) {
-    if (!latestMessageRowByThreadId[row.thread_id]) {
-      latestMessageRowByThreadId[row.thread_id] = row
-    }
-  }
+        if (!latestMessage) {
+          return null
+        }
+
+        return [thread.id, latestMessage] as const
+      })
+      .filter((entry): entry is readonly [string, ChatThreadLastMessageRow] => entry !== null))
+  ) as Record<string, ChatThreadLastMessageRow>
 
   const profileById = await loadProfilesByUserIds(
     Array.from(new Set(Object.values(latestMessageRowByThreadId).map((row) => row.user_id)))
