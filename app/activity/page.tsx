@@ -348,6 +348,7 @@ export default function ActivityPage() {
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const suppressNextRunsUpdatedRefreshRef = useRef(false)
   const prepareRunDetailNavigationRef = useRef<(runId: string) => void>(() => {})
+  const userId = user?.id ?? null
 
   useEffect(() => {
     let isMounted = true
@@ -638,16 +639,16 @@ export default function ActivityPage() {
   }, [mutate, user])
 
   const handleRequestDelete = useCallback((run: ActivityRunRow) => {
-    if (!user || run.user_id !== user.id || deletingRunIds.includes(run.id)) {
+    if (!userId || run.user_id !== userId || deletingRunIds.includes(run.id)) {
       return
     }
 
     setActionError('')
     setPendingDeleteRun(run)
-  }, [deletingRunIds, user])
+  }, [deletingRunIds, userId])
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!user || !pendingDeleteRun || pendingDeleteRun.user_id !== user.id) {
+    if (!userId || !pendingDeleteRun || pendingDeleteRun.user_id !== userId) {
       return
     }
 
@@ -680,7 +681,7 @@ export default function ActivityPage() {
     } finally {
       setDeletingRunIds((prev) => prev.filter((id) => id !== runId))
     }
-  }, [deletingRunIds, mutate, pendingDeleteRun, user])
+  }, [deletingRunIds, mutate, pendingDeleteRun, userId])
 
   const handleOpenRunDetail = useCallback((runId: string) => {
     if (!runId) {
@@ -985,7 +986,7 @@ export default function ActivityPage() {
                           {formatRunMetaLabel(run)}
                         </p>
                       </button>
-                      {run.user_id === user.id ? (
+                      {run.user_id === userId ? (
                         <button
                           type="button"
                           onClick={() => handleRequestDelete(run)}
