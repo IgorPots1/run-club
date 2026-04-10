@@ -26,8 +26,15 @@ export default async function ActivityShoesPage() {
 
   return (
     <main className="min-h-screen">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+        <div className="pointer-events-auto mx-auto max-w-xl px-4 md:px-4">
+          <InnerPageHeader title="Кроссовки" fallbackHref="/activity" />
+        </div>
+      </div>
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <InnerPageHeader title="Кроссовки" fallbackHref="/activity" />
+        <div aria-hidden="true" className="invisible">
+          <InnerPageHeader title="Кроссовки" fallbackHref="/activity" />
+        </div>
         <div className="mt-4">
           {loadFailed ? (
             <div className="app-card rounded-2xl border p-4 shadow-sm">
