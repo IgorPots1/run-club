@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
+import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
 import {
   loadPushPreferences,
@@ -332,22 +333,29 @@ export default function NotificationsPage() {
 
   if (pushStatusLoading && preferencesLoading && !preferences) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <Link href="/profile" className="app-text-secondary mb-4 inline-flex text-sm underline">
-            Назад в профиль
-          </Link>
-          <h1 className="app-text-primary mb-4 text-2xl font-bold">Уведомления</h1>
-          <div className="app-card mb-4 space-y-3 rounded-2xl border p-4 shadow-sm">
-            <div className="skeleton-line h-6 w-40" />
-            <div className="skeleton-line h-4 w-full" />
-            <div className="skeleton-line h-11 w-36" />
+      <main className="min-h-screen">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+          <div className="pointer-events-auto mx-auto max-w-xl px-4 md:px-4">
+            <InnerPageHeader title="Уведомления" fallbackHref="/profile" />
           </div>
-          <div className="app-card space-y-4 rounded-2xl border p-4 shadow-sm">
-            <div className="skeleton-line h-6 w-36" />
-            <div className="skeleton-line h-16 w-full" />
-            <div className="skeleton-line h-16 w-full" />
-            <div className="skeleton-line h-16 w-full" />
+        </div>
+        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+          <div aria-hidden="true" className="invisible">
+            <InnerPageHeader title="Уведомления" fallbackHref="/profile" />
+          </div>
+          <div className="mt-4">
+            <h1 className="app-text-primary mb-4 text-2xl font-bold">Уведомления</h1>
+            <div className="app-card mb-4 space-y-3 rounded-2xl border p-4 shadow-sm">
+              <div className="skeleton-line h-6 w-40" />
+              <div className="skeleton-line h-4 w-full" />
+              <div className="skeleton-line h-11 w-36" />
+            </div>
+            <div className="app-card space-y-4 rounded-2xl border p-4 shadow-sm">
+              <div className="skeleton-line h-6 w-36" />
+              <div className="skeleton-line h-16 w-full" />
+              <div className="skeleton-line h-16 w-full" />
+              <div className="skeleton-line h-16 w-full" />
+            </div>
           </div>
         </div>
       </main>
@@ -355,77 +363,84 @@ export default function NotificationsPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
+    <main className="min-h-screen">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+        <div className="pointer-events-auto mx-auto max-w-xl px-4 md:px-4">
+          <InnerPageHeader title="Уведомления" fallbackHref="/profile" />
+        </div>
+      </div>
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <Link href="/profile" className="app-text-secondary mb-4 inline-flex text-sm underline">
-          Назад в профиль
-        </Link>
-        <h1 className="app-text-primary mb-2 text-2xl font-bold">Уведомления</h1>
-        <p className="app-text-secondary mb-4 text-sm">
-          Управляйте push-уведомлениями на этом устройстве и настройками доставки для аккаунта.
-        </p>
-        {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
+        <div aria-hidden="true" className="invisible">
+          <InnerPageHeader title="Уведомления" fallbackHref="/profile" />
+        </div>
+        <div className="mt-4">
+          <h1 className="app-text-primary mb-2 text-2xl font-bold">Уведомления</h1>
+          <p className="app-text-secondary mb-4 text-sm">
+            Управляйте push-уведомлениями на этом устройстве и настройками доставки для аккаунта.
+          </p>
+          {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
 
-        <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
-          <div className="mb-3">
-            <h2 className="app-text-primary text-lg font-semibold">Устройство и браузер</h2>
-            <p className="app-text-secondary mt-1 text-sm">{deviceStatusDescription}</p>
-          </div>
-          {showDeviceAction ? (
-            <button
-              type="button"
-              onClick={() => {
-                void handleDevicePushToggle()
-              }}
-              disabled={pushActionLoading || pushStatusLoading}
-              className="app-button-secondary min-h-11 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {deviceActionLabel}
-            </button>
-          ) : (
-            <p className="app-text-secondary text-sm">
-              Откройте приложение на устройстве с поддержкой push, чтобы включить уведомления.
-            </p>
-          )}
-        </section>
-
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <div className="mb-3">
-            <h2 className="app-text-primary text-lg font-semibold">Что присылать</h2>
-            <p className="app-text-secondary mt-1 text-sm">
-              Эти настройки сохраняются для аккаунта и влияют на доставку уведомлений.
-            </p>
-          </div>
-
-          {preferences ? (
-            <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
-              {notificationPreferenceItems.map((item) => {
-                const isSavingCurrentItem = savingPreferenceKey === item.key
-
-                return (
-                  <div key={item.key} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="app-text-primary text-sm font-medium">{item.title}</p>
-                      <p className="app-text-secondary mt-1 text-xs">
-                        {isSavingCurrentItem ? 'Сохраняем...' : item.description}
-                      </p>
-                    </div>
-                    <SettingsSwitch
-                      checked={preferences[item.key]}
-                      disabled={preferencesBusy}
-                      label={item.title}
-                      onCheckedChange={(checked) => {
-                        void handlePreferenceToggle(item.key, checked)
-                      }}
-                    />
-                  </div>
-                )
-              })}
+          <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+            <div className="mb-3">
+              <h2 className="app-text-primary text-lg font-semibold">Устройство и браузер</h2>
+              <p className="app-text-secondary mt-1 text-sm">{deviceStatusDescription}</p>
             </div>
-          ) : (
-            <p className="app-text-secondary text-sm">Настройки уведомлений пока недоступны.</p>
-          )}
-        </section>
+            {showDeviceAction ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void handleDevicePushToggle()
+                }}
+                disabled={pushActionLoading || pushStatusLoading}
+                className="app-button-secondary min-h-11 rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deviceActionLabel}
+              </button>
+            ) : (
+              <p className="app-text-secondary text-sm">
+                Откройте приложение на устройстве с поддержкой push, чтобы включить уведомления.
+              </p>
+            )}
+          </section>
+
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <div className="mb-3">
+              <h2 className="app-text-primary text-lg font-semibold">Что присылать</h2>
+              <p className="app-text-secondary mt-1 text-sm">
+                Эти настройки сохраняются для аккаунта и влияют на доставку уведомлений.
+              </p>
+            </div>
+
+            {preferences ? (
+              <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+                {notificationPreferenceItems.map((item) => {
+                  const isSavingCurrentItem = savingPreferenceKey === item.key
+
+                  return (
+                    <div key={item.key} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="app-text-primary text-sm font-medium">{item.title}</p>
+                        <p className="app-text-secondary mt-1 text-xs">
+                          {isSavingCurrentItem ? 'Сохраняем...' : item.description}
+                        </p>
+                      </div>
+                      <SettingsSwitch
+                        checked={preferences[item.key]}
+                        disabled={preferencesBusy}
+                        label={item.title}
+                        onCheckedChange={(checked) => {
+                          void handlePreferenceToggle(item.key, checked)
+                        }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="app-text-secondary text-sm">Настройки уведомлений пока недоступны.</p>
+            )}
+          </section>
+        </div>
       </div>
     </main>
   )

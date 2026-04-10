@@ -436,10 +436,6 @@ function ProfilePageContent() {
                 description="Подключение и синхронизация"
                 href="/profile/strava"
               />
-              <HubRow title="Активность" description="Пробежки и история активности" href="/activity" />
-              <HubRow title="Достижения" description="Ваши бейджи и прогресс" href="/activity/achievements" />
-              <HubRow title="Кроссовки" description="Пары и их пробег" href="/activity/shoes" />
-              <HubRow title="Связаться с тренером" description="Открыть чат" href="/messages" />
               <HubRow
                 title="Мой профиль для других"
                 description="Посмотреть публичную страницу"

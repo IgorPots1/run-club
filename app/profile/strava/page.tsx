@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
+import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
 
 type StravaConnectionState = 'connected' | 'reconnect_required' | 'disconnected'
@@ -317,21 +318,28 @@ export default function StravaPage() {
 
   if (statusLoading && !successMessage && !pageError) {
     return (
-      <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
-        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-          <Link href="/profile" className="app-text-secondary mb-4 inline-flex text-sm underline">
-            Назад в профиль
-          </Link>
-          <h1 className="app-text-primary mb-4 text-2xl font-bold">Strava</h1>
-          <div className="app-card mb-4 space-y-3 rounded-2xl border p-4 shadow-sm">
-            <div className="skeleton-line h-6 w-24" />
-            <div className="skeleton-line h-4 w-full" />
-            <div className="skeleton-line h-11 w-40" />
+      <main className="min-h-screen">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+          <div className="pointer-events-auto mx-auto max-w-xl px-4 md:px-4">
+            <InnerPageHeader title="Strava" fallbackHref="/profile" />
           </div>
-          <div className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
-            <div className="skeleton-line h-6 w-32" />
-            <div className="skeleton-line h-11 w-full" />
-            <div className="skeleton-line h-11 w-full" />
+        </div>
+        <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+          <div aria-hidden="true" className="invisible">
+            <InnerPageHeader title="Strava" fallbackHref="/profile" />
+          </div>
+          <div className="mt-4">
+            <h1 className="app-text-primary mb-4 text-2xl font-bold">Strava</h1>
+            <div className="app-card mb-4 space-y-3 rounded-2xl border p-4 shadow-sm">
+              <div className="skeleton-line h-6 w-24" />
+              <div className="skeleton-line h-4 w-full" />
+              <div className="skeleton-line h-11 w-40" />
+            </div>
+            <div className="app-card space-y-3 rounded-2xl border p-4 shadow-sm">
+              <div className="skeleton-line h-6 w-32" />
+              <div className="skeleton-line h-11 w-full" />
+              <div className="skeleton-line h-11 w-full" />
+            </div>
           </div>
         </div>
       </main>
@@ -339,95 +347,102 @@ export default function StravaPage() {
   }
 
   return (
-    <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <Link href="/profile" className="app-text-secondary mb-4 inline-flex text-sm underline">
-          Назад в профиль
-        </Link>
-        <div className="mb-4 flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/5 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03]"
-          >
-            <StravaIcon />
-          </span>
-          <div>
-            <h1 className="app-text-primary text-2xl font-bold">Strava</h1>
-            <p className="app-text-secondary mt-1 text-sm">
-              Подключение аккаунта и ручная синхронизация пробежек.
-            </p>
-          </div>
+    <main className="min-h-screen">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
+        <div className="pointer-events-auto mx-auto max-w-xl px-4 md:px-4">
+          <InnerPageHeader title="Strava" fallbackHref="/profile" />
         </div>
-
-        {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
-        {successMessage ? <p className="mb-4 text-sm text-green-700">{successMessage}</p> : null}
-
-        <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
-          <div className="mb-3">
-            <h2 className="app-text-primary text-lg font-semibold">Статус подключения</h2>
-            <p className="app-text-secondary mt-1 text-sm">{statusDescription}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="app-text-secondary inline-flex rounded-full border border-black/5 bg-black/[0.02] px-3 py-1.5 text-xs font-medium dark:border-white/10 dark:bg-white/[0.03]">
-              {connectionState === 'connected'
-                ? 'Подключено'
-                : connectionState === 'reconnect_required'
-                  ? 'Нужно переподключить'
-                  : 'Не подключено'}
+      </div>
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+        <div aria-hidden="true" className="invisible">
+          <InnerPageHeader title="Strava" fallbackHref="/profile" />
+        </div>
+        <div className="mt-4">
+          <div className="mb-4 flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/5 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03]"
+            >
+              <StravaIcon />
             </span>
-            {hasImportedRuns ? (
+            <div>
+              <h1 className="app-text-primary text-2xl font-bold">Strava</h1>
+              <p className="app-text-secondary mt-1 text-sm">
+                Подключение аккаунта и ручная синхронизация пробежек.
+              </p>
+            </div>
+          </div>
+
+          {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
+          {successMessage ? <p className="mb-4 text-sm text-green-700">{successMessage}</p> : null}
+
+          <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+            <div className="mb-3">
+              <h2 className="app-text-primary text-lg font-semibold">Статус подключения</h2>
+              <p className="app-text-secondary mt-1 text-sm">{statusDescription}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <span className="app-text-secondary inline-flex rounded-full border border-black/5 bg-black/[0.02] px-3 py-1.5 text-xs font-medium dark:border-white/10 dark:bg-white/[0.03]">
-                Есть импортированные пробежки
+                {connectionState === 'connected'
+                  ? 'Подключено'
+                  : connectionState === 'reconnect_required'
+                    ? 'Нужно переподключить'
+                    : 'Не подключено'}
               </span>
-            ) : null}
-          </div>
-        </section>
+              {hasImportedRuns ? (
+                <span className="app-text-secondary inline-flex rounded-full border border-black/5 bg-black/[0.02] px-3 py-1.5 text-xs font-medium dark:border-white/10 dark:bg-white/[0.03]">
+                  Есть импортированные пробежки
+                </span>
+              ) : null}
+            </div>
+          </section>
 
-        <section className="app-card rounded-2xl border p-4 shadow-sm">
-          <div className="mb-3">
-            <h2 className="app-text-primary text-lg font-semibold">Действия</h2>
-            <p className="app-text-secondary mt-1 text-sm">
-              Используются текущие endpoint&apos;ы подключения, синхронизации и отключения.
-            </p>
-          </div>
+          <section className="app-card rounded-2xl border p-4 shadow-sm">
+            <div className="mb-3">
+              <h2 className="app-text-primary text-lg font-semibold">Действия</h2>
+              <p className="app-text-secondary mt-1 text-sm">
+                Используются текущие endpoint&apos;ы подключения, синхронизации и отключения.
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-3">
-            {connectionState !== 'connected' ? (
-              <a
-                href="/api/strava/connect?next=/profile/strava"
-                className="app-button-primary inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium"
-              >
-                {connectLabel}
-              </a>
-            ) : null}
+            <div className="flex flex-col gap-3">
+              {connectionState !== 'connected' ? (
+                <a
+                  href="/api/strava/connect?next=/profile/strava"
+                  className="app-button-primary inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium"
+                >
+                  {connectLabel}
+                </a>
+              ) : null}
 
-            {connectionState === 'connected' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSync()
-                }}
-                disabled={syncing || disconnecting}
-                className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {syncing ? 'Синхронизируем...' : 'Синхронизировать сейчас'}
-              </button>
-            ) : null}
+              {connectionState === 'connected' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSync()
+                  }}
+                  disabled={syncing || disconnecting}
+                  className="app-button-secondary min-h-11 rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {syncing ? 'Синхронизируем...' : 'Синхронизировать сейчас'}
+                </button>
+              ) : null}
 
-            {connectionState !== 'disconnected' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void handleDisconnect()
-                }}
-                disabled={disconnecting || syncing}
-                className="min-h-11 rounded-lg border border-red-500/20 px-4 py-2 text-sm font-medium text-red-600 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25"
-              >
-                {disconnecting ? 'Отключаем...' : 'Отключить Strava'}
-              </button>
-            ) : null}
-          </div>
-        </section>
+              {connectionState !== 'disconnected' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleDisconnect()
+                  }}
+                  disabled={disconnecting || syncing}
+                  className="min-h-11 rounded-lg border border-red-500/20 px-4 py-2 text-sm font-medium text-red-600 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25"
+                >
+                  {disconnecting ? 'Отключаем...' : 'Отключить Strava'}
+                </button>
+              ) : null}
+            </div>
+          </section>
+        </div>
       </div>
     </main>
   )
