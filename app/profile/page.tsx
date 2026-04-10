@@ -2,17 +2,16 @@
 
 import Link from 'next/link'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { logoutCurrentUser } from '@/lib/auth/logoutClient'
 import { getBootstrapUser } from '@/lib/auth'
 import AvatarCropModal from '@/components/AvatarCropModal'
 import LevelOverviewSheet from '@/components/LevelOverviewSheet'
-import XpGainToast from '@/components/XpGainToast'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import { getProfileDisplayName, updateProfileById } from '@/lib/profiles'
 import { supabase } from '../../lib/supabase'
-import { getLevelFromXP, getLevelProgressFromXP, getRankTitleFromLevel, type XpBreakdownItem } from '../../lib/xp'
+import { getLevelFromXP, getLevelProgressFromXP, getRankTitleFromLevel } from '../../lib/xp'
 import type { User } from '@supabase/supabase-js'
 
 type Profile = {
@@ -22,35 +21,6 @@ type Profile = {
   nickname: string | null
   avatar_url: string | null
   total_xp?: number | null
-}
-
-type StravaStatusResponse =
-  | {
-      ok: true
-      state: 'connected' | 'reconnect_required' | 'disconnected'
-      connected: boolean
-      hasImportedRuns: boolean
-    }
-  | {
-      ok: false
-      step?: string
-      error?: string
-    }
-
-function StravaIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className="block h-[18px] w-[18px] shrink-0 text-[#FC4C02]"
-    >
-      <path d="M15.386 1 9.999 11.56h3.178L15.386 7l2.209 4.56h3.177L15.386 1Z" />
-      <path d="M9.999 14.077 7.354 19.41h2.41L9.999 18.9l.235.51h2.41l-2.645-5.333Z" />
-    </svg>
-  )
 }
 
 type HubRowProps = {
@@ -106,8 +76,6 @@ export default function ProfilePage() {
 
 function ProfilePageContent() {
   const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -115,16 +83,10 @@ function ProfilePageContent() {
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
   const [totalXp, setTotalXp] = useState(0)
   const [showLevelOverview, setShowLevelOverview] = useState(false)
-  const [stravaConnectionState, setStravaConnectionState] = useState<'connected' | 'reconnect_required' | 'disconnected'>('disconnected')
-  const [loadingStravaStatus, setLoadingStravaStatus] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
   const [profileDataLoading, setProfileDataLoading] = useState(true)
   const [pageError, setPageError] = useState('')
-  const [hubMessage, setHubMessage] = useState('')
-  const [showStravaConnectedToast, setShowStravaConnectedToast] = useState(false)
-  const [xpToast, setXpToast] = useState<{ xpGained: number; breakdown: XpBreakdownItem[] } | null>(null)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
-  const hasShownStravaConnectedToastRef = useRef(false)
 
   const loadProfileData = useCallback(async (
     currentUser: User,
@@ -183,36 +145,6 @@ function ProfilePageContent() {
     }
   }, [])
 
-  const loadStravaStatus = useCallback(async (isMounted = true) => {
-    setLoadingStravaStatus(true)
-
-    try {
-      const response = await fetch('/api/strava/status', {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'include',
-      })
-
-      const payload = (await response.json()) as StravaStatusResponse
-
-      if (!isMounted) return
-
-      if (!response.ok || !payload.ok) {
-        setStravaConnectionState('disconnected')
-        return
-      }
-
-      setStravaConnectionState(payload.state)
-    } catch {
-      if (!isMounted) return
-      setStravaConnectionState('disconnected')
-    } finally {
-      if (isMounted) {
-        setLoadingStravaStatus(false)
-      }
-    }
-  }, [])
-
   useEffect(() => {
     let isMounted = true
 
@@ -251,62 +183,6 @@ function ProfilePageContent() {
       isMounted = false
     }
   }, [loadProfileData, user])
-
-  useEffect(() => {
-    if (!user) return
-
-    let isMounted = true
-
-    void loadStravaStatus(isMounted)
-
-    return () => {
-      isMounted = false
-    }
-  }, [loadStravaStatus, user])
-
-  useEffect(() => {
-    const stravaStatus = searchParams.get('strava')
-
-    if (stravaStatus !== 'connected' || hasShownStravaConnectedToastRef.current) {
-      return
-    }
-
-    hasShownStravaConnectedToastRef.current = true
-    setShowStravaConnectedToast(true)
-
-    const nextParams = new URLSearchParams(searchParams.toString())
-    nextParams.delete('strava')
-    const nextUrl = nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname
-    router.replace(nextUrl, { scroll: false })
-  }, [pathname, router, searchParams])
-
-  useEffect(() => {
-    if (!showStravaConnectedToast) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setShowStravaConnectedToast(false)
-    }, 3000)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [showStravaConnectedToast])
-
-  useEffect(() => {
-    if (!xpToast) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setXpToast(null)
-    }, 3000)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [xpToast])
 
   useEffect(() => {
     return () => {
@@ -411,7 +287,6 @@ function ProfilePageContent() {
 
     setLoggingOut(true)
     setPageError('')
-    setStravaConnectionState('disconnected')
 
     try {
       await logoutCurrentUser({
@@ -445,13 +320,6 @@ function ProfilePageContent() {
   const levelProgress = getLevelProgressFromXP(totalXp)
   const currentLevel = getLevelFromXP(totalXp).level
   const currentRankTitle = getRankTitleFromLevel(currentLevel)
-  const stravaRowDescription = loadingStravaStatus
-    ? 'Проверяем подключение...'
-    : stravaConnectionState === 'connected'
-      ? 'Подключено и готово к синхронизации'
-      : stravaConnectionState === 'reconnect_required'
-        ? 'Нужно переподключить аккаунт'
-        : 'Подключение пока не настроено'
   if (profileDataLoading) {
     return (
       <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
@@ -488,7 +356,6 @@ function ProfilePageContent() {
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <h1 className="app-text-primary mb-4 text-2xl font-bold">Профиль</h1>
         {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
-        {hubMessage ? <p className="mb-4 text-sm text-[var(--text-secondary)]">{hubMessage}</p> : null}
         <div className="mb-6 flex flex-col items-center gap-4">
           <div
             className={`group relative -m-2 inline-flex h-32 w-32 items-center justify-center rounded-full p-2 transition-transform active:scale-[0.98] sm:h-36 sm:w-36 ${
@@ -566,11 +433,8 @@ function ProfilePageContent() {
               />
               <HubRow
                 title="Strava"
-                description={stravaRowDescription}
-                onClick={() => {
-                  setPageError('')
-                  setHubMessage('Раздел "Strava" позже вынесем на отдельный экран.')
-                }}
+                description="Подключение и синхронизация"
+                href="/profile/strava"
               />
               <HubRow title="Активность" description="Пробежки и история активности" href="/activity" />
               <HubRow title="Достижения" description="Ваши бейджи и прогресс" href="/activity/achievements" />
@@ -603,20 +467,6 @@ function ProfilePageContent() {
             onConfirm={handleAvatarCropped}
           />
         ) : null}
-        {showStravaConnectedToast ? (
-          <div className="pointer-events-none fixed inset-x-4 top-4 z-50 flex justify-center">
-            <div className="app-card flex w-full max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-              <span
-                aria-hidden="true"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border"
-              >
-                <StravaIcon />
-              </span>
-              <p className="app-text-primary text-sm font-medium">Strava успешно подключена</p>
-            </div>
-          </div>
-        ) : null}
-        {xpToast ? <XpGainToast xpGained={xpToast.xpGained} breakdown={xpToast.breakdown} offsetClassName="top-20" /> : null}
         <LevelOverviewSheet
           open={showLevelOverview}
           totalXp={totalXp}
