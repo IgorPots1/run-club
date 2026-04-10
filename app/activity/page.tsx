@@ -943,7 +943,7 @@ export default function ActivityPage() {
                             <p className="app-text-secondary mt-1 text-sm">
                               {getCompactAchievementSubtitle(achievement)}
                             </p>
-                            {achievement.source_type === 'challenge' && latestChallengeAchievement?.id === achievement.id ? (
+                            {latestChallengeAchievement?.id === achievement.id ? (
                               <p className="app-text-secondary mt-2 text-xs">
                                 Всего завершённых челленджей: {totalChallengeAchievements}
                               </p>
@@ -979,7 +979,7 @@ export default function ActivityPage() {
                             <p className="app-text-secondary mt-1 text-sm">
                               {getCompactAchievementSubtitle(achievement)}
                             </p>
-                            {achievement.source_type === 'challenge' && latestChallengeAchievement?.id === achievement.id ? (
+                            {latestChallengeAchievement?.id === achievement.id ? (
                               <p className="app-text-secondary mt-2 text-xs">
                                 Всего завершённых челленджей: {totalChallengeAchievements}
                               </p>
