@@ -5,6 +5,7 @@ type WorkoutDetailShellProps = {
   title: string
   fallbackHref?: string
   enableSourceRestore?: boolean
+  stickyHeader?: boolean
   headerRightSlot?: ReactNode
   topContent?: ReactNode
   footer?: ReactNode
@@ -17,6 +18,7 @@ export default function WorkoutDetailShell({
   title,
   fallbackHref,
   enableSourceRestore = false,
+  stickyHeader = false,
   headerRightSlot,
   topContent,
   footer,
@@ -47,13 +49,16 @@ export default function WorkoutDetailShell({
 
   return (
     <main
-      className="min-h-[100svh] min-w-0 bg-[color:var(--background)] md:min-h-screen"
+      className={`min-h-[100svh] min-w-0 bg-[color:var(--background)] md:min-h-screen ${
+        stickyHeader ? 'pt-[env(safe-area-inset-top)] md:pt-0' : ''
+      }`}
     >
       <div className="mx-auto flex min-h-[100svh] min-w-0 w-full max-w-xl flex-col overflow-x-hidden md:min-h-screen">
         <InnerPageHeader
           title={title}
           fallbackHref={fallbackHref}
           enableSourceRestore={enableSourceRestore}
+          sticky={stickyHeader}
           rightSlot={headerRightSlot}
         />
         {topContent ? (

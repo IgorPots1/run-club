@@ -323,6 +323,7 @@ export default function RacePage() {
     <WorkoutDetailShell
       title="Гонка недели"
       fallbackHref="/dashboard"
+      stickyHeader
       scrollContentClassName="pt-4 md:pt-4"
     >
       <div className="space-y-4 pb-4">
