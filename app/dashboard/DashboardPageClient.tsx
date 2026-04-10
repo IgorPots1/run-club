@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Bell, Plus, Target, Trophy } from 'lucide-react'
+import { Activity, Bell, Plus, Target, Trophy, User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -504,7 +504,7 @@ export default function DashboardPageClient({
   return (
     <main className="min-h-screen pt-[env(safe-area-inset-top)] md:pt-0">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
-        <div className="mb-6 flex items-start justify-between gap-3">
+        <div className="mb-6 flex items-start justify-between gap-2 sm:gap-3">
           <UserIdentitySummary
             className="flex-1"
             loadingIdentity={false}
@@ -512,7 +512,7 @@ export default function DashboardPageClient({
             displayName={headerDisplayName}
             levelLabel={headerLevelLabel}
           />
-          <div className="flex items-center gap-2 self-start">
+          <div className="flex items-center gap-1.5 self-start sm:gap-2">
             <Link
               href="/runs"
               aria-label="Добавить тренировку"
@@ -527,6 +527,13 @@ export default function DashboardPageClient({
             >
               <Bell className="h-5 w-5" strokeWidth={1.9} />
               <UnreadBadge count={initialInboxUnreadCount} className="absolute -right-1 -top-1" />
+            </Link>
+            <Link
+              href="/profile"
+              aria-label="Открыть профиль"
+              className={dashboardHeaderActionClass}
+            >
+              <User className="h-5 w-5" strokeWidth={1.9} />
             </Link>
           </div>
         </div>
