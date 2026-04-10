@@ -752,6 +752,7 @@ export default function DashboardPageClient({
               currentUserId={initialUser.id}
               loading={weeklyLeaderboardLoading}
               error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
+              compact
             />
           </div>
           {lastWeekResultsCard ? (

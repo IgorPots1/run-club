@@ -10,6 +10,7 @@ type WeeklyLeaderboardProps = {
   currentUserId: string
   loading?: boolean
   error?: string
+  compact?: boolean
 }
 
 function getMotivationHint(gapToNext: number | null) {
@@ -25,6 +26,7 @@ export default function WeeklyLeaderboard({
   currentUserId,
   loading = false,
   error = '',
+  compact = false,
 }: WeeklyLeaderboardProps) {
   const week = leaderboard?.week ?? null
   const topRows = Array.isArray(leaderboard?.topRows) ? leaderboard.topRows : []
@@ -32,15 +34,25 @@ export default function WeeklyLeaderboard({
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
   const isCurrentUserInTop = topRows.some((row) => row.user_id === currentUserId)
+  const compactCurrentUserRow = topRows.find((row) => row.user_id === currentUserId) ?? currentUserRow
   const shouldShowCurrentUserRow =
     Boolean(currentUserRow) &&
     !isCurrentUserInTop &&
     (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
+  const shouldShowCompactCurrentUserRow =
+    Boolean(compactCurrentUserRow) &&
+    (topRows.length > 0 || (compactCurrentUserRow?.totalXp ?? 0) > 0)
   const currentUserSummary =
     currentUserRow && currentUserRow.rank > 0
       ? `Ты — ${currentUserRow.rank} место · ${currentUserRow.totalXp} XP`
       : ''
   const motivationHint = getMotivationHint(gapToNext)
+  const compactGapLine =
+    gapToNext !== null && gapToNext > 0
+      ? `До следующего места: +${gapToNext} XP`
+      : gapToBehind !== null && gapToBehind > 0
+        ? `Отрыв от следующего: ${gapToBehind} XP`
+        : ''
 
   return (
     <div className="app-card mb-4 min-h-[188px] overflow-hidden rounded-xl border p-4 shadow-sm">
@@ -56,7 +68,7 @@ export default function WeeklyLeaderboard({
           <span className="app-text-secondary text-sm">{formatRaceWeekDateRange(week)}</span>
         </div>
       ) : null}
-      {!loading && !error && currentUserSummary ? (
+      {!compact && !loading && !error && currentUserSummary ? (
         <p className="app-text-primary mt-3 text-sm font-medium">{currentUserSummary}</p>
       ) : null}
 
@@ -88,6 +100,23 @@ export default function WeeklyLeaderboard({
           <p className="app-text-secondary text-sm">Сейчас нет активной недели гонки.</p>
           <p className="app-text-secondary mt-2 text-sm">Открой экран гонки, чтобы посмотреть статус и последние итоги.</p>
         </div>
+      ) : compact ? (
+        shouldShowCompactCurrentUserRow ? (
+          <div className="app-surface-muted mt-3 rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <p className="app-text-primary min-w-0 flex-1 font-medium">
+                {compactCurrentUserRow?.rank}. {compactCurrentUserRow?.displayName}
+                <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                  Ты
+                </span>
+              </p>
+              <p className="app-text-primary shrink-0 font-medium">{compactCurrentUserRow?.totalXp} XP</p>
+            </div>
+            {compactGapLine ? <p className="app-text-secondary mt-2 text-xs">{compactGapLine}</p> : null}
+          </div>
+        ) : (
+          <p className="app-text-secondary mt-3 text-sm">Пока в текущей неделе нет результатов.</p>
+        )
       ) : topRows.length === 0 ? (
         <p className="app-text-secondary mt-3 text-sm">Пока в текущей неделе нет результатов.</p>
       ) : (
