@@ -353,7 +353,7 @@ export async function loadChallengesOverviewServer(
         goalTarget,
         resolvedPeriod: await resolvedPeriodPromise,
       }
-    }))
+    })
   )
   const windowTotalsCache = new Map<string, { distanceKm: number; runCount: number }>()
 
