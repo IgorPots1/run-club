@@ -266,7 +266,7 @@ export default function MessagesPage() {
   const currentThreadLastMessageIdByThreadIdRef = useRef<Record<string, string | null>>({})
   const pendingThreadRealtimeUpdatesRef = useRef<Record<string, PendingThreadRealtimeUpdate>>({})
   const threadRealtimeUpdateTimeoutByThreadIdRef = useRef<Record<string, number>>({})
-  const threadRealtimeUpdatePromiseByThreadIdRef = useRef<Record<string, Promise<void>>>({})
+  const threadRealtimeUpdatePromiseByThreadIdRef = useRef<Partial<Record<string, Promise<void>>>>({})
   const unreadCountsRefreshPromiseRef = useRef<Promise<UnreadCountsByThread> | null>(null)
   const unreadCountsRefreshTimeoutRef = useRef<number | null>(null)
   const lastUnreadFetchAtRef = useRef(0)
