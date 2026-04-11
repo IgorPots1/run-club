@@ -16,6 +16,11 @@ type RunRow = {
   created_at: string
 }
 
+type NormalizedRunRow = {
+  distanceKm: number
+  timestamp: number
+}
+
 type ChallengeRow = {
   id: string
   title: string | null
@@ -69,13 +74,7 @@ function toTimestamp(value: string | null | undefined) {
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
-function isRunInsideWindow(run: RunRow, periodStart: string | null, periodEnd: string | null) {
-  const runTimestamp = toTimestamp(run.created_at)
-
-  if (runTimestamp === null) {
-    return false
-  }
-
+function isTimestampInsideWindow(runTimestamp: number, periodStart: string | null, periodEnd: string | null) {
   const startTimestamp = toTimestamp(periodStart)
   const endTimestamp = toTimestamp(periodEnd)
 
@@ -147,6 +146,49 @@ async function resolveChallengePeriod(
   }
 
   return ((data as ResolvedChallengePeriodRow[] | null) ?? [])[0] ?? null
+}
+
+function getResolvedPeriodCacheKey(challenge: ChallengeRow, referenceAt: string) {
+  return [
+    challenge.period_type ?? '',
+    challenge.starts_at ?? '',
+    challenge.end_at ?? '',
+    referenceAt,
+  ].join('|')
+}
+
+function getWindowCacheKey(periodStart: string | null, periodEnd: string | null) {
+  return `${periodStart ?? ''}|${periodEnd ?? ''}`
+}
+
+function getWindowRunTotals(
+  normalizedRuns: NormalizedRunRow[],
+  periodStart: string | null,
+  periodEnd: string | null,
+  windowTotalsCache: Map<string, { distanceKm: number; runCount: number }>
+) {
+  const cacheKey = getWindowCacheKey(periodStart, periodEnd)
+  const cachedTotals = windowTotalsCache.get(cacheKey)
+
+  if (cachedTotals) {
+    return cachedTotals
+  }
+
+  const totals = normalizedRuns.reduce((accumulator, run) => {
+    if (!isTimestampInsideWindow(run.timestamp, periodStart, periodEnd)) {
+      return accumulator
+    }
+
+    accumulator.distanceKm += run.distanceKm
+    accumulator.runCount += 1
+    return accumulator
+  }, {
+    distanceKm: 0,
+    runCount: 0,
+  })
+
+  windowTotalsCache.set(cacheKey, totals)
+  return totals
 }
 
 function getChallengeStatus(
@@ -239,6 +281,18 @@ export async function loadChallengesOverviewServer(
 
     return (data as RunRow[] | null) ?? []
   })()
+  const normalizedRuns = runRows.flatMap((run) => {
+    const timestamp = toTimestamp(run.created_at)
+
+    if (timestamp === null) {
+      return []
+    }
+
+    return [{
+      distanceKm: toSafeNumber(run.distance_km),
+      timestamp,
+    } satisfies NormalizedRunRow]
+  })
 
   const [
     { data: challenges, error: challengesError },
@@ -267,30 +321,53 @@ export async function loadChallengesOverviewServer(
     const visibility = challenge.visibility ?? 'public'
     return visibility === 'public' || accessibleRestrictedChallengeIds.has(challenge.id)
   })
-  const resolvedPeriods = await Promise.all(
-    accessibleChallenges.map(async (challenge) => ({
-      challenge,
-      resolvedPeriod: await resolveChallengePeriod(supabaseAdmin, challenge, referenceAtIso),
-    }))
-  )
-
-  const challengeItems = resolvedPeriods.flatMap(({ challenge, resolvedPeriod }) => {
+  const candidateChallenges = accessibleChallenges.flatMap((challenge) => {
     if (!isSupportedPeriodType(challenge.period_type) || !isSupportedGoalUnit(challenge.goal_unit)) {
       return []
     }
 
     const goalTarget = toSafeNumber(challenge.goal_target)
 
-    if (goalTarget <= 0 || !resolvedPeriod?.is_eligible) {
+    if (goalTarget <= 0) {
+      return []
+    }
+
+    return [{
+      challenge,
+      goalTarget,
+    }]
+  })
+  const resolvedPeriodCache = new Map<string, Promise<ResolvedChallengePeriodRow | null>>()
+  const resolvedPeriods = await Promise.all(
+    candidateChallenges.map(async ({ challenge, goalTarget }) => {
+      const cacheKey = getResolvedPeriodCacheKey(challenge, referenceAtIso)
+      let resolvedPeriodPromise = resolvedPeriodCache.get(cacheKey)
+
+      if (!resolvedPeriodPromise) {
+        resolvedPeriodPromise = resolveChallengePeriod(supabaseAdmin, challenge, referenceAtIso)
+        resolvedPeriodCache.set(cacheKey, resolvedPeriodPromise)
+      }
+
+      return {
+        challenge,
+        goalTarget,
+        resolvedPeriod: await resolvedPeriodPromise,
+      }
+    }))
+  )
+  const windowTotalsCache = new Map<string, { distanceKm: number; runCount: number }>()
+
+  const challengeItems = resolvedPeriods.flatMap(({ challenge, goalTarget, resolvedPeriod }) => {
+    if (!resolvedPeriod?.is_eligible) {
       return []
     }
 
     const periodStart = resolvedPeriod.period_start ?? null
     const periodEnd = resolvedPeriod.period_end ?? null
-    const runsInWindow = runRows.filter((run) => isRunInsideWindow(run, periodStart, periodEnd))
+    const windowTotals = getWindowRunTotals(normalizedRuns, periodStart, periodEnd, windowTotalsCache)
     const progressValue = challenge.goal_unit === 'distance_km'
-      ? runsInWindow.reduce((sum, run) => sum + toSafeNumber(run.distance_km), 0)
-      : runsInWindow.length
+      ? windowTotals.distanceKm
+      : windowTotals.runCount
     const percent = Math.min((progressValue / goalTarget) * 100, 100)
     const isCompleted = progressValue >= goalTarget
     const status = getChallengeStatus(
@@ -302,6 +379,10 @@ export async function loadChallengesOverviewServer(
     )
 
     if (status === null) {
+      return []
+    }
+
+    if (!options?.includeCompleted && status === 'completed') {
       return []
     }
 
