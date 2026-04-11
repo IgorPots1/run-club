@@ -366,11 +366,16 @@ export async function loadChallengesOverviewServer(
       return []
     }
 
+    if (!isSupportedGoalUnit(challenge.goal_unit)) {
+      return []
+    }
+
     const periodType = challenge.period_type
+    const goalUnit = challenge.goal_unit
     const periodStart = resolvedPeriod.period_start ?? null
     const periodEnd = resolvedPeriod.period_end ?? null
     const windowTotals = getWindowRunTotals(normalizedRuns, periodStart, periodEnd, windowTotalsCache)
-    const progressValue = challenge.goal_unit === 'distance_km'
+    const progressValue = goalUnit === 'distance_km'
       ? windowTotals.distanceKm
       : windowTotals.runCount
     const percent = Math.min((progressValue / goalTarget) * 100, 100)
@@ -398,7 +403,7 @@ export async function loadChallengesOverviewServer(
       badge_url: challenge.badge_url ?? null,
       xp_reward: toSafeNumber(challenge.xp_reward),
       period_type: periodType,
-      goal_unit: challenge.goal_unit,
+      goal_unit: goalUnit,
       goal_target: goalTarget,
       progress_value: progressValue,
       percent: Number.isFinite(percent) ? percent : 0,
