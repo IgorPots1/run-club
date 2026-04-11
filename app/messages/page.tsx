@@ -44,6 +44,7 @@ import { getProfileDisplayName } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
 const MESSAGES_LIST_UNREAD_REFRESH_GUARD_MS = 4500
+const THREAD_REALTIME_UPDATE_DEBOUNCE_MS = 180
 
 function logMessagesListLoad(event: string, detail?: Record<string, number | string | boolean>) {
   if (process.env.NODE_ENV === 'production') {
@@ -139,6 +140,12 @@ type MessageThreadListItem = {
   unreadCount: number
   lastActivityAt: number
   avatar: ReactNode
+}
+
+type PendingThreadRealtimeUpdate = {
+  insertedMessageIds: string[]
+  shouldRefreshLatestMessage: boolean
+  shouldRefreshUnreadCounts: boolean
 }
 
 function getLastMessagePreview(
@@ -257,6 +264,9 @@ export default function MessagesPage() {
   const router = useRouter()
   const processedInsertedMessageIdsRef = useRef<Set<string>>(new Set())
   const currentThreadLastMessageIdByThreadIdRef = useRef<Record<string, string | null>>({})
+  const pendingThreadRealtimeUpdatesRef = useRef<Record<string, PendingThreadRealtimeUpdate>>({})
+  const threadRealtimeUpdateTimeoutByThreadIdRef = useRef<Record<string, number>>({})
+  const threadRealtimeUpdatePromiseByThreadIdRef = useRef<Record<string, Promise<void>>>({})
   const unreadCountsRefreshPromiseRef = useRef<Promise<UnreadCountsByThread> | null>(null)
   const unreadCountsRefreshTimeoutRef = useRef<number | null>(null)
   const lastUnreadFetchAtRef = useRef(0)
@@ -381,6 +391,132 @@ export default function MessagesPage() {
       void refreshUnreadCounts()
     }, delayMs)
   }, [refreshUnreadCounts])
+
+  const flushThreadRealtimeUpdate = useCallback(
+    async (threadId: string) => {
+      const pendingUpdate = pendingThreadRealtimeUpdatesRef.current[threadId]
+
+      if (!pendingUpdate) {
+        return
+      }
+
+      if (threadRealtimeUpdatePromiseByThreadIdRef.current[threadId]) {
+        const existingTimeout = threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId]
+        if (existingTimeout) {
+          window.clearTimeout(existingTimeout)
+        }
+
+        threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId] = window.setTimeout(() => {
+          delete threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId]
+          void flushThreadRealtimeUpdate(threadId)
+        }, THREAD_REALTIME_UPDATE_DEBOUNCE_MS)
+        return
+      }
+
+      delete pendingThreadRealtimeUpdatesRef.current[threadId]
+
+      const refreshPromise = (async () => {
+        try {
+          const shouldLoadLatestMessage =
+            pendingUpdate.shouldRefreshLatestMessage || pendingUpdate.insertedMessageIds.length !== 1
+
+          let nextLastMessage = shouldLoadLatestMessage
+            ? await loadLatestChatThreadMessageByThreadId(threadId)
+            : await loadChatThreadLastMessage(pendingUpdate.insertedMessageIds[0] ?? '')
+
+          if (!nextLastMessage && pendingUpdate.insertedMessageIds.length > 0) {
+            nextLastMessage = await loadLatestChatThreadMessageByThreadId(threadId)
+          }
+
+          if (nextLastMessage || pendingUpdate.shouldRefreshLatestMessage) {
+            applyThreadLastMessage(threadId, nextLastMessage)
+          }
+
+          if (pendingUpdate.shouldRefreshUnreadCounts) {
+            scheduleUnreadCountsRefresh()
+          }
+        } catch {
+          pendingUpdate.insertedMessageIds.forEach((messageId) => {
+            processedInsertedMessageIdsRef.current.delete(messageId)
+          })
+        } finally {
+          delete threadRealtimeUpdatePromiseByThreadIdRef.current[threadId]
+
+          if (pendingThreadRealtimeUpdatesRef.current[threadId]) {
+            const existingTimeout = threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId]
+            if (existingTimeout) {
+              window.clearTimeout(existingTimeout)
+            }
+
+            threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId] = window.setTimeout(() => {
+              delete threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId]
+              void flushThreadRealtimeUpdate(threadId)
+            }, THREAD_REALTIME_UPDATE_DEBOUNCE_MS)
+          }
+        }
+      })()
+
+      threadRealtimeUpdatePromiseByThreadIdRef.current[threadId] = refreshPromise
+      await refreshPromise
+    },
+    [applyThreadLastMessage, scheduleUnreadCountsRefresh]
+  )
+
+  const scheduleThreadRealtimeFlush = useCallback((threadId: string, delayMs = THREAD_REALTIME_UPDATE_DEBOUNCE_MS) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const existingTimeout = threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId]
+    if (existingTimeout) {
+      window.clearTimeout(existingTimeout)
+    }
+
+    threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId] = window.setTimeout(() => {
+      delete threadRealtimeUpdateTimeoutByThreadIdRef.current[threadId]
+      void flushThreadRealtimeUpdate(threadId)
+    }, delayMs)
+  }, [flushThreadRealtimeUpdate])
+
+  const queueThreadRealtimeUpdate = useCallback(
+    ({
+      threadId,
+      messageId,
+      refreshLatestMessage = false,
+      refreshUnreadCounts = false,
+    }: {
+      threadId: string
+      messageId?: string
+      refreshLatestMessage?: boolean
+      refreshUnreadCounts?: boolean
+    }) => {
+      const currentPendingUpdate = pendingThreadRealtimeUpdatesRef.current[threadId] ?? {
+        insertedMessageIds: [],
+        shouldRefreshLatestMessage: false,
+        shouldRefreshUnreadCounts: false,
+      }
+
+      if (messageId && !currentPendingUpdate.insertedMessageIds.includes(messageId)) {
+        currentPendingUpdate.insertedMessageIds.push(messageId)
+      }
+
+      if (currentPendingUpdate.insertedMessageIds.length > 1) {
+        currentPendingUpdate.shouldRefreshLatestMessage = true
+      }
+
+      if (refreshLatestMessage) {
+        currentPendingUpdate.shouldRefreshLatestMessage = true
+      }
+
+      if (refreshUnreadCounts) {
+        currentPendingUpdate.shouldRefreshUnreadCounts = true
+      }
+
+      pendingThreadRealtimeUpdatesRef.current[threadId] = currentPendingUpdate
+      scheduleThreadRealtimeFlush(threadId)
+    },
+    [scheduleThreadRealtimeFlush]
+  )
 
   /** Visibility/focus only: avoids duplicating unread RPC right after cache hydration or a fresh fetch. */
   const scheduleUnreadCountsRefreshFromWindowAttention = useCallback((delayMs = 120) => {
@@ -540,6 +676,12 @@ export default function MessagesPage() {
         window.clearTimeout(unreadCountsRefreshTimeoutRef.current)
         unreadCountsRefreshTimeoutRef.current = null
       }
+
+      Object.values(threadRealtimeUpdateTimeoutByThreadIdRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId)
+      })
+      threadRealtimeUpdateTimeoutByThreadIdRef.current = {}
+      pendingThreadRealtimeUpdatesRef.current = {}
     }
   }, [])
 
@@ -900,21 +1042,11 @@ export default function MessagesPage() {
             processedInsertedMessageIdsRef.current = new Set(recentIds)
           }
 
-          try {
-            const nextMessage = await loadChatThreadLastMessage(nextMessageId)
-
-            if (!nextMessage) {
-              return
-            }
-
-            applyThreadLastMessage(nextMessage.threadId, nextMessage)
-
-            if (nextMessageUserId && nextMessageUserId !== currentUserId) {
-              scheduleUnreadCountsRefresh()
-            }
-          } catch {
-            processedInsertedMessageIdsRef.current.delete(nextMessageId)
-          }
+          queueThreadRealtimeUpdate({
+            threadId: nextMessageThreadId,
+            messageId: nextMessageId,
+            refreshUnreadCounts: Boolean(nextMessageUserId && nextMessageUserId !== currentUserId),
+          })
         }
       )
       .on(
@@ -939,13 +1071,11 @@ export default function MessagesPage() {
             return
           }
 
-          try {
-            const nextLastMessage = await loadLatestChatThreadMessageByThreadId(updatedMessageThreadId)
-            applyThreadLastMessage(updatedMessageThreadId, nextLastMessage)
-            scheduleUnreadCountsRefresh()
-          } catch {
-            // Keep thread list realtime non-blocking if preview refresh fails.
-          }
+          queueThreadRealtimeUpdate({
+            threadId: updatedMessageThreadId,
+            refreshLatestMessage: true,
+            refreshUnreadCounts: true,
+          })
         }
       )
       .subscribe()
@@ -958,8 +1088,8 @@ export default function MessagesPage() {
     currentUserId,
     knownThreadIdsSignature,
     loadingCommon,
+    queueThreadRealtimeUpdate,
     realtimeReady,
-    scheduleUnreadCountsRefresh,
   ])
 
   async function handleOpenCoachChat() {
