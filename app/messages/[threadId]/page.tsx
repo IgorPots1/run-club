@@ -335,7 +335,7 @@ function ThreadOverlayHeader({
   isPlaceholder = false,
   rightSlot,
 }: {
-  title: string
+  title?: string
   isPlaceholder?: boolean
   rightSlot?: React.ReactNode
 }) {
@@ -351,14 +351,16 @@ function ThreadOverlayHeader({
         </div>
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
           <div className="flex justify-center px-2">
-            <p
-              className={`app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium backdrop-blur-xl dark:border-white/12 ${
-                isPlaceholder ? 'min-w-[7.5rem] text-transparent' : ''
-              }`}
-              aria-hidden={isPlaceholder}
-            >
-              {title}
-            </p>
+            {isPlaceholder ? (
+              <div
+                className="inline-flex h-[34px] min-w-[7.5rem] rounded-full border border-black/10 px-3 py-1 backdrop-blur-xl dark:border-white/12"
+                aria-hidden="true"
+              />
+            ) : (
+              <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium backdrop-blur-xl dark:border-white/12">
+                {title}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex h-11 w-11 shrink-0 items-center justify-end">
@@ -619,7 +621,7 @@ export default function MessageThreadPage() {
   }, [isUpdatingThreadMute, threadId, threadPushLevel])
 
   const isOverlayHeaderPlaceholder = loading || (!threadTitle && !error)
-  const overlayHeaderTitle = isOverlayHeaderPlaceholder ? 'Название чата' : threadTitle || 'Общение'
+  const overlayHeaderTitle = isOverlayHeaderPlaceholder ? undefined : threadTitle || 'Общение'
 
   useEffect(() => {
     if (loading || error || !currentUserId || !threadId) {
