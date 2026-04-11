@@ -413,6 +413,13 @@ export default function MessageThreadPage() {
   useEffect(() => {
     let isMounted = true
 
+    setThreadTitle('')
+    setThreadType(null)
+    setIsAnnouncementChannel(false)
+    setIsReadOnlyAnnouncement(false)
+    setLoading(true)
+    setError('')
+
     async function loadThreadPage() {
       try {
         const user = await getBootstrapUser()
@@ -611,8 +618,8 @@ export default function MessageThreadPage() {
     }
   }, [isUpdatingThreadMute, threadId, threadPushLevel])
 
-  const overlayHeaderTitle = threadTitle || (threadType === 'club' ? ' ' : 'Общение')
-  const isOverlayHeaderPlaceholder = threadType === 'club' && !threadTitle
+  const isOverlayHeaderPlaceholder = loading || (!threadTitle && !error)
+  const overlayHeaderTitle = isOverlayHeaderPlaceholder ? 'Название чата' : threadTitle || 'Общение'
 
   useEffect(() => {
     if (loading || error || !currentUserId || !threadId) {
