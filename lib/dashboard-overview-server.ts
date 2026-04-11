@@ -362,6 +362,11 @@ export async function loadChallengesOverviewServer(
       return []
     }
 
+    if (!isSupportedPeriodType(challenge.period_type)) {
+      return []
+    }
+
+    const periodType = challenge.period_type
     const periodStart = resolvedPeriod.period_start ?? null
     const periodEnd = resolvedPeriod.period_end ?? null
     const windowTotals = getWindowRunTotals(normalizedRuns, periodStart, periodEnd, windowTotalsCache)
@@ -371,7 +376,7 @@ export async function loadChallengesOverviewServer(
     const percent = Math.min((progressValue / goalTarget) * 100, 100)
     const isCompleted = progressValue >= goalTarget
     const status = getChallengeStatus(
-      challenge.period_type,
+      periodType,
       periodStart,
       periodEnd,
       referenceTimestamp,
@@ -392,7 +397,7 @@ export async function loadChallengesOverviewServer(
       description: challenge.description?.trim() || null,
       badge_url: challenge.badge_url ?? null,
       xp_reward: toSafeNumber(challenge.xp_reward),
-      period_type: challenge.period_type,
+      period_type: periodType,
       goal_unit: challenge.goal_unit,
       goal_target: goalTarget,
       progress_value: progressValue,
