@@ -180,16 +180,22 @@ function getClipboardInsertText(clipboardData: DataTransfer | null) {
     return ''
   }
 
-  const plainText = clipboardData.getData('text/plain')
-  if (plainText) {
-    return plainText
-  }
-
+  const plainText = clipboardData.getData('text/plain').trim()
   const uriList = clipboardData
     .getData('text/uri-list')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => line && !line.startsWith('#'))
+    .filter((line) => line && !line.startsWith('#'))
+    .join('\n')
+
+  if (plainText && uriList) {
+    return plainText.includes(uriList) ? plainText : `${plainText}\n${uriList}`
+  }
+
+  if (plainText) {
+    return plainText
+  }
+
   if (uriList) {
     return uriList
   }
