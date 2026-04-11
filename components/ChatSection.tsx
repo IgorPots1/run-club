@@ -3753,7 +3753,7 @@ function renderMessageTextWithLinks(text: string): ReactNode {
           href={part}
           target="_blank"
           rel="noopener noreferrer nofollow"
-          className="underline underline-offset-2"
+          className="no-underline break-words"
         >
           {part}
         </a>
