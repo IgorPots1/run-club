@@ -216,6 +216,90 @@ function DashboardChallengeCard({
   )
 }
 
+function DashboardChallengePlaceholderCard() {
+  return (
+    <div
+      className="app-card rounded-xl border p-4 shadow-sm"
+      role="status"
+      aria-live="polite"
+      aria-label="Загружаем челленджи"
+    >
+      <div className="flex items-start gap-3">
+        <div className="app-surface-muted flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ring-1 ring-black/10 dark:ring-white/15">
+          <div className="skeleton-line h-8 w-8 rounded-xl" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="app-text-primary text-sm font-medium">Загружаем челленджи…</p>
+          <div className="mt-2 skeleton-line h-5 w-36" />
+          <div className="mt-2 flex items-center gap-2">
+            <div className="skeleton-line h-6 w-24 rounded-full" />
+            <div className="skeleton-line h-4 w-20" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-3">
+        <div className="skeleton-line h-2 w-full" />
+        <div className="mt-2 space-y-2">
+          <div className="skeleton-line h-4 w-44" />
+          <div className="skeleton-line h-4 w-40" />
+          <div className="skeleton-line h-4 w-32" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DashboardSecondaryCardPlaceholder({
+  title,
+}: {
+  title: string
+}) {
+  return (
+    <div
+      className="app-card min-h-[188px] rounded-xl border p-4 shadow-sm"
+      role="status"
+      aria-live="polite"
+      aria-label={title}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="skeleton-line h-6 w-44" />
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <div className="skeleton-line h-3 w-12" />
+              <div className="skeleton-line h-5 w-14" />
+            </div>
+            <div className="space-y-2">
+              <div className="skeleton-line h-3 w-10" />
+              <div className="skeleton-line h-5 w-16" />
+            </div>
+            <div className="space-y-2">
+              <div className="skeleton-line h-3 w-12" />
+              <div className="skeleton-line h-5 w-20" />
+            </div>
+          </div>
+          <div className="mt-4 skeleton-line h-4 w-36" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DashboardSecondaryEmptyCard({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
+  return (
+    <section className="app-card min-h-[188px] rounded-xl border p-4 shadow-sm">
+      <h2 className="app-text-primary text-lg font-semibold">{title}</h2>
+      <p className="app-text-secondary mt-3 text-sm">{description}</p>
+    </section>
+  )
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
@@ -337,6 +421,7 @@ export default function DashboardPageClient({
 
   const {
     data: latestFinalizedRaceWeek,
+    isLoading: latestFinalizedRaceWeekLoading,
   } = useSWR<RaceWeekSummary | null>(
     latestFinalizedRaceWeekKey,
     () => loadLatestFinalizedRaceWeek(),
@@ -353,6 +438,7 @@ export default function DashboardPageClient({
 
   const {
     data: lastWeekResults,
+    isLoading: lastWeekResultsLoading,
   } = useSWR<LastWeekResultsCardData>(
     lastWeekResultsKey,
     ([, weekId, userId]: readonly [string, string, string]) =>
@@ -454,6 +540,9 @@ export default function DashboardPageClient({
         badgeText: lastWeekResults.badgeText,
       }
     : null
+  const showLastWeekResultsPlaceholder = !shouldLoadSecondaryContent
+    || latestFinalizedRaceWeekLoading
+    || (Boolean(latestFinalizedRaceWeek?.id) && lastWeekResultsLoading)
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -560,7 +649,7 @@ export default function DashboardPageClient({
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </Link>
           )}
-          <section className={`mb-4 ${showChallengesPlaceholder ? 'min-h-[236px]' : ''}`}>
+          <section className="mb-4 min-h-[236px]">
             <div className="mb-3 flex items-center gap-2">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
@@ -568,34 +657,7 @@ export default function DashboardPageClient({
               </p>
             </div>
             {showChallengesPlaceholder ? (
-              <div
-                className="app-card rounded-xl border p-4 shadow-sm"
-                role="status"
-                aria-live="polite"
-                aria-label="Загружаем челленджи"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="app-surface-muted flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ring-1 ring-black/10 dark:ring-white/15">
-                    <div className="skeleton-line h-8 w-8 rounded-xl" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="app-text-primary text-sm font-medium">Загружаем челленджи…</p>
-                    <div className="mt-2 skeleton-line h-5 w-36" />
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="skeleton-line h-6 w-24 rounded-full" />
-                      <div className="skeleton-line h-4 w-20" />
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="skeleton-line h-2 w-full" />
-                  <div className="mt-2 space-y-2">
-                    <div className="skeleton-line h-4 w-44" />
-                    <div className="skeleton-line h-4 w-40" />
-                    <div className="skeleton-line h-4 w-32" />
-                  </div>
-                </div>
-              </div>
+              <DashboardChallengePlaceholderCard />
             ) : featuredChallenge ? (
               hasMultipleActiveChallenges ? (
                 <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -621,7 +683,16 @@ export default function DashboardPageClient({
                 <p className="app-text-secondary mt-3 text-sm">Все активные челленджи уже выполнены</p>
                 <p className="app-text-secondary mt-2 text-sm">Открой достижения и новые цели</p>
               </Link>
-            ) : null}
+            ) : (
+              <section className="app-card rounded-xl border p-4 shadow-sm">
+                <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                  <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                  <span>Челленджи</span>
+                </p>
+                <p className="app-text-secondary mt-3 text-sm">Сейчас нет активных челленджей.</p>
+                <p className="app-text-secondary mt-2 text-sm">Загляни в раздел челленджей, чтобы посмотреть доступные цели и достижения.</p>
+              </section>
+            )}
           </section>
           {stats && levelProgress ? (
             <button
@@ -687,47 +758,58 @@ export default function DashboardPageClient({
               compact
             />
           </div>
-          {lastWeekResultsCard ? (
-            <Link href={`/race/history/${lastWeekResultsCard.weekId}`} className={dashboardClickableCardClass}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="app-text-primary text-lg font-semibold">🏆 Итоги прошлой недели</h2>
-                  {lastWeekResultsCard.userResult ? (
-                    <>
-                      <div className="mt-3 grid grid-cols-3 gap-3">
-                        <div>
-                          <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
-                          <p className="app-text-primary mt-1 text-lg font-semibold">#{lastWeekResultsCard.userResult.rank}</p>
+          <section className="mb-4 min-h-[188px]">
+            {showLastWeekResultsPlaceholder ? (
+              <DashboardSecondaryCardPlaceholder title="Загружаем итоги прошлой недели" />
+            ) : lastWeekResultsCard ? (
+              <Link href={`/race/history/${lastWeekResultsCard.weekId}`} className={dashboardClickableCardClass}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="app-text-primary text-lg font-semibold">🏆 Итоги прошлой недели</h2>
+                    {lastWeekResultsCard.userResult ? (
+                      <>
+                        <div className="mt-3 grid grid-cols-3 gap-3">
+                          <div>
+                            <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
+                            <p className="app-text-primary mt-1 text-lg font-semibold">#{lastWeekResultsCard.userResult.rank}</p>
+                          </div>
+                          <div>
+                            <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
+                            <p className="app-text-primary mt-1 text-lg font-semibold">{lastWeekResultsCard.userResult.totalXp}</p>
+                          </div>
+                          <div>
+                            <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
+                            <p className="app-text-primary mt-1 text-sm font-semibold">{lastWeekResultsCard.badgeText}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
-                          <p className="app-text-primary mt-1 text-lg font-semibold">{lastWeekResultsCard.userResult.totalXp}</p>
-                        </div>
-                        <div>
-                          <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
-                          <p className="app-text-primary mt-1 text-sm font-semibold">{lastWeekResultsCard.badgeText}</p>
-                        </div>
-                      </div>
-                      {lastWeekResultsCard.userResult.raceBonusXp > 0 ? (
-                        <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${lastWeekResultsCard.userResult.raceBonusXp} XP`}</p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="app-text-secondary mt-3 text-sm">Ты не участвовал</p>
-                  )}
+                        {lastWeekResultsCard.userResult.raceBonusXp > 0 ? (
+                          <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${lastWeekResultsCard.userResult.raceBonusXp} XP`}</p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="app-text-secondary mt-3 text-sm">Ты не участвовал</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ) : null}
-          <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
-          <InfiniteWorkoutFeed
-            currentUserId={initialUser.id}
-            enabled={shouldLoadSecondaryContent}
-            pageSize={10}
-            scrollRestorationKey="dashboard-feed"
-            emptyTitle="Пока нет тренировок"
-            showLevelSubtitle
-          />
+              </Link>
+            ) : (
+              <DashboardSecondaryEmptyCard
+                title="🏆 Итоги прошлой недели"
+                description="Итоги появятся после завершения недели гонки."
+              />
+            )}
+          </section>
+          <section className="min-h-[284px]">
+            <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
+            <InfiniteWorkoutFeed
+              currentUserId={initialUser.id}
+              enabled={shouldLoadSecondaryContent}
+              pageSize={10}
+              scrollRestorationKey="dashboard-feed"
+              emptyTitle="Пока нет тренировок"
+              showLevelSubtitle
+            />
+          </section>
         </div>
       </div>
       <LevelOverviewSheet
