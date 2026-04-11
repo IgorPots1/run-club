@@ -15,6 +15,13 @@ type NavbarUser = {
   email: string | null
 }
 
+const CORE_NAV_PREFETCH_ROUTES = new Set([
+  '/dashboard',
+  '/activity',
+  '/messages',
+  '/profile',
+])
+
 export default function Navbar({ initialUser }: { initialUser: NavbarUser | null }) {
   const router = useRouter()
   const [user, setUser] = useState<NavbarUser | null>(initialUser)
@@ -72,14 +79,14 @@ export default function Navbar({ initialUser }: { initialUser: NavbarUser | null
   return (
     <nav className="flex items-center justify-between border-b p-4">
       <div className="flex gap-4">
-          <Link href="/dashboard" prefetch={false}>Главная</Link>
-          <Link href="/activity" prefetch={false}>Активность</Link>
+          <Link href="/dashboard" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/dashboard')}>Главная</Link>
+          <Link href="/activity" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/activity')}>Активность</Link>
           <Link href="/runs" prefetch={false}>Тренировки</Link>
           <Link href="/leaderboard" prefetch={false}>Рейтинг</Link>
           <Link href="/challenges" prefetch={false}>Челленджи</Link>
           <Link
             href="/messages"
-            prefetch={false}
+            prefetch={CORE_NAV_PREFETCH_ROUTES.has('/messages')}
             onPointerDown={() => {
               setIsUnreadTrackingEnabled(true)
               void initializeRealtimeTotalUnreadCount()
@@ -91,7 +98,7 @@ export default function Navbar({ initialUser }: { initialUser: NavbarUser | null
             <UnreadBadge count={totalUnreadCount} />
           </Link>
           <Link href="/feed" prefetch={false}>Лента</Link>
-          <Link href="/profile" prefetch={false}>Профиль</Link>
+          <Link href="/profile" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/profile')}>Профиль</Link>
       </div>
       <button onClick={handleLogout}>Выйти</button>
     </nav>

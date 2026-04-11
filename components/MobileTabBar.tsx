@@ -19,6 +19,14 @@ type TabItem = {
   icon: React.ReactNode
 }
 
+const CORE_TAB_PREFETCH_ROUTES = new Set([
+  '/dashboard',
+  '/activity',
+  '/club',
+  '/messages',
+  '/profile',
+])
+
 function TabIcon({ children }: { children: React.ReactNode }) {
   return <span className="flex h-5 w-5 items-center justify-center">{children}</span>
 }
@@ -165,7 +173,7 @@ function VisibleMobileTabBar({ pathname }: { pathname: string }) {
           <Link
             key={tab.href}
             href={tab.href}
-            prefetch={false}
+            prefetch={CORE_TAB_PREFETCH_ROUTES.has(tab.href)}
             onPointerDown={() => handleTabPrefetch(tab.href)}
             onClick={(event) => handleTabClick(event, tab.isActive)}
             className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors after:absolute after:left-0 after:right-0 after:top-full after:h-[calc(0.35rem+env(safe-area-inset-bottom))] after:content-[''] ${
