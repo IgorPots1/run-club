@@ -2320,7 +2320,6 @@ function ReactionChip({
   reactionKey,
   emoji,
   count,
-  reactors,
   isSelected,
   disabled,
   shouldBurst,
@@ -2331,7 +2330,6 @@ function ReactionChip({
   reactionKey: string
   emoji: string
   count: number
-  reactors: { userId: string; displayName: string; avatarUrl: string | null }[]
   isSelected: boolean
   disabled: boolean
   shouldBurst: boolean
@@ -2374,8 +2372,6 @@ function ReactionChip({
 
   const isBursting = burstPhase !== 'idle'
   const shouldOpenDetails = count > 1 && Boolean(onOpenDetails)
-  const visibleReactors = compact ? [] : reactors.slice(0, Math.min(2, reactors.length))
-  const singleReactor = !compact && count === 1 ? reactors[0] ?? null : null
 
   return (
     <button
@@ -2392,11 +2388,11 @@ function ReactionChip({
       onTouchStart={(event) => event.stopPropagation()}
       disabled={disabled}
       className={`relative inline-flex items-center overflow-visible rounded-full font-medium transition-transform duration-200 ease-out ${
-        compact ? 'gap-0.5 px-1.5 py-[2px] text-[10px]' : 'min-h-[22px] gap-0.5 px-2 py-[2px] text-[10px]'
+        compact ? 'gap-1 px-1.5 py-[2px] text-[10px]' : 'min-h-[22px] gap-1 px-2 py-[3px] text-[11px]'
       } ${
         isSelected
           ? 'bg-black/[0.08] text-black dark:bg-white/[0.16] dark:text-white'
-          : 'bg-black/[0.04] text-black/75 dark:bg-white/[0.08] dark:text-white/75'
+          : 'bg-black/[0.05] text-black/80 dark:bg-white/[0.09] dark:text-white/80'
       } ${
         disabled
           ? 'cursor-default'
@@ -2417,31 +2413,8 @@ function ReactionChip({
       >
         {emoji}
       </span>
-      {singleReactor ? (
-        <TinyUserAvatar
-          avatarUrl={singleReactor.avatarUrl}
-          displayName={singleReactor.displayName}
-          className="h-4 w-4"
-        />
-      ) : visibleReactors.length > 0 ? (
-        <span className="relative mr-0.5 flex h-4 w-5.5 shrink-0 items-center">
-          {visibleReactors.map((reactor, index) => (
-            <span
-              key={`${reactionKey}:${reactor.userId}`}
-              className="absolute top-1/2 -translate-y-1/2"
-              style={{ left: `${index * 7}px` }}
-            >
-              <TinyUserAvatar
-                avatarUrl={reactor.avatarUrl}
-                displayName={reactor.displayName}
-                className="h-4 w-4"
-              />
-            </span>
-          ))}
-        </span>
-      ) : null}
-      <span className="relative z-[2]">{emoji}</span>
-      <span className="relative z-[2]">{count}</span>
+      <span className="relative z-[2] leading-none">{emoji}</span>
+      <span className="relative z-[2] tabular-nums leading-none">{count}</span>
     </button>
   )
 }
@@ -3695,7 +3668,6 @@ function ChatMessageBodyComponent({
                 reactionKey={reactionKey}
                 emoji={reaction.emoji}
                 count={reaction.count}
-                reactors={reaction.reactors}
                 isSelected={isSelected}
                 disabled={!onReactionToggle}
                 shouldBurst={animatedReactionKey === reactionKey}

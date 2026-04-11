@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatMessageItem } from '@/lib/chat'
@@ -25,8 +24,7 @@ const SAFE_PADDING = 12
 const REACTION_BAR_HEIGHT = 44
 const REACTION_BAR_WIDTH = 288
 const ACTION_CARD_WIDTH = 228
-const PREVIEW_HEIGHT = 68
-const ACTION_ROW_HEIGHT = 40
+const ACTION_ROW_HEIGHT = 36
 const FLOATING_GROUP_GAP = 8
 const FLOATING_GROUP_OFFSET = 8
 const ACTION_ANIMATION_DURATION_MS = 170
@@ -35,26 +33,6 @@ const SWIPE_DISMISS_THRESHOLD_PX = 60
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
-}
-
-function AvatarFallback() {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 20a6 6 0 0 0-12 0" />
-        <circle cx="12" cy="8" r="4" />
-      </svg>
-    </span>
-  )
 }
 
 export default function ChatMessageActions({
@@ -182,10 +160,9 @@ export default function ChatMessageActions({
 
   const viewportWidth = viewportSize.width
   const viewportHeight = viewportSize.height
-  const previewText = message.previewText || message.text || 'Сообщение'
   const reactionBarWidth = Math.min(REACTION_BAR_WIDTH, viewportWidth - (SAFE_PADDING * 2))
   const actionCardWidth = Math.min(ACTION_CARD_WIDTH, viewportWidth - (SAFE_PADDING * 2))
-  const estimatedCardHeight = PREVIEW_HEIGHT + actionCount * ACTION_ROW_HEIGHT + 12
+  const estimatedCardHeight = actionCount * ACTION_ROW_HEIGHT + 10
   const totalFloatingGroupHeight = reactionBarHeight > 0
     ? reactionBarHeight + FLOATING_GROUP_GAP + estimatedCardHeight
     : estimatedCardHeight
@@ -382,42 +359,12 @@ export default function ChatMessageActions({
           }}
         >
           <div className="app-card flex max-h-full flex-col overflow-hidden rounded-[18px] border border-black/[0.05] shadow-sm dark:border-white/10">
-            <div className="flex items-start gap-2 border-b border-black/[0.05] px-2.5 py-1.5 dark:border-white/10">
-              {message.avatarUrl ? (
-                <Image
-                  src={message.avatarUrl}
-                  alt=""
-                  width={32}
-                  height={32}
-                  className="h-8 w-8 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <AvatarFallback />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-                  <p className="app-text-primary min-w-0 break-words text-sm font-semibold">{message.displayName}</p>
-                  <p className="app-text-secondary text-xs">{message.createdAtLabel}</p>
-                </div>
-                <p
-                  className="app-text-secondary mt-0.5 text-sm leading-5"
-                  style={{
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {previewText}
-                </p>
-              </div>
-            </div>
             <div className="overflow-y-auto overscroll-contain p-1">
               {canEditMessage ? (
                 <button
                   type="button"
                   onClick={handleEdit}
-                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium"
+                  className="app-text-primary flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium"
                 >
                   Редактировать
                 </button>
@@ -427,7 +374,7 @@ export default function ChatMessageActions({
                 onClick={() => {
                   void handleCopy()
                 }}
-                className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium"
+                className="app-text-primary flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium"
               >
                 Копировать
               </button>
@@ -435,7 +382,7 @@ export default function ChatMessageActions({
                 <button
                   type="button"
                   onClick={handleReply}
-                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium"
+                  className="app-text-primary flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium"
                 >
                   Ответить
                 </button>
@@ -444,7 +391,7 @@ export default function ChatMessageActions({
                 <button
                   type="button"
                   onClick={handleViewReaders}
-                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium"
+                  className="app-text-primary flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium"
                 >
                   Просмотрели
                 </button>
@@ -455,7 +402,7 @@ export default function ChatMessageActions({
                   onClick={() => {
                     void handleDelete()
                   }}
-                  className="flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium text-red-500"
+                  className="flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium text-red-500"
                 >
                   Удалить
                 </button>
@@ -463,7 +410,7 @@ export default function ChatMessageActions({
                 <button
                   type="button"
                   onClick={handleOpenProfile}
-                  className="app-text-primary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium"
+                  className="app-text-primary flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium"
                 >
                   Открыть профиль
                 </button>
@@ -471,7 +418,7 @@ export default function ChatMessageActions({
               <button
                 type="button"
                 onClick={requestCloseWithAnimation}
-                className="app-text-secondary flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-sm font-medium"
+                className="app-text-secondary flex min-h-9 w-full items-center rounded-xl px-2.5 py-1.5 text-left text-sm font-medium"
               >
                 Отмена
               </button>
