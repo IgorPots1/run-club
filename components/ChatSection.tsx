@@ -728,9 +728,9 @@ export function ChatLayoutDebugOverlay({
 }
 
 const LONG_PRESS_MS = 450
-const INITIAL_CHAT_MESSAGE_LIMIT = 10
+const INITIAL_CHAT_MESSAGE_LIMIT = 30
 const OLDER_CHAT_BATCH_LIMIT = 10
-const AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES = 12
+const AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES = 1
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
 const SWIPE_REPLY_TRIGGER_PX = 80
@@ -6086,6 +6086,9 @@ export default function ChatSection({
       messages.length === 0 ||
       !hasMoreOlderMessages ||
       !currentUserId ||
+      targetMessageId ||
+      initialSavedScrollRestoreRef.current ||
+      pendingInitialSavedScrollRestore ||
       !oldestLoadedMessageCreatedAt ||
       !oldestLoadedMessageId
     ) {
@@ -6147,6 +6150,8 @@ export default function ChatSection({
     messages.length,
     oldestLoadedMessageCreatedAt,
     oldestLoadedMessageId,
+    pendingInitialSavedScrollRestore,
+    targetMessageId,
     threadId,
   ])
 
