@@ -352,10 +352,12 @@ function ThreadOverlayHeader({
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
           <div className="flex justify-center px-2">
             {isPlaceholder ? (
-              <div
-                className="inline-flex h-[34px] min-w-[7.5rem] rounded-full border border-black/10 px-3 py-1 backdrop-blur-xl dark:border-white/12"
+              <p
+                className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium text-transparent backdrop-blur-xl dark:border-white/12"
                 aria-hidden="true"
-              />
+              >
+                &nbsp;
+              </p>
             ) : (
               <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium backdrop-blur-xl dark:border-white/12">
                 {title}

@@ -3894,6 +3894,7 @@ export default function ChatSection({
   const initialSavedScrollRestoreRef = useRef<SavedChatThreadScrollState | null>(null)
   const initialSavedScrollRestorePreviousOverflowAnchorRef = useRef('')
   const initialSavedScrollRestoreActiveRef = useRef(false)
+  const initialStableScrollHandledRef = useRef(false)
   const threadScrollStateSaveFrameRef = useRef<number | null>(null)
   const isLoadingOlderMessagesRef = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -5212,6 +5213,7 @@ export default function ChatSection({
 
     deactivateInitialBottomLock('thread-reset')
     clearInitialSavedScrollRestore()
+    initialStableScrollHandledRef.current = false
     initialSavedScrollRestoreRef.current = targetMessageId
       ? null
       : getSavedChatThreadScrollState(threadId)
@@ -5253,7 +5255,7 @@ export default function ChatSection({
 
     setPendingInitialScroll(false)
     setPendingInitialSavedScrollRestore(false)
-    setHasDeferredInitialSettle(shouldApplyBootstrapFallback)
+    setHasDeferredInitialSettle(false)
     pendingAutoScrollToBottomRef.current = false
     setPendingNewMessagesCount(0)
     setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? true)
@@ -5644,10 +5646,8 @@ export default function ChatSection({
         }
         setError('')
         setHasMoreOlderMessages(cachedRecentMessages?.hasMoreOlderMessages ?? (initialMessages.length === INITIAL_CHAT_MESSAGE_LIMIT))
-        if (!hasCachedMessages) {
-          setPendingInitialScroll(false)
-          setHasDeferredInitialSettle(initialMessages.length > 0)
-        }
+        setPendingInitialScroll(false)
+        setHasDeferredInitialSettle(false)
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить чат')
@@ -5666,35 +5666,40 @@ export default function ChatSection({
     }
   }, [applyPendingMediaTasksToMessages, currentUserId, isThreadOpenDebugActive, keepLatestRenderedMessages, logThreadOpenMessageMutation, threadId])
 
-  useEffect(() => {
-    if (loading || !hasDeferredInitialSettle) {
+  useLayoutEffect(() => {
+    if (loading || messages.length === 0 || targetMessageId) {
       return
     }
 
-    if (messages.length === 0) {
+    if (initialSavedScrollRestoreRef.current) {
+      initialStableScrollHandledRef.current = true
+      if (!pendingInitialSavedScrollRestore) {
+        setPendingInitialSavedScrollRestore(true)
+      }
       return
     }
 
-    if (!targetMessageId && initialSavedScrollRestoreRef.current) {
-      pushChatLayoutDebugEvent('RESTORE_START', {
-        phase: 'deferred-initial-settle',
-        savedScrollTop: initialSavedScrollRestoreRef.current.scrollTop,
-        anchorMessageId: initialSavedScrollRestoreRef.current.anchorMessageId,
-      })
-      setPendingInitialSavedScrollRestore(true)
-    } else {
-      pushChatLayoutDebugEvent('INITIAL_SCROLL_PENDING', {
-        phase: 'deferred-initial-settle',
-        messagesCount: messages.length,
-      })
-      setPendingInitialScroll(true)
+    if (initialStableScrollHandledRef.current) {
+      return
     }
-    setHasDeferredInitialSettle(false)
+
+    initialStableScrollHandledRef.current = true
+    pushChatLayoutDebugEvent('INITIAL_SCROLL_START', {
+      top: scrollContainerRef.current?.scrollTop ?? null,
+      scrollHeight: scrollContainerRef.current?.scrollHeight ?? null,
+      clientHeight: scrollContainerRef.current?.clientHeight ?? null,
+      phase: 'single-pass',
+    })
+    scrollPageToBottom('auto', 'initial-open')
+    setShowScrollToBottomButton(false)
+    captureChatLayoutDebugSnapshot()
   }, [
-    pushChatLayoutDebugEvent,
-    hasDeferredInitialSettle,
+    captureChatLayoutDebugSnapshot,
     loading,
     messages.length,
+    pendingInitialSavedScrollRestore,
+    pushChatLayoutDebugEvent,
+    scrollPageToBottom,
     targetMessageId,
   ])
 
@@ -8193,6 +8198,44 @@ export default function ChatSection({
     )
   }
 
+  function renderLoadingMessages() {
+    return (
+      <section className="flex flex-1 flex-col px-1 py-1">
+        <div className="space-y-4">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="flex items-start gap-3">
+              <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex gap-2">
+                  <div className="skeleton-line h-4 w-24" />
+                  <div className="skeleton-line h-4 w-28" />
+                </div>
+                <div className="skeleton-line h-4 w-full" />
+                <div className="skeleton-line h-4 w-3/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  function renderComposerPlaceholder() {
+    return (
+      <div aria-hidden="true">
+        <section className="min-h-[58px] rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/90 px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+          <div className="flex min-h-[42px] items-end gap-2">
+            <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+            <div className="flex h-10 min-w-0 flex-1 items-center rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]">
+              <div className="skeleton-line h-4 w-24" />
+            </div>
+            <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   function renderComposer() {
     if (isReadOnlyAnnouncement) {
       return null
@@ -8390,37 +8433,7 @@ export default function ChatSection({
     )
   }
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-3xl px-3 pb-4 pt-4 md:px-5 md:pb-5 md:pt-4">
-        {showTitle ? (
-          <div className="mb-4 space-y-1">
-            <h1 className="app-text-primary text-2xl font-bold">{pageTitle}</h1>
-            <p className="app-text-secondary text-sm">{pageDescription}</p>
-          </div>
-        ) : null}
-        <div className="px-0 py-1">
-          <div className="space-y-4">
-            {[0, 1, 2].map((item) => (
-              <div key={item} className="flex items-start gap-3">
-                <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex gap-2">
-                    <div className="skeleton-line h-4 w-24" />
-                    <div className="skeleton-line h-4 w-28" />
-                  </div>
-                  <div className="skeleton-line h-4 w-full" />
-                  <div className="skeleton-line h-4 w-3/4" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!currentUserId) {
+  if (!loading && !currentUserId) {
     return (
       <div className="mx-auto flex min-h-[240px] max-w-3xl items-center justify-center px-3 py-4 md:px-5">
         <Link href="/login" className="text-sm underline">
@@ -8515,7 +8528,9 @@ export default function ChatSection({
                 showTitle ? '' : 'pt-4'
               }`}
             >
-              {error ? (
+              {loading ? (
+                renderLoadingMessages()
+              ) : error ? (
                 <section className="flex flex-1 p-1">
                   <p className="text-sm text-red-600">{error}</p>
                 </section>
@@ -8557,7 +8572,7 @@ export default function ChatSection({
               )}
             </div>
           </div>
-          {!isReadOnlyAnnouncement ? (
+          {(!isReadOnlyAnnouncement || loading) ? (
             <div
               ref={composerWrapperRef}
               data-chat-composer-wrapper="true"
@@ -8566,7 +8581,7 @@ export default function ChatSection({
                 isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
               }`}
             >
-              {renderComposer()}
+              {loading ? renderComposerPlaceholder() : renderComposer()}
             </div>
           ) : null}
         </>
