@@ -8,6 +8,7 @@ import ChallengesSection from '@/components/ChallengesSection'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import { getBootstrapUser } from '@/lib/auth'
+import { loadChallengesOverview, type ChallengesOverview } from '@/lib/challenges'
 import { formatAveragePace, formatDistanceKm } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
@@ -118,12 +119,17 @@ export default function ClubPage() {
   const [statsPeriod, setStatsPeriod] = useState<ClubStatsPeriod>('week')
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [challengesOverview, setChallengesOverview] = useState<ChallengesOverview | null>(null)
+  const [challengesLoading, setChallengesLoading] = useState(true)
+  const [challengesError, setChallengesError] = useState('')
   const [leaderboard, setLeaderboard] = useState<WeeklyXpLeaderboard | null>(null)
   const [clubStats, setClubStats] = useState<ClubStatsByPeriod | null>(null)
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [leaderboardError, setLeaderboardError] = useState('')
   const [statsError, setStatsError] = useState('')
+  const [hasLoadedChallengesTab, setHasLoadedChallengesTab] = useState(false)
+  const [hasLoadedLeaderboardTab, setHasLoadedLeaderboardTab] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -155,17 +161,69 @@ export default function ClubPage() {
 
   useEffect(() => {
     if (!user) {
+      setChallengesOverview(null)
+      setChallengesLoading(false)
+      setChallengesError('')
+      setHasLoadedChallengesTab(false)
       setLeaderboard(null)
       setClubStats(null)
       setLeaderboardLoading(false)
       setStatsLoading(false)
+      setLeaderboardError('')
+      setStatsError('')
+      setHasLoadedLeaderboardTab(false)
+      return
+    }
+
+    if (activeTab !== 'challenges' || hasLoadedChallengesTab) {
+      return
+    }
+
+    let isMounted = true
+
+    async function loadChallengesTabData() {
+      setChallengesError('')
+      setChallengesLoading(true)
+
+      try {
+        const nextOverview = await loadChallengesOverview()
+
+        if (!isMounted) return
+
+        setChallengesOverview(nextOverview)
+      } catch {
+        if (!isMounted) return
+
+        setChallengesOverview(null)
+        setChallengesError('Не удалось загрузить челленджи')
+      } finally {
+        if (isMounted) {
+          setChallengesLoading(false)
+          setHasLoadedChallengesTab(true)
+        }
+      }
+    }
+
+    void loadChallengesTabData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeTab, hasLoadedChallengesTab, user])
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    if (activeTab !== 'leaderboard' || hasLoadedLeaderboardTab) {
       return
     }
 
     const userId = user.id
     let isMounted = true
 
-    async function loadClubData() {
+    async function loadLeaderboardTabData() {
       setLeaderboardError('')
       setStatsError('')
       setLeaderboardLoading(true)
@@ -230,16 +288,17 @@ export default function ClubPage() {
         if (isMounted) {
           setLeaderboardLoading(false)
           setStatsLoading(false)
+          setHasLoadedLeaderboardTab(true)
         }
       }
     }
 
-    void loadClubData()
+    void loadLeaderboardTabData()
 
     return () => {
       isMounted = false
     }
-  }, [user])
+  }, [activeTab, hasLoadedLeaderboardTab, user])
 
   if (!authLoading && !user) {
     return (
@@ -296,7 +355,12 @@ export default function ClubPage() {
       </div>
 
       {activeTab === 'challenges' ? (
-        <ChallengesSection showTitle={false} />
+        <ChallengesSection
+          showTitle={false}
+          overview={challengesOverview}
+          loading={authLoading || challengesLoading}
+          error={challengesError}
+        />
       ) : (
         <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
           {statsLoading ? (

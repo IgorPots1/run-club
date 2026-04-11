@@ -14,6 +14,9 @@ import { formatDistanceKm } from '@/lib/format'
 
 type ChallengesSectionProps = {
   showTitle?: boolean
+  overview?: ChallengesOverview | null
+  loading?: boolean
+  error?: string
 }
 
 const challengeTypeLabel: Record<ChallengeListItem['period_type'], string> = {
@@ -151,19 +154,30 @@ function ChallengeCard({ item }: { item: ChallengeListItem }) {
 
 export default function ChallengesSection({
   showTitle = true,
+  overview,
+  loading,
+  error,
 }: ChallengesSectionProps) {
   const router = useRouter()
-  const [overview, setOverview] = useState<ChallengesOverview>(buildEmptyOverview)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [internalOverview, setInternalOverview] = useState<ChallengesOverview>(buildEmptyOverview)
+  const [internalLoading, setInternalLoading] = useState(true)
+  const [internalError, setInternalError] = useState('')
   const [activeExpanded, setActiveExpanded] = useState(true)
   const [upcomingExpanded, setUpcomingExpanded] = useState(false)
+  const isControlledByParent =
+    typeof overview !== 'undefined' ||
+    typeof loading !== 'undefined' ||
+    typeof error !== 'undefined'
 
   useEffect(() => {
+    if (isControlledByParent) {
+      return
+    }
+
     let isMounted = true
 
     async function loadData() {
-      setError('')
+      setInternalError('')
 
       try {
         if (!isMounted) return
@@ -179,15 +193,15 @@ export default function ChallengesSection({
 
         if (!isMounted) return
 
-        setOverview(nextOverview)
+        setInternalOverview(nextOverview)
       } catch (loadError) {
         console.error('[challenges] failed to load challenge section', loadError)
         if (isMounted) {
-          setError('Не удалось загрузить челленджи')
+          setInternalError('Не удалось загрузить челленджи')
         }
       } finally {
         if (isMounted) {
-          setLoading(false)
+          setInternalLoading(false)
         }
       }
     }
@@ -197,18 +211,21 @@ export default function ChallengesSection({
     return () => {
       isMounted = false
     }
-  }, [router])
+  }, [isControlledByParent, router])
 
-  const activeItems = overview.active
-  const upcomingItems = overview.upcoming
+  const resolvedOverview = overview ?? internalOverview
+  const resolvedLoading = loading ?? internalLoading
+  const resolvedError = error ?? internalError
+  const activeItems = resolvedOverview.active
+  const upcomingItems = resolvedOverview.upcoming
   return (
     <div className="mx-auto max-w-xl p-4 md:max-w-none">
       {showTitle ? <h1 className="app-text-primary mb-4 text-2xl font-bold">Челленджи</h1> : null}
-      {loading ? (
+      {resolvedLoading ? (
         <p>Загрузка...</p>
       ) : (
         <>
-          {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+          {resolvedError ? <p className="mb-4 text-sm text-red-600">{resolvedError}</p> : null}
           <div className="space-y-5">
             <section className="app-card overflow-hidden rounded-2xl border shadow-sm">
               <button
