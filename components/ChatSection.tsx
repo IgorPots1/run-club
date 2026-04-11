@@ -352,6 +352,64 @@ function getThreadOpenMessageEquivalenceSignature(message: ChatMessageItem) {
   ].join('::')
 }
 
+function getChatMessageReactionRenderSignature(message: ChatMessageItem) {
+  return message.reactions
+    .map((reaction) => [
+      reaction.emoji,
+      reaction.count,
+      reaction.userIds.join(','),
+      reaction.reactors
+        .map((reactor) => `${reactor.userId}:${reactor.displayName}:${reactor.avatarUrl ?? ''}`)
+        .join(','),
+    ].join(':'))
+    .join('|')
+}
+
+function getChatMessageRenderSignature(message: ChatMessageItem) {
+  return [
+    message.id,
+    message.optimisticRenderKey ?? '',
+    message.userId,
+    message.displayName,
+    message.avatarUrl ?? '',
+    message.text,
+    message.messageType,
+    message.imageUrl ?? '',
+    message.mediaUrl ?? '',
+    message.mediaDurationSeconds ?? '',
+    message.createdAt,
+    message.createdAtLabel,
+    message.editedAt ?? '',
+    message.isDeleted ? 'deleted' : 'active',
+    message.replyToId ?? '',
+    message.replyTo
+      ? [
+          message.replyTo.id,
+          message.replyTo.userId ?? '',
+          message.replyTo.displayName,
+          message.replyTo.text,
+        ].join(':')
+      : '',
+    message.attachments
+      .map((attachment) => [
+        attachment.id,
+        attachment.type,
+        attachment.sortOrder,
+        attachment.publicUrl ?? '',
+        attachment.width ?? '',
+        attachment.height ?? '',
+      ].join(':'))
+      .join('|'),
+    message.optimisticAttachmentUploadState ?? '',
+    message.optimisticAttachmentStates?.join(',') ?? '',
+    message.isOptimistic ? 'optimistic' : 'server',
+    message.optimisticStatus ?? '',
+    message.optimisticServerMessageId ?? '',
+    message.optimisticLocalObjectUrl ?? '',
+    getChatMessageReactionRenderSignature(message),
+  ].join('::')
+}
+
 function areThreadOpenMessageListsEquivalent(
   currentMessages: ChatMessageItem[],
   nextMessages: ChatMessageItem[]
@@ -3405,20 +3463,7 @@ function ChatImageAttachments({
   )
 }
 
-function ChatMessageBody({
-  message,
-  isOwnMessage = false,
-  showSenderName = true,
-  onReplyPreviewClick,
-  onImageClick,
-  onImageLoad,
-  onRetryFailedMessage,
-  currentUserId = null,
-  onReactionToggle,
-  onReactionDetailsOpen,
-  animatedReactionKey = null,
-  compactPreview = false,
-}: {
+type ChatMessageBodyProps = {
   message: ChatMessageItem
   isOwnMessage?: boolean
   showSenderName?: boolean
@@ -3431,7 +3476,22 @@ function ChatMessageBody({
   onReactionDetailsOpen?: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
   animatedReactionKey?: string | null
   compactPreview?: boolean
-}) {
+}
+
+function ChatMessageBodyComponent({
+  message,
+  isOwnMessage = false,
+  showSenderName = true,
+  onReplyPreviewClick,
+  onImageClick,
+  onImageLoad,
+  onRetryFailedMessage,
+  currentUserId = null,
+  onReactionToggle,
+  onReactionDetailsOpen,
+  animatedReactionKey = null,
+  compactPreview = false,
+}: ChatMessageBodyProps) {
   const isFallbackReplyPreview = Boolean(
     message.replyTo && message.replyTo.userId === null && message.replyTo.text === ''
   )
@@ -3657,6 +3717,20 @@ function ChatMessageBody({
   )
 }
 
+const ChatMessageBody = memo(ChatMessageBodyComponent, (previousProps, nextProps) => (
+  getChatMessageRenderSignature(previousProps.message) === getChatMessageRenderSignature(nextProps.message) &&
+  previousProps.isOwnMessage === nextProps.isOwnMessage &&
+  previousProps.showSenderName === nextProps.showSenderName &&
+  previousProps.currentUserId === nextProps.currentUserId &&
+  previousProps.animatedReactionKey === nextProps.animatedReactionKey &&
+  previousProps.compactPreview === nextProps.compactPreview &&
+  Boolean(previousProps.onReplyPreviewClick) === Boolean(nextProps.onReplyPreviewClick) &&
+  Boolean(previousProps.onImageClick) === Boolean(nextProps.onImageClick) &&
+  Boolean(previousProps.onRetryFailedMessage) === Boolean(nextProps.onRetryFailedMessage) &&
+  Boolean(previousProps.onReactionToggle) === Boolean(nextProps.onReactionToggle) &&
+  Boolean(previousProps.onReactionDetailsOpen) === Boolean(nextProps.onReactionDetailsOpen)
+))
+
 function renderMessageTextWithLinks(text: string): ReactNode {
   const parts = text.split(/(https?:\/\/[^\s]+)/g)
 
@@ -3682,6 +3756,184 @@ function renderMessageTextWithLinks(text: string): ReactNode {
     return <Fragment key={`text-${index}`}>{part}</Fragment>
   })
 }
+
+type ChatMessageRowProps = {
+  message: ChatMessageItem
+  isFirstMessage: boolean
+  previousMessageUserId: string | null
+  currentUserId: string | null
+  isSwipeActive: boolean
+  swipeOffsetX: number
+  animatedReactionKey: string | null
+  messageRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
+  onReplyPreviewClick: (replyToMessageId: string) => void
+  onImageClick: (attachments: ChatMessageAttachment[], index: number) => void
+  onImageLoad: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
+  onRetryFailedMessage: (message: ChatMessageItem) => void
+  onReactionToggle?: (messageId: string, emoji: string) => void
+  onReactionDetailsOpen: (message: ChatMessageItem, reaction: ChatMessageItem['reactions'][number]) => void
+  onMessageTouchStart: (message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => void
+  onMessageTouchEnd: (message: ChatMessageItem) => void
+  onMessageTouchCancel: () => void
+  onMessageTouchMove: (message: ChatMessageItem, event: ReactTouchEvent<HTMLDivElement>) => void
+  onMessageMouseDown: (message: ChatMessageItem) => void
+  onMessageMouseUp: () => void
+  onMessageMouseLeave: () => void
+  onMessageContextMenu: (message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => void
+}
+
+const ChatMessageRow = memo(function ChatMessageRow({
+  message,
+  isFirstMessage,
+  previousMessageUserId,
+  currentUserId,
+  isSwipeActive,
+  swipeOffsetX,
+  animatedReactionKey,
+  messageRefs,
+  onReplyPreviewClick,
+  onImageClick,
+  onImageLoad,
+  onRetryFailedMessage,
+  onReactionToggle,
+  onReactionDetailsOpen,
+  onMessageTouchStart,
+  onMessageTouchEnd,
+  onMessageTouchCancel,
+  onMessageTouchMove,
+  onMessageMouseDown,
+  onMessageMouseUp,
+  onMessageMouseLeave,
+  onMessageContextMenu,
+}: ChatMessageRowProps) {
+  const isOwnMessage = currentUserId === message.userId
+  const isImageOnlyMessage = Boolean(
+    message.attachments.length > 0 &&
+    !message.text &&
+    !message.replyTo &&
+    message.messageType !== 'voice'
+  )
+  const isSameAuthorAsPrevious = previousMessageUserId === message.userId
+  const isFirstInAuthorRun = !isSameAuthorAsPrevious
+  const showAvatar = !isOwnMessage && isFirstInAuthorRun
+  const showSenderName = isFirstInAuthorRun
+  const replyPreviewTargetId =
+    message.replyTo && message.replyTo.userId !== null ? message.replyTo.id : null
+  const messageSpacingClass = isFirstMessage ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
+  const rowAnimatedReactionKey =
+    animatedReactionKey && animatedReactionKey.startsWith(`${message.id}:`)
+      ? animatedReactionKey
+      : null
+
+  return (
+    <div className={messageSpacingClass}>
+      <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
+        {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
+          <Image
+            src={message.avatarUrl}
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <AvatarFallback />
+        ) : (
+          <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+        )}
+        <div className={`relative min-w-0 w-full max-w-[80%] md:max-w-[82%] ${isOwnMessage ? 'ml-auto' : ''}`}>
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
+              isSwipeActive && swipeOffsetX > 8 ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
+            }`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 7 4 12l5 5" />
+              <path d="M20 12H4" />
+            </svg>
+          </div>
+          <div
+            ref={(node) => {
+              if (node) {
+                messageRefs.current[message.id] = node
+                return
+              }
+
+              delete messageRefs.current[message.id]
+            }}
+            style={{
+              transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
+            }}
+            className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
+              isImageOnlyMessage
+                ? 'rounded-2xl bg-transparent px-0 py-0'
+                : `rounded-[18px] px-2.5 py-1 ${
+                    isOwnMessage
+                      ? 'bg-[#DCF8C6] dark:bg-green-900/40'
+                      : 'bg-black/[0.04] dark:bg-white/[0.07]'
+                  }`
+            }`}
+            onTouchStart={(event) => onMessageTouchStart(message, event)}
+            onTouchEnd={() => onMessageTouchEnd(message)}
+            onTouchCancel={onMessageTouchCancel}
+            onTouchMove={(event) => onMessageTouchMove(message, event)}
+            onMouseDown={() => onMessageMouseDown(message)}
+            onMouseUp={onMessageMouseUp}
+            onMouseLeave={onMessageMouseLeave}
+            onContextMenu={(event) => onMessageContextMenu(message, event)}
+          >
+            <ChatMessageBody
+              message={message}
+              isOwnMessage={isOwnMessage}
+              showSenderName={showSenderName}
+              currentUserId={currentUserId}
+              animatedReactionKey={rowAnimatedReactionKey}
+              onReplyPreviewClick={replyPreviewTargetId ? () => onReplyPreviewClick(replyPreviewTargetId) : undefined}
+              onImageClick={onImageClick}
+              onImageLoad={onImageLoad}
+              onRetryFailedMessage={onRetryFailedMessage}
+              onReactionToggle={onReactionToggle}
+              onReactionDetailsOpen={onReactionDetailsOpen}
+            />
+          </div>
+        </div>
+      </article>
+    </div>
+  )
+}, (previousProps, nextProps) => (
+  getChatMessageRenderSignature(previousProps.message) === getChatMessageRenderSignature(nextProps.message) &&
+  previousProps.isFirstMessage === nextProps.isFirstMessage &&
+  previousProps.previousMessageUserId === nextProps.previousMessageUserId &&
+  previousProps.currentUserId === nextProps.currentUserId &&
+  previousProps.isSwipeActive === nextProps.isSwipeActive &&
+  (previousProps.isSwipeActive ? previousProps.swipeOffsetX : 0) ===
+    (nextProps.isSwipeActive ? nextProps.swipeOffsetX : 0) &&
+  previousProps.animatedReactionKey === nextProps.animatedReactionKey &&
+  previousProps.messageRefs === nextProps.messageRefs &&
+  previousProps.onReplyPreviewClick === nextProps.onReplyPreviewClick &&
+  previousProps.onImageClick === nextProps.onImageClick &&
+  previousProps.onImageLoad === nextProps.onImageLoad &&
+  previousProps.onRetryFailedMessage === nextProps.onRetryFailedMessage &&
+  previousProps.onReactionToggle === nextProps.onReactionToggle &&
+  previousProps.onReactionDetailsOpen === nextProps.onReactionDetailsOpen &&
+  previousProps.onMessageTouchStart === nextProps.onMessageTouchStart &&
+  previousProps.onMessageTouchEnd === nextProps.onMessageTouchEnd &&
+  previousProps.onMessageTouchCancel === nextProps.onMessageTouchCancel &&
+  previousProps.onMessageTouchMove === nextProps.onMessageTouchMove &&
+  previousProps.onMessageMouseDown === nextProps.onMessageMouseDown &&
+  previousProps.onMessageMouseUp === nextProps.onMessageMouseUp &&
+  previousProps.onMessageMouseLeave === nextProps.onMessageMouseLeave &&
+  previousProps.onMessageContextMenu === nextProps.onMessageContextMenu
+))
 
 const ChatMessageList = memo(function ChatMessageList({
   messages,
@@ -3730,109 +3982,34 @@ const ChatMessageList = memo(function ChatMessageList({
     <section className="mt-auto flex flex-col px-0 pt-1">
       <div className="flex flex-col">
         {messages.map((message, index) => {
-          const isOwnMessage = currentUserId === message.userId
-          const isImageOnlyMessage = Boolean(
-            message.attachments.length > 0 &&
-            !message.text &&
-            !message.replyTo &&
-            message.messageType !== 'voice'
-          )
-          const isSwipeActive = swipingMessageId === message.id
           const previousMessage = index > 0 ? messages[index - 1] : null
-          const isSameAuthorAsPrevious = previousMessage?.userId === message.userId
-          const isFirstInAuthorRun = !isSameAuthorAsPrevious
-          const showAvatar = !isOwnMessage && isFirstInAuthorRun
-          const showSenderName = isOwnMessage ? isFirstInAuthorRun : isFirstInAuthorRun
-          const replyPreviewTargetId =
-            message.replyTo && message.replyTo.userId !== null ? message.replyTo.id : null
-          const messageSpacingClass = index === 0 ? '' : isSameAuthorAsPrevious ? 'mt-1' : 'mt-4'
 
           return (
-            <div
+            <ChatMessageRow
               key={getMessageStableRenderKey(message)}
-              className={messageSpacingClass}
-            >
-              <article className={`flex items-end gap-2.5 ${isOwnMessage ? 'justify-end' : ''}`}>
-                {isOwnMessage ? null : showAvatar ? message.avatarUrl ? (
-                  <Image
-                    src={message.avatarUrl}
-                    alt=""
-                    width={40}
-                    height={40}
-                    className="h-10 w-10 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <AvatarFallback />
-                ) : (
-                  <div className="h-10 w-10 shrink-0" aria-hidden="true" />
-                )}
-                <div className={`relative min-w-0 w-full max-w-[80%] md:max-w-[82%] ${isOwnMessage ? 'ml-auto' : ''}`}>
-                  <div
-                    aria-hidden="true"
-                    className={`pointer-events-none absolute left-2 top-1/2 z-[1] hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/[0.05] text-black/55 transition-all dark:bg-white/[0.08] dark:text-white/70 md:hidden ${
-                      isSwipeActive && swipeOffsetX > 8 ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M9 7 4 12l5 5" />
-                      <path d="M20 12H4" />
-                    </svg>
-                  </div>
-                  <div
-                    ref={(node) => {
-                      if (node) {
-                        messageRefs.current[message.id] = node
-                        return
-                      }
-
-                      delete messageRefs.current[message.id]
-                    }}
-                    style={{
-                      transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
-                    }}
-                    className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
-                      isImageOnlyMessage
-                        ? 'rounded-2xl bg-transparent px-0 py-0'
-                        : `rounded-[18px] px-2.5 py-1 ${
-                            isOwnMessage
-                              ? 'bg-[#DCF8C6] dark:bg-green-900/40'
-                              : 'bg-black/[0.04] dark:bg-white/[0.07]'
-                          }`
-                    }`}
-                    onTouchStart={(event) => onMessageTouchStart(message, event)}
-                    onTouchEnd={() => onMessageTouchEnd(message)}
-                    onTouchCancel={onMessageTouchCancel}
-                    onTouchMove={(event) => onMessageTouchMove(message, event)}
-                    onMouseDown={() => onMessageMouseDown(message)}
-                    onMouseUp={onMessageMouseUp}
-                    onMouseLeave={onMessageMouseLeave}
-                    onContextMenu={(event) => onMessageContextMenu(message, event)}
-                  >
-                    <ChatMessageBody
-                      message={message}
-                      isOwnMessage={isOwnMessage}
-                      showSenderName={showSenderName}
-                      currentUserId={currentUserId}
-                      animatedReactionKey={animatedReactionKey}
-                      onReplyPreviewClick={replyPreviewTargetId ? () => onReplyPreviewClick(replyPreviewTargetId) : undefined}
-                      onImageClick={onImageClick}
-                      onImageLoad={onImageLoad}
-                      onRetryFailedMessage={onRetryFailedMessage}
-                      onReactionToggle={onReactionToggle}
-                      onReactionDetailsOpen={onReactionDetailsOpen}
-                    />
-                  </div>
-                </div>
-              </article>
-            </div>
+              message={message}
+              isFirstMessage={index === 0}
+              previousMessageUserId={previousMessage?.userId ?? null}
+              currentUserId={currentUserId}
+              isSwipeActive={swipingMessageId === message.id}
+              swipeOffsetX={swipeOffsetX}
+              animatedReactionKey={animatedReactionKey}
+              messageRefs={messageRefs}
+              onReplyPreviewClick={onReplyPreviewClick}
+              onImageClick={onImageClick}
+              onImageLoad={onImageLoad}
+              onRetryFailedMessage={onRetryFailedMessage}
+              onReactionToggle={onReactionToggle}
+              onReactionDetailsOpen={onReactionDetailsOpen}
+              onMessageTouchStart={onMessageTouchStart}
+              onMessageTouchEnd={onMessageTouchEnd}
+              onMessageTouchCancel={onMessageTouchCancel}
+              onMessageTouchMove={onMessageTouchMove}
+              onMessageMouseDown={onMessageMouseDown}
+              onMessageMouseUp={onMessageMouseUp}
+              onMessageMouseLeave={onMessageMouseLeave}
+              onMessageContextMenu={onMessageContextMenu}
+            />
           )
         })}
       </div>
@@ -3981,6 +4158,12 @@ export default function ChatSection({
   const [chatLayoutDebugEvents, setChatLayoutDebugEvents] = useState<ChatLayoutDebugOverlayEvent[]>([])
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
+  const handleOpenImageViewer = useCallback((attachments: ChatMessageAttachment[], index: number) => {
+    setSelectedViewerState({
+      attachments,
+      initialIndex: index,
+    })
+  }, [])
   const canModerateAnnouncementChannel = isAnnouncementChannel && !isReadOnlyAnnouncement
   const filteredChatSendDebugEvents = useMemo(
     () => chatSendDebugEvents
@@ -8555,12 +8738,7 @@ export default function ChatSection({
                   animatedReactionKey={animatedReactionKey}
                   messageRefs={messageRefs}
                   onReplyPreviewClick={handleReplyPreviewClick}
-                  onImageClick={(attachments, index) => {
-                    setSelectedViewerState({
-                      attachments,
-                      initialIndex: index,
-                    })
-                  }}
+                  onImageClick={handleOpenImageViewer}
                   onImageLoad={handleMessageImageLoad}
                   onRetryFailedMessage={handleRetryFailedMessage}
                   onReactionToggle={isReadOnlyAnnouncement ? undefined : handleToggleReaction}
