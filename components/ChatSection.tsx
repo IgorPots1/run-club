@@ -166,6 +166,37 @@ function isChatRestrictionError(error: unknown) {
   ].some((errorCode) => error.message.includes(errorCode))
 }
 
+function extractHrefFromClipboardHtml(html: string) {
+  if (!html) {
+    return ''
+  }
+
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  return document.querySelector('a[href]')?.getAttribute('href')?.trim() ?? ''
+}
+
+function getClipboardInsertText(clipboardData: DataTransfer | null) {
+  if (!clipboardData) {
+    return ''
+  }
+
+  const plainText = clipboardData.getData('text/plain')
+  if (plainText) {
+    return plainText
+  }
+
+  const uriList = clipboardData
+    .getData('text/uri-list')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith('#'))
+  if (uriList) {
+    return uriList
+  }
+
+  return extractHrefFromClipboardHtml(clipboardData.getData('text/html'))
+}
+
 type PendingComposerImage = {
   id: string
   file: File
@@ -4295,6 +4326,27 @@ export default function ChatSection({
   const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImages.length > 0)
   const shouldShowVoiceRecorderButton = !editingMessage && !trimmedDraftMessage && !hasPendingImage
   const announcementReadOnlyMessage = readOnlyAnnouncementMessage.trim() || 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
+  const handleDraftMessagePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const insertText = getClipboardInsertText(event.clipboardData)
+    if (!insertText) {
+      return
+    }
+
+    event.preventDefault()
+    const textarea = event.currentTarget
+    const selectionStart = textarea.selectionStart ?? textarea.value.length
+    const selectionEnd = textarea.selectionEnd ?? selectionStart
+    const nextValue = `${textarea.value.slice(0, selectionStart)}${insertText}${textarea.value.slice(selectionEnd)}`
+    const nextCursorPosition = selectionStart + insertText.length
+
+    setDraftMessage(nextValue)
+    setSubmitError('')
+
+    window.requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
+    })
+  }, [])
   const canManageMessage = useCallback((message: ChatMessageItem) => {
     if (isAnnouncementChannel && isReadOnlyAnnouncement) {
       return false
@@ -8351,7 +8403,7 @@ export default function ChatSection({
 
   function renderReadOnlyAnnouncementBanner() {
     return (
-      <section className="mb-3 rounded-[26px] border border-black/[0.06] bg-[color:var(--background)]/90 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+      <section className="mb-3 rounded-[26px] border border-black/[0.06] bg-[color:var(--surface)] px-4 py-3 shadow-sm backdrop-blur-sm dark:border-white/10">
         <p className="app-text-primary text-sm font-medium">Канал с важной информацией</p>
         <p className="app-text-secondary mt-1 text-sm">{announcementReadOnlyMessage}</p>
       </section>
@@ -8383,7 +8435,7 @@ export default function ChatSection({
   function renderComposerPlaceholder() {
     return (
       <div aria-hidden="true">
-        <section className="min-h-[58px] rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/90 px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+        <section className="min-h-[58px] rounded-[24px] border border-black/[0.06] bg-[color:var(--surface)] px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10">
           <div className="flex min-h-[42px] items-end gap-2">
             <div className="h-10 w-10 shrink-0 rounded-full skeleton-line" />
             <div className="flex h-10 min-w-0 flex-1 items-center rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]">
@@ -8403,7 +8455,7 @@ export default function ChatSection({
 
     return (
       <div>
-        <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--background)]/90 px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/86">
+        <section className="rounded-[24px] border border-black/[0.06] bg-[color:var(--surface)] px-2.5 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10">
           <form onSubmit={handleSubmit}>
             <input
               ref={imageInputRef}
@@ -8552,6 +8604,7 @@ export default function ChatSection({
                     ref={composerTextareaRef}
                     id="chat-message"
                     value={draftMessage}
+                    onPaste={handleDraftMessagePaste}
                     onChange={(event) => {
                       setDraftMessage(event.target.value)
                       setSubmitError('')
@@ -8624,7 +8677,7 @@ export default function ChatSection({
             }`}
             aria-hidden={!isLoadingOlderMessages}
           >
-            <div className="rounded-full border border-black/[0.05] bg-[color:var(--background)]/92 px-2.5 py-1 text-[11px] font-medium text-black/55 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white/60">
+            <div className="rounded-full border border-black/[0.05] bg-[color:var(--surface)] px-2.5 py-1 text-[11px] font-medium text-black/55 shadow-sm backdrop-blur-sm dark:border-white/10 dark:text-white/60">
               Загрузка...
             </div>
           </div>
@@ -8636,7 +8689,7 @@ export default function ChatSection({
                   setPendingNewMessagesCount(0)
                   scrollPageToBottom('smooth', 'scroll-to-bottom-button')
                 }}
-                className="pointer-events-auto relative flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.04] bg-[color:var(--background)]/90 text-black shadow-sm backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:bg-[color:var(--background)]/84 dark:text-white"
+                className="pointer-events-auto relative flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.04] bg-[color:var(--surface)] text-black shadow-sm backdrop-blur-md transition-transform duration-200 hover:scale-[1.03] active:scale-95 dark:border-white/10 dark:text-white"
                 aria-label={pendingNewMessagesCount > 0 ? getNewMessagesLabel(pendingNewMessagesCount) : 'Прокрутить вниз'}
               >
                 <svg
