@@ -2856,9 +2856,7 @@ function FullscreenImageViewer({
 
   return (
     <div
-      className={`fixed inset-0 z-[80] flex items-center justify-center p-3 transition-opacity duration-150 ${
-        isVisible ? 'opacity-100' : 'opacity-0'
-      }`}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black p-3"
       style={{ backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})` }}
       onClick={onClose}
     >
@@ -2905,9 +2903,9 @@ function FullscreenImageViewer({
       ) : null}
       <div
         className={`flex max-h-full max-w-full items-center justify-center ${
-          isGesturing ? '' : 'transition-transform duration-200'
+          isGesturing ? '' : 'transition-[transform,opacity] duration-200'
         } ${
-          isVisible ? 'scale-100' : 'scale-[0.985]'
+          isVisible ? 'scale-100 opacity-100' : 'scale-[0.985] opacity-0'
         }`}
         style={{
           transform: `${isVisible ? '' : 'scale(0.985) '}${imageTransform}`.trim(),
