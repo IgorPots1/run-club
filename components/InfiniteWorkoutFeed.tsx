@@ -151,6 +151,7 @@ type RaceFeedCardProps = {
   isLikeInFlight: boolean
   onCommentClick: (raceEventId: string) => void
   onOpenLikes: (raceEventId: string) => void
+  onOpenLikesPreview?: (raceEventId: string) => void
   onOpenProfile: (href: string) => void
   onOpenRaceEvent: (raceEventId: string) => void
   onToggleLike: (raceEventId: string) => void
@@ -161,6 +162,7 @@ function RaceFeedCard({
   isLikeInFlight,
   onCommentClick,
   onOpenLikes,
+  onOpenLikesPreview,
   onOpenProfile,
   onOpenRaceEvent,
   onToggleLike,
@@ -262,6 +264,11 @@ function RaceFeedCard({
               actionDisabled={isLikeInFlight}
               onClick={() => onToggleLike(item.raceEventId)}
               onCountClick={() => onOpenLikes(item.raceEventId)}
+              onInteractionStart={() => {
+                if (item.raceEventLikeCount > 0) {
+                  onOpenLikesPreview?.(item.raceEventId)
+                }
+              }}
               icon={
                 <Heart
                   className="h-4 w-4"
@@ -1090,7 +1097,10 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    if (!force && Object.prototype.hasOwnProperty.call(likedUsersByRunId, runId)) {
+    if (!force && (
+      Object.prototype.hasOwnProperty.call(likedUsersByRunId, runId) ||
+      likedUsersLoadingRunId === runId
+    )) {
       return
     }
 
@@ -1114,14 +1124,17 @@ export default function InfiniteWorkoutFeed({
     } finally {
       setLikedUsersLoadingRunId((currentRunId) => (currentRunId === runId ? null : currentRunId))
     }
-  }, [likedUsersByRunId])
+  }, [likedUsersByRunId, likedUsersLoadingRunId])
 
   const loadLikedUsersForRaceEvent = useCallback(async (raceEventId: string, force = false) => {
     if (!raceEventId) {
       return
     }
 
-    if (!force && Object.prototype.hasOwnProperty.call(likedUsersByRaceEventId, raceEventId)) {
+    if (!force && (
+      Object.prototype.hasOwnProperty.call(likedUsersByRaceEventId, raceEventId) ||
+      likedUsersLoadingRaceEventId === raceEventId
+    )) {
       return
     }
 
@@ -1145,7 +1158,7 @@ export default function InfiniteWorkoutFeed({
     } finally {
       setLikedUsersLoadingRaceEventId((currentRaceEventId) => (currentRaceEventId === raceEventId ? null : currentRaceEventId))
     }
-  }, [likedUsersByRaceEventId])
+  }, [likedUsersByRaceEventId, likedUsersLoadingRaceEventId])
 
   const handleCommentClick = useCallback((runId: string) => {
     if (!runId) {
@@ -1282,6 +1295,11 @@ export default function InfiniteWorkoutFeed({
                 photos={item.photos}
                 onToggleLike={handleLikeToggle}
                 onOpenLikes={() => handleOpenLikes(item)}
+                onOpenLikesPreview={() => {
+                  if (item.likesCount > 0) {
+                    void loadLikedUsersForRun(item.id)
+                  }
+                }}
                 onCommentClick={handleCommentClick}
                 onNavigateToRun={navigateToRun}
                 profileHref={`/users/${item.user_id}`}
@@ -1294,6 +1312,11 @@ export default function InfiniteWorkoutFeed({
                 isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
                 onCommentClick={handleRaceEventCommentClick}
                 onOpenLikes={() => handleOpenRaceEventLikes(item)}
+                onOpenLikesPreview={() => {
+                  if (item.raceEventLikeCount > 0) {
+                    void loadLikedUsersForRaceEvent(item.raceEventId)
+                  }
+                }}
                 onOpenProfile={navigateToProfile}
                 onOpenRaceEvent={navigateToRaceEvent}
                 onToggleLike={handleRaceEventLikeToggle}

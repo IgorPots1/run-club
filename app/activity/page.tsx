@@ -1015,13 +1015,28 @@ export default function ActivityPage() {
                 {filteredRuns.map((run) => (
                   <div
                     key={run.id}
-                    className="compact-run-card app-card overflow-hidden rounded-2xl border border-black/5 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:border-white/10"
+                    className="compact-run-card app-card relative overflow-hidden rounded-2xl border border-black/5 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:border-white/10"
                   >
-                    <div className="compact-run-card-layout flex flex-col gap-4 sm:flex-row sm:items-start">
+                    {run.user_id === userId ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRequestDelete(run)}
+                        disabled={deletingRunIds.includes(run.id)}
+                        className="app-text-muted absolute right-4 top-4 inline-flex min-h-9 min-w-9 items-center justify-center rounded-full transition-colors hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-red-400"
+                        aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
+                      >
+                        {deletingRunIds.includes(run.id) ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Trash2 className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />
+                        )}
+                      </button>
+                    ) : null}
+                    <div className="compact-run-card-layout">
                       <button
                         type="button"
                         onClick={() => handleOpenRunDetail(run.id)}
-                        className="min-w-0 flex-1 text-left"
+                        className={`min-w-0 text-left ${run.user_id === userId ? 'pr-10' : ''}`}
                       >
                         <p className="app-text-primary break-words text-[15px] font-semibold leading-5">
                           {getRunDisplayName(run)}
@@ -1041,21 +1056,6 @@ export default function ActivityPage() {
                           {formatRunMetaLabel(run)}
                         </p>
                       </button>
-                      {run.user_id === userId ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRequestDelete(run)}
-                          disabled={deletingRunIds.includes(run.id)}
-                          className="app-text-muted inline-flex min-h-9 w-full items-center justify-center rounded-lg px-2.5 py-2 transition-colors hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-red-400 sm:min-w-9 sm:w-auto sm:shrink-0"
-                          aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
-                        >
-                          {deletingRunIds.includes(run.id) ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-                          ) : (
-                            <Trash2 className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />
-                          )}
-                        </button>
-                      ) : null}
                     </div>
                   </div>
                 ))}

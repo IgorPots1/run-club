@@ -287,7 +287,7 @@ function CommentCard({
                   onClick={onToggleLike}
                   disabled={isLikePending}
                   className={`inline-flex items-center gap-1 font-medium transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60 ${
-                    comment.likedByMe ? 'app-text-primary opacity-95' : 'app-text-muted opacity-85'
+                    comment.likedByMe ? 'text-[var(--like-active)] opacity-95' : 'app-text-muted opacity-85'
                   }`}
                   aria-label={comment.likedByMe ? 'Убрать лайк с комментария' : 'Поставить лайк комментарию'}
                 >

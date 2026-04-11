@@ -7,6 +7,7 @@ type FeedActionButtonProps = {
   icon: ReactNode
   onClick: () => void
   onCountClick?: () => void
+  onInteractionStart?: () => void
   active?: boolean
   disabled?: boolean
   actionDisabled?: boolean
@@ -17,6 +18,7 @@ export default function FeedActionButton({
   icon,
   onClick,
   onCountClick,
+  onInteractionStart,
   active = false,
   disabled = false,
   actionDisabled = false,
@@ -28,6 +30,9 @@ export default function FeedActionButton({
       onClick={(event) => {
         event.stopPropagation()
       }}
+      onMouseEnter={() => onInteractionStart?.()}
+      onFocus={() => onInteractionStart?.()}
+      onTouchStart={() => onInteractionStart?.()}
       className={`-m-1 inline-flex min-h-12 min-w-0 items-center gap-0.5 rounded-full p-1 text-sm leading-none ${
         active ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
       }`}

@@ -86,6 +86,34 @@ function LikesSheetRow({ user, onSelect }: { user: LikedUserListItem; onSelect: 
   )
 }
 
+function LikesSheetSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="h-11 w-11 shrink-0 rounded-full skeleton-line" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="skeleton-line h-4 w-28" />
+          <div className="skeleton-line h-4 w-20" />
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="h-11 w-11 shrink-0 rounded-full skeleton-line" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="skeleton-line h-4 w-32" />
+          <div className="skeleton-line h-4 w-24" />
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="h-11 w-11 shrink-0 rounded-full skeleton-line" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="skeleton-line h-4 w-24" />
+          <div className="skeleton-line h-4 w-16" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function RunLikesSheet({
   open,
   likesCount,
@@ -135,7 +163,7 @@ export default function RunLikesSheet({
         className="absolute inset-0"
         onClick={onClose}
       />
-      <section className="app-card relative w-full rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl md:max-w-md md:rounded-3xl md:pb-4">
+      <section className="app-card relative w-full rounded-t-3xl px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-xl transition-transform duration-200 ease-out md:max-w-md md:rounded-3xl md:pb-4">
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 dark:bg-gray-700 md:hidden" />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -151,24 +179,9 @@ export default function RunLikesSheet({
           </button>
         </div>
 
-        <div className="mt-4 max-h-[min(60vh,28rem)] overflow-y-auto">
+        <div className="mt-4 min-h-[12rem] max-h-[min(60vh,28rem)] overflow-y-auto">
           {loading || shouldWaitForFreshLikes ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-11 w-11 shrink-0 rounded-full skeleton-line" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="skeleton-line h-4 w-28" />
-                  <div className="skeleton-line h-4 w-20" />
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="h-11 w-11 shrink-0 rounded-full skeleton-line" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="skeleton-line h-4 w-32" />
-                  <div className="skeleton-line h-4 w-24" />
-                </div>
-              </div>
-            </div>
+            <LikesSheetSkeleton />
           ) : error ? (
             <div className="rounded-2xl border border-red-200/70 px-4 py-4 dark:border-red-900/60">
               <p className="text-sm text-red-600">{error}</p>

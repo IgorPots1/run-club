@@ -49,6 +49,7 @@ type WorkoutFeedCardProps = {
   isLikeInFlight?: boolean
   onToggleLike: (runId: string) => void
   onOpenLikes?: () => void
+  onOpenLikesPreview?: () => void
   onCommentClick?: (runId: string) => void
   onNavigateToRun?: (runId: string) => void
   profileHref?: string | null
@@ -150,6 +151,7 @@ function WorkoutFeedCard({
   isLikeInFlight = false,
   onToggleLike,
   onOpenLikes,
+  onOpenLikesPreview,
   onCommentClick,
   onNavigateToRun,
   profileHref = null,
@@ -507,6 +509,11 @@ function WorkoutFeedCard({
               actionDisabled={isOwnRun || isLikeInFlight}
               onClick={() => onToggleLike(runId)}
               onCountClick={() => onOpenLikes?.()}
+              onInteractionStart={() => {
+                if (likesCount > 0) {
+                  onOpenLikesPreview?.()
+                }
+              }}
               icon={
                 <Heart className="h-4 w-4" strokeWidth={1.9} fill={isHeartActive ? 'currentColor' : 'none'} />
               }
