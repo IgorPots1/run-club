@@ -125,6 +125,7 @@ export default function RunLikesSheet({
   }
 
   const likesSummaryLabel = `${likesCount} ${getLikesLabel(likesCount)}`
+  const shouldWaitForFreshLikes = likesCount > 0 && users.length === 0 && !error
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4">
@@ -151,7 +152,7 @@ export default function RunLikesSheet({
         </div>
 
         <div className="mt-4 max-h-[min(60vh,28rem)] overflow-y-auto">
-          {loading ? (
+          {loading || shouldWaitForFreshLikes ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 shrink-0 rounded-full skeleton-line" />

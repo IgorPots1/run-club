@@ -1046,13 +1046,13 @@ export default function ActivityPage() {
                           type="button"
                           onClick={() => handleRequestDelete(run)}
                           disabled={deletingRunIds.includes(run.id)}
-                          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-500/20 px-3 py-2 text-red-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25 sm:min-w-11 sm:w-auto sm:shrink-0"
+                          className="app-text-muted inline-flex min-h-9 w-full items-center justify-center rounded-lg px-2.5 py-2 transition-colors hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-red-400 sm:min-w-9 sm:w-auto sm:shrink-0"
                           aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
                         >
                           {deletingRunIds.includes(run.id) ? (
                             <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
                           ) : (
-                            <Trash2 className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
+                            <Trash2 className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />
                           )}
                         </button>
                       ) : null}

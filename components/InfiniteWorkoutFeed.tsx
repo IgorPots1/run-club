@@ -1175,8 +1175,12 @@ export default function InfiniteWorkoutFeed({
       id: item.id,
     })
 
-    void loadLikedUsersForRun(item.id)
-  }, [loadLikedUsersForRun])
+    const shouldForceReload =
+      item.likesCount > 0 &&
+      ((likedUsersByRunId[item.id]?.length ?? 0) === 0)
+
+    void loadLikedUsersForRun(item.id, shouldForceReload)
+  }, [likedUsersByRunId, loadLikedUsersForRun])
 
   const handleOpenRaceEventLikes = useCallback((item: FeedRaceEventItem) => {
     setActiveLikesTarget({
@@ -1184,8 +1188,12 @@ export default function InfiniteWorkoutFeed({
       id: item.raceEventId,
     })
 
-    void loadLikedUsersForRaceEvent(item.raceEventId)
-  }, [loadLikedUsersForRaceEvent])
+    const shouldForceReload =
+      item.raceEventLikeCount > 0 &&
+      ((likedUsersByRaceEventId[item.raceEventId]?.length ?? 0) === 0)
+
+    void loadLikedUsersForRaceEvent(item.raceEventId, shouldForceReload)
+  }, [likedUsersByRaceEventId, loadLikedUsersForRaceEvent])
 
   const error = feedError
   const activeLikesRunId = activeLikesTarget?.type === 'run' ? activeLikesTarget.id : ''

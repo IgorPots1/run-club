@@ -25,13 +25,18 @@ export default function FeedActionButton({
 
   return (
     <div
-      className={`inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-full px-1 py-1 text-sm leading-none ${
+      onClick={(event) => {
+        event.stopPropagation()
+      }}
+      className={`-m-1 inline-flex min-h-12 min-w-0 items-center gap-0.5 rounded-full p-1 text-sm leading-none ${
         active ? 'text-[var(--like-active)]' : 'text-[var(--text-secondary)]'
       }`}
     >
       <button
         type="button"
-        onClick={() => {
+        onClick={(event) => {
+          event.stopPropagation()
+
           if (isActionBlocked) {
             return
           }
@@ -40,7 +45,7 @@ export default function FeedActionButton({
         }}
         disabled={disabled}
         aria-disabled={isActionBlocked ? true : undefined}
-        className={`inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-full px-2 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-2.5 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
           actionDisabled && !disabled ? 'cursor-not-allowed' : ''
         }`}
       >
@@ -50,9 +55,12 @@ export default function FeedActionButton({
       </button>
       <button
         type="button"
-        onClick={onCountClick ?? onClick}
+        onClick={(event) => {
+          event.stopPropagation()
+          ;(onCountClick ?? onClick)()
+        }}
         disabled={disabled}
-        className="inline-flex min-h-9 min-w-0 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-10 min-w-[2.25rem] items-center justify-center rounded-full px-2.5 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {count}
       </button>

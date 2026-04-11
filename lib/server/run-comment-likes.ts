@@ -68,7 +68,7 @@ async function loadRunCommentLikeTarget(
 ): Promise<MutationResult<RunCommentLikeTargetRow>> {
   const { data, error } = await supabaseAdmin
     .from('run_comments')
-    .select('id, run_id, deleted_at')
+    .select('id, entity_type, entity_id, run_id, deleted_at')
     .eq('id', commentId)
     .maybeSingle()
 
