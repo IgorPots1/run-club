@@ -2551,6 +2551,7 @@ function FullscreenImageViewer({
   initialIndex: number
   onClose: () => void
 }) {
+  const FULLSCREEN_VIEWER_EXIT_DURATION_MS = 200
   const [isVisible, setIsVisible] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (images.length === 0) {
@@ -2590,6 +2591,7 @@ function FullscreenImageViewer({
     lastDeltaY: 0,
   })
   const lastTapRef = useRef<{ time: number }>({ time: 0 })
+  const closeTimeoutRef = useRef<number | null>(null)
   const currentImage = images[currentIndex] ?? images[0] ?? null
   const hasMultipleImages = images.length > 1
 
@@ -2640,6 +2642,18 @@ function FullscreenImageViewer({
     setCurrentIndex((current) => (current + 1) % images.length)
   }
 
+  const requestClose = useCallback(() => {
+    if (closeTimeoutRef.current !== null) {
+      return
+    }
+
+    setIsVisible(false)
+    closeTimeoutRef.current = window.setTimeout(() => {
+      closeTimeoutRef.current = null
+      onClose()
+    }, FULLSCREEN_VIEWER_EXIT_DURATION_MS)
+  }, [onClose])
+
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow
     const previousDocumentOverflow = document.documentElement.style.overflow
@@ -2653,19 +2667,23 @@ function FullscreenImageViewer({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        onClose()
+        requestClose()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
 
     return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current)
+        closeTimeoutRef.current = null
+      }
       window.cancelAnimationFrame(animationFrameId)
       window.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = previousBodyOverflow
       document.documentElement.style.overflow = previousDocumentOverflow
     }
-  }, [onClose])
+  }, [requestClose])
 
   function handleImageTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
     if (event.touches.length === 2) {
@@ -2791,7 +2809,7 @@ function FullscreenImageViewer({
       }
 
       if (dismissTranslateY > dismissThreshold) {
-        onClose()
+        requestClose()
         return
       }
 
@@ -2863,14 +2881,14 @@ function FullscreenImageViewer({
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black p-3"
-      style={{ backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})` }}
-      onClick={onClose}
+      style={{ backgroundColor: isVisible ? `rgba(0, 0, 0, ${0.95 * overlayOpacity})` : 'rgb(0, 0, 0)' }}
+      onClick={requestClose}
     >
       <button
         type="button"
         aria-label="Закрыть изображение"
         className="absolute right-4 top-4 z-[81] flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-transform duration-150 active:scale-95"
-        onClick={onClose}
+        onClick={requestClose}
       >
         <CloseIcon className="h-5 w-5" />
       </button>
