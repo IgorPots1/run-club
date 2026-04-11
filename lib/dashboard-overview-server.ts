@@ -192,7 +192,12 @@ function stripInternalChallenge(challenge: ChallengeListItem): DashboardActiveCh
   }
 }
 
-function buildChallengesOverview(challenges: ChallengeListItem[]): ChallengesOverview {
+function buildChallengesOverview(
+  challenges: ChallengeListItem[],
+  options?: { includeCompleted?: boolean }
+): ChallengesOverview {
+  const includeCompleted = options?.includeCompleted ?? true
+
   return {
     active: challenges
       .filter((challenge) => challenge.status === 'active')
@@ -200,9 +205,11 @@ function buildChallengesOverview(challenges: ChallengeListItem[]): ChallengesOve
     upcoming: challenges
       .filter((challenge) => challenge.status === 'upcoming')
       .sort(compareUpcomingChallenges),
-    completed: challenges
-      .filter((challenge) => challenge.status === 'completed')
-      .sort(compareChallengesByPriority),
+    completed: includeCompleted
+      ? challenges
+        .filter((challenge) => challenge.status === 'completed')
+        .sort(compareChallengesByPriority)
+      : [],
   }
 }
 
@@ -212,6 +219,7 @@ export async function loadChallengesOverviewServer(
     supabaseAdmin?: ReturnType<typeof createSupabaseAdminClient>
     referenceAt?: Date
     runRows?: RunRow[]
+    includeCompleted?: boolean
   }
 ): Promise<ChallengesOverview> {
   const supabaseAdmin = options?.supabaseAdmin ?? createSupabaseAdminClient()
@@ -316,7 +324,9 @@ export async function loadChallengesOverviewServer(
     } satisfies ChallengeListItem]
   })
 
-  return buildChallengesOverview(challengeItems)
+  return buildChallengesOverview(challengeItems, {
+    includeCompleted: options?.includeCompleted,
+  })
 }
 
 export async function loadDashboardOverviewServer(

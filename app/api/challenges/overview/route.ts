@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { loadChallengesOverviewServer } from '@/lib/dashboard-overview-server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
-export async function GET() {
+export async function GET(request: Request) {
   const { user, error } = await getAuthenticatedUser()
 
   if (error || !user) {
@@ -15,7 +15,9 @@ export async function GET() {
   }
 
   try {
-    const overview = await loadChallengesOverviewServer(user.id)
+    const { searchParams } = new URL(request.url)
+    const includeCompleted = searchParams.get('includeCompleted') !== 'false'
+    const overview = await loadChallengesOverviewServer(user.id, { includeCompleted })
 
     return NextResponse.json(overview)
   } catch (loadError) {

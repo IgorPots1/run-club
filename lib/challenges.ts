@@ -113,9 +113,16 @@ function isChallengesOverview(value: unknown): value is ChallengesOverview {
   )
 }
 
-export async function loadChallengesOverview(): Promise<ChallengesOverview> {
+export async function loadChallengesOverview(options?: { includeCompleted?: boolean }): Promise<ChallengesOverview> {
   try {
-    const response = await fetch('/api/challenges/overview', {
+    const includeCompleted = options?.includeCompleted ?? true
+    const searchParams = new URLSearchParams()
+
+    if (!includeCompleted) {
+      searchParams.set('includeCompleted', 'false')
+    }
+
+    const response = await fetch(`/api/challenges/overview${searchParams.size > 0 ? `?${searchParams.toString()}` : ''}`, {
       credentials: 'include',
     })
     const payload = await response.json().catch(() => null) as unknown

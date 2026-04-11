@@ -174,7 +174,9 @@ export default function ClubPage() {
       setHasLoadedLeaderboardTab(false)
       return
     }
+  }, [user])
 
+  useEffect(() => {
     if (activeTab !== 'challenges' || hasLoadedChallengesTab) {
       return
     }
@@ -186,7 +188,7 @@ export default function ClubPage() {
       setChallengesLoading(true)
 
       try {
-        const nextOverview = await loadChallengesOverview()
+        const nextOverview = await loadChallengesOverview({ includeCompleted: false })
 
         if (!isMounted) return
 
@@ -209,7 +211,7 @@ export default function ClubPage() {
     return () => {
       isMounted = false
     }
-  }, [activeTab, hasLoadedChallengesTab, user])
+  }, [activeTab, hasLoadedChallengesTab])
 
   useEffect(() => {
     if (!user) {
