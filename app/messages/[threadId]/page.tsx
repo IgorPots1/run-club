@@ -331,8 +331,10 @@ function normalizeMessageId(value: string | null) {
 }
 
 function ThreadOverlayHeader({
+  title,
   rightSlot,
 }: {
+  title: string
   rightSlot?: React.ReactNode
 }) {
   return (
@@ -348,7 +350,7 @@ function ThreadOverlayHeader({
         <div className="pointer-events-none absolute inset-x-14 top-[calc(env(safe-area-inset-top)+1.625rem)] -translate-y-1/2">
           <div className="flex justify-center px-2">
             <p className="app-text-primary inline-flex max-w-full items-center truncate rounded-full border border-black/10 px-3 py-1 text-center text-[15px] font-medium backdrop-blur-xl dark:border-white/12">
-              Общение
+              {title}
             </p>
           </div>
         </div>
@@ -713,7 +715,7 @@ export default function MessageThreadPage() {
       >
         <ChatDebugHud enabled={isChatLayoutDebugEnabled} pathname={pathname} threadId={threadId} />
         <div className="mx-auto max-w-3xl pt-[calc(env(safe-area-inset-top)+3rem)]">
-          <ThreadOverlayHeader />
+          <ThreadOverlayHeader title={threadTitle || 'Общение'} />
           <section className="app-card rounded-2xl border p-4 shadow-sm">
             <p className="text-sm text-red-600">{error || 'Не удалось открыть чат'}</p>
           </section>
@@ -781,7 +783,7 @@ export default function MessageThreadPage() {
       style={isolatedViewportStyle}
     >
       <ChatDebugHud enabled={isChatLayoutDebugEnabled} pathname={pathname} threadId={threadId} />
-      <ThreadOverlayHeader rightSlot={headerRightSlot} />
+      <ThreadOverlayHeader title={threadTitle || 'Общение'} rightSlot={headerRightSlot} />
       <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
         {threadMuteError ? (
           <div className="px-4 pb-2 pt-[calc(env(safe-area-inset-top)+3rem)]">

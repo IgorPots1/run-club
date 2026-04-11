@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import ChatMessageActions from '@/components/chat/ChatMessageActions'
 import { updatePrefetchedMessagesListThreadLastMessage } from '@/lib/chat/messagesListPrefetch'
@@ -3481,6 +3481,7 @@ function ChatMessageBody({
     onRetryFailedMessage &&
     (isMessageSendFailureState || (isAttachmentFailureState && !hasPendingAttachmentUploads))
   )
+  const messageTextContent = useMemo(() => renderMessageTextWithLinks(message.text), [message.text])
 
   return (
     <>
@@ -3596,7 +3597,7 @@ function ChatMessageBody({
               : undefined
           }
         >
-          {message.text}
+          {messageTextContent}
         </p>
       ) : null}
       {!isImageOnlyMessage ? (
@@ -3654,6 +3655,32 @@ function ChatMessageBody({
       ) : null}
     </>
   )
+}
+
+function renderMessageTextWithLinks(text: string): ReactNode {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g)
+
+  return parts.map((part, index) => {
+    if (!part) {
+      return null
+    }
+
+    if (/^https?:\/\/[^\s]+$/.test(part)) {
+      return (
+        <a
+          key={`link-${index}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="underline underline-offset-2"
+        >
+          {part}
+        </a>
+      )
+    }
+
+    return <Fragment key={`text-${index}`}>{part}</Fragment>
+  })
 }
 
 const ChatMessageList = memo(function ChatMessageList({
