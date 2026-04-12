@@ -1,5 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { calculateRunXp } from '../lib/run-xp'
+import {
+  buildPersistedRunXpBreakdown,
+  calculateRunXp,
+  type PersistedRunXpBreakdown,
+} from '../lib/run-xp'
 
 const PAGE_SIZE = 1000
 const RECENT_WINDOW_DAYS = 7
@@ -12,6 +16,7 @@ type RunRow = {
   elevation_gain_meters: number | string | null
   external_source: string | null
   xp: number | string | null
+  xp_breakdown: unknown
 }
 
 type EvaluatedRun = {
@@ -20,8 +25,13 @@ type EvaluatedRun = {
   created_at: string
   distance_km: number
   old_xp: number
+  old_xp_breakdown: PersistedRunXpBreakdown | null
   recalculated_xp: number
+  recalculated_xp_breakdown: PersistedRunXpBreakdown | null
   xp_delta: number
+  breakdown_changed: boolean
+  should_update: boolean
+  change_kind: 'xp_only' | 'breakdown_only' | 'xp_and_breakdown' | 'none' | 'skipped'
   status: 'increase' | 'decrease' | 'same' | 'skipped'
   skip_reasons: string[]
 }
@@ -32,6 +42,7 @@ type Summary = {
   wouldIncrease: number
   wouldDecrease: number
   wouldStaySame: number
+  wouldChangeBreakdownOnly: number
   skipped: number
 }
 
@@ -86,6 +97,53 @@ function normalizeInteger(value: number | string | null | undefined) {
   return Number.isFinite(numericValue) ? Math.max(0, Math.round(numericValue)) : 0
 }
 
+function normalizePersistedRunXpBreakdown(value: unknown): PersistedRunXpBreakdown | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as {
+    version?: unknown
+    final_awarded_xp?: unknown
+    items?: Array<{ id?: unknown; value?: unknown }> | unknown
+  }
+
+  if (normalizeInteger(candidate.version) !== 1 || !Array.isArray(candidate.items)) {
+    return null
+  }
+
+  return {
+    version: 1,
+    final_awarded_xp: normalizeInteger(candidate.final_awarded_xp),
+    items: candidate.items
+      .flatMap((item) => {
+        if (!item || typeof item !== 'object') {
+          return []
+        }
+
+        const normalizedId = typeof item.id === 'string' ? item.id.trim() : ''
+        const normalizedValue = normalizeInteger(item.value)
+
+        if (!normalizedId || normalizedValue <= 0) {
+          return []
+        }
+
+        return [{
+          id: normalizedId as PersistedRunXpBreakdown['items'][number]['id'],
+          value: normalizedValue,
+        }]
+      })
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  }
+}
+
+function arePersistedRunXpBreakdownsEqual(
+  left: PersistedRunXpBreakdown | null,
+  right: PersistedRunXpBreakdown | null
+) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
 function getRecentWindowStartIso() {
   return new Date(Date.now() - (RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000)).toISOString()
 }
@@ -98,7 +156,7 @@ async function fetchRecentRuns() {
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('runs')
-      .select('id, user_id, created_at, distance_km, elevation_gain_meters, external_source, xp')
+      .select('id, user_id, created_at, distance_km, elevation_gain_meters, external_source, xp, xp_breakdown')
       .gte('created_at', recentWindowStartIso)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
@@ -125,8 +183,10 @@ async function evaluateRuns(runs: RunRow[]) {
   return Promise.all(runs.map(async (run): Promise<EvaluatedRun> => {
     const distanceKm = normalizeDistanceKm(run.distance_km)
     const oldXp = normalizeInteger(run.xp)
+    const oldXpBreakdown = normalizePersistedRunXpBreakdown(run.xp_breakdown)
     const skipReasons: string[] = []
     let recalculatedXp = oldXp
+    let recalculatedXpBreakdown = oldXpBreakdown
 
     if (!run.user_id) {
       skipReasons.push('missing_user_id')
@@ -142,6 +202,7 @@ async function evaluateRuns(runs: RunRow[]) {
           supabase,
         })
         recalculatedXp = normalizeInteger(nextXp.xp)
+        recalculatedXpBreakdown = buildPersistedRunXpBreakdown(nextXp)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'unknown_error'
         skipReasons.push(`recalculation_failed:${errorMessage}`)
@@ -149,6 +210,7 @@ async function evaluateRuns(runs: RunRow[]) {
     }
 
     const xpDelta = recalculatedXp - oldXp
+    const breakdownChanged = !arePersistedRunXpBreakdownsEqual(oldXpBreakdown, recalculatedXpBreakdown)
     const status = skipReasons.length > 0
       ? 'skipped'
       : xpDelta > 0
@@ -156,6 +218,15 @@ async function evaluateRuns(runs: RunRow[]) {
         : xpDelta < 0
           ? 'decrease'
           : 'same'
+    const changeKind = skipReasons.length > 0
+      ? 'skipped'
+      : xpDelta !== 0 && breakdownChanged
+        ? 'xp_and_breakdown'
+        : xpDelta !== 0
+          ? 'xp_only'
+          : breakdownChanged
+            ? 'breakdown_only'
+            : 'none'
 
     return {
       id: run.id,
@@ -163,8 +234,13 @@ async function evaluateRuns(runs: RunRow[]) {
       created_at: run.created_at,
       distance_km: distanceKm,
       old_xp: oldXp,
+      old_xp_breakdown: oldXpBreakdown,
       recalculated_xp: recalculatedXp,
+      recalculated_xp_breakdown: recalculatedXpBreakdown,
       xp_delta: xpDelta,
+      breakdown_changed: breakdownChanged,
+      should_update: changeKind !== 'none' && changeKind !== 'skipped',
+      change_kind: changeKind,
       status,
       skip_reasons: skipReasons,
     }
@@ -176,10 +252,11 @@ function buildSummary(rows: EvaluatedRun[]): Summary {
 
   return {
     totalRunsInWindow: rows.length,
-    wouldChange: changeableRows.filter((row) => row.xp_delta !== 0).length,
+    wouldChange: changeableRows.filter((row) => row.should_update).length,
     wouldIncrease: changeableRows.filter((row) => row.status === 'increase').length,
     wouldDecrease: changeableRows.filter((row) => row.status === 'decrease').length,
-    wouldStaySame: changeableRows.filter((row) => row.status === 'same').length,
+    wouldStaySame: changeableRows.filter((row) => !row.should_update).length,
+    wouldChangeBreakdownOnly: changeableRows.filter((row) => row.change_kind === 'breakdown_only').length,
     skipped: rows.filter((row) => row.status === 'skipped').length,
   }
 }
@@ -191,11 +268,12 @@ function printSummary(summary: Summary) {
   console.log(`  Would increase: ${summary.wouldIncrease}`)
   console.log(`  Would decrease: ${summary.wouldDecrease}`)
   console.log(`  Would stay the same: ${summary.wouldStaySame}`)
+  console.log(`  Would change only stored xp_breakdown: ${summary.wouldChangeBreakdownOnly}`)
   console.log(`  Skipped: ${summary.skipped}`)
 }
 
 function printChangedRows(rows: EvaluatedRun[]) {
-  const changedRows = rows.filter((row) => row.status === 'increase' || row.status === 'decrease')
+  const changedRows = rows.filter((row) => row.should_update)
 
   console.log('\nRuns that would change')
 
@@ -213,6 +291,8 @@ function printChangedRows(rows: EvaluatedRun[]) {
       old_xp: row.old_xp,
       recalculated_xp: row.recalculated_xp,
       xp_delta: row.xp_delta,
+      breakdown_changed: row.breakdown_changed,
+      change_kind: row.change_kind,
       status: row.status,
     }))
   )
@@ -245,7 +325,7 @@ function printAffectedUsers(rows: EvaluatedRun[]) {
   const distinctUserIds = Array.from(
     new Set(
       rows
-        .filter((row) => row.status !== 'skipped' && row.xp_delta !== 0)
+        .filter((row) => row.should_update)
         .map((row) => row.user_id)
         .filter((userId): userId is string => Boolean(userId))
     )
@@ -265,14 +345,17 @@ function printAffectedUsers(rows: EvaluatedRun[]) {
 
 async function applyRecalculation(rows: EvaluatedRun[]) {
   const supabase = createSupabaseAdminClient()
-  const changedRows = rows.filter((row) => row.status !== 'skipped' && row.xp_delta !== 0 && row.user_id)
+  const changedRows = rows.filter((row) => row.should_update && row.user_id)
   const affectedUserIds = new Set<string>()
   let updatedRunCount = 0
 
   for (const row of changedRows) {
     const { data, error } = await supabase
       .from('runs')
-      .update({ xp: row.recalculated_xp })
+      .update({
+        xp: row.recalculated_xp,
+        xp_breakdown: row.recalculated_xp_breakdown,
+      })
       .eq('id', row.id)
       .eq('user_id', row.user_id as string)
       .select('id, user_id')
