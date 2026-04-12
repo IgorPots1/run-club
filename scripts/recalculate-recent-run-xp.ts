@@ -120,9 +120,16 @@ function normalizePersistedRunXpBreakdown(value: unknown): PersistedRunXpBreakdo
     return null
   }
 
+  const finalAwardedXp =
+    typeof candidateRecord.final_awarded_xp === 'string' ||
+    typeof candidateRecord.final_awarded_xp === 'number' ||
+    candidateRecord.final_awarded_xp == null
+      ? candidateRecord.final_awarded_xp
+      : undefined
+
   return {
     version: 1,
-    final_awarded_xp: normalizeInteger(candidateRecord.final_awarded_xp),
+    final_awarded_xp: normalizeInteger(finalAwardedXp),
     items: candidateRecord.items
       .flatMap((item) => {
         if (!item || typeof item !== 'object') {
