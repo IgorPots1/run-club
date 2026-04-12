@@ -105,9 +105,16 @@ function normalizePersistedRunXpBreakdown(value: unknown): PersistedRunXpBreakdo
   }
 
   const candidateRecord = candidate as Record<string, unknown>
+  const candidateVersion = (
+    typeof candidateRecord.version === 'number'
+      || typeof candidateRecord.version === 'string'
+      || candidateRecord.version == null
+  )
+    ? candidateRecord.version
+    : undefined
 
   if (
-    normalizeInteger(candidateRecord.version) !== 1 ||
+    normalizeInteger(candidateVersion) !== 1 ||
     !Array.isArray(candidateRecord.items)
   ) {
     return null
