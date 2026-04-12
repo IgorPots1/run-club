@@ -4,6 +4,7 @@ import { loadRaceEventLikesSummaryForRaceEventIds } from './race-event-likes'
 import { getPersonalRecordRaceEventIds } from './race-events'
 import { loadEntityCommentVisibilitySummaryForEntityIds } from './run-comments'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
+import { getRunXpPresentation } from './run-xp-presentation'
 import { supabase } from './supabase'
 
 type ProfileRow = {
@@ -30,6 +31,7 @@ type RunRow = {
   duration_minutes: number | null
   duration_seconds?: number | null
   moving_time_seconds?: number | null
+  elevation_gain_meters?: number | null
   map_polyline?: string | null
   xp: number | null
   created_at: string
@@ -109,6 +111,8 @@ export type DashboardRunItem = {
   movingTime: string | null
   map_polyline?: string | null
   xp: number
+  runEffortXp: number
+  weeklyConsistencyBonusXp: number
   created_at: string
   displayName: string
   avatar_url: string | null
@@ -672,7 +676,7 @@ export async function loadFeedRuns(
   const end = start + pageFetchSize - 1
   let runsQuery = supabase
     .from('runs')
-    .select('id, user_id, name, title, description, shoe_id, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, map_polyline, xp, created_at')
+    .select('id, user_id, name, title, description, shoe_id, city, region, country, external_source, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, map_polyline, xp, created_at')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(start, end)
@@ -836,6 +840,7 @@ export async function loadFeedRuns(
       const profile = profileById[run.user_id]
       const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
       const resolvedDurationSeconds = resolveDurationSeconds(run)
+      const xpPresentation = getRunXpPresentation(run, historicalRunsByUserId[run.user_id] ?? [])
 
       return {
         kind: 'run',
@@ -852,6 +857,8 @@ export async function loadFeedRuns(
         movingTime: formatMovingTime(resolvedDurationSeconds),
         map_polyline: run.map_polyline ?? null,
         xp: Number(run.xp ?? 0),
+        runEffortXp: xpPresentation.runEffortXp,
+        weeklyConsistencyBonusXp: xpPresentation.weeklyConsistencyBonusXp,
         created_at: run.created_at,
         displayName: getProfileDisplayName(profile, 'Бегун'),
         avatar_url: profile?.avatar_url ?? null,

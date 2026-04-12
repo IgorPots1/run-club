@@ -224,11 +224,8 @@ function formatRunPace(run: Pick<ActivityRunRow, 'distance_km' | 'duration_minut
   return formatPaceLabel(totalSeconds, distanceValue)
 }
 
-function formatRunMetaLabel(run: Pick<ActivityRunRow, 'created_at' | 'external_source' | 'xp'>) {
-  const parts = [
-    formatRunTimestampLabel(run.created_at, run.external_source),
-    `⚡ +${Math.max(0, Math.round(Number(run.xp ?? 0)))} XP`,
-  ]
+function formatRunMetaLabel(run: Pick<ActivityRunRow, 'created_at' | 'external_source'>) {
+  const parts = [formatRunTimestampLabel(run.created_at, run.external_source)]
   const sourceLabel = formatRunSourceLabel(run.external_source)
 
   if (sourceLabel) {
@@ -236,6 +233,19 @@ function formatRunMetaLabel(run: Pick<ActivityRunRow, 'created_at' | 'external_s
   }
 
   return parts.join(' • ')
+}
+
+function formatRunXpSummary(run: Pick<ActivityRunRow, 'xp' | 'run_effort_xp' | 'weekly_consistency_bonus_xp'>) {
+  const totalXp = Math.max(0, Math.round(Number(run.xp ?? 0)))
+  const runEffortXp = Math.max(0, Math.round(Number(run.run_effort_xp ?? totalXp)))
+  const weeklyConsistencyBonusXp = Math.max(0, Math.round(Number(run.weekly_consistency_bonus_xp ?? 0)))
+
+  return {
+    runEffortLabel: `⚡ +${runEffortXp} XP`,
+    weeklyConsistencyLabel: weeklyConsistencyBonusXp > 0
+      ? `+${weeklyConsistencyBonusXp} регулярность`
+      : '',
+  }
 }
 
 function formatElevationGainLabel(totalElevationGainMeters: number) {
@@ -1012,53 +1022,64 @@ export default function ActivityPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredRuns.map((run) => (
-                  <div
-                    key={run.id}
-                    className="compact-run-card app-card relative overflow-hidden rounded-2xl border border-black/5 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:border-white/10"
-                  >
-                    {run.user_id === userId ? (
-                      <button
-                        type="button"
-                        onClick={() => handleRequestDelete(run)}
-                        disabled={deletingRunIds.includes(run.id)}
-                        className="app-text-muted absolute right-4 top-4 inline-flex min-h-9 min-w-9 items-center justify-center rounded-full transition-colors hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-red-400"
-                        aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
-                      >
-                        {deletingRunIds.includes(run.id) ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : (
-                          <Trash2 className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />
-                        )}
-                      </button>
-                    ) : null}
-                    <div className="compact-run-card-layout">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRunDetail(run.id)}
-                        className={`min-w-0 text-left ${run.user_id === userId ? 'pr-10' : ''}`}
-                      >
-                        <p className="app-text-primary break-words text-[15px] font-semibold leading-5">
-                          {getRunDisplayName(run)}
-                        </p>
-                        <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
-                          <span className="break-words">{formatDistanceKmLabel(run)} км</span>
-                          <span className="app-text-secondary">•</span>
-                          <span className="break-words">{formatRunDurationLabel(run)}</span>
-                          {formatRunPace(run) ? (
-                            <>
-                              <span className="app-text-secondary">•</span>
-                              <span className="break-words">{formatRunPace(run)}</span>
-                            </>
-                          ) : null}
-                        </div>
-                        <p className="compact-run-card-secondary compact-run-card-meta app-text-secondary mt-1.5 break-words text-sm">
-                          {formatRunMetaLabel(run)}
-                        </p>
-                      </button>
+                {filteredRuns.map((run) => {
+                  const paceLabel = formatRunPace(run)
+                  const xpSummary = formatRunXpSummary(run)
+
+                  return (
+                    <div
+                      key={run.id}
+                      className="compact-run-card app-card relative overflow-hidden rounded-2xl border border-black/5 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:border-white/10"
+                    >
+                      {run.user_id === userId ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestDelete(run)}
+                          disabled={deletingRunIds.includes(run.id)}
+                          className="app-text-muted absolute right-4 top-4 inline-flex min-h-9 min-w-9 items-center justify-center rounded-full transition-colors hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-red-400"
+                          aria-label={deletingRunIds.includes(run.id) ? 'Тренировка удаляется' : 'Удалить тренировку'}
+                        >
+                          {deletingRunIds.includes(run.id) ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Trash2 className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />
+                          )}
+                        </button>
+                      ) : null}
+                      <div className="compact-run-card-layout">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRunDetail(run.id)}
+                          className={`min-w-0 text-left ${run.user_id === userId ? 'pr-10' : ''}`}
+                        >
+                          <p className="app-text-primary break-words text-[15px] font-semibold leading-5">
+                            {getRunDisplayName(run)}
+                          </p>
+                          <div className="compact-run-card-primary compact-run-card-title app-text-primary mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-tight sm:text-base">
+                            <span className="break-words">{formatDistanceKmLabel(run)} км</span>
+                            <span className="app-text-secondary">•</span>
+                            <span className="break-words">{formatRunDurationLabel(run)}</span>
+                            {paceLabel ? (
+                              <>
+                                <span className="app-text-secondary">•</span>
+                                <span className="break-words">{paceLabel}</span>
+                              </>
+                            ) : null}
+                          </div>
+                          <p className="compact-run-card-secondary compact-run-card-meta app-text-secondary mt-1.5 break-words text-sm">
+                            {formatRunMetaLabel(run)}
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium">
+                            <span className="app-text-muted">{xpSummary.runEffortLabel}</span>
+                            {xpSummary.weeklyConsistencyLabel ? (
+                              <span className="app-text-secondary">{xpSummary.weeklyConsistencyLabel}</span>
+                            ) : null}
+                          </div>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </section>

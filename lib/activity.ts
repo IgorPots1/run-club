@@ -1,3 +1,4 @@
+import { getRunXpPresentation } from './run-xp-presentation'
 import { supabase } from './supabase'
 
 export type ActivityPeriod = 'week' | 'month' | 'year' | 'all'
@@ -13,6 +14,8 @@ export type ActivityRunRow = {
   moving_time_seconds?: number | null
   elevation_gain_meters?: number | null
   xp?: number | null
+  run_effort_xp?: number | null
+  weekly_consistency_bonus_xp?: number | null
   created_at: string
   external_source?: string | null
 }
@@ -229,7 +232,17 @@ export async function loadActivityRuns(userId: string) {
     throw new Error('Не удалось загрузить активность')
   }
 
-  return (data as ActivityRunRow[] | null) ?? []
+  const runs = (data as ActivityRunRow[] | null) ?? []
+
+  return runs.map((run) => {
+    const xpPresentation = getRunXpPresentation(run, runs)
+
+    return {
+      ...run,
+      run_effort_xp: xpPresentation.runEffortXp,
+      weekly_consistency_bonus_xp: xpPresentation.weeklyConsistencyBonusXp,
+    }
+  })
 }
 
 export function getRunsForPeriod(runs: ActivityRunRow[], period: ActivityPeriod) {

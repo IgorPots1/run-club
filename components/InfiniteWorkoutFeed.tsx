@@ -1281,7 +1281,8 @@ export default function InfiniteWorkoutFeed({
                 pace={item.pace}
                 movingTime={item.movingTime}
                 mapPolyline={item.map_polyline}
-                xp={item.xp}
+                runEffortXp={item.runEffortXp}
+                weeklyConsistencyBonusXp={item.weeklyConsistencyBonusXp}
                 createdAt={item.created_at}
                 displayName={item.displayName}
                 avatarUrl={item.avatar_url}

@@ -36,7 +36,8 @@ type WorkoutFeedCardProps = {
   pace?: string | number | null
   movingTime?: string | null
   mapPolyline?: string | null
-  xp: number
+  runEffortXp: number
+  weeklyConsistencyBonusXp?: number
   createdAt: string
   displayName: string
   avatarUrl: string | null
@@ -138,7 +139,8 @@ function WorkoutFeedCard({
   pace,
   movingTime = null,
   mapPolyline = null,
-  xp,
+  runEffortXp,
+  weeklyConsistencyBonusXp = 0,
   createdAt,
   displayName,
   avatarUrl,
@@ -223,6 +225,7 @@ function WorkoutFeedCard({
   const isManualRun = externalSource !== 'strava'
   const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
+  const shouldShowConsistencyBonus = weeklyConsistencyBonusXp > 0
   void shoeId
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
@@ -525,9 +528,16 @@ function WorkoutFeedCard({
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
           </div>
-          <div className="app-text-muted ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-medium sm:text-xs">
-            <span aria-hidden="true" className="text-[10px] leading-none opacity-80">⚡</span>
-            <span>+{xp} XP</span>
+          <div className="ml-3 flex shrink-0 flex-col items-end text-right">
+            <div className="app-text-muted inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium sm:text-xs">
+              <span aria-hidden="true" className="text-[10px] leading-none opacity-80">⚡</span>
+              <span>+{runEffortXp} XP</span>
+            </div>
+            {shouldShowConsistencyBonus ? (
+              <p className="app-text-secondary mt-0.5 whitespace-nowrap text-[10px] font-medium sm:text-[11px]">
+                +{weeklyConsistencyBonusXp} регулярность
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
