@@ -98,24 +98,25 @@ function normalizeInteger(value: number | string | null | undefined) {
 }
 
 function normalizePersistedRunXpBreakdown(value: unknown): PersistedRunXpBreakdown | null {
-  if (!value || typeof value !== 'object') {
+  const candidate = value
+
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
     return null
   }
 
-  const candidate = value as {
-    version?: unknown
-    final_awarded_xp?: unknown
-    items?: Array<{ id?: unknown; value?: unknown }> | unknown
-  }
+  const candidateRecord = candidate as Record<string, unknown>
 
-  if (normalizeInteger(candidate.version) !== 1 || !Array.isArray(candidate.items)) {
+  if (
+    normalizeInteger(candidateRecord.version) !== 1 ||
+    !Array.isArray(candidateRecord.items)
+  ) {
     return null
   }
 
   return {
     version: 1,
-    final_awarded_xp: normalizeInteger(candidate.final_awarded_xp),
-    items: candidate.items
+    final_awarded_xp: normalizeInteger(candidateRecord.final_awarded_xp),
+    items: candidateRecord.items
       .flatMap((item) => {
         if (!item || typeof item !== 'object') {
           return []
