@@ -101,14 +101,6 @@ function buildBreakdownRows({
     })
   }
 
-  if (weeklyConsistencyBonusXp > 0) {
-    rows.push({
-      id: 'consistency_bonus',
-      label: 'Бонус за регулярность',
-      value: weeklyConsistencyBonusXp,
-    })
-  }
-
   if (elevationBonusXp > 0) {
     rows.push({
       id: 'elevation_bonus',
@@ -122,6 +114,14 @@ function buildBreakdownRows({
       id: 'duration_bonus',
       label: 'Опыт за длительность',
       value: durationBonusXp,
+    })
+  }
+
+  if (weeklyConsistencyBonusXp > 0) {
+    rows.push({
+      id: 'consistency_bonus',
+      label: 'Бонус за регулярность',
+      value: weeklyConsistencyBonusXp,
     })
   }
 

@@ -537,11 +537,11 @@ function WorkoutFeedCard({
               event.stopPropagation()
               onOpenXpBreakdown?.()
             }}
-            className="app-text-secondary ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] font-medium sm:text-[11px] disabled:opacity-100"
+            className="app-text-secondary ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] font-normal sm:text-[11px] disabled:opacity-100"
             aria-label={hasXpBreakdown ? 'Показать разбивку XP' : 'XP'}
           >
             <span aria-hidden="true" className="text-[11px] leading-none opacity-85">⚡</span>
-            <span>+{xp} XP</span>
+            <span className="opacity-90">+{xp} XP</span>
           </button>
         </div>
       </div>

@@ -21,6 +21,10 @@ export default function RunXpBreakdownSheet({
   rows,
   onClose,
 }: RunXpBreakdownSheetProps) {
+  const detailRows = useMemo(
+    () => rows.filter((row) => row.id !== 'final_awarded' && Math.round(Number(row.value) || 0) !== 0),
+    [rows]
+  )
   const finalAwardedRow = useMemo(
     () => rows.find((row) => row.id === 'final_awarded') ?? null,
     [rows]
@@ -65,7 +69,7 @@ export default function RunXpBreakdownSheet({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="app-text-primary text-base font-semibold">{title}</h2>
-            <p className="app-text-secondary mt-1 text-sm">Показано фактическое начисление после всех ограничений.</p>
+            <p className="app-text-secondary mt-1 text-sm">Детали начисления XP.</p>
           </div>
           <button
             type="button"
@@ -76,26 +80,8 @@ export default function RunXpBreakdownSheet({
           </button>
         </div>
 
-        {finalAwardedRow ? (
-          <div className="mt-4 rounded-2xl bg-black/[0.02] px-3.5 py-2.5 dark:bg-white/[0.03]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-black/[0.05] text-[19px] dark:bg-white/[0.07]">
-                <span aria-hidden="true">⚡</span>
-              </div>
-              <div className="min-w-0">
-                <p className="app-text-secondary text-[11px] font-medium uppercase tracking-[0.08em]">
-                  {finalAwardedRow.label}
-                </p>
-                <p className="app-text-primary mt-0.5 text-lg font-medium leading-none">
-                  {formatSignedXp(finalAwardedRow.value)}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         <div className="mt-4 space-y-2">
-          {rows.filter((row) => row.id !== 'final_awarded').map((row) => {
+          {detailRows.map((row) => {
             const valueClassName = row.emphasis === 'strong'
               ? 'app-text-primary font-semibold'
               : row.emphasis === 'negative'
@@ -124,6 +110,16 @@ export default function RunXpBreakdownSheet({
               </div>
             )
           })}
+          {finalAwardedRow ? (
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-black/6 px-1 pt-3 dark:border-white/10">
+              <p className="app-text-secondary min-w-0 text-sm font-medium">
+                {finalAwardedRow.label}
+              </p>
+              <p className="app-text-primary shrink-0 text-sm font-medium">
+                {formatSignedXp(finalAwardedRow.value)}
+              </p>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
