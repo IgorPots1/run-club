@@ -7,7 +7,7 @@ import {
   MIN_RUN_DISTANCE_KM_FOR_XP,
   RUN_XP_FREQUENCY_WINDOW_MS,
 } from './xp-anti-abuse'
-import { buildRunXpBreakdown, capXpBreakdownItems } from './xp'
+import { buildRunXpBreakdown, capXpBreakdownItems, type XpBreakdownItem } from './xp'
 
 const RUN_BASE_XP = 40
 const FIRST_DISTANCE_TIER_LIMIT_KM = 10
@@ -19,6 +19,55 @@ const MIN_DISTANCE_KM_FOR_ELEVATION_XP = 3
 const ELEVATION_METERS_PER_XP = 20
 const MAX_ELEVATION_XP = 25
 const WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const XP_BREAKDOWN_ITEM_IDS_BY_LABEL = {
+  'Тренировка': 'base_xp',
+  'Дистанция': 'distance_contribution',
+  'Набор высоты': 'elevation_bonus',
+  'Регулярность': 'consistency_bonus',
+} as const
+
+type PersistedRunXpBreakdownItemId = typeof XP_BREAKDOWN_ITEM_IDS_BY_LABEL[keyof typeof XP_BREAKDOWN_ITEM_IDS_BY_LABEL]
+
+export type PersistedRunXpBreakdownItem = {
+  id: PersistedRunXpBreakdownItemId
+  value: number
+}
+
+export type PersistedRunXpBreakdown = {
+  version: 1
+  final_awarded_xp: number
+  items: PersistedRunXpBreakdownItem[]
+}
+
+function toRoundedNonNegativeInteger(value: unknown): number {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? Math.max(0, Math.round(numericValue)) : 0
+}
+
+export function buildPersistedRunXpBreakdown({
+  xp,
+  breakdown,
+}: {
+  xp: number
+  breakdown: XpBreakdownItem[]
+}): PersistedRunXpBreakdown {
+  const items = breakdown.flatMap<PersistedRunXpBreakdownItem>((item) => {
+    const id = XP_BREAKDOWN_ITEM_IDS_BY_LABEL[item.label as keyof typeof XP_BREAKDOWN_ITEM_IDS_BY_LABEL]
+    const value = toRoundedNonNegativeInteger(item.value)
+
+    if (!id || value <= 0) {
+      return []
+    }
+
+    return [{ id, value }]
+  })
+
+  return {
+    version: 1,
+    final_awarded_xp: toRoundedNonNegativeInteger(xp),
+    items,
+  }
+}
 
 type CalculateRunXpOptions = {
   userId: string

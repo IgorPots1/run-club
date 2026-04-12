@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
-import { calculateRunXp } from '@/lib/run-xp'
+import { buildPersistedRunXpBreakdown, calculateRunXp } from '@/lib/run-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -131,6 +131,7 @@ export async function POST(request: Request) {
     average_pace_seconds: averagePaceSeconds,
     created_at: createdAt,
     xp: runXp.xp,
+    xp_breakdown: buildPersistedRunXpBreakdown(runXp),
     shoe_id: shoeId,
   }
 

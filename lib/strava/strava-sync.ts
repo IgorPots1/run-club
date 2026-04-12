@@ -2,7 +2,11 @@ import 'server-only'
 
 import { reverseGeocode } from '@/lib/geocoding/mapbox'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
-import { calculateRunXp } from '@/lib/run-xp'
+import {
+  buildPersistedRunXpBreakdown,
+  calculateRunXp,
+  type PersistedRunXpBreakdown,
+} from '@/lib/run-xp'
 import { updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getLevelFromXP, type XpBreakdownItem } from '@/lib/xp'
@@ -73,6 +77,7 @@ type StravaRunInsertPayload = {
   external_source: string
   external_id: string
   xp: number
+  xp_breakdown: PersistedRunXpBreakdown | null
 }
 
 type StravaConnectionRow = {
@@ -97,6 +102,7 @@ type ExistingStravaRunRow = {
   shoe_id: string | null
   distance_meters: number | null
   xp: number | null
+  xp_breakdown: PersistedRunXpBreakdown | null
   name_manually_edited: boolean
   description_manually_edited: boolean
 }
@@ -1762,6 +1768,7 @@ function buildRunInsertPayload(userId: string, activity: StravaActivitySummary):
     external_source: STRAVA_EXTERNAL_SOURCE,
     external_id: String(activity.id),
     xp: 0,
+    xp_breakdown: null,
   }
 }
 
@@ -2146,7 +2153,7 @@ export async function importStravaActivityForUser(
   const payload = buildRunInsertPayload(userId, activityForImport)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, name_manually_edited, description_manually_edited')
+    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, xp_breakdown, name_manually_edited, description_manually_edited')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -2219,6 +2226,13 @@ export async function importStravaActivityForUser(
         )
       : Math.max(0, Math.round(Number(normalizedExistingRun.xp ?? 0)))
     : Math.max(0, Math.round(Number(runXp?.xp ?? 0)))
+  payload.xp_breakdown = normalizedExistingRun
+    ? shouldAttemptXpRecovery && runXp
+      ? buildPersistedRunXpBreakdown(runXp)
+      : normalizedExistingRun.xp_breakdown ?? null
+    : runXp
+      ? buildPersistedRunXpBreakdown(runXp)
+      : null
   let finalCity = payload.city
   let finalRegion = payload.region
   let finalCountry = payload.country
@@ -2536,6 +2550,7 @@ export async function importStravaActivityForUser(
     strava_synced_at: string
     created_at: string
     xp: number
+    xp_breakdown: PersistedRunXpBreakdown | null
     name?: string
   } = {
     user_id: payload.user_id,
@@ -2563,6 +2578,7 @@ export async function importStravaActivityForUser(
     strava_synced_at: payload.strava_synced_at,
     created_at: payload.created_at,
     xp: payload.xp,
+    xp_breakdown: payload.xp_breakdown,
   }
 
   const previousTotalXp = await loadProfileTotalXp(userId, { supabase })
