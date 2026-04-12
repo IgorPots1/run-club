@@ -541,7 +541,7 @@ function WorkoutFeedCard({
             aria-label={hasXpBreakdown ? 'Показать разбивку XP' : 'XP'}
           >
             <span aria-hidden="true" className="text-[11px] leading-none opacity-85">⚡</span>
-            <span className="text-[9px] font-normal opacity-75 sm:text-[10px]">+{xp} XP</span>
+            <span className="app-text-secondary text-[9px] font-normal sm:text-[10px]">+{xp} XP</span>
           </button>
         </div>
       </div>
