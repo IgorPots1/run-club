@@ -23,6 +23,7 @@
     "react-dom": "19.2.3",
     "react-easy-crop": "^5.5.6",
     "recharts": "^3.8.0",
+    "server-only": "^0.0.1",
     "swr": "^2.4.1",
     "web-push": "^3.6.7"
   },

@@ -15,6 +15,7 @@ export type XpBreakdownItem = {
 type RunXpBreakdownParts = {
   workoutXp: number
   distanceXp: number
+  elevationXp?: number
   weeklyConsistencyBonus?: number
 }
 
@@ -90,6 +91,7 @@ export function getClubLevelDefinitions(): ClubLevelDefinition[] {
 export function buildRunXpBreakdown({
   workoutXp,
   distanceXp,
+  elevationXp = 0,
   weeklyConsistencyBonus = 0,
 }: RunXpBreakdownParts): XpBreakdownItem[] {
   const breakdown: XpBreakdownItem[] = []
@@ -100,6 +102,10 @@ export function buildRunXpBreakdown({
 
   if (Number.isFinite(distanceXp) && distanceXp > 0) {
     breakdown.push({ label: 'Дистанция', value: Math.round(distanceXp) })
+  }
+
+  if (Number.isFinite(elevationXp) && elevationXp > 0) {
+    breakdown.push({ label: 'Набор высоты', value: Math.round(elevationXp) })
   }
 
   if (Number.isFinite(weeklyConsistencyBonus) && weeklyConsistencyBonus > 0) {

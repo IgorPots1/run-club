@@ -11,7 +11,7 @@
 -- 6. no earlier run for the same user inside the 10-minute duplicate window
 --
 -- We then recalculate XP using the current runtime formula as closely as is
--- safely practical: workout XP + distance XP + weekly consistency bonus,
+-- safely practical: base XP + piecewise distance XP + weekly consistency bonus,
 -- capped by the user's prior same-day canonical XP usage before that run.
 
 with regression_candidates as (
@@ -47,8 +47,15 @@ scored_candidates as (
   select
     c.id,
     least(
-      50
-      + greatest(round(c.distance_km * 10), 0)::integer
+      40
+      + greatest(
+          round(
+            (least(c.distance_km, 10) * 9)
+            + (least(greatest(c.distance_km - 10, 0), 10) * 7)
+            + (greatest(c.distance_km - 20, 0) * 5)
+          ),
+          0
+        )::integer
       + case
           when coalesce(weekly.existing_run_count, 0) + 1 >= 5 then 50
           when coalesce(weekly.existing_run_count, 0) + 1 >= 3 then 30

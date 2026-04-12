@@ -9,16 +9,70 @@ import {
 } from './xp-anti-abuse'
 import { buildRunXpBreakdown, capXpBreakdownItems } from './xp'
 
-const RUN_WORKOUT_XP = 50
-const RUN_DISTANCE_XP_PER_KM = 10
+const RUN_BASE_XP = 40
+const FIRST_DISTANCE_TIER_LIMIT_KM = 10
+const SECOND_DISTANCE_TIER_LIMIT_KM = 20
+const FIRST_DISTANCE_TIER_XP_PER_KM = 9
+const SECOND_DISTANCE_TIER_XP_PER_KM = 7
+const THIRD_DISTANCE_TIER_XP_PER_KM = 5
+const MIN_DISTANCE_KM_FOR_ELEVATION_XP = 3
+const ELEVATION_METERS_PER_XP = 20
+const MAX_ELEVATION_XP = 25
 const WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 type CalculateRunXpOptions = {
   userId: string
   createdAt: string
   distanceKm: number
+  elevationGainMeters?: number | null
+  externalSource?: string | null
   excludeRunId?: string
   supabase?: ReturnType<typeof createSupabaseAdminClient>
+}
+
+function calculateRunDistanceXp(distanceKm: number): number {
+  const normalizedDistanceKm = Number.isFinite(distanceKm) ? Math.max(0, Number(distanceKm)) : 0
+  const firstTierDistanceKm = Math.min(normalizedDistanceKm, FIRST_DISTANCE_TIER_LIMIT_KM)
+  const secondTierDistanceKm = Math.min(
+    Math.max(normalizedDistanceKm - FIRST_DISTANCE_TIER_LIMIT_KM, 0),
+    SECOND_DISTANCE_TIER_LIMIT_KM - FIRST_DISTANCE_TIER_LIMIT_KM
+  )
+  const thirdTierDistanceKm = Math.max(normalizedDistanceKm - SECOND_DISTANCE_TIER_LIMIT_KM, 0)
+
+  return Math.max(
+    0,
+    Math.round(
+      (firstTierDistanceKm * FIRST_DISTANCE_TIER_XP_PER_KM)
+        + (secondTierDistanceKm * SECOND_DISTANCE_TIER_XP_PER_KM)
+        + (thirdTierDistanceKm * THIRD_DISTANCE_TIER_XP_PER_KM)
+    )
+  )
+}
+
+function getElevationXp({
+  distanceKm,
+  elevationGainMeters,
+  externalSource,
+}: {
+  distanceKm: number
+  elevationGainMeters?: number | null
+  externalSource?: string | null
+}): number {
+  const normalizedDistanceKm = Number.isFinite(distanceKm) ? Math.max(0, Number(distanceKm)) : 0
+  const normalizedElevationGainMeters = Number.isFinite(elevationGainMeters)
+    ? Math.max(0, Math.floor(Number(elevationGainMeters)))
+    : 0
+  const normalizedExternalSource = externalSource?.trim() ?? ''
+  const isTrustedImportedRun = normalizedExternalSource.length > 0
+
+  if (!isTrustedImportedRun || normalizedDistanceKm < MIN_DISTANCE_KM_FOR_ELEVATION_XP) {
+    return 0
+  }
+
+  return Math.min(
+    Math.floor(normalizedElevationGainMeters / ELEVATION_METERS_PER_XP),
+    MAX_ELEVATION_XP
+  )
 }
 
 export function getWeeklyConsistencyBonus(runCountLast7Days: number): number {
@@ -45,6 +99,8 @@ export async function calculateRunXp({
   userId,
   createdAt,
   distanceKm,
+  elevationGainMeters,
+  externalSource,
   excludeRunId,
   supabase = createSupabaseAdminClient(),
 }: CalculateRunXpOptions) {
@@ -56,14 +112,20 @@ export async function calculateRunXp({
 
   const normalizedDistanceKm = Number.isFinite(distanceKm) ? Math.max(0, Number(distanceKm)) : 0
   const normalizedCreatedAt = createdAtDate.toISOString()
-  const workoutXp = RUN_WORKOUT_XP
-  const distanceXp = Math.max(0, Math.round(normalizedDistanceKm * RUN_DISTANCE_XP_PER_KM))
+  const workoutXp = RUN_BASE_XP
+  const distanceXp = calculateRunDistanceXp(normalizedDistanceKm)
+  const elevationXp = getElevationXp({
+    distanceKm: normalizedDistanceKm,
+    elevationGainMeters,
+    externalSource,
+  })
 
   if (normalizedDistanceKm < MIN_RUN_DISTANCE_KM_FOR_XP) {
     return {
       xp: 0,
       workoutXp,
       distanceXp,
+      elevationXp,
       weeklyConsistencyBonus: 0,
       runCountLast7Days: 0,
       breakdown: [],
@@ -95,6 +157,7 @@ export async function calculateRunXp({
       xp: 0,
       workoutXp,
       distanceXp,
+      elevationXp,
       weeklyConsistencyBonus: 0,
       runCountLast7Days: 0,
       breakdown: [],
@@ -123,7 +186,7 @@ export async function calculateRunXp({
   const existingRunCount = Number(count ?? 0)
   const runCountLast7Days = existingRunCount + 1
   const weeklyConsistencyBonus = getWeeklyConsistencyBonus(runCountLast7Days)
-  const rawXp = workoutXp + distanceXp + weeklyConsistencyBonus
+  const rawXp = workoutXp + distanceXp + elevationXp + weeklyConsistencyBonus
   const dailyXpUsage = await loadDailyXpUsage({
     userId,
     timestamp: normalizedCreatedAt,
@@ -136,12 +199,14 @@ export async function calculateRunXp({
     xp,
     workoutXp,
     distanceXp,
+    elevationXp,
     weeklyConsistencyBonus,
     runCountLast7Days,
     breakdown: capXpBreakdownItems(
       buildRunXpBreakdown({
         workoutXp,
         distanceXp,
+        elevationXp,
         weeklyConsistencyBonus,
       }),
       xp

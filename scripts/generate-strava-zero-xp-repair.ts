@@ -9,6 +9,7 @@ type RunRow = {
   user_id: string | null
   created_at: string
   distance_km: number | string | null
+  elevation_gain_meters: number | string | null
   xp: number | string | null
   external_source: string | null
 }
@@ -80,7 +81,7 @@ async function fetchZeroXpStravaRuns() {
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('runs')
-      .select('id, user_id, created_at, distance_km, xp, external_source')
+      .select('id, user_id, created_at, distance_km, elevation_gain_meters, xp, external_source')
       .eq('external_source', STRAVA_EXTERNAL_SOURCE)
       .eq('xp', 0)
       .order('created_at', { ascending: true })
@@ -118,6 +119,8 @@ async function evaluateCandidates(candidateRuns: RunRow[]) {
           userId: candidate.user_id,
           createdAt: candidate.created_at,
           distanceKm,
+          elevationGainMeters: normalizeInteger(candidate.elevation_gain_meters),
+          externalSource: candidate.external_source,
           excludeRunId: candidate.id,
           supabase,
         })
