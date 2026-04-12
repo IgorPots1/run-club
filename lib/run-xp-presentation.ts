@@ -22,7 +22,15 @@ export type RunXpPresentationRun = {
 type RunXpPresentationHistoryRun = Pick<RunXpPresentationRun, 'id' | 'created_at'>
 
 export type RunXpBreakdownRow = {
-  id: 'run_effort' | 'consistency_bonus' | 'elevation_bonus' | 'duration_bonus' | 'cap_adjustment' | 'final_awarded'
+  id:
+    | 'run_effort'
+    | 'base_xp'
+    | 'distance_contribution'
+    | 'consistency_bonus'
+    | 'elevation_bonus'
+    | 'duration_bonus'
+    | 'cap_adjustment'
+    | 'final_awarded'
   label: string
   value: number
   emphasis?: 'default' | 'strong' | 'negative'
@@ -107,12 +115,16 @@ export function getRunXpPresentation(
 
   function buildBreakdownRows({
     runEffortXp,
+    baseXp = 0,
+    distanceContributionXp = 0,
     elevationBonusXp,
     durationBonusXp,
     weeklyConsistencyBonusXp,
     capAdjustmentXp,
   }: {
     runEffortXp: number
+    baseXp?: number
+    distanceContributionXp?: number
     elevationBonusXp: number
     durationBonusXp: number
     weeklyConsistencyBonusXp: number
@@ -125,6 +137,23 @@ export function getRunXpPresentation(
         id: 'run_effort',
         label: 'Беговое усилие',
         value: runEffortXp,
+        emphasis: 'strong',
+      })
+    }
+
+    if (baseXp > 0) {
+      rows.push({
+        id: 'base_xp',
+        label: 'Базовый XP',
+        value: baseXp,
+      })
+    }
+
+    if (distanceContributionXp > 0) {
+      rows.push({
+        id: 'distance_contribution',
+        label: 'Дистанция',
+        value: distanceContributionXp,
       })
     }
 
@@ -311,6 +340,8 @@ export function getRunXpPresentation(
     capAdjustmentXp,
     breakdownRows: buildBreakdownRows({
       runEffortXp,
+      baseXp: workoutXp,
+      distanceContributionXp: distanceXp,
       elevationBonusXp: elevationXp,
       durationBonusXp,
       weeklyConsistencyBonusXp: weeklyConsistencyBonus,
