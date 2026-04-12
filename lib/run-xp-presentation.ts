@@ -23,7 +23,6 @@ type RunXpPresentationHistoryRun = Pick<RunXpPresentationRun, 'id' | 'created_at
 
 export type RunXpBreakdownRow = {
   id:
-    | 'run_effort'
     | 'base_xp'
     | 'distance_contribution'
     | 'consistency_bonus'
@@ -114,7 +113,6 @@ export function getRunXpPresentation(
   const totalXp = toRoundedNonNegativeNumber(run.xp)
 
   function buildBreakdownRows({
-    runEffortXp,
     baseXp = 0,
     distanceContributionXp = 0,
     elevationBonusXp,
@@ -122,7 +120,6 @@ export function getRunXpPresentation(
     weeklyConsistencyBonusXp,
     capAdjustmentXp,
   }: {
-    runEffortXp: number
     baseXp?: number
     distanceContributionXp?: number
     elevationBonusXp: number
@@ -132,19 +129,10 @@ export function getRunXpPresentation(
   }): RunXpBreakdownRow[] {
     const rows: RunXpBreakdownRow[] = []
 
-    if (runEffortXp > 0) {
-      rows.push({
-        id: 'run_effort',
-        label: 'Беговое усилие',
-        value: runEffortXp,
-        emphasis: 'strong',
-      })
-    }
-
     if (baseXp > 0) {
       rows.push({
         id: 'base_xp',
-        label: 'Базовый XP',
+        label: 'Базовый опыт',
         value: baseXp,
       })
     }
@@ -152,7 +140,7 @@ export function getRunXpPresentation(
     if (distanceContributionXp > 0) {
       rows.push({
         id: 'distance_contribution',
-        label: 'Дистанция',
+        label: 'Опыт за километраж',
         value: distanceContributionXp,
       })
     }
@@ -168,7 +156,7 @@ export function getRunXpPresentation(
     if (elevationBonusXp > 0) {
       rows.push({
         id: 'elevation_bonus',
-        label: 'Бонус за набор высоты',
+        label: 'Опыт за набор высоты',
         value: elevationBonusXp,
       })
     }
@@ -176,7 +164,7 @@ export function getRunXpPresentation(
     if (durationBonusXp > 0) {
       rows.push({
         id: 'duration_bonus',
-        label: 'Бонус за длительность',
+        label: 'Опыт за длительность',
         value: durationBonusXp,
       })
     }
@@ -184,7 +172,7 @@ export function getRunXpPresentation(
     if (capAdjustmentXp < 0) {
       rows.push({
         id: 'cap_adjustment',
-        label: 'Корректировка лимита',
+        label: 'Корректировка лимитом',
         value: capAdjustmentXp,
         emphasis: 'negative',
       })
@@ -209,7 +197,6 @@ export function getRunXpPresentation(
       weeklyConsistencyBonusXp: 0,
       capAdjustmentXp: 0,
       breakdownRows: buildBreakdownRows({
-        runEffortXp: 0,
         elevationBonusXp: 0,
         durationBonusXp: 0,
         weeklyConsistencyBonusXp: 0,
@@ -229,7 +216,6 @@ export function getRunXpPresentation(
       weeklyConsistencyBonusXp: 0,
       capAdjustmentXp: 0,
       breakdownRows: buildBreakdownRows({
-        runEffortXp: totalXp,
         elevationBonusXp: 0,
         durationBonusXp: 0,
         weeklyConsistencyBonusXp: 0,
@@ -249,7 +235,6 @@ export function getRunXpPresentation(
       weeklyConsistencyBonusXp: 0,
       capAdjustmentXp: 0,
       breakdownRows: buildBreakdownRows({
-        runEffortXp: totalXp,
         elevationBonusXp: 0,
         durationBonusXp: 0,
         weeklyConsistencyBonusXp: 0,
@@ -279,7 +264,6 @@ export function getRunXpPresentation(
       weeklyConsistencyBonusXp: 0,
       capAdjustmentXp: 0,
       breakdownRows: buildBreakdownRows({
-        runEffortXp: totalXp,
         elevationBonusXp: 0,
         durationBonusXp: 0,
         weeklyConsistencyBonusXp: 0,
@@ -320,7 +304,6 @@ export function getRunXpPresentation(
       weeklyConsistencyBonusXp: 0,
       capAdjustmentXp: 0,
       breakdownRows: buildBreakdownRows({
-        runEffortXp: totalXp,
         elevationBonusXp: 0,
         durationBonusXp: 0,
         weeklyConsistencyBonusXp: 0,
@@ -339,7 +322,6 @@ export function getRunXpPresentation(
     weeklyConsistencyBonusXp: weeklyConsistencyBonus,
     capAdjustmentXp,
     breakdownRows: buildBreakdownRows({
-      runEffortXp,
       baseXp: workoutXp,
       distanceContributionXp: distanceXp,
       elevationBonusXp: elevationXp,

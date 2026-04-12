@@ -77,16 +77,16 @@ export default function RunXpBreakdownSheet({
         </div>
 
         {finalAwardedRow ? (
-          <div className="mt-4 rounded-2xl bg-black/[0.03] px-3.5 py-3 dark:bg-white/[0.04]">
+          <div className="mt-4 rounded-2xl bg-black/[0.02] px-3.5 py-2.5 dark:bg-white/[0.03]">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-black/[0.06] text-[18px] dark:bg-white/[0.08]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-black/[0.05] text-[19px] dark:bg-white/[0.07]">
                 <span aria-hidden="true">⚡</span>
               </div>
               <div className="min-w-0">
-                <p className="app-text-secondary text-xs font-medium uppercase tracking-[0.08em]">
+                <p className="app-text-secondary text-[11px] font-medium uppercase tracking-[0.08em]">
                   {finalAwardedRow.label}
                 </p>
-                <p className="app-text-primary mt-0.5 text-xl font-semibold leading-none">
+                <p className="app-text-primary mt-0.5 text-lg font-medium leading-none">
                   {formatSignedXp(finalAwardedRow.value)}
                 </p>
               </div>
@@ -95,7 +95,7 @@ export default function RunXpBreakdownSheet({
         ) : null}
 
         <div className="mt-4 space-y-2">
-          {rows.map((row) => {
+          {rows.filter((row) => row.id !== 'final_awarded').map((row) => {
             const valueClassName = row.emphasis === 'strong'
               ? 'app-text-primary font-semibold'
               : row.emphasis === 'negative'
@@ -106,15 +106,13 @@ export default function RunXpBreakdownSheet({
               <div
                 key={row.id}
                 className={`flex items-center justify-between gap-3 rounded-2xl px-3 py-2 ${
-                  row.id === 'run_effort'
+                  row.emphasis === 'strong'
                     ? 'bg-black/[0.035] dark:bg-white/[0.05]'
-                    : row.emphasis === 'strong'
-                    ? 'bg-black/[0.04] dark:bg-white/[0.06]'
                     : 'bg-black/[0.02] dark:bg-white/[0.03]'
                 }`}
               >
                 <p className={`min-w-0 text-sm ${
-                  row.id === 'run_effort' || row.emphasis === 'strong'
+                  row.emphasis === 'strong'
                     ? 'app-text-primary font-medium'
                     : 'app-text-secondary'
                 }`}>
