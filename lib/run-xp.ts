@@ -190,6 +190,7 @@ export async function calculateRunXp({
   const dailyXpUsage = await loadDailyXpUsage({
     userId,
     timestamp: normalizedCreatedAt,
+    excludeRunId,
     supabase,
   })
   const { xpGained } = applyDailyXpCap(rawXp, dailyXpUsage.totalXp)
