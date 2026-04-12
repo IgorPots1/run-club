@@ -1,4 +1,4 @@
-import { getRunXpPresentation, type RunXpBreakdownRow } from './run-xp-presentation'
+import { getRunXpBreakdownRows, type RunXpBreakdownRow } from './run-xp-presentation'
 import { supabase } from './supabase'
 
 export type ActivityPeriod = 'week' | 'month' | 'year' | 'all'
@@ -14,6 +14,7 @@ export type ActivityRunRow = {
   moving_time_seconds?: number | null
   elevation_gain_meters?: number | null
   xp?: number | null
+  xp_breakdown?: unknown
   xp_breakdown_rows?: RunXpBreakdownRow[]
   created_at: string
   external_source?: string | null
@@ -223,7 +224,7 @@ function buildMovingTimeMapByKey(
 export async function loadActivityRuns(userId: string) {
   const { data, error } = await supabase
     .from('runs')
-    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, xp, created_at, external_source')
+    .select('id, user_id, name, title, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, xp, xp_breakdown, created_at, external_source')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
@@ -234,11 +235,9 @@ export async function loadActivityRuns(userId: string) {
   const runs = (data as ActivityRunRow[] | null) ?? []
 
   return runs.map((run) => {
-    const xpPresentation = getRunXpPresentation(run, runs)
-
     return {
       ...run,
-      xp_breakdown_rows: xpPresentation.breakdownRows,
+      xp_breakdown_rows: getRunXpBreakdownRows(run, runs),
     }
   })
 }
