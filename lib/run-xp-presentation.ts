@@ -1,5 +1,3 @@
-import { buildRunXpBreakdown, capXpBreakdownItems } from './xp'
-
 const RUN_BASE_XP = 40
 const MIN_RUN_DISTANCE_KM_FOR_XP = 1
 const RUN_XP_FREQUENCY_WINDOW_MS = 10 * 60 * 1000
@@ -12,8 +10,6 @@ const MIN_DISTANCE_KM_FOR_ELEVATION_XP = 3
 const ELEVATION_METERS_PER_XP = 20
 const MAX_ELEVATION_XP = 25
 const WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
-const CONSISTENCY_LABEL = 'Регулярность'
-
 export type RunXpPresentationRun = {
   id: string
   created_at: string
@@ -25,10 +21,21 @@ export type RunXpPresentationRun = {
 
 type RunXpPresentationHistoryRun = Pick<RunXpPresentationRun, 'id' | 'created_at'>
 
+export type RunXpBreakdownRow = {
+  id: 'run_effort' | 'consistency_bonus' | 'elevation_bonus' | 'duration_bonus' | 'cap_adjustment' | 'final_awarded'
+  label: string
+  value: number
+  emphasis?: 'default' | 'strong' | 'negative'
+}
+
 export type RunXpPresentation = {
+  finalAwardedXp: number
   runEffortXp: number
+  elevationBonusXp: number
+  durationBonusXp: number
   weeklyConsistencyBonusXp: number
-  totalXp: number
+  capAdjustmentXp: number
+  breakdownRows: RunXpBreakdownRow[]
 }
 
 function toRoundedNonNegativeNumber(value: unknown) {
@@ -98,11 +105,87 @@ export function getRunXpPresentation(
 ): RunXpPresentation {
   const totalXp = toRoundedNonNegativeNumber(run.xp)
 
+  function buildBreakdownRows({
+    runEffortXp,
+    elevationBonusXp,
+    durationBonusXp,
+    weeklyConsistencyBonusXp,
+    capAdjustmentXp,
+  }: {
+    runEffortXp: number
+    elevationBonusXp: number
+    durationBonusXp: number
+    weeklyConsistencyBonusXp: number
+    capAdjustmentXp: number
+  }): RunXpBreakdownRow[] {
+    const rows: RunXpBreakdownRow[] = []
+
+    if (runEffortXp > 0) {
+      rows.push({
+        id: 'run_effort',
+        label: 'Беговое усилие',
+        value: runEffortXp,
+      })
+    }
+
+    if (weeklyConsistencyBonusXp > 0) {
+      rows.push({
+        id: 'consistency_bonus',
+        label: 'Бонус за регулярность',
+        value: weeklyConsistencyBonusXp,
+      })
+    }
+
+    if (elevationBonusXp > 0) {
+      rows.push({
+        id: 'elevation_bonus',
+        label: 'Бонус за набор высоты',
+        value: elevationBonusXp,
+      })
+    }
+
+    if (durationBonusXp > 0) {
+      rows.push({
+        id: 'duration_bonus',
+        label: 'Бонус за длительность',
+        value: durationBonusXp,
+      })
+    }
+
+    if (capAdjustmentXp < 0) {
+      rows.push({
+        id: 'cap_adjustment',
+        label: 'Корректировка лимита',
+        value: capAdjustmentXp,
+        emphasis: 'negative',
+      })
+    }
+
+    rows.push({
+      id: 'final_awarded',
+      label: 'Итоговое начисление',
+      value: totalXp,
+      emphasis: 'strong',
+    })
+
+    return rows
+  }
+
   if (totalXp <= 0) {
     return {
+      finalAwardedXp: 0,
       runEffortXp: 0,
+      elevationBonusXp: 0,
+      durationBonusXp: 0,
       weeklyConsistencyBonusXp: 0,
-      totalXp: 0,
+      capAdjustmentXp: 0,
+      breakdownRows: buildBreakdownRows({
+        runEffortXp: 0,
+        elevationBonusXp: 0,
+        durationBonusXp: 0,
+        weeklyConsistencyBonusXp: 0,
+        capAdjustmentXp: 0,
+      }),
     }
   }
 
@@ -110,9 +193,19 @@ export function getRunXpPresentation(
 
   if (!Number.isFinite(createdAtMs)) {
     return {
+      finalAwardedXp: totalXp,
       runEffortXp: totalXp,
+      elevationBonusXp: 0,
+      durationBonusXp: 0,
       weeklyConsistencyBonusXp: 0,
-      totalXp,
+      capAdjustmentXp: 0,
+      breakdownRows: buildBreakdownRows({
+        runEffortXp: totalXp,
+        elevationBonusXp: 0,
+        durationBonusXp: 0,
+        weeklyConsistencyBonusXp: 0,
+        capAdjustmentXp: 0,
+      }),
     }
   }
 
@@ -120,9 +213,19 @@ export function getRunXpPresentation(
 
   if (normalizedDistanceKm < MIN_RUN_DISTANCE_KM_FOR_XP) {
     return {
+      finalAwardedXp: totalXp,
       runEffortXp: totalXp,
+      elevationBonusXp: 0,
+      durationBonusXp: 0,
       weeklyConsistencyBonusXp: 0,
-      totalXp,
+      capAdjustmentXp: 0,
+      breakdownRows: buildBreakdownRows({
+        runEffortXp: totalXp,
+        elevationBonusXp: 0,
+        durationBonusXp: 0,
+        weeklyConsistencyBonusXp: 0,
+        capAdjustmentXp: 0,
+      }),
     }
   }
 
@@ -140,15 +243,27 @@ export function getRunXpPresentation(
 
   if (recentRunExists) {
     return {
+      finalAwardedXp: totalXp,
       runEffortXp: totalXp,
+      elevationBonusXp: 0,
+      durationBonusXp: 0,
       weeklyConsistencyBonusXp: 0,
-      totalXp,
+      capAdjustmentXp: 0,
+      breakdownRows: buildBreakdownRows({
+        runEffortXp: totalXp,
+        elevationBonusXp: 0,
+        durationBonusXp: 0,
+        weeklyConsistencyBonusXp: 0,
+        capAdjustmentXp: 0,
+      }),
     }
   }
 
   const workoutXp = RUN_BASE_XP
   const distanceXp = calculateRunDistanceXp(normalizedDistanceKm)
+  const runEffortXp = workoutXp + distanceXp
   const elevationXp = calculateElevationXp(run, normalizedDistanceKm)
+  const durationBonusXp = 0
   const weeklyWindowStartMs = createdAtMs - WEEKLY_WINDOW_MS
   const runCountLast7Days = userRunHistory.reduce((count, candidateRun) => {
     const candidateCreatedAtMs = new Date(candidateRun.created_at).getTime()
@@ -165,29 +280,41 @@ export function getRunXpPresentation(
       : count
   }, 0)
   const weeklyConsistencyBonus = getWeeklyConsistencyBonus(runCountLast7Days)
-  const cappedBreakdown = capXpBreakdownItems(
-    buildRunXpBreakdown({
-      workoutXp,
-      distanceXp,
-      elevationXp,
-      weeklyConsistencyBonus,
-    }),
-    totalXp
-  )
+  const rawTotalXp = runEffortXp + elevationXp + durationBonusXp + weeklyConsistencyBonus
 
-  const weeklyConsistencyBonusXp = cappedBreakdown.reduce((sum, item) => (
-    item.label === CONSISTENCY_LABEL ? sum + toRoundedNonNegativeNumber(item.value) : sum
-  ), 0)
-  const cappedBreakdownTotal = cappedBreakdown.reduce(
-    (sum, item) => sum + toRoundedNonNegativeNumber(item.value),
-    0
-  )
-  const runEffortXp = Math.max(0, totalXp - weeklyConsistencyBonusXp)
-  const remainingXp = Math.max(0, totalXp - cappedBreakdownTotal)
+  if (totalXp > rawTotalXp) {
+    return {
+      finalAwardedXp: totalXp,
+      runEffortXp: totalXp,
+      elevationBonusXp: 0,
+      durationBonusXp: 0,
+      weeklyConsistencyBonusXp: 0,
+      capAdjustmentXp: 0,
+      breakdownRows: buildBreakdownRows({
+        runEffortXp: totalXp,
+        elevationBonusXp: 0,
+        durationBonusXp: 0,
+        weeklyConsistencyBonusXp: 0,
+        capAdjustmentXp: 0,
+      }),
+    }
+  }
+
+  const capAdjustmentXp = totalXp < rawTotalXp ? totalXp - rawTotalXp : 0
 
   return {
-    runEffortXp: runEffortXp + remainingXp,
-    weeklyConsistencyBonusXp,
-    totalXp,
+    finalAwardedXp: totalXp,
+    runEffortXp,
+    elevationBonusXp: elevationXp,
+    durationBonusXp,
+    weeklyConsistencyBonusXp: weeklyConsistencyBonus,
+    capAdjustmentXp,
+    breakdownRows: buildBreakdownRows({
+      runEffortXp,
+      elevationBonusXp: elevationXp,
+      durationBonusXp,
+      weeklyConsistencyBonusXp: weeklyConsistencyBonus,
+      capAdjustmentXp,
+    }),
   }
 }

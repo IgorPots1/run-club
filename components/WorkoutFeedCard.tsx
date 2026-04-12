@@ -10,6 +10,7 @@ import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMed
 import type { FeedRunInsight } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
+import type { RunXpBreakdownRow } from '@/lib/run-xp-presentation'
 
 type WorkoutFeedCardMediaSlide =
   | {
@@ -36,8 +37,8 @@ type WorkoutFeedCardProps = {
   pace?: string | number | null
   movingTime?: string | null
   mapPolyline?: string | null
-  runEffortXp: number
-  weeklyConsistencyBonusXp?: number
+  xp: number
+  xpBreakdownRows?: RunXpBreakdownRow[]
   createdAt: string
   displayName: string
   avatarUrl: string | null
@@ -56,6 +57,7 @@ type WorkoutFeedCardProps = {
   profileHref?: string | null
   onNavigateToProfile?: (href: string) => void
   photos?: WorkoutMediaPhoto[]
+  onOpenXpBreakdown?: () => void
 }
 
 const DEFAULT_PHOTO_OBJECT_POSITION = '50% 50%'
@@ -139,8 +141,8 @@ function WorkoutFeedCard({
   pace,
   movingTime = null,
   mapPolyline = null,
-  runEffortXp,
-  weeklyConsistencyBonusXp = 0,
+  xp,
+  xpBreakdownRows = [],
   createdAt,
   displayName,
   avatarUrl,
@@ -159,6 +161,7 @@ function WorkoutFeedCard({
   profileHref = null,
   onNavigateToProfile,
   photos = [],
+  onOpenXpBreakdown,
 }: WorkoutFeedCardProps) {
   const router = useRouter()
   const [failedMapPreviewUrl, setFailedMapPreviewUrl] = useState<string | null>(null)
@@ -222,10 +225,9 @@ function WorkoutFeedCard({
   const movingTimeLabel = movingTime?.trim() || ''
   const hasMediaContent = shouldRenderMediaCarousel || (showMapPreview && Boolean(mapPreviewUrl)) || Boolean(previewPhoto)
   const isNoMediaWorkout = !hasMediaContent
-  const isManualRun = externalSource !== 'strava'
   const shouldRenderInlineMetrics = !hasMediaContent && Boolean(distanceLabel || paceWithUnit || movingTimeLabel)
   const isHeartActive = isOwnRun ? likesCount > 0 : likedByMe
-  const shouldShowConsistencyBonus = weeklyConsistencyBonusXp > 0
+  const hasXpBreakdown = xpBreakdownRows.length > 0
   void shoeId
 
   function handleMediaScroll(event: React.UIEvent<HTMLDivElement>) {
@@ -528,17 +530,19 @@ function WorkoutFeedCard({
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
           </div>
-          <div className="ml-3 flex shrink-0 flex-col items-end text-right">
-            <div className="app-text-muted inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium sm:text-xs">
-              <span aria-hidden="true" className="text-[10px] leading-none opacity-80">⚡</span>
-              <span>+{runEffortXp} XP</span>
-            </div>
-            {shouldShowConsistencyBonus ? (
-              <p className="app-text-secondary mt-0.5 whitespace-nowrap text-[10px] font-medium sm:text-[11px]">
-                +{weeklyConsistencyBonusXp} регулярность
-              </p>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            disabled={!hasXpBreakdown}
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenXpBreakdown?.()
+            }}
+            className="app-text-muted ml-3 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-medium sm:text-xs disabled:opacity-100"
+            aria-label={hasXpBreakdown ? 'Показать разбивку XP' : 'XP'}
+          >
+            <span aria-hidden="true" className="text-[10px] leading-none opacity-80">⚡</span>
+            <span>+{xp} XP</span>
+          </button>
         </div>
       </div>
 

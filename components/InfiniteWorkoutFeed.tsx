@@ -13,6 +13,7 @@ import {
   type RaceEventLikeRealtimePayload,
 } from '@/lib/race-event-likes'
 import RunLikesSheet from '@/components/RunLikesSheet'
+import RunXpBreakdownSheet from '@/components/RunXpBreakdownSheet'
 import WorkoutFeedCard from '@/components/WorkoutFeedCard'
 import {
   loadFeedRuns,
@@ -372,6 +373,7 @@ export default function InfiniteWorkoutFeed({
   const [likedUsersLoadingRunId, setLikedUsersLoadingRunId] = useState<string | null>(null)
   const [likedUsersLoadingRaceEventId, setLikedUsersLoadingRaceEventId] = useState<string | null>(null)
   const [activeLikesTarget, setActiveLikesTarget] = useState<ActiveLikesTarget | null>(null)
+  const [activeXpRunId, setActiveXpRunId] = useState<string | null>(null)
   const [feedError, setFeedError] = useState('')
   const [initialLoading, setInitialLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -449,6 +451,7 @@ export default function InfiniteWorkoutFeed({
       setLikeInFlightByRunId({})
       setLikeInFlightByRaceEventId({})
       setActiveLikesTarget(null)
+      setActiveXpRunId(null)
       setFeedError('')
       setInitialLoading(false)
     },
@@ -715,6 +718,7 @@ export default function InfiniteWorkoutFeed({
       setLikeInFlightByRunId({})
       setLikeInFlightByRaceEventId({})
       setActiveLikesTarget(null)
+      setActiveXpRunId(null)
       setFeedError('')
       setInitialLoading(false)
       restoredSnapshotRef.current = null
@@ -737,6 +741,7 @@ export default function InfiniteWorkoutFeed({
     setLikeInFlightByRunId({})
     setLikeInFlightByRaceEventId({})
     setActiveLikesTarget(null)
+    setActiveXpRunId(null)
     void loadFirstPage()
   }, [enabled, feedQueryKey, hasRestoredSnapshot, loadFirstPage])
 
@@ -1217,6 +1222,9 @@ export default function InfiniteWorkoutFeed({
   const activeLikesRaceEventItem = activeLikesRaceEventId
     ? items.find((item): item is RaceEventFeedItem => item.kind === 'race_event' && item.raceEventId === activeLikesRaceEventId) ?? null
     : null
+  const activeXpRunItem = activeXpRunId
+    ? items.find((item): item is RunFeedItem => item.kind === 'run' && item.id === activeXpRunId) ?? null
+    : null
   const activeLikedUsers = activeLikesTarget?.type === 'run'
     ? (activeLikesRunId ? likedUsersByRunId[activeLikesRunId] ?? [] : [])
     : (activeLikesRaceEventId ? likedUsersByRaceEventId[activeLikesRaceEventId] ?? [] : [])
@@ -1281,8 +1289,8 @@ export default function InfiniteWorkoutFeed({
                 pace={item.pace}
                 movingTime={item.movingTime}
                 mapPolyline={item.map_polyline}
-                runEffortXp={item.runEffortXp}
-                weeklyConsistencyBonusXp={item.weeklyConsistencyBonusXp}
+                xp={item.xp}
+                xpBreakdownRows={item.xpBreakdownRows}
                 createdAt={item.created_at}
                 displayName={item.displayName}
                 avatarUrl={item.avatar_url}
@@ -1305,6 +1313,7 @@ export default function InfiniteWorkoutFeed({
                 onNavigateToRun={navigateToRun}
                 profileHref={`/users/${item.user_id}`}
                 onNavigateToProfile={navigateToProfile}
+                onOpenXpBreakdown={() => setActiveXpRunId(item.id)}
               />
             ) : item.kind === 'race_event' ? (
               <RaceFeedCard
@@ -1355,6 +1364,12 @@ export default function InfiniteWorkoutFeed({
           }
         }}
         onSelectUser={(userId) => navigateFromFeed(`/users/${userId}`)}
+      />
+      <RunXpBreakdownSheet
+        open={Boolean(activeXpRunItem)}
+        title={activeXpRunItem ? `XP: ${activeXpRunItem.title}` : 'XP за тренировку'}
+        rows={activeXpRunItem?.xpBreakdownRows ?? []}
+        onClose={() => setActiveXpRunId(null)}
       />
     </>
   )

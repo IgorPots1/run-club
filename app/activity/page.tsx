@@ -9,6 +9,7 @@ import ActivityReturnState from '@/components/ActivityReturnState'
 import ActivityDistanceChart from '@/components/ActivityDistanceChart'
 import ActivitySummaryGrid from '@/components/ActivitySummaryGrid'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
+import RunXpBreakdownSheet from '@/components/RunXpBreakdownSheet'
 import { getBootstrapUser } from '@/lib/auth'
 import { isRaceEventUpcoming, loadRaceEvents } from '@/lib/race-events'
 import type { User } from '@supabase/supabase-js'
@@ -235,16 +236,11 @@ function formatRunMetaLabel(run: Pick<ActivityRunRow, 'created_at' | 'external_s
   return parts.join(' • ')
 }
 
-function formatRunXpSummary(run: Pick<ActivityRunRow, 'xp' | 'run_effort_xp' | 'weekly_consistency_bonus_xp'>) {
+function formatRunXpSummary(run: Pick<ActivityRunRow, 'xp'>) {
   const totalXp = Math.max(0, Math.round(Number(run.xp ?? 0)))
-  const runEffortXp = Math.max(0, Math.round(Number(run.run_effort_xp ?? totalXp)))
-  const weeklyConsistencyBonusXp = Math.max(0, Math.round(Number(run.weekly_consistency_bonus_xp ?? 0)))
 
   return {
-    runEffortLabel: `⚡ +${runEffortXp} XP`,
-    weeklyConsistencyLabel: weeklyConsistencyBonusXp > 0
-      ? `+${weeklyConsistencyBonusXp} регулярность`
-      : '',
+    totalLabel: `+${totalXp} XP`,
   }
 }
 
@@ -376,6 +372,7 @@ export default function ActivityPage() {
   const [loadingUser, setLoadingUser] = useState(true)
   const [period, setPeriod] = useState<ActivityPeriod>('week')
   const [actionError, setActionError] = useState('')
+  const [activeXpRun, setActiveXpRun] = useState<ActivityRunRow | null>(null)
   const [pendingDeleteRun, setPendingDeleteRun] = useState<ActivityRunRow | null>(null)
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const suppressNextRunsUpdatedRefreshRef = useRef(false)
@@ -1047,9 +1044,18 @@ export default function ActivityPage() {
                         </button>
                       ) : null}
                       <div className="compact-run-card-layout">
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => handleOpenRunDetail(run.id)}
+                          onKeyDown={(event) => {
+                            if (event.key !== 'Enter' && event.key !== ' ') {
+                              return
+                            }
+
+                            event.preventDefault()
+                            handleOpenRunDetail(run.id)
+                          }}
                           className={`min-w-0 text-left ${run.user_id === userId ? 'pr-10' : ''}`}
                         >
                           <p className="app-text-primary break-words text-[15px] font-semibold leading-5">
@@ -1069,13 +1075,19 @@ export default function ActivityPage() {
                           <p className="compact-run-card-secondary compact-run-card-meta app-text-secondary mt-1.5 break-words text-sm">
                             {formatRunMetaLabel(run)}
                           </p>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium">
-                            <span className="app-text-muted">{xpSummary.runEffortLabel}</span>
-                            {xpSummary.weeklyConsistencyLabel ? (
-                              <span className="app-text-secondary">{xpSummary.weeklyConsistencyLabel}</span>
-                            ) : null}
-                          </div>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setActiveXpRun(run)
+                            }}
+                            className="app-text-muted mt-1.5 inline-flex items-center gap-1 text-xs font-medium"
+                            aria-label="Показать разбивку XP"
+                          >
+                            <span aria-hidden="true" className="text-[10px] leading-none opacity-80">⚡</span>
+                            <span>{xpSummary.totalLabel}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )
@@ -1101,6 +1113,12 @@ export default function ActivityPage() {
             setPendingDeleteRun(null)
           }
         }}
+      />
+      <RunXpBreakdownSheet
+        open={Boolean(activeXpRun)}
+        title={activeXpRun ? `XP: ${getRunDisplayName(activeXpRun)}` : 'XP за тренировку'}
+        rows={activeXpRun?.xp_breakdown_rows ?? []}
+        onClose={() => setActiveXpRun(null)}
       />
     </main>
   )

@@ -4,7 +4,7 @@ import { loadRaceEventLikesSummaryForRaceEventIds } from './race-event-likes'
 import { getPersonalRecordRaceEventIds } from './race-events'
 import { loadEntityCommentVisibilitySummaryForEntityIds } from './run-comments'
 import { loadRunLikesSummaryForRunIds } from './run-likes'
-import { getRunXpPresentation } from './run-xp-presentation'
+import { getRunXpPresentation, type RunXpBreakdownRow } from './run-xp-presentation'
 import { supabase } from './supabase'
 
 type ProfileRow = {
@@ -111,8 +111,7 @@ export type DashboardRunItem = {
   movingTime: string | null
   map_polyline?: string | null
   xp: number
-  runEffortXp: number
-  weeklyConsistencyBonusXp: number
+  xpBreakdownRows: RunXpBreakdownRow[]
   created_at: string
   displayName: string
   avatar_url: string | null
@@ -857,8 +856,7 @@ export async function loadFeedRuns(
         movingTime: formatMovingTime(resolvedDurationSeconds),
         map_polyline: run.map_polyline ?? null,
         xp: Number(run.xp ?? 0),
-        runEffortXp: xpPresentation.runEffortXp,
-        weeklyConsistencyBonusXp: xpPresentation.weeklyConsistencyBonusXp,
+        xpBreakdownRows: xpPresentation.breakdownRows,
         created_at: run.created_at,
         displayName: getProfileDisplayName(profile, 'Бегун'),
         avatar_url: profile?.avatar_url ?? null,
