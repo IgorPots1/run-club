@@ -59,7 +59,7 @@ export function useIsolatedViewportHeight() {
       const viewportHeight = visualViewport?.height ?? window.innerHeight
       const viewportOffsetTop = visualViewport?.offsetTop ?? 0
       const isMobileViewport = window.innerWidth < 768
-      const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
+      const effectiveViewportHeight = Math.round(viewportHeight)
       const baselineViewportHeight = baselineViewportHeightRef.current ?? effectiveViewportHeight
       const viewportHeightDelta = baselineViewportHeight - effectiveViewportHeight
       let nextIsKeyboardOpen = lastKeyboardOpenRef.current ?? false
