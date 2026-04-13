@@ -3,6 +3,7 @@
 import { Activity, Bell, Plus, Target, Trophy, User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import useSWR from 'swr'
 import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import UnreadBadge from '@/components/chat/UnreadBadge'
@@ -321,6 +322,7 @@ export default function DashboardPageClient({
   initialAllChallengesCompleted: boolean
   initialInboxUnreadCount: number
 }) {
+  const pathname = usePathname()
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails] = useState(true)
   const [showXpModal, setShowXpModal] = useState(false)
@@ -371,6 +373,12 @@ export default function DashboardPageClient({
       isMountedRef.current = false
     }
   }, [initialUser.id, refreshInboxUnreadCount])
+
+  useEffect(() => {
+    if (pathname === '/dashboard') {
+      void refreshInboxUnreadCount()
+    }
+  }, [pathname, refreshInboxUnreadCount])
 
   useEffect(() => {
     function handleWindowFocus() {
