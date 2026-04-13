@@ -24,6 +24,7 @@ import {
 import { getRaceDistanceLabel } from '@/lib/race-result-share'
 import {
   countVisibleRunCommentRecords,
+  loadEntityCommentVisibilitySummaryForEntityIds,
   loadRunCommentVisibilitySummaryForRunIds,
   subscribeToFeedRunComments,
   type RunCommentRealtimeRow,
@@ -571,6 +572,33 @@ export default function InfiniteWorkoutFeed({
     const runId = commentRow.run_id
 
     if (!runId) {
+      if (commentRow.entity_type !== 'race') {
+        return
+      }
+
+      const raceEventId = commentRow.entity_id
+
+      if (!raceEventId) {
+        return
+      }
+
+      const hasLoadedRaceEvent = itemsRef.current.some(
+        (item) => item.kind === 'race_event' && item.raceEventId === raceEventId
+      )
+
+      if (!hasLoadedRaceEvent) {
+        return
+      }
+
+      void loadEntityCommentVisibilitySummaryForEntityIds('race', [raceEventId])
+        .then((commentSummary) => {
+          updateRaceEventItem(raceEventId, (item) => ({
+            ...item,
+            commentsCount: commentSummary.countsByEntityId[raceEventId] ?? 0,
+          }))
+        })
+        .catch(() => {})
+
       return
     }
 
@@ -593,7 +621,7 @@ export default function InfiniteWorkoutFeed({
     }
 
     syncRunCommentCount(runId)
-  }, [syncRunCommentCount])
+  }, [syncRunCommentCount, updateRaceEventItem])
 
   const loadFirstPage = useCallback(async () => {
     if (
