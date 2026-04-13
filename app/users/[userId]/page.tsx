@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { CheckCircle2, Trophy } from 'lucide-react'
 import ActivitySummaryGrid from '@/components/ActivitySummaryGrid'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
@@ -28,6 +28,7 @@ type PublicProfileRow = {
   avatar_url: string | null
   club_joined_at: string | null
   total_xp: number | null
+  app_access_status: 'active' | 'blocked' | null
 }
 
 type PublicRunStatRow = {
@@ -182,7 +183,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ data: profile, error: profileError }, { data: runs, error: runsError }, achievementsResult] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, name, nickname, avatar_url, club_joined_at, total_xp')
+      .select('id, name, nickname, avatar_url, club_joined_at, total_xp, app_access_status')
       .eq('id', userId)
       .maybeSingle(),
     supabase
@@ -213,6 +214,10 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   ].filter((achievement, index, items): achievement is UserAchievement =>
     Boolean(achievement) && items.findIndex((item) => item?.id === achievement?.id) === index
   ).sort(compareAchievementsByDateDesc)
+
+  if (publicProfile && publicProfile.app_access_status !== 'active') {
+    notFound()
+  }
 
   if (!publicProfile && !hasLoadError) {
     return (

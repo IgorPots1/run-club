@@ -19,6 +19,11 @@ type CurrentRaceWeekRpcRow = {
   finalized_at: string | null
 }
 
+type ProfileAccessRow = {
+  id: string
+  app_access_status: 'active' | 'blocked' | null
+}
+
 export type CurrentRaceWeek = {
   id: string
   slug: string
@@ -81,12 +86,32 @@ export async function loadWeeklyXpLeaderboard(currentUserId: string): Promise<We
   }
 
   const week = mapCurrentRaceWeek(((weekData as CurrentRaceWeekRpcRow[] | null) ?? [])[0] ?? null)
-  const rows = ((data as WeeklyXpRpcRow[] | null) ?? []).map((row) => ({
-    user_id: row.user_id,
-    displayName: row.display_name?.trim() || 'Бегун',
-    totalXp: toSafeNumber(row.total_xp ?? row.weekly_xp),
-    rank: Math.max(0, toSafeNumber(row.rank)),
-  }))
+  const rpcRows = (data as WeeklyXpRpcRow[] | null) ?? []
+  const userIds = Array.from(new Set(rpcRows.map((row) => row.user_id)))
+  const { data: profiles, error: profilesError } = userIds.length === 0
+    ? { data: [] as ProfileAccessRow[], error: null }
+    : await supabase
+        .from('profiles')
+        .select('id, app_access_status')
+        .in('id', userIds)
+
+  if (profilesError) {
+    throw new Error('Не удалось загрузить недельный рейтинг')
+  }
+
+  const activeUserIds = new Set(
+    ((profiles as ProfileAccessRow[] | null) ?? [])
+      .filter((profile) => profile.app_access_status === 'active')
+      .map((profile) => profile.id)
+  )
+  const rows = rpcRows
+    .filter((row) => activeUserIds.has(row.user_id))
+    .map((row, index) => ({
+      user_id: row.user_id,
+      displayName: row.display_name?.trim() || 'Бегун',
+      totalXp: toSafeNumber(row.total_xp ?? row.weekly_xp),
+      rank: index + 1,
+    }))
 
   if (!week) {
     return {

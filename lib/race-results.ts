@@ -86,6 +86,11 @@ type RaceWeekResultRankDbRow = {
   rank: number | string | null
 }
 
+type ProfileAccessDbRow = {
+  id: string
+  app_access_status: 'active' | 'blocked' | null
+}
+
 function toSafeNumber(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
   return Number.isFinite(numericValue) ? Number(numericValue) : 0
@@ -241,28 +246,60 @@ export async function loadRaceWeekTopResults(weekId: string) {
     )
     .eq('race_week_id', weekId)
     .order('rank', { ascending: true })
-    .limit(10)
 
   if (error) {
     throw new Error('Не удалось загрузить итоговые результаты недели')
   }
 
-  return ((data as RaceWeekResultDbRow[] | null) ?? []).map(mapRaceWeekResult)
+  const rows = (data as RaceWeekResultDbRow[] | null) ?? []
+  const userIds = Array.from(new Set(rows.map((row) => row.user_id)))
+  const { data: profiles, error: profilesError } = userIds.length === 0
+    ? { data: [] as ProfileAccessDbRow[], error: null }
+    : await supabase
+        .from('profiles')
+        .select('id, app_access_status')
+        .in('id', userIds)
+
+  if (profilesError) {
+    throw new Error('Не удалось загрузить итоговые результаты недели')
+  }
+
+  const activeUserIds = new Set(
+    ((profiles as ProfileAccessDbRow[] | null) ?? [])
+      .filter((profile) => profile.app_access_status === 'active')
+      .map((profile) => profile.id)
+  )
+
+  return rows
+    .filter((row) => activeUserIds.has(row.user_id))
+    .slice(0, 10)
+    .map(mapRaceWeekResult)
 }
 
 export async function loadRaceWeekUserResult(weekId: string, userId: string) {
   const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('race_week_results')
-    .select(
-      'id, race_week_id, user_id, rank, total_xp, run_xp, like_xp, challenge_xp, race_bonus_xp, runs_count, display_name_snapshot, finalized_at'
-    )
-    .eq('race_week_id', weekId)
-    .eq('user_id', userId)
-    .maybeSingle()
+  const [{ data, error }, { data: profile, error: profileError }] = await Promise.all([
+    supabase
+      .from('race_week_results')
+      .select(
+        'id, race_week_id, user_id, rank, total_xp, run_xp, like_xp, challenge_xp, race_bonus_xp, runs_count, display_name_snapshot, finalized_at'
+      )
+      .eq('race_week_id', weekId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('profiles')
+      .select('id, app_access_status')
+      .eq('id', userId)
+      .maybeSingle(),
+  ])
 
-  if (error) {
+  if (error || profileError) {
     throw new Error('Не удалось загрузить результат пользователя за неделю')
+  }
+
+  if ((profile as ProfileAccessDbRow | null)?.app_access_status !== 'active') {
+    return null
   }
 
   return data ? mapRaceWeekResult(data as RaceWeekResultDbRow) : null

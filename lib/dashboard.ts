@@ -14,6 +14,7 @@ type ProfileRow = {
   email?: string | null
   avatar_url?: string | null
   total_xp?: number | null
+  app_access_status?: 'active' | 'blocked' | null
 }
 
 type RunRow = {
@@ -468,7 +469,7 @@ function getProfileCacheKey(userId: string, options?: ProfileFieldSelection) {
 }
 
 function getProfileSelectClause(options?: ProfileFieldSelection) {
-  const fields = ['id', 'name', 'nickname', 'total_xp']
+  const fields = ['id', 'name', 'nickname', 'total_xp', 'app_access_status']
 
   if (options?.includeEmail !== false) {
     fields.push('email')
@@ -835,8 +836,12 @@ export async function loadFeedRuns(
       userRuns.map((historicalRun, index) => [historicalRun.id, index] as const)
     )
   ) as Record<string, number>
+  const activePageRuns = pageRuns.filter((run) => profileById[run.user_id]?.app_access_status === 'active')
+  const activePageAppEvents = pageAppEvents.filter(
+    (event) => event.actor_user_id && profileById[event.actor_user_id]?.app_access_status === 'active'
+  )
 
-  const runItems: FeedItem[] = pageRuns.map((run) => {
+  const runItems: FeedItem[] = activePageRuns.map((run) => {
       const profile = profileById[run.user_id]
       const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
       const resolvedDurationSeconds = resolveDurationSeconds(run)
@@ -870,7 +875,7 @@ export async function loadFeedRuns(
       }
     })
 
-  const raceEventItemsRaw = pageAppEvents.flatMap((event) => {
+  const raceEventItemsRaw = activePageAppEvents.flatMap((event) => {
     if (event.type === 'challenge.completed') {
       return []
     }
@@ -950,7 +955,7 @@ export async function loadFeedRuns(
     }]
   })
 
-  const challengeItems: FeedItem[] = pageAppEvents.flatMap((event) => {
+  const challengeItems: FeedItem[] = activePageAppEvents.flatMap((event) => {
     if (event.type !== 'challenge.completed' || !event.actor_user_id) {
       return []
     }
@@ -1004,6 +1009,6 @@ export async function loadFeedRuns(
 
   return {
     items: combinedItems,
-    hasMore: (pageRuns.length + pageAppEvents.length) > limit,
+    hasMore: (activePageRuns.length + activePageAppEvents.length) > limit,
   }
 }
