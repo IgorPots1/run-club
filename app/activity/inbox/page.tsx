@@ -6,6 +6,13 @@ import {
 } from '@/lib/app-events'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
+function markRenderedInboxItemsAsRead<T extends { isUnread: boolean }>(items: T[]): T[] {
+  return items.map((item) => ({
+    ...item,
+    isUnread: false,
+  }))
+}
+
 export default async function ActivityInboxPage() {
   const { user, error } = await getAuthenticatedUser()
 
@@ -14,26 +21,37 @@ export default async function ActivityInboxPage() {
   }
 
   let events = null as Awaited<ReturnType<typeof loadInboxEventItems>> | null
+  let didMarkEventsAsRead = false
   let loadFailed = false
 
   try {
     events = await loadInboxEventItems(user.id)
 
     const readBoundary = events.at(-1)?.readBoundaryAt ?? null
+    const hasUnreadEvents = events.some((event) => event.isUnread)
 
-    if (readBoundary) {
-      // Do not block inbox rendering if the read cursor update fails.
-      await markInboxEventsAsRead(user.id, readBoundary).catch((error) => {
+    if (readBoundary && hasUnreadEvents) {
+      try {
+        await markInboxEventsAsRead(user.id, readBoundary)
+        didMarkEventsAsRead = true
+        events = markRenderedInboxItemsAsRead(events)
+      } catch (error) {
         console.error('Failed to mark inbox events as read', {
           userId: user.id,
           readBoundary,
           error: error instanceof Error ? error.message : 'unknown_error',
         })
-      })
+      }
     }
   } catch {
     loadFailed = true
   }
 
-  return <ActivityInboxClient loadFailed={loadFailed} events={events} />
+  return (
+    <ActivityInboxClient
+      loadFailed={loadFailed}
+      didMarkEventsAsRead={didMarkEventsAsRead}
+      events={events}
+    />
+  )
 }

@@ -18,7 +18,11 @@ import {
   type RaceWeekResultRow,
   type RaceWeekSummary,
 } from '@/lib/race-results-client'
-import { loadInboxUnreadCount } from '@/lib/app-events-client'
+import {
+  INBOX_UNREAD_UPDATED_EVENT,
+  INBOX_UNREAD_UPDATED_STORAGE_KEY,
+  loadInboxUnreadCount,
+} from '@/lib/app-events-client'
 import { loadDashboardOverview } from '@/lib/dashboard'
 import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
 import { formatDistanceKm } from '@/lib/format'
@@ -379,12 +383,26 @@ export default function DashboardPageClient({
       }
     }
 
+    function handleInboxUnreadUpdated() {
+      void refreshInboxUnreadCount()
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === INBOX_UNREAD_UPDATED_STORAGE_KEY) {
+        void refreshInboxUnreadCount()
+      }
+    }
+
     window.addEventListener('focus', handleWindowFocus)
+    window.addEventListener(INBOX_UNREAD_UPDATED_EVENT, handleInboxUnreadUpdated)
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('storage', handleStorage)
 
     return () => {
       window.removeEventListener('focus', handleWindowFocus)
+      window.removeEventListener(INBOX_UNREAD_UPDATED_EVENT, handleInboxUnreadUpdated)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('storage', handleStorage)
     }
   }, [refreshInboxUnreadCount])
 

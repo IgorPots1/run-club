@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
+import { dispatchInboxUnreadUpdated } from '@/lib/app-events-client'
 import { formatRunDateTimeLabel } from '@/lib/format'
 import { useRunDetailReturnState } from '@/lib/run-detail-navigation'
 
@@ -38,6 +39,7 @@ type ActivityInboxListItem =
 
 type ActivityInboxClientProps = {
   loadFailed: boolean
+  didMarkEventsAsRead: boolean
   events: ActivityInboxListItem[] | null
 }
 
@@ -86,6 +88,7 @@ function getInitialLabel(name: string | null | undefined) {
 
 export default function ActivityInboxClient({
   loadFailed,
+  didMarkEventsAsRead,
   events,
 }: ActivityInboxClientProps) {
   const router = useRouter()
@@ -96,6 +99,14 @@ export default function ActivityInboxClient({
     debugLabel: 'ActivityInbox',
   })
 
+  useEffect(() => {
+    if (!didMarkEventsAsRead) {
+      return
+    }
+
+    dispatchInboxUnreadUpdated()
+  }, [didMarkEventsAsRead])
+
   function handleOpenRunDetail(targetPath: string) {
     prepareForRunDetailNavigation()
     router.push(targetPath)
@@ -105,6 +116,7 @@ export default function ActivityInboxClient({
     <WorkoutDetailShell
       title="Входящие"
       fallbackHref="/activity"
+      pinnedHeader
       scrollContainerRef={scrollContainerRef}
     >
       {loadFailed ? (
