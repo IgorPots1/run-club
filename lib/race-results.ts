@@ -135,8 +135,8 @@ export async function loadLatestFinalizedRaceWeek() {
   const { data, error } = await supabase
     .from('race_weeks')
     .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
-    .eq('status', 'finalized')
-    .order('ends_at', { ascending: false })
+    .not('finalized_at', 'is', null)
+    .order('finalized_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
