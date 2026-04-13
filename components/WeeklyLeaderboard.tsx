@@ -200,7 +200,7 @@ export default function WeeklyLeaderboard({
         </div>
       )}
 
-      {!loading && !error && shouldShowCurrentUserRow ? (
+      {!compact && !loading && !error && shouldShowCurrentUserRow ? (
         <div className="app-surface-muted mt-4 rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15">
           <div className="flex items-center justify-between gap-3 text-sm">
             <p className="app-text-primary min-w-0 flex-1 font-medium">
