@@ -25,7 +25,8 @@ function getAuthCallbackUrl() {
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [name, setName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -67,11 +68,18 @@ export default function RegisterPage() {
     e.preventDefault()
     if (loading) return
 
-    const normalizedName = name.trim()
+    const normalizedFirstName = firstName.trim()
+    const normalizedLastName = lastName.trim()
+    const normalizedName = [normalizedFirstName, normalizedLastName].filter(Boolean).join(' ')
     const normalizedNickname = nickname.trim()
     const normalizedEmail = email.trim()
-    if (!normalizedName) {
+    if (!normalizedFirstName) {
       setError('Введите имя')
+      return
+    }
+
+    if (!normalizedLastName) {
+      setError('Введите фамилию')
       return
     }
 
@@ -106,6 +114,8 @@ export default function RegisterPage() {
         options: {
           emailRedirectTo: getAuthCallbackUrl(),
           data: {
+            first_name: normalizedFirstName,
+            last_name: normalizedLastName,
             name: normalizedName,
             nickname: normalizedNickname,
           },
@@ -125,6 +135,8 @@ export default function RegisterPage() {
       const { error: profileError } = await upsertProfile({
         id: data.user.id,
         email: data.user.email ?? normalizedEmail,
+        first_name: normalizedFirstName,
+        last_name: normalizedLastName,
         name: normalizedName,
         nickname: normalizedNickname,
       })
@@ -140,7 +152,7 @@ export default function RegisterPage() {
         return
       }
 
-      setSuccess('Готово! Мы отправили письмо для подтверждения email. Подтвердите адрес и затем войдите.')
+      setSuccess('Аккаунт создан. Войдите, чтобы продолжить.')
     } catch {
       setError('Не удалось создать аккаунт. Попробуйте еще раз.')
     } finally {
@@ -169,13 +181,29 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit} className="app-card w-full max-w-sm space-y-4 rounded-2xl border p-4 shadow-sm sm:p-5">
         <h1 className="app-text-primary text-xl font-semibold">Создать аккаунт</h1>
         <div>
-          <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
+          <label htmlFor="first-name" className="app-text-secondary block text-sm mb-1">Имя</label>
           <input
-            id="name"
+            id="first-name"
             type="text"
-            value={name}
+            value={firstName}
             onChange={(e) => {
-              setName(e.target.value)
+              setFirstName(e.target.value)
+              setError('')
+              setSuccess('')
+            }}
+            required
+            disabled={loading}
+            className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+          />
+        </div>
+        <div>
+          <label htmlFor="last-name" className="app-text-secondary block text-sm mb-1">Фамилия</label>
+          <input
+            id="last-name"
+            type="text"
+            value={lastName}
+            onChange={(e) => {
+              setLastName(e.target.value)
               setError('')
               setSuccess('')
             }}
@@ -215,7 +243,6 @@ export default function RegisterPage() {
             disabled={loading}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
-          <p className="app-text-secondary mt-1 text-sm">Отправим письмо для подтверждения адреса.</p>
         </div>
         <div>
           <label htmlFor="password" className="app-text-secondary block text-sm mb-1">Пароль</label>
@@ -248,13 +275,13 @@ export default function RegisterPage() {
           {loading ? 'Создаем аккаунт...' : 'Зарегистрироваться'}
         </button>
         <p className="app-text-secondary break-words text-sm">
-          Уже есть аккаунт? <Link href="/login" className="underline">Войти</Link>
+          Уже есть аккаунт? <Link href="/login" className="no-underline">Войти</Link>
         </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {success ? (
           <div className="space-y-2 text-sm">
             <p>{success}</p>
-            <Link href="/login" className="inline-block underline">
+            <Link href="/login" className="inline-block no-underline">
               Перейти ко входу
             </Link>
           </div>

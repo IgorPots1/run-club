@@ -17,6 +17,41 @@ type RequireAppAccessResult = {
   profile: AppAccessProfile
 }
 
+function normalizeProfileValue(value: string | null | undefined) {
+  const normalized = value?.trim()
+  return normalized ? normalized : null
+}
+
+function splitProfileName(name: string | null | undefined) {
+  const normalizedName = normalizeProfileValue(name)
+
+  if (!normalizedName) {
+    return {
+      firstName: null,
+      lastName: null,
+    }
+  }
+
+  const [firstName, ...rest] = normalizedName.split(/\s+/)
+  const lastName = rest.join(' ').trim()
+
+  return {
+    firstName: firstName || null,
+    lastName: lastName || null,
+  }
+}
+
+function buildProfileFullName(firstName: string | null | undefined, lastName: string | null | undefined) {
+  const normalizedFirstName = normalizeProfileValue(firstName)
+  const normalizedLastName = normalizeProfileValue(lastName)
+
+  if (!normalizedFirstName && !normalizedLastName) {
+    return null
+  }
+
+  return [normalizedFirstName, normalizedLastName].filter(Boolean).join(' ')
+}
+
 export async function requireAppAccess(): Promise<RequireAppAccessResult> {
   const supabase = await createSupabaseServerClient()
   const {
@@ -40,10 +75,31 @@ export async function requireAppAccess(): Promise<RequireAppAccessResult> {
   if (!profile) {
     try {
       const adminSupabase = createSupabaseAdminClient()
+      const metadata = user.user_metadata as {
+        first_name?: string | null
+        last_name?: string | null
+        name?: string | null
+        full_name?: string | null
+      } | undefined
+      const normalizedFirstName = normalizeProfileValue(metadata?.first_name)
+      const normalizedLastName = normalizeProfileValue(metadata?.last_name)
+      const fallbackNameParts =
+        normalizedFirstName || normalizedLastName
+          ? {
+              firstName: normalizedFirstName,
+              lastName: normalizedLastName,
+            }
+          : splitProfileName(metadata?.name?.trim() || metadata?.full_name?.trim() || null)
       const { error: upsertError } = await adminSupabase.from('profiles').upsert(
         {
           id: user.id,
           email: user.email?.trim() || null,
+          first_name: fallbackNameParts.firstName,
+          last_name: fallbackNameParts.lastName,
+          name:
+            buildProfileFullName(fallbackNameParts.firstName, fallbackNameParts.lastName) ||
+            normalizeProfileValue(metadata?.name) ||
+            normalizeProfileValue(metadata?.full_name),
         },
         {
           onConflict: 'id',

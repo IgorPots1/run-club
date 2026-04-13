@@ -25,13 +25,13 @@ export default async function OnboardingPage() {
           href="/api/strava/connect?next=/dashboard"
           className="app-button-primary inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 py-2 text-sm font-medium"
         >
-          Connect Strava
+          Подключить Strava
         </a>
         <Link
           href="/runs?from=onboarding"
           className="app-button-secondary inline-flex min-h-11 w-full items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium"
         >
-          Add first run manually
+          Добавить тренировку вручную
         </Link>
       </div>
     </main>

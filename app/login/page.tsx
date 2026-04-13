@@ -14,7 +14,7 @@ function getAuthErrorMessage(message: string) {
   if (normalized.includes('email not confirmed')) return 'Подтвердите email из письма, затем повторите вход.'
   if (normalized.includes('invalid email')) return 'Введите корректный email'
 
-  return 'Не удалось войти. Попробуйте еще раз.'
+  return 'Неверный email или пароль'
 }
 
 function isEmailNotConfirmedError(message: string) {
@@ -116,7 +116,7 @@ export default function LoginPage() {
       setRedirecting(true)
       router.replace('/auth/continue')
     } catch {
-      setMessage('Не удалось войти. Попробуйте еще раз.')
+      setMessage('Неверный email или пароль')
     } finally {
       setLoading(false)
     }
@@ -223,7 +223,7 @@ export default function LoginPage() {
           {loading ? 'Входим...' : 'Войти'}
         </button>
         <p className="app-text-secondary break-words text-sm">
-          Нет аккаунта? <Link href="/register" className="underline">Регистрация</Link>
+          Нет аккаунта? <Link href="/register" className="no-underline">Регистрация</Link>
         </p>
         {message && <p className="text-sm">{message}</p>}
         {showResendConfirmation ? (
