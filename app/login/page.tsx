@@ -3,7 +3,7 @@
 import { Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { getBootstrapUser } from '@/lib/auth'
 import { supabase } from '../../lib/supabase'
 
@@ -11,7 +11,7 @@ function getAuthErrorMessage(message: string) {
   const normalized = message.toLowerCase()
 
   if (normalized.includes('invalid login credentials')) return 'Неверный email или пароль'
-  if (normalized.includes('email not confirmed')) return 'Подтвердите email перед входом'
+  if (normalized.includes('email not confirmed')) return 'Подтвердите email из письма, затем повторите вход.'
   if (normalized.includes('invalid email')) return 'Введите корректный email'
 
   return 'Не удалось войти. Попробуйте еще раз.'
@@ -28,6 +28,7 @@ function getAuthCallbackUrl() {
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -38,6 +39,7 @@ export default function LoginPage() {
   const [redirecting, setRedirecting] = useState(false)
   const [showResendConfirmation, setShowResendConfirmation] = useState(false)
   const [resendMessage, setResendMessage] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   useEffect(() => {
     let isMounted = true
@@ -65,6 +67,24 @@ export default function LoginPage() {
       isMounted = false
     }
   }, [router])
+
+  useEffect(() => {
+    if (searchParams.get('error') === 'auth_callback') {
+      setMessage('Не удалось завершить вход по ссылке. Запросите новое письмо.')
+      setResendMessage('')
+      setShowResendConfirmation(true)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+
+    const timeoutId = window.setTimeout(() => {
+      setResendCooldown((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [resendCooldown])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -103,11 +123,11 @@ export default function LoginPage() {
   }
 
   async function handleResendConfirmation() {
-    if (loading || resendLoading) return
+    if (loading || resendLoading || resendCooldown > 0) return
 
     const normalizedEmail = email.trim()
     if (!normalizedEmail) {
-      setResendMessage('Введите email, чтобы отправить письмо повторно')
+      setResendMessage('Сначала введите email.')
       return
     }
 
@@ -128,7 +148,8 @@ export default function LoginPage() {
         return
       }
 
-      setResendMessage('Письмо с подтверждением отправлено повторно')
+      setResendMessage('Отправили письмо повторно. Проверьте почту и «Спам».')
+      setResendCooldown(30)
     } catch {
       setResendMessage('Не удалось отправить письмо повторно. Попробуйте еще раз.')
     } finally {
@@ -164,6 +185,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => {
               setEmail(e.target.value)
+              setMessage('')
               setResendMessage('')
             }}
             required
@@ -180,6 +202,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value)
+                setMessage('')
                 setResendMessage('')
               }}
               required
@@ -197,7 +220,7 @@ export default function LoginPage() {
           </div>
         </div>
         <button type="submit" disabled={loading} className="app-button-primary min-h-11 w-full rounded-lg px-4 py-2">
-          {loading ? '...' : 'Войти'}
+          {loading ? 'Входим...' : 'Войти'}
         </button>
         <p className="app-text-secondary break-words text-sm">
           Нет аккаунта? <Link href="/register" className="underline">Регистрация</Link>
@@ -205,14 +228,18 @@ export default function LoginPage() {
         {message && <p className="text-sm">{message}</p>}
         {showResendConfirmation ? (
           <div className="space-y-2">
+            <p className="app-text-secondary text-sm">Email не подтвержден. Нужна новая ссылка?</p>
             <button
               type="button"
               onClick={handleResendConfirmation}
-              disabled={loading || resendLoading}
+              disabled={loading || resendLoading || resendCooldown > 0}
               className="app-button-secondary min-h-11 w-full rounded-lg border px-4 py-2"
             >
-              {resendLoading ? 'Отправляем...' : 'Resend confirmation email'}
+              {resendLoading ? 'Отправляем письмо...' : 'Отправить письмо повторно'}
             </button>
+            {resendCooldown > 0 ? (
+              <p className="app-text-secondary text-sm">Повторная отправка будет доступна через {resendCooldown} с.</p>
+            ) : null}
             {resendMessage ? <p className="text-sm">{resendMessage}</p> : null}
           </div>
         ) : null}

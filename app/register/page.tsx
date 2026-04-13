@@ -140,7 +140,7 @@ export default function RegisterPage() {
         return
       }
 
-      setSuccess('Аккаунт создан. Теперь войдите в приложение.')
+      setSuccess('Готово! Мы отправили письмо для подтверждения email. Подтвердите адрес и затем войдите.')
     } catch {
       setError('Не удалось создать аккаунт. Попробуйте еще раз.')
     } finally {
@@ -167,14 +167,18 @@ export default function RegisterPage() {
   return (
     <main className="flex min-h-dvh items-start justify-center px-4 pb-8 pt-10 sm:min-h-screen sm:items-center sm:p-4">
       <form onSubmit={handleSubmit} className="app-card w-full max-w-sm space-y-4 rounded-2xl border p-4 shadow-sm sm:p-5">
-        <h1 className="app-text-primary text-xl font-semibold">Регистрация</h1>
+        <h1 className="app-text-primary text-xl font-semibold">Создать аккаунт</h1>
         <div>
           <label htmlFor="name" className="app-text-secondary block text-sm mb-1">Имя</label>
           <input
             id="name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value)
+              setError('')
+              setSuccess('')
+            }}
             required
             disabled={loading}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
@@ -186,7 +190,11 @@ export default function RegisterPage() {
             id="nickname"
             type="text"
             value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
+            onChange={(e) => {
+              setNickname(e.target.value)
+              setError('')
+              setSuccess('')
+            }}
             required
             disabled={loading}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
@@ -198,11 +206,16 @@ export default function RegisterPage() {
             id="email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setError('')
+              setSuccess('')
+            }}
             required
             disabled={loading}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
           />
+          <p className="app-text-secondary mt-1 text-sm">Отправим письмо для подтверждения адреса.</p>
         </div>
         <div>
           <label htmlFor="password" className="app-text-secondary block text-sm mb-1">Пароль</label>
@@ -211,7 +224,11 @@ export default function RegisterPage() {
               id="password"
               type={showPassword ? 'text' : 'password'}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setError('')
+                setSuccess('')
+              }}
               required
               disabled={loading}
               className="app-input min-h-11 w-full rounded-lg border px-3 py-2 pr-11"
@@ -225,15 +242,23 @@ export default function RegisterPage() {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          <p className="app-text-secondary mt-1 text-sm">Минимум 6 символов.</p>
         </div>
         <button type="submit" disabled={loading} className="app-button-primary min-h-11 w-full rounded-lg px-4 py-2">
-          {loading ? '...' : 'Зарегистрироваться'}
+          {loading ? 'Создаем аккаунт...' : 'Зарегистрироваться'}
         </button>
         <p className="app-text-secondary break-words text-sm">
           Уже есть аккаунт? <Link href="/login" className="underline">Войти</Link>
         </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        {success && <p className="text-sm">{success}</p>}
+        {success ? (
+          <div className="space-y-2 text-sm">
+            <p>{success}</p>
+            <Link href="/login" className="inline-block underline">
+              Перейти ко входу
+            </Link>
+          </div>
+        ) : null}
       </form>
     </main>
   )
