@@ -552,7 +552,11 @@ export default function DashboardPageClient({
               className={dashboardHeaderActionClass}
             >
               <Bell className="h-5 w-5" strokeWidth={1.9} />
-              <UnreadBadge count={inboxUnreadCount} className="absolute -right-1 -top-1" />
+              <UnreadBadge
+                count={inboxUnreadCount}
+                maxDisplayCount={99}
+                className="absolute -right-1 -top-1"
+              />
             </Link>
             <Link
               href="/profile"
