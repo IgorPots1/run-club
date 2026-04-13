@@ -351,29 +351,37 @@ export async function getInboxUnreadCount(userId: string): Promise<number> {
   return Math.max(0, Number(count ?? 0))
 }
 
-export async function markInboxEventsAsRead(userId: string, readBoundary: string): Promise<void> {
+export async function markInboxEventsAsRead(userId: string, readBoundary: string): Promise<boolean> {
   const supabaseAdmin = createSupabaseAdminClient()
-  const { error: updateNullCursorError } = await supabaseAdmin
+  const { data: nullCursorUpdateRows, error: updateNullCursorError } = await supabaseAdmin
     .from('profiles')
     .update({
       activity_inbox_last_read_at: readBoundary,
     })
     .eq('id', userId)
     .is('activity_inbox_last_read_at', null)
+    .select('id')
 
   if (updateNullCursorError) {
     throw updateNullCursorError
   }
 
-  const { error: updateOlderCursorError } = await supabaseAdmin
+  if ((nullCursorUpdateRows?.length ?? 0) > 0) {
+    return true
+  }
+
+  const { data: olderCursorUpdateRows, error: updateOlderCursorError } = await supabaseAdmin
     .from('profiles')
     .update({
       activity_inbox_last_read_at: readBoundary,
     })
     .eq('id', userId)
     .lt('activity_inbox_last_read_at', readBoundary)
+    .select('id')
 
   if (updateOlderCursorError) {
     throw updateOlderCursorError
   }
+
+  return (olderCursorUpdateRows?.length ?? 0) > 0
 }

@@ -13,6 +13,10 @@ function markRenderedInboxItemsAsRead<T extends { isUnread: boolean }>(items: T[
   }))
 }
 
+function getReadBoundaryFromRenderedItems<T extends { createdAt: string; isUnread: boolean }>(items: T[]) {
+  return items.find((item) => item.isUnread)?.createdAt ?? null
+}
+
 export default async function ActivityInboxPage() {
   const { user, error } = await getAuthenticatedUser()
 
@@ -27,14 +31,16 @@ export default async function ActivityInboxPage() {
   try {
     events = await loadInboxEventItems(user.id)
 
-    const readBoundary = events.at(-1)?.readBoundaryAt ?? null
-    const hasUnreadEvents = events.some((event) => event.isUnread)
+    const readBoundary = getReadBoundaryFromRenderedItems(events)
 
-    if (readBoundary && hasUnreadEvents) {
+    if (readBoundary) {
       try {
-        await markInboxEventsAsRead(user.id, readBoundary)
-        didMarkEventsAsRead = true
-        events = markRenderedInboxItemsAsRead(events)
+        const didAdvanceReadCursor = await markInboxEventsAsRead(user.id, readBoundary)
+
+        if (didAdvanceReadCursor) {
+          didMarkEventsAsRead = true
+          events = markRenderedInboxItemsAsRead(events)
+        }
       } catch (error) {
         console.error('Failed to mark inbox events as read', {
           userId: user.id,
