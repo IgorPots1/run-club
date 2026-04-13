@@ -7,19 +7,22 @@ import { Eye, EyeOff } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
-import { updateProfileById } from '@/lib/profiles'
+import { buildProfileFullName, splitProfileName, updateProfileById } from '@/lib/profiles'
 import { supabase } from '@/lib/supabase'
 
 type Profile = {
   id: string
   email: string | null
+  first_name: string | null
+  last_name: string | null
   name: string | null
   nickname: string | null
   avatar_url: string | null
 }
 
 type ProfileFormState = {
-  name: string
+  firstName: string
+  lastName: string
   nickname: string
   birthDate: string
 }
@@ -35,7 +38,8 @@ export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [name, setName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [nickname, setNickname] = useState('')
   const [birthDate, setBirthDate] = useState<string>('')
   const [initialProfileForm, setInitialProfileForm] = useState<ProfileFormState | null>(null)
@@ -66,6 +70,8 @@ export default function AccountPage() {
       const profileFallback = {
         id: currentUser.id,
         email: currentUser.email ?? '',
+        first_name: '',
+        last_name: '',
         name: '',
         nickname: '',
         avatar_url: null,
@@ -94,21 +100,38 @@ export default function AccountPage() {
       }
 
       const nextProfile = profileData
-        ? {
-            id: profileData.id,
-            email: profileData.email ?? currentUser.email ?? '',
-            name: profileData.name ?? '',
-            nickname: profileData.nickname ?? '',
-            avatar_url: profileData.avatar_url ?? null,
-          }
+        ? (() => {
+            const fallbackNameParts =
+              !profileData.first_name?.trim() && profileData.name?.trim()
+                ? splitProfileName(profileData.name)
+                : {
+                    firstName: profileData.first_name?.trim() || null,
+                    lastName: profileData.last_name?.trim() || null,
+                  }
+
+            return {
+              id: profileData.id,
+              email: profileData.email ?? currentUser.email ?? '',
+              first_name: fallbackNameParts.firstName ?? '',
+              last_name: fallbackNameParts.lastName ?? '',
+              name:
+                buildProfileFullName(fallbackNameParts.firstName, fallbackNameParts.lastName) ??
+                profileData.name ??
+                '',
+              nickname: profileData.nickname ?? '',
+              avatar_url: profileData.avatar_url ?? null,
+            }
+          })()
         : profileFallback
 
       setProfile(nextProfile)
-      setName(nextProfile.name ?? '')
+      setFirstName(nextProfile.first_name ?? '')
+      setLastName(nextProfile.last_name ?? '')
       setNickname(nextProfile.nickname ?? '')
       setBirthDate(privateProfileData?.birth_date ?? '')
       setInitialProfileForm({
-        name: nextProfile.name ?? '',
+        firstName: nextProfile.first_name ?? '',
+        lastName: nextProfile.last_name ?? '',
         nickname: nextProfile.nickname ?? '',
         birthDate: privateProfileData?.birth_date ?? '',
       })
@@ -168,7 +191,9 @@ export default function AccountPage() {
     event.preventDefault()
     if (!user || saving || profileDataLoading || !initialProfileForm) return
 
-    const nextName = name.trim()
+    const nextFirstName = firstName.trim()
+    const nextLastName = lastName.trim()
+    const nextName = buildProfileFullName(nextFirstName, nextLastName)
     const nextNickname = nickname.trim()
     const nextBirthDate = birthDate || null
 
@@ -179,7 +204,9 @@ export default function AccountPage() {
     try {
       const { error, data } = await updateProfileById({
         id: user.id,
-        name: nextName || null,
+        first_name: nextFirstName || null,
+        last_name: nextLastName || null,
+        name: nextName,
         nickname: nextNickname || null,
         avatar_url: profile?.avatar_url ?? null,
       })
@@ -221,27 +248,46 @@ export default function AccountPage() {
       }
 
       const nextProfile = freshProfile
-        ? {
-            id: freshProfile.id,
-            email: freshProfile.email ?? user.email ?? email,
-            name: freshProfile.name ?? '',
-            nickname: freshProfile.nickname ?? '',
-            avatar_url: freshProfile.avatar_url ?? null,
-          }
+        ? (() => {
+            const fallbackNameParts =
+              !freshProfile.first_name?.trim() && freshProfile.name?.trim()
+                ? splitProfileName(freshProfile.name)
+                : {
+                    firstName: freshProfile.first_name?.trim() || null,
+                    lastName: freshProfile.last_name?.trim() || null,
+                  }
+
+            return {
+              id: freshProfile.id,
+              email: freshProfile.email ?? user.email ?? email,
+              first_name: fallbackNameParts.firstName ?? '',
+              last_name: fallbackNameParts.lastName ?? '',
+              name:
+                buildProfileFullName(fallbackNameParts.firstName, fallbackNameParts.lastName) ??
+                freshProfile.name ??
+                '',
+              nickname: freshProfile.nickname ?? '',
+              avatar_url: freshProfile.avatar_url ?? null,
+            }
+          })()
         : {
             id: user.id,
             email: user.email ?? email,
-            name: nextName,
+            first_name: nextFirstName,
+            last_name: nextLastName,
+            name: nextName ?? '',
             nickname: nextNickname,
             avatar_url: profile?.avatar_url ?? null,
           }
 
       setProfile(nextProfile)
-      setName(nextProfile.name ?? '')
+      setFirstName(nextProfile.first_name ?? '')
+      setLastName(nextProfile.last_name ?? '')
       setNickname(nextProfile.nickname ?? '')
       setBirthDate(nextBirthDate ?? '')
       setInitialProfileForm({
-        name: nextProfile.name ?? '',
+        firstName: nextProfile.first_name ?? '',
+        lastName: nextProfile.last_name ?? '',
         nickname: nextProfile.nickname ?? '',
         birthDate: nextBirthDate ?? '',
       })
@@ -318,7 +364,8 @@ export default function AccountPage() {
   }
 
   const hasProfileChanges = initialProfileForm !== null && (
-    name.trim() !== initialProfileForm.name.trim() ||
+    firstName.trim() !== initialProfileForm.firstName.trim() ||
+    lastName.trim() !== initialProfileForm.lastName.trim() ||
     nickname.trim() !== initialProfileForm.nickname.trim() ||
     birthDate !== initialProfileForm.birthDate
   )
@@ -393,20 +440,34 @@ export default function AccountPage() {
         <div className="mt-4">
           <h1 className="app-text-primary mb-2 text-2xl font-bold">Аккаунт</h1>
           <p className="app-text-secondary mb-4 text-sm">
-            Измените имя, никнейм, дату рождения и пароль для входа.
+            Измените имя, фамилию, никнейм, дату рождения и пароль для входа.
           </p>
           {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
           {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
 
           <form onSubmit={handleSave} className="app-card mb-8 space-y-3 rounded-2xl border p-4 shadow-sm">
             <div>
-              <label htmlFor="name" className="app-text-secondary mb-1 block text-sm">Имя</label>
+              <label htmlFor="first-name" className="app-text-secondary mb-1 block text-sm">Имя</label>
               <input
-                id="name"
+                id="first-name"
                 type="text"
-                value={name}
+                value={firstName}
                 onChange={(event) => {
-                  setName(event.target.value)
+                  setFirstName(event.target.value)
+                  setSaveMessage('')
+                }}
+                disabled={saving}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="last-name" className="app-text-secondary mb-1 block text-sm">Фамилия</label>
+              <input
+                id="last-name"
+                type="text"
+                value={lastName}
+                onChange={(event) => {
+                  setLastName(event.target.value)
                   setSaveMessage('')
                 }}
                 disabled={saving}
