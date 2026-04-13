@@ -3,7 +3,6 @@
 import { Activity, Bell, Plus, Target, Trophy, User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import UnreadBadge from '@/components/chat/UnreadBadge'
@@ -317,7 +316,6 @@ export default function DashboardPageClient({
   initialAllChallengesCompleted: boolean
   initialInboxUnreadCount: number
 }) {
-  const router = useRouter()
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails] = useState(true)
   const [showXpModal, setShowXpModal] = useState(false)
@@ -725,29 +723,9 @@ export default function DashboardPageClient({
               </p>
             </button>
           ) : null}
-          <div
-            role="link"
-            tabIndex={0}
-            onClick={(event) => {
-              const target = event.target as HTMLElement
-              if (target.closest('a,button')) {
-                return
-              }
-
-              router.push('/race')
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return
-
-              const target = event.target as HTMLElement
-              if (target.closest('a,button')) {
-                return
-              }
-
-              event.preventDefault()
-              router.push('/race')
-            }}
-            className={`cursor-pointer rounded-xl ${dashboardCardFocusRingClass}`}
+          <Link
+            href="/race"
+            className={`block rounded-xl ${dashboardCardFocusRingClass}`}
             aria-label="Открыть гонку недели"
           >
             <WeeklyLeaderboard
@@ -757,7 +735,7 @@ export default function DashboardPageClient({
               error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
               compact
             />
-          </div>
+          </Link>
           <section className="mb-4 min-h-[188px]">
             {showLastWeekResultsPlaceholder ? (
               <DashboardSecondaryCardPlaceholder title="Загружаем итоги прошлой недели" />

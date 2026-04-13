@@ -33,16 +33,19 @@ export default function WeeklyLeaderboard({
   const currentUserRow = leaderboard?.currentUserRow ?? null
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
-  const isCurrentUserInTop = topRows.some((row) => row.user_id === currentUserId)
   const compactTopRows = topRows.slice(0, 3)
-  const isCurrentUserInCompactTop = compactTopRows.some((row) => row.user_id === currentUserId)
   const compactCurrentUserRow = topRows.find((row) => row.user_id === currentUserId) ?? currentUserRow
+  const isCurrentUserAlreadyInTopRows =
+    Boolean(currentUserRow) && topRows.some((row) => row.user_id === currentUserRow?.user_id)
+  const isCurrentUserAlreadyInCompactRows =
+    Boolean(compactCurrentUserRow) && compactTopRows.some((row) => row.user_id === compactCurrentUserRow?.user_id)
   const shouldShowCurrentUserRow =
     Boolean(currentUserRow) &&
-    !isCurrentUserInTop &&
+    !isCurrentUserAlreadyInTopRows &&
     (topRows.length > 0 || (currentUserRow?.totalXp ?? 0) > 0)
   const shouldShowCompactCurrentUserRow =
     Boolean(compactCurrentUserRow) &&
+    !isCurrentUserAlreadyInCompactRows &&
     (topRows.length > 0 || (compactCurrentUserRow?.totalXp ?? 0) > 0)
   const currentUserSummary =
     currentUserRow && currentUserRow.rank > 0
@@ -55,7 +58,7 @@ export default function WeeklyLeaderboard({
       : gapToBehind !== null && gapToBehind > 0
         ? `Отрыв от следующего: ${gapToBehind} XP`
         : ''
-  const compactRows = shouldShowCompactCurrentUserRow && compactCurrentUserRow && !isCurrentUserInCompactTop
+  const compactRows = shouldShowCompactCurrentUserRow && compactCurrentUserRow
     ? [...compactTopRows, compactCurrentUserRow]
     : compactTopRows
 

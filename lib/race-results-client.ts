@@ -92,6 +92,10 @@ type RaceWeekResultWeekIdDbRow = {
   race_week_id: string
 }
 
+type LatestFinalizedRaceWeekIdDbRow = {
+  race_week_id: string
+}
+
 function toSafeNumber(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
   return Number.isFinite(numericValue) ? Number(numericValue) : 0
@@ -147,6 +151,33 @@ function mapBadgeAward(row: RaceWeekBadgeDbRow | null): RaceWeekBadgeAward | nul
 }
 
 export async function loadLatestFinalizedRaceWeek() {
+  const { data: latestResult, error: latestResultError } = await supabase
+    .from('race_week_results')
+    .select('race_week_id')
+    .order('finalized_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestResultError) {
+    throw new Error('Не удалось загрузить завершенную неделю гонки')
+  }
+
+  const latestResultWeekId = (latestResult as LatestFinalizedRaceWeekIdDbRow | null)?.race_week_id ?? null
+
+  if (latestResultWeekId) {
+    const { data, error } = await supabase
+      .from('race_weeks')
+      .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
+      .eq('id', latestResultWeekId)
+      .maybeSingle()
+
+    if (error) {
+      throw new Error('Не удалось загрузить завершенную неделю гонки')
+    }
+
+    return mapRaceWeek((data as RaceWeekDbRow | null) ?? null)
+  }
+
   const { data, error } = await supabase
     .from('race_weeks')
     .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')

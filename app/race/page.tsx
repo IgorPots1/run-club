@@ -252,6 +252,7 @@ export default function RacePage() {
   const week = leaderboard?.week ?? null
   const rows = Array.isArray(leaderboard?.rows) ? leaderboard.rows : []
   const currentUserRow = leaderboard?.currentUserRow ?? null
+  const currentUserId = user?.id ?? ''
   const gapToNext = typeof leaderboard?.gapToNext === 'number' ? leaderboard.gapToNext : null
   const gapToBehind = typeof leaderboard?.gapToBehind === 'number' ? leaderboard.gapToBehind : null
   const currentUserIndex = currentUserRow ? rows.findIndex((row) => row.user_id === currentUserRow.user_id) : -1
@@ -316,7 +317,6 @@ export default function RacePage() {
     )
   }
 
-  const currentUserId = user?.id ?? ''
   const isPageLoading = loadingUser || isLoading
 
   return (

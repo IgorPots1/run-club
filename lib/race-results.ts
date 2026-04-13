@@ -76,6 +76,10 @@ type RaceWeekResultIdDbRow = {
   id: string
 }
 
+type LatestFinalizedRaceWeekIdDbRow = {
+  race_week_id: string
+}
+
 function toSafeNumber(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
   return Number.isFinite(numericValue) ? Number(numericValue) : 0
@@ -130,8 +134,39 @@ function mapBadgeAward(row: RaceWeekBadgeDbRow | null): RaceWeekBadgeAward | nul
   }
 }
 
+async function loadRaceWeekById(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, weekId: string) {
+  const { data, error } = await supabase
+    .from('race_weeks')
+    .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
+    .eq('id', weekId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error('Не удалось загрузить неделю гонки')
+  }
+
+  return mapRaceWeek((data as RaceWeekDbRow | null) ?? null)
+}
+
 export async function loadLatestFinalizedRaceWeek() {
   const supabase = await createSupabaseServerClient()
+  const { data: latestResult, error: latestResultError } = await supabase
+    .from('race_week_results')
+    .select('race_week_id')
+    .order('finalized_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestResultError) {
+    throw new Error('Не удалось загрузить завершенную неделю гонки')
+  }
+
+  const latestResultWeekId = (latestResult as LatestFinalizedRaceWeekIdDbRow | null)?.race_week_id ?? null
+
+  if (latestResultWeekId) {
+    return loadRaceWeekById(supabase, latestResultWeekId)
+  }
+
   const { data, error } = await supabase
     .from('race_weeks')
     .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
@@ -149,18 +184,30 @@ export async function loadLatestFinalizedRaceWeek() {
 
 export async function loadFinalizedRaceWeek(weekId: string) {
   const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('race_weeks')
-    .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
-    .eq('id', weekId)
-    .eq('status', 'finalized')
-    .maybeSingle()
+  const [week, raceWeekResults] = await Promise.all([
+    loadRaceWeekById(supabase, weekId),
+    supabase
+      .from('race_week_results')
+      .select('id')
+      .eq('race_week_id', weekId)
+      .limit(1),
+  ])
 
-  if (error) {
+  const { data: resultsData, error: resultsError } = raceWeekResults
+
+  if (resultsError) {
     throw new Error('Не удалось загрузить неделю гонки')
   }
 
-  return mapRaceWeek((data as RaceWeekDbRow | null) ?? null)
+  if (!week) {
+    return null
+  }
+
+  const hasFinalizedResults = (((resultsData as RaceWeekResultIdDbRow[] | null) ?? [])).length > 0
+
+  return week.status === 'finalized' || week.finalizedAt !== null || hasFinalizedResults
+    ? week
+    : null
 }
 
 export async function loadRaceWeekTopResults(weekId: string) {
