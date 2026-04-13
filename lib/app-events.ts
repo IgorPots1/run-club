@@ -54,6 +54,7 @@ export type InboxEventItem = {
   type: InboxAppEventType
   createdAt: string
   readBoundaryAt: string
+  isUnread: boolean
   targetPath: string | null
   entityId: string | null
   actorName: string | null
@@ -67,6 +68,7 @@ export type GroupedRunLikeInboxItem = {
   type: 'grouped_run_like'
   createdAt: string
   readBoundaryAt: string
+  isUnread: boolean
   targetPath: string | null
   entityId: string
   actorCount: number
@@ -155,6 +157,10 @@ function getFallbackEventCopy(type: string) {
   }
 }
 
+function isInboxItemUnread(createdAt: string, lastReadAt: string | null) {
+  return !lastReadAt || createdAt > lastReadAt
+}
+
 async function getActivityInboxLastReadAt(
   userId: string,
   supabaseAdmin = createSupabaseAdminClient()
@@ -174,7 +180,8 @@ async function getActivityInboxLastReadAt(
 
 function buildInboxEventItem(
   event: AppEventRow,
-  actorProfilesById: Map<string, AppEventActorProfileRow>
+  actorProfilesById: Map<string, AppEventActorProfileRow>,
+  lastReadAt: string | null
 ): InboxEventItem {
   const payload = getPayload(event.payload)
   const actorProfile = event.actor_user_id ? actorProfilesById.get(event.actor_user_id) ?? null : null
@@ -186,6 +193,7 @@ function buildInboxEventItem(
     type: event.type as InboxAppEventType,
     createdAt: event.created_at,
     readBoundaryAt: event.created_at,
+    isUnread: isInboxItemUnread(event.created_at, lastReadAt),
     targetPath: event.target_path ?? payload.targetPath,
     entityId: event.entity_id ?? null,
     actorName,
@@ -212,6 +220,7 @@ function buildGroupedRunLikeInboxItem(
     type: 'grouped_run_like',
     createdAt: newestItem.createdAt,
     readBoundaryAt: items[items.length - 1]!.createdAt,
+    isUnread: newestItem.isUnread,
     targetPath: newestItem.targetPath,
     entityId: newestItem.entityId,
     actorCount: items.length,
@@ -267,6 +276,7 @@ function groupInboxItemsForDisplay(items: InboxEventItem[]): InboxListItem[] {
 
 export async function loadInboxEventItems(userId: string, limit = 50): Promise<InboxListItem[]> {
   const supabaseAdmin = createSupabaseAdminClient()
+  const lastReadAt = await getActivityInboxLastReadAt(userId, supabaseAdmin)
   const { data, error } = await supabaseAdmin
     .from('app_events')
     .select('id, type, actor_user_id, entity_type, entity_id, target_path, payload, created_at')
@@ -314,7 +324,7 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
     }
   }
 
-  const items = rows.map((event) => buildInboxEventItem(event, actorProfilesById))
+  const items = rows.map((event) => buildInboxEventItem(event, actorProfilesById, lastReadAt))
 
   return groupInboxItemsForDisplay(items)
 }

@@ -11,6 +11,7 @@ type ActivityInboxEventItem = {
   id: string
   type: string
   createdAt: string
+  isUnread: boolean
   targetPath: string | null
   actorName: string | null
   actorAvatarUrl: string | null
@@ -22,6 +23,7 @@ type ActivityGroupedRunLikeInboxItem = {
   id: string
   type: 'grouped_run_like'
   createdAt: string
+  isUnread: boolean
   targetPath: string | null
   actorCount: number
   actorPreviewNames: string[]
@@ -190,9 +192,17 @@ export default function ActivityInboxClient({
                   {actorName ? (
                     <p className="app-text-primary text-sm font-semibold leading-5">{actorName}</p>
                   ) : null}
-                  <p className={`app-text-primary text-sm leading-5 ${actorName ? 'mt-px' : ''}`}>
-                    {title}
-                  </p>
+                  <div className={`flex items-start gap-2 ${actorName ? 'mt-px' : ''}`}>
+                    <p className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${event.isUnread ? 'font-medium' : ''}`}>
+                      {title}
+                    </p>
+                    <span
+                      aria-hidden="true"
+                      className={`mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 dark:bg-sky-400 ${
+                        event.isUnread ? 'opacity-100' : 'opacity-0'
+                      }`}
+                    />
+                  </div>
                   {event.body ? (
                     <p className="app-text-secondary mt-0.5 text-sm leading-5">{event.body}</p>
                   ) : null}
