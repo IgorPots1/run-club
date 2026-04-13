@@ -262,6 +262,7 @@ export default function RacePage() {
   const supportingPodiumRows = podiumRows.slice(1)
   const remainingRows = rows.slice(podiumRows.length)
   const thirdPlaceRow = rows.find((row) => row.rank === 3) ?? null
+  const isCurrentUserInLeaderboard = rows.some((row) => row.user_id === currentUserId)
   const isCurrentUserInPodium = podiumRows.some((row) => row.user_id === user?.id)
   const gapToTop3 = useMemo(() => {
     if (!currentUserRow || currentUserRow.rank <= 3 || !thirdPlaceRow) {
@@ -449,7 +450,7 @@ export default function RacePage() {
               ) : null}
             </section>
 
-            {currentUserRow && !isCurrentUserInPodium ? (
+            {currentUserRow && !isCurrentUserInPodium && !isCurrentUserInLeaderboard ? (
               <section className="app-card rounded-[28px] border p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
