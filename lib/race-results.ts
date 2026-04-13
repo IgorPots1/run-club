@@ -167,6 +167,22 @@ export async function loadLatestFinalizedRaceWeek() {
     return loadRaceWeekById(supabase, latestResultWeekId)
   }
 
+  const { data: latestFinalizedWeekByStatus, error: latestFinalizedWeekByStatusError } = await supabase
+    .from('race_weeks')
+    .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
+    .eq('status', 'finalized')
+    .order('starts_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestFinalizedWeekByStatusError) {
+    throw new Error('Не удалось загрузить завершенную неделю гонки')
+  }
+
+  if (latestFinalizedWeekByStatus) {
+    return mapRaceWeek((latestFinalizedWeekByStatus as RaceWeekDbRow | null) ?? null)
+  }
+
   const { data, error } = await supabase
     .from('race_weeks')
     .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')

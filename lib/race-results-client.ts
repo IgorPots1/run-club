@@ -150,6 +150,20 @@ function mapBadgeAward(row: RaceWeekBadgeDbRow | null): RaceWeekBadgeAward | nul
   }
 }
 
+async function loadRaceWeekById(weekId: string) {
+  const { data, error } = await supabase
+    .from('race_weeks')
+    .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
+    .eq('id', weekId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error('Не удалось загрузить завершенную неделю гонки')
+  }
+
+  return mapRaceWeek((data as RaceWeekDbRow | null) ?? null)
+}
+
 export async function loadLatestFinalizedRaceWeek() {
   const { data: latestResult, error: latestResultError } = await supabase
     .from('race_week_results')
@@ -165,17 +179,23 @@ export async function loadLatestFinalizedRaceWeek() {
   const latestResultWeekId = (latestResult as LatestFinalizedRaceWeekIdDbRow | null)?.race_week_id ?? null
 
   if (latestResultWeekId) {
-    const { data, error } = await supabase
-      .from('race_weeks')
-      .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
-      .eq('id', latestResultWeekId)
-      .maybeSingle()
+    return loadRaceWeekById(latestResultWeekId)
+  }
 
-    if (error) {
-      throw new Error('Не удалось загрузить завершенную неделю гонки')
-    }
+  const { data: latestFinalizedWeekByStatus, error: latestFinalizedWeekByStatusError } = await supabase
+    .from('race_weeks')
+    .select('id, slug, starts_at, ends_at, timezone, status, finalized_at')
+    .eq('status', 'finalized')
+    .order('starts_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-    return mapRaceWeek((data as RaceWeekDbRow | null) ?? null)
+  if (latestFinalizedWeekByStatusError) {
+    throw new Error('Не удалось загрузить завершенную неделю гонки')
+  }
+
+  if (latestFinalizedWeekByStatus) {
+    return mapRaceWeek((latestFinalizedWeekByStatus as RaceWeekDbRow | null) ?? null)
   }
 
   const { data, error } = await supabase
