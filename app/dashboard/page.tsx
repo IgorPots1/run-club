@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import DashboardPageClient from './DashboardPageClient'
+import { getInboxUnreadCount } from '@/lib/app-events'
 import { loadDashboardOverviewServer } from '@/lib/dashboard-overview-server'
 import { getFirstSessionState } from '@/lib/onboarding'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -21,6 +22,7 @@ export default async function DashboardPage() {
   }
 
   const overview = await loadDashboardOverviewServer(userId, { includeChallenges: true })
+  const initialInboxUnreadCount = await getInboxUnreadCount(userId)
   const initialLevelProgress = getLevelProgressFromXP(overview.stats.totalXp)
 
   return (
@@ -38,7 +40,7 @@ export default async function DashboardPage() {
       initialLevelProgress={initialLevelProgress}
       initialActiveChallenges={overview.activeChallenges}
       initialAllChallengesCompleted={overview.allChallengesCompleted}
-      initialInboxUnreadCount={0}
+      initialInboxUnreadCount={initialInboxUnreadCount}
     />
   )
 }

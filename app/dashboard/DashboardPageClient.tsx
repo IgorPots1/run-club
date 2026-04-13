@@ -18,13 +18,13 @@ import {
   type RaceWeekResultRow,
   type RaceWeekSummary,
 } from '@/lib/race-results-client'
+import { loadInboxUnreadCount } from '@/lib/app-events-client'
 import { loadDashboardOverview } from '@/lib/dashboard'
 import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
-import { supabase } from '@/lib/supabase'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
 
@@ -338,40 +338,10 @@ export default function DashboardPageClient({
     let isActive = true
 
     async function refreshInboxUnreadCount() {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('activity_inbox_last_read_at')
-        .eq('id', initialUser.id)
-        .maybeSingle()
+      const count = await loadInboxUnreadCount()
 
-      if (error || !isActive) {
-        return
-      }
-
-      const lastReadAt = (data as { activity_inbox_last_read_at?: string | null } | null)?.activity_inbox_last_read_at ?? null
-      const unreadCountQuery = supabase
-        .from('app_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('target_user_id', initialUser.id)
-        .in('type', [
-          'run_like.created',
-          'race_event.liked',
-          'run_comment.created',
-          'run_comment.reply_created',
-          'challenge.completed',
-          'weekly_race.result',
-          'race_event.created',
-          'race_event.completed',
-        ])
-
-      if (lastReadAt) {
-        unreadCountQuery.gt('created_at', lastReadAt)
-      }
-
-      const { count, error: unreadCountError } = await unreadCountQuery
-
-      if (!unreadCountError && isActive) {
-        setInboxUnreadCount(Math.max(0, Number(count ?? 0)))
+      if (isActive && count !== null) {
+        setInboxUnreadCount(count)
       }
     }
 
