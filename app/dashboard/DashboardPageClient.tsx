@@ -322,6 +322,8 @@ export default function DashboardPageClient({
   const [showXpModal, setShowXpModal] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(initialInboxUnreadCount)
   const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
+  const inboxUnreadRefreshPromiseRef = useRef<Promise<void> | null>(null)
+  const isMountedRef = useRef(false)
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
@@ -334,23 +336,57 @@ export default function DashboardPageClient({
     }
   }, [])
 
-  useEffect(() => {
-    let isActive = true
+  const refreshInboxUnreadCount = useCallback(() => {
+    if (inboxUnreadRefreshPromiseRef.current) {
+      return inboxUnreadRefreshPromiseRef.current
+    }
 
-    async function refreshInboxUnreadCount() {
+    const refreshPromise = (async () => {
       const count = await loadInboxUnreadCount()
 
-      if (isActive && count !== null) {
+      if (isMountedRef.current && count !== null) {
         setInboxUnreadCount(count)
       }
-    }
+    })()
+
+    inboxUnreadRefreshPromiseRef.current = refreshPromise
+
+    return refreshPromise.finally(() => {
+      if (inboxUnreadRefreshPromiseRef.current === refreshPromise) {
+        inboxUnreadRefreshPromiseRef.current = null
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    isMountedRef.current = true
 
     void refreshInboxUnreadCount()
 
     return () => {
-      isActive = false
+      isMountedRef.current = false
     }
-  }, [initialUser.id])
+  }, [initialUser.id, refreshInboxUnreadCount])
+
+  useEffect(() => {
+    function handleWindowFocus() {
+      void refreshInboxUnreadCount()
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void refreshInboxUnreadCount()
+      }
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [refreshInboxUnreadCount])
 
   const swrBaseOptions = useMemo(() => ({
     revalidateOnFocus: false,
