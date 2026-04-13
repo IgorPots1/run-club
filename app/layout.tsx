@@ -60,15 +60,25 @@ export default async function RootLayout({
 }>) {
   const requestHeaders = await headers()
   const pathname = requestHeaders.get("x-run-club-pathname") ?? ""
-  const isAdminRoute = pathname.startsWith("/admin")
+  const isBlockedRoute = pathname === "/blocked"
   const isRunDetailRoute = /^\/runs\/[^/]+$/.test(pathname)
+
+  if (isBlockedRoute) {
+    return (
+      <html lang="ru">
+        <body className={`min-h-screen ${geistSans.variable} ${geistMono.variable} antialiased`}>
+          {children}
+        </body>
+      </html>
+    )
+  }
+
   const shouldEnforceAppAccess =
     pathname !== "/" &&
     pathname !== "/login" &&
     pathname !== "/register" &&
     pathname !== "/blocked" &&
-    !pathname.startsWith("/auth") &&
-    !isAdminRoute
+    !pathname.startsWith("/auth")
   const shouldHideNavbar =
     pathname === "/" ||
     pathname === "/login" ||

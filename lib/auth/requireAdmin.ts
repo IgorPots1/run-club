@@ -8,6 +8,7 @@ export type ProfileRole = 'user' | 'coach' | 'admin'
 
 type AdminProfile = {
   id: string
+  app_access_status: 'active' | 'blocked'
   role: ProfileRole
 }
 
@@ -28,7 +29,7 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, role')
+    .select('id, role, app_access_status')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -47,6 +48,10 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     redirect('/dashboard')
   }
 
+  if (profile.app_access_status !== 'active') {
+    redirect('/blocked')
+  }
+
   if (profile.role !== 'admin') {
     redirect('/dashboard')
   }
@@ -55,6 +60,7 @@ export async function requireAdmin(): Promise<RequireAdminResult> {
     user,
     profile: {
       id: profile.id,
+      app_access_status: profile.app_access_status,
       role: profile.role,
     },
   }
