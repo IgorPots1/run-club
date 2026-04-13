@@ -18,6 +18,11 @@ function getAuthErrorMessage(message: string) {
   return 'Не удалось создать аккаунт. Попробуйте еще раз.'
 }
 
+function getAuthCallbackUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || window.location.origin
+  return new URL('/auth/callback', appUrl).toString()
+}
+
 export default function RegisterPage() {
   const router = useRouter()
   const [name, setName] = useState('')
@@ -99,6 +104,7 @@ export default function RegisterPage() {
         email: normalizedEmail,
         password,
         options: {
+          emailRedirectTo: getAuthCallbackUrl(),
           data: {
             name: normalizedName,
             nickname: normalizedNickname,

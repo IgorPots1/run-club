@@ -17,6 +17,15 @@ function getAuthErrorMessage(message: string) {
   return 'Не удалось войти. Попробуйте еще раз.'
 }
 
+function isEmailNotConfirmedError(message: string) {
+  return message.toLowerCase().includes('email not confirmed')
+}
+
+function getAuthCallbackUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || window.location.origin
+  return new URL('/auth/callback', appUrl).toString()
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -25,7 +34,10 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [checkingUser, setCheckingUser] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
+  const [showResendConfirmation, setShowResendConfirmation] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -65,6 +77,8 @@ export default function LoginPage() {
     }
 
     setMessage('')
+    setResendMessage('')
+    setShowResendConfirmation(false)
     setLoading(true)
 
     try {
@@ -74,6 +88,7 @@ export default function LoginPage() {
       })
 
       if (error) {
+        setShowResendConfirmation(isEmailNotConfirmedError(error.message))
         setMessage(getAuthErrorMessage(error.message))
         return
       }
@@ -84,6 +99,40 @@ export default function LoginPage() {
       setMessage('Не удалось войти. Попробуйте еще раз.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleResendConfirmation() {
+    if (loading || resendLoading) return
+
+    const normalizedEmail = email.trim()
+    if (!normalizedEmail) {
+      setResendMessage('Введите email, чтобы отправить письмо повторно')
+      return
+    }
+
+    setResendLoading(true)
+    setResendMessage('')
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: getAuthCallbackUrl(),
+        },
+      })
+
+      if (error) {
+        setResendMessage('Не удалось отправить письмо повторно. Попробуйте еще раз.')
+        return
+      }
+
+      setResendMessage('Письмо с подтверждением отправлено повторно')
+    } catch {
+      setResendMessage('Не удалось отправить письмо повторно. Попробуйте еще раз.')
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -113,7 +162,10 @@ export default function LoginPage() {
             id="email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setResendMessage('')
+            }}
             required
             disabled={loading}
             className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
@@ -126,7 +178,10 @@ export default function LoginPage() {
               id="password"
               type={showPassword ? 'text' : 'password'}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setResendMessage('')
+              }}
               required
               disabled={loading}
               className="app-input min-h-11 w-full rounded-lg border px-3 py-2 pr-11"
@@ -148,6 +203,19 @@ export default function LoginPage() {
           Нет аккаунта? <Link href="/register" className="underline">Регистрация</Link>
         </p>
         {message && <p className="text-sm">{message}</p>}
+        {showResendConfirmation ? (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={loading || resendLoading}
+              className="app-button-secondary min-h-11 w-full rounded-lg border px-4 py-2"
+            >
+              {resendLoading ? 'Отправляем...' : 'Resend confirmation email'}
+            </button>
+            {resendMessage ? <p className="text-sm">{resendMessage}</p> : null}
+          </div>
+        ) : null}
       </form>
     </main>
   )

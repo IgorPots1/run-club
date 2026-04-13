@@ -2,6 +2,15 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
+function isMissingNicknameColumnError(error: { code?: string | null; message?: string | null }) {
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    Boolean(error.message?.includes('profiles.nickname')) ||
+    Boolean(error.message?.includes("'nickname' column of 'profiles'"))
+  )
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
@@ -59,8 +68,10 @@ export async function GET(request: Request) {
       ignoreDuplicates: false,
     })
 
-    if (result.error?.code === '42703' || result.error?.code === 'PGRST204') {
-      await supabase.from('profiles').upsert(
+    let profileError = result.error
+
+    if (profileError && isMissingNicknameColumnError(profileError)) {
+      const fallbackResult = await supabase.from('profiles').upsert(
         {
           id: payload.id,
           email: payload.email,
@@ -72,6 +83,12 @@ export async function GET(request: Request) {
           ignoreDuplicates: false,
         }
       )
+
+      profileError = fallbackResult.error
+    }
+
+    if (profileError) {
+      return NextResponse.redirect(new URL('/auth/error?reason=profile', url.origin))
     }
   }
 
