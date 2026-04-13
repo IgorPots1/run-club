@@ -207,6 +207,7 @@ async function loadProfilesByUserIds(userIds: string[]) {
     .from('profiles')
     .select('id, name, nickname, email, avatar_url')
     .in('id', userIds)
+    .eq('app_access_status', 'active')
 
   if (profilesError) {
     throw profilesError

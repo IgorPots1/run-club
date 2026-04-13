@@ -60,6 +60,13 @@ export type RunCommentAuthorIdentity = {
   avatarUrl: string | null
 }
 
+type RunCommentAuthorProfileRow = {
+  id: string
+  name: string | null
+  nickname: string | null
+  avatar_url: string | null
+}
+
 export type RunCommentItem = {
   id: string
   entityType: CommentEntityType
@@ -483,6 +490,7 @@ export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCo
     .from('profiles')
     .select('name, nickname, avatar_url')
     .eq('id', userId)
+    .eq('app_access_status', 'active')
     .maybeSingle()
 
   if (error) {
@@ -497,6 +505,26 @@ export async function loadRunCommentAuthorProfile(userId: string): Promise<RunCo
     nickname: profile?.nickname?.trim() || null,
     avatarUrl: profile?.avatar_url ?? null,
   }
+}
+
+async function loadActiveRunCommentAuthorProfiles(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {} as Record<string, RunCommentAuthorProfileRow>
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, name, nickname, avatar_url')
+    .in('id', userIds)
+    .eq('app_access_status', 'active')
+
+  if (error) {
+    throw error
+  }
+
+  return Object.fromEntries(
+    ((data as RunCommentAuthorProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])
+  ) as Record<string, RunCommentAuthorProfileRow>
 }
 
 export async function loadRunComments(runId: string, viewerUserId: string | null = null): Promise<RunCommentItem[]> {
@@ -537,15 +565,28 @@ export async function loadEntityComments(
   const mappedComments = ((comments as RunCommentApiPayload[] | null) ?? [])
     .map(mapRunCommentApiPayloadToItem)
     .sort(compareRunComments)
+  const authorProfilesByUserId = await loadActiveRunCommentAuthorProfiles(
+    Array.from(new Set(mappedComments.map((comment) => comment.userId)))
+  )
+  const sanitizedComments = mappedComments.map((comment) => {
+    const authorProfile = authorProfilesByUserId[comment.userId]
+
+    return {
+      ...comment,
+      displayName: authorProfile?.name?.trim() || 'Бегун',
+      nickname: authorProfile?.nickname?.trim() || null,
+      avatarUrl: authorProfile?.avatar_url ?? null,
+    }
+  })
 
   console.debug('[RunComments] rpc load success', {
     entityType,
     entityId,
     viewerUserId,
-    commentsCount: mappedComments.length,
+    commentsCount: sanitizedComments.length,
   })
 
-  return mappedComments
+  return sanitizedComments
 }
 
 export function subscribeToRunCommentLikes(

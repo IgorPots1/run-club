@@ -114,6 +114,7 @@ async function loadProfilesByUserIds(userIds: string[]) {
     .from('profiles')
     .select('id, name, nickname, avatar_url')
     .in('id', userIds)
+    .eq('app_access_status', 'active')
 
   if (error) {
     throw error
@@ -393,6 +394,7 @@ export async function getStudents(): Promise<StudentProfile[]> {
     .from('profiles')
     .select('id, name, nickname, avatar_url')
     .neq('id', COACH_USER_ID)
+    .eq('app_access_status', 'active')
     .order('name', { ascending: true })
 
   if (error) {

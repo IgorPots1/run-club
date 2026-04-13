@@ -53,6 +53,7 @@ async function loadProfilesForUserIds(userIds: string[]) {
     .from('profiles')
     .select('id, name, nickname, email, avatar_url')
     .in('id', userIds)
+    .eq('app_access_status', 'active')
 
   if (!primaryResult.error) {
     return Object.fromEntries(((primaryResult.data as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]))
@@ -66,6 +67,7 @@ async function loadProfilesForUserIds(userIds: string[]) {
     .from('profiles')
     .select('id, name, email, avatar_url')
     .in('id', userIds)
+    .eq('app_access_status', 'active')
 
   if (fallbackResult.error) {
     throw fallbackResult.error
@@ -91,10 +93,21 @@ export async function loadRunLikesSummary(currentUserId: string | null): Promise
     throw error
   }
 
+  const activeUserIds = new Set(
+    Object.keys(
+      await loadProfilesForUserIds(
+        Array.from(new Set(((data as RunLikeRow[] | null) ?? []).map((like) => like.user_id)))
+      )
+    )
+  )
   const likesByRunId: Record<string, number> = {}
   const likedRunIds = new Set<string>()
 
   for (const like of (data as RunLikeRow[] | null) ?? []) {
+    if (!activeUserIds.has(like.user_id)) {
+      continue
+    }
+
     likesByRunId[like.run_id] = (likesByRunId[like.run_id] ?? 0) + 1
 
     if (like.user_id === currentUserId) {
@@ -122,10 +135,21 @@ export async function loadRunLikesSummaryForRunIds(
     throw error
   }
 
+  const activeUserIds = new Set(
+    Object.keys(
+      await loadProfilesForUserIds(
+        Array.from(new Set(((data as RunLikeRow[] | null) ?? []).map((like) => like.user_id)))
+      )
+    )
+  )
   const likesByRunId: Record<string, number> = {}
   const likedRunIds = new Set<string>()
 
   for (const like of (data as RunLikeRow[] | null) ?? []) {
+    if (!activeUserIds.has(like.user_id)) {
+      continue
+    }
+
     likesByRunId[like.run_id] = (likesByRunId[like.run_id] ?? 0) + 1
 
     if (like.user_id === currentUserId) {
@@ -160,6 +184,7 @@ export async function loadRunLikedUsers(runId: string): Promise<RunLikedUserItem
   const profilesByUserId = await loadProfilesForUserIds(userIds)
 
   return userIds
+    .filter((userId) => Boolean(profilesByUserId[userId]))
     .map((userId) => {
       const profile = profilesByUserId[userId]
       const nickname = profile?.nickname?.trim() || null

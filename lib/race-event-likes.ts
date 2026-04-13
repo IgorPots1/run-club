@@ -19,6 +19,26 @@ type ProfileRow = {
   total_xp?: number | null
 }
 
+async function loadActiveProfilesByUserIds(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {} as Record<string, ProfileRow>
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, name, email, avatar_url, total_xp')
+    .in('id', userIds)
+    .eq('app_access_status', 'active')
+
+  if (error) {
+    throw error
+  }
+
+  return Object.fromEntries(
+    ((data as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])
+  ) as Record<string, ProfileRow>
+}
+
 type ToggleRaceEventLikeResponse =
   | {
       ok?: boolean
@@ -59,10 +79,21 @@ export async function loadRaceEventLikesSummaryForRaceEventIds(
     throw error
   }
 
+  const activeUserIds = new Set(
+    Object.keys(
+      await loadActiveProfilesByUserIds(
+        Array.from(new Set(((data as RaceEventLikeRow[] | null) ?? []).map((like) => like.user_id)))
+      )
+    )
+  )
   const likesByRaceEventId: Record<string, number> = {}
   const likedRaceEventIds = new Set<string>()
 
   for (const like of (data as RaceEventLikeRow[] | null) ?? []) {
+    if (!activeUserIds.has(like.user_id)) {
+      continue
+    }
+
     likesByRaceEventId[like.race_event_id] = (likesByRaceEventId[like.race_event_id] ?? 0) + 1
 
     if (like.user_id === currentUserId) {
@@ -103,20 +134,11 @@ export async function loadRaceEventLikedUsers(
     return []
   }
 
-  const { data: profiles, error: profilesError } = await supabase
-    .from('profiles')
-    .select('id, name, email, avatar_url, total_xp')
-    .in('id', userIds)
+  const profilesByUserId = await loadActiveProfilesByUserIds(userIds)
 
-  if (profilesError) {
-    throw profilesError
-  }
-
-  const profilesByUserId = Object.fromEntries(
-    ((profiles as ProfileRow[] | null) ?? []).map((profile) => [profile.id, profile])
-  )
-
-  return userIds.map((userId) => {
+  return userIds
+    .filter((userId) => Boolean(profilesByUserId[userId]))
+    .map((userId) => {
     const profile = profilesByUserId[userId]
 
     return {
@@ -126,7 +148,7 @@ export async function loadRaceEventLikedUsers(
       avatarUrl: profile?.avatar_url ?? null,
       level: getLevelFromXP(Number(profile?.total_xp ?? 0)).level,
     } satisfies LikedUserListItem
-  })
+    })
 }
 
 export async function toggleRaceEventLike(raceEventId: string) {

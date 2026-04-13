@@ -291,6 +291,7 @@ export async function loadInboxEventItems(userId: string, limit = 50): Promise<I
     const actorProfilesQuery = supabaseAdmin
       .from('profiles')
       .select('id, name, nickname, email, avatar_url')
+      .eq('app_access_status', 'active')
 
     if (actorUserIds.length === 1) {
       actorProfilesQuery.eq('id', actorUserIds[0]!)

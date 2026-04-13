@@ -257,6 +257,7 @@ async function loadRunCommentPayloadProfile(
     .from('profiles')
     .select('name, nickname, avatar_url')
     .eq('id', userId)
+    .eq('app_access_status', 'active')
     .maybeSingle()
 
   if (error) {
