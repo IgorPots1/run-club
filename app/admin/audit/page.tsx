@@ -73,6 +73,8 @@ function formatDateTime(value: string) {
 }
 
 function formatAction(value: string) {
+  if (value === 'auth.signup') return 'Регистрация'
+  if (value === 'auth.email_confirmed') return 'Подтверждение email'
   if (value === 'app_access.block') return 'Блокировка доступа'
   if (value === 'app_access.unblock') return 'Разблокировка доступа'
   if (value === 'challenge.create') return 'Создание челленджа'
