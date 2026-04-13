@@ -21,6 +21,13 @@ type Profile = {
 type ProfileFormState = {
   name: string
   nickname: string
+  birthDate: string
+}
+
+function getTodayDateInputValue() {
+  const now = new Date()
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+  return localDate.toISOString().slice(0, 10)
 }
 
 export default function AccountPage() {
@@ -30,6 +37,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
+  const [birthDate, setBirthDate] = useState<string>('')
   const [initialProfileForm, setInitialProfileForm] = useState<ProfileFormState | null>(null)
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
@@ -63,15 +71,25 @@ export default function AccountPage() {
         avatar_url: null,
       }
 
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', currentUser.id)
-        .maybeSingle()
+      const [
+        { data: profileData, error: profileError },
+        { data: privateProfileData, error: privateProfileError },
+      ] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .maybeSingle(),
+        supabase
+          .from('user_private_profile')
+          .select('birth_date')
+          .eq('user_id', currentUser.id)
+          .maybeSingle(),
+      ])
 
       if (!isMounted) return
 
-      if (profileError) {
+      if (profileError || privateProfileError) {
         setPageError('Не удалось загрузить профиль')
       }
 
@@ -88,9 +106,11 @@ export default function AccountPage() {
       setProfile(nextProfile)
       setName(nextProfile.name ?? '')
       setNickname(nextProfile.nickname ?? '')
+      setBirthDate(privateProfileData?.birth_date ?? '')
       setInitialProfileForm({
         name: nextProfile.name ?? '',
         nickname: nextProfile.nickname ?? '',
+        birthDate: privateProfileData?.birth_date ?? '',
       })
       setEmail(nextProfile.email ?? currentUser.email ?? '')
     } catch {
@@ -150,6 +170,7 @@ export default function AccountPage() {
 
     const nextName = name.trim()
     const nextNickname = nickname.trim()
+    const nextBirthDate = birthDate || null
 
     setSaving(true)
     setPageError('')
@@ -169,6 +190,21 @@ export default function AccountPage() {
           error,
           data,
         })
+        setPageError('Не удалось сохранить профиль')
+        return
+      }
+
+      const { error: privateProfileError } = await supabase
+        .from('user_private_profile')
+        .upsert(
+          {
+            user_id: user.id,
+            birth_date: nextBirthDate,
+          },
+          { onConflict: 'user_id' }
+        )
+
+      if (privateProfileError) {
         setPageError('Не удалось сохранить профиль')
         return
       }
@@ -203,9 +239,11 @@ export default function AccountPage() {
       setProfile(nextProfile)
       setName(nextProfile.name ?? '')
       setNickname(nextProfile.nickname ?? '')
+      setBirthDate(nextBirthDate ?? '')
       setInitialProfileForm({
         name: nextProfile.name ?? '',
         nickname: nextProfile.nickname ?? '',
+        birthDate: nextBirthDate ?? '',
       })
       setEmail(nextProfile.email ?? user.email ?? '')
       setSaveMessage('Профиль сохранен')
@@ -281,9 +319,11 @@ export default function AccountPage() {
 
   const hasProfileChanges = initialProfileForm !== null && (
     name.trim() !== initialProfileForm.name.trim() ||
-    nickname.trim() !== initialProfileForm.nickname.trim()
+    nickname.trim() !== initialProfileForm.nickname.trim() ||
+    birthDate !== initialProfileForm.birthDate
   )
   const isSaveDisabled = profileDataLoading || saving || !hasProfileChanges
+  const maxBirthDate = getTodayDateInputValue()
   const trimmedNewPassword = newPassword.trim()
   const trimmedConfirmPassword = confirmPassword.trim()
   const isPasswordFormValid =
@@ -353,7 +393,7 @@ export default function AccountPage() {
         <div className="mt-4">
           <h1 className="app-text-primary mb-2 text-2xl font-bold">Аккаунт</h1>
           <p className="app-text-secondary mb-4 text-sm">
-            Измените имя, никнейм и пароль для входа.
+            Измените имя, никнейм, дату рождения и пароль для входа.
           </p>
           {pageError ? <p className="mb-4 text-sm text-red-600">{pageError}</p> : null}
           {saveMessage ? <p className="mb-4 text-sm text-green-700">{saveMessage}</p> : null}
@@ -396,6 +436,22 @@ export default function AccountPage() {
                 readOnly
                 className="app-input app-input-readonly min-h-11 w-full rounded-lg border px-3 py-2"
               />
+            </div>
+            <div>
+              <label htmlFor="birth-date" className="app-text-secondary mb-1 block text-sm">Дата рождения</label>
+              <input
+                id="birth-date"
+                type="date"
+                value={birthDate}
+                max={maxBirthDate}
+                onChange={(event) => {
+                  setBirthDate(event.target.value)
+                  setSaveMessage('')
+                }}
+                disabled={saving}
+                className="app-input min-h-11 w-full rounded-lg border px-3 py-2"
+              />
+              <p className="app-text-secondary mt-1 text-xs">Видно только вам</p>
             </div>
             <button
               type="submit"
