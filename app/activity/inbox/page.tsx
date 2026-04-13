@@ -17,16 +17,20 @@ export default async function ActivityInboxPage() {
   let loadFailed = false
 
   try {
-    ;[events] = await Promise.all([
-      loadInboxEventItems(user.id),
+    events = await loadInboxEventItems(user.id)
+
+    const readBoundary = events.at(-1)?.readBoundaryAt ?? null
+
+    if (readBoundary) {
       // Do not block inbox rendering if the read cursor update fails.
-      markInboxEventsAsRead(user.id).catch((error) => {
+      await markInboxEventsAsRead(user.id, readBoundary).catch((error) => {
         console.error('Failed to mark inbox events as read', {
           userId: user.id,
+          readBoundary,
           error: error instanceof Error ? error.message : 'unknown_error',
         })
-      }),
-    ])
+      })
+    }
   } catch {
     loadFailed = true
   }

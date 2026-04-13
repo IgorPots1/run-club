@@ -53,6 +53,7 @@ export type InboxEventItem = {
   id: string
   type: InboxAppEventType
   createdAt: string
+  readBoundaryAt: string
   targetPath: string | null
   entityId: string | null
   actorName: string | null
@@ -65,6 +66,7 @@ export type GroupedRunLikeInboxItem = {
   id: string
   type: 'grouped_run_like'
   createdAt: string
+  readBoundaryAt: string
   targetPath: string | null
   entityId: string
   actorCount: number
@@ -183,6 +185,7 @@ function buildInboxEventItem(
     id: event.id,
     type: event.type as InboxAppEventType,
     createdAt: event.created_at,
+    readBoundaryAt: event.created_at,
     targetPath: event.target_path ?? payload.targetPath,
     entityId: event.entity_id ?? null,
     actorName,
@@ -208,6 +211,7 @@ function buildGroupedRunLikeInboxItem(
     id: `grouped-run-like:${newestItem.id}`,
     type: 'grouped_run_like',
     createdAt: newestItem.createdAt,
+    readBoundaryAt: items[items.length - 1]!.createdAt,
     targetPath: newestItem.targetPath,
     entityId: newestItem.entityId,
     actorCount: items.length,
@@ -337,16 +341,29 @@ export async function getInboxUnreadCount(userId: string): Promise<number> {
   return Math.max(0, Number(count ?? 0))
 }
 
-export async function markInboxEventsAsRead(userId: string): Promise<void> {
+export async function markInboxEventsAsRead(userId: string, readBoundary: string): Promise<void> {
   const supabaseAdmin = createSupabaseAdminClient()
-  const { error } = await supabaseAdmin
+  const { error: updateNullCursorError } = await supabaseAdmin
     .from('profiles')
     .update({
-      activity_inbox_last_read_at: new Date().toISOString(),
+      activity_inbox_last_read_at: readBoundary,
     })
     .eq('id', userId)
+    .is('activity_inbox_last_read_at', null)
 
-  if (error) {
-    throw error
+  if (updateNullCursorError) {
+    throw updateNullCursorError
+  }
+
+  const { error: updateOlderCursorError } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      activity_inbox_last_read_at: readBoundary,
+    })
+    .eq('id', userId)
+    .lt('activity_inbox_last_read_at', readBoundary)
+
+  if (updateOlderCursorError) {
+    throw updateOlderCursorError
   }
 }
