@@ -326,7 +326,7 @@ begin
   update public.race_weeks
   set
     status = 'finalized',
-    finalized_at = v_finalized_at
+    finalized_at = now()
   where id = p_race_week_id;
 end;
 $$;
