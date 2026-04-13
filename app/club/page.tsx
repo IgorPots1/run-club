@@ -26,6 +26,11 @@ type WeeklyRunRow = {
   elevation_gain_meters?: number | null
 }
 
+type ProfileAccessRow = {
+  id: string
+  app_access_status: 'active' | 'blocked' | null
+}
+
 type ClubWeeklyStats = {
   totalDistanceKm: number
   totalRuns: number
@@ -269,10 +274,33 @@ export default function ClubPage() {
         }
 
         const allRuns = (runsData ?? []) as WeeklyRunRow[]
-        const weekRuns = allRuns.filter((run) =>
+        const userIds = Array.from(new Set(allRuns.map((run) => run.user_id)))
+        const { data: profilesData, error: profilesError } = userIds.length === 0
+          ? { data: [] as ProfileAccessRow[], error: null }
+          : await supabase
+              .from('profiles')
+              .select('id, app_access_status')
+              .in('id', userIds)
+
+        if (!isMounted) return
+
+        if (profilesError) {
+          setClubStats(null)
+          setStatsError('Не удалось загрузить статистику клуба')
+          setStatsLoading(false)
+          return
+        }
+
+        const activeUserIds = new Set(
+          ((profilesData as ProfileAccessRow[] | null) ?? [])
+            .filter((profile) => profile.app_access_status === 'active')
+            .map((profile) => profile.id)
+        )
+        const activeRuns = allRuns.filter((run) => activeUserIds.has(run.user_id))
+        const weekRuns = activeRuns.filter((run) =>
           isRunInRange(run.created_at, nextLeaderboard.week!.startsAt, nextLeaderboard.week!.endsAt)
         )
-        const monthRuns = allRuns.filter((run) =>
+        const monthRuns = activeRuns.filter((run) =>
           isRunInRange(run.created_at, currentMonth.startsAt, currentMonth.endsAt)
         )
 

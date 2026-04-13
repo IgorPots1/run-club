@@ -77,6 +77,10 @@ type RaceWeekResultIdDbRow = {
   id: string
 }
 
+type RaceWeekResultUserIdDbRow = {
+  user_id: string
+}
+
 type LatestFinalizedRaceWeekIdDbRow = {
   race_week_id: string
 }
@@ -390,12 +394,24 @@ export async function loadRaceWeekParticipantCount(weekId: string) {
   const supabase = await createSupabaseServerClient()
   const { data, error } = await supabase
     .from('race_week_results')
-    .select('id')
+    .select('user_id')
     .eq('race_week_id', weekId)
 
   if (error) {
     throw new Error('Не удалось загрузить количество участников недели')
   }
 
-  return ((data as RaceWeekResultIdDbRow[] | null) ?? []).length
+  const userIds = Array.from(new Set((((data as RaceWeekResultUserIdDbRow[] | null) ?? [])).map((row) => row.user_id)))
+  const { data: profiles, error: profilesError } = userIds.length === 0
+    ? { data: [] as ProfileAccessDbRow[], error: null }
+    : await supabase
+        .from('profiles')
+        .select('id, app_access_status')
+        .in('id', userIds)
+
+  if (profilesError) {
+    throw new Error('Не удалось загрузить количество участников недели')
+  }
+
+  return ((profiles as ProfileAccessDbRow[] | null) ?? []).filter((profile) => profile.app_access_status === 'active').length
 }

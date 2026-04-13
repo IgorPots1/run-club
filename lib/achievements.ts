@@ -21,6 +21,12 @@ type RaceWeekDbRow = {
 type RaceWeekResultWeekIdDbRow = {
   id: string
   race_week_id: string
+  user_id: string
+}
+
+type ProfileAccessDbRow = {
+  id: string
+  app_access_status: 'active' | 'blocked' | null
 }
 
 type ChallengeCompletionDbRow = {
@@ -209,7 +215,7 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
     raceWeekIds.length > 0
       ? supabase
           .from('race_week_results')
-          .select('id, race_week_id')
+          .select('id, race_week_id, user_id')
           .in('race_week_id', raceWeekIds)
       : Promise.resolve({ data: [] as RaceWeekResultWeekIdDbRow[], error: null }),
     loadChallengesByIds(supabase, challengeIds)
@@ -225,13 +231,36 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
     throw new Error('Не удалось загрузить участников недели для достижений')
   }
 
+  const participantUserIds = Array.from(
+    new Set((((raceWeekResults as RaceWeekResultWeekIdDbRow[] | null) ?? [])).map((row) => row.user_id))
+  )
+  const { data: profiles, error: profilesError } = participantUserIds.length === 0
+    ? { data: [] as ProfileAccessDbRow[], error: null }
+    : await supabase
+        .from('profiles')
+        .select('id, app_access_status')
+        .in('id', participantUserIds)
+
+  if (profilesError) {
+    throw new Error('Не удалось загрузить участников недели для достижений')
+  }
+
   if (challengesError) {
     throw new Error('Не удалось загрузить челленджи для достижений')
   }
 
   const raceWeeksById = new Map(((raceWeeks as RaceWeekDbRow[] | null) ?? []).map((week) => [week.id, week] as const))
+  const activeUserIds = new Set(
+    ((profiles as ProfileAccessDbRow[] | null) ?? [])
+      .filter((profile) => profile.app_access_status === 'active')
+      .map((profile) => profile.id)
+  )
   const participantCountsByWeekId = (((raceWeekResults as RaceWeekResultWeekIdDbRow[] | null) ?? [])).reduce<Record<string, number>>(
     (totals, row) => {
+      if (!activeUserIds.has(row.user_id)) {
+        return totals
+      }
+
       totals[row.race_week_id] = (totals[row.race_week_id] ?? 0) + 1
       return totals
     },
