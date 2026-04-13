@@ -22,7 +22,7 @@ import { loadDashboardOverview } from '@/lib/dashboard'
 import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
-import { getRaceBadgeLabel } from '@/lib/race-badges'
+import { formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { supabase } from '@/lib/supabase'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
@@ -57,6 +57,7 @@ type LastWeekResultsCardData = {
   weekId: string
   userResult: RaceWeekResultRow | null
   badgeText: string
+  weekRangeLabel: string
 }
 
 const dashboardChallengeTypeLabels: Record<DashboardActiveChallenge['period_type'], string> = {
@@ -420,6 +421,7 @@ export default function DashboardPageClient({
   const {
     data: latestFinalizedRaceWeek,
     isLoading: latestFinalizedRaceWeekLoading,
+    mutate: mutateLatestFinalizedRaceWeek,
   } = useSWR<RaceWeekSummary | null>(
     latestFinalizedRaceWeekKey,
     () => loadLatestFinalizedRaceWeek(),
@@ -437,6 +439,7 @@ export default function DashboardPageClient({
   const {
     data: lastWeekResults,
     isLoading: lastWeekResultsLoading,
+    mutate: mutateLastWeekResults,
   } = useSWR<LastWeekResultsCardData>(
     lastWeekResultsKey,
     ([, weekId, userId]: readonly [string, string, string]) =>
@@ -447,6 +450,7 @@ export default function DashboardPageClient({
         weekId,
         userResult,
         badgeText: getRaceBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null),
+        weekRangeLabel: latestFinalizedRaceWeek ? formatRaceWeekDateRange(latestFinalizedRaceWeek) : '',
       })),
     {
       ...swrBaseOptions,
@@ -464,6 +468,8 @@ export default function DashboardPageClient({
       await Promise.all([
         mutateOverview(),
         mutateWeeklyRace(),
+        mutateLatestFinalizedRaceWeek(),
+        mutateLastWeekResults(),
       ])
     })()
 
@@ -474,7 +480,7 @@ export default function DashboardPageClient({
         refreshDashboardDataPromiseRef.current = null
       }
     })
-  }, [mutateOverview, mutateWeeklyRace])
+  }, [mutateLastWeekResults, mutateLatestFinalizedRaceWeek, mutateOverview, mutateWeeklyRace])
 
   useEffect(() => {
     function handleRunsUpdated() {
@@ -536,11 +542,13 @@ export default function DashboardPageClient({
         weekId: latestFinalizedRaceWeek.id,
         userResult: lastWeekResults.userResult,
         badgeText: lastWeekResults.badgeText,
+        weekRangeLabel: lastWeekResults.weekRangeLabel,
       }
     : null
+  const shouldShowLastWeekResultsCard = new Date().getDay() === 1
   const showLastWeekResultsPlaceholder = !shouldLoadSecondaryContent
-    || latestFinalizedRaceWeekLoading
-    || (Boolean(latestFinalizedRaceWeek?.id) && lastWeekResultsLoading)
+    || (shouldShowLastWeekResultsCard && latestFinalizedRaceWeekLoading)
+    || (shouldShowLastWeekResultsCard && Boolean(latestFinalizedRaceWeek?.id) && lastWeekResultsLoading)
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -736,47 +744,44 @@ export default function DashboardPageClient({
               compact
             />
           </Link>
-          <section className="mb-4 min-h-[188px]">
-            {showLastWeekResultsPlaceholder ? (
+          {shouldShowLastWeekResultsCard ? (
+            <section className="mb-4 min-h-[188px]">
+              {showLastWeekResultsPlaceholder ? (
               <DashboardSecondaryCardPlaceholder title="Загружаем итоги прошлой недели" />
             ) : lastWeekResultsCard ? (
               <Link href={`/race/history/${lastWeekResultsCard.weekId}`} className={dashboardClickableCardClass}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="app-text-primary text-lg font-semibold">🏆 Итоги прошлой недели</h2>
+                    <p className="app-text-secondary text-sm font-medium">Итоги прошлой недели</p>
+                    {lastWeekResultsCard.weekRangeLabel ? (
+                      <p className="app-text-secondary mt-1 text-sm">{lastWeekResultsCard.weekRangeLabel}</p>
+                    ) : null}
                     {lastWeekResultsCard.userResult ? (
                       <>
-                        <div className="mt-3 grid grid-cols-3 gap-3">
-                          <div>
-                            <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
-                            <p className="app-text-primary mt-1 text-lg font-semibold">#{lastWeekResultsCard.userResult.rank}</p>
-                          </div>
-                          <div>
-                            <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
-                            <p className="app-text-primary mt-1 text-lg font-semibold">{lastWeekResultsCard.userResult.totalXp}</p>
-                          </div>
-                          <div>
-                            <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
-                            <p className="app-text-primary mt-1 text-sm font-semibold">{lastWeekResultsCard.badgeText}</p>
-                          </div>
-                        </div>
+                        <p className="app-text-primary mt-3 text-2xl font-semibold tracking-tight">
+                          {lastWeekResultsCard.badgeText}
+                        </p>
+                        <p className="app-text-secondary mt-1 text-sm">
+                          {lastWeekResultsCard.userResult.totalXp} XP за неделю
+                        </p>
                         {lastWeekResultsCard.userResult.raceBonusXp > 0 ? (
                           <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${lastWeekResultsCard.userResult.raceBonusXp} XP`}</p>
                         ) : null}
                       </>
                     ) : (
-                      <p className="app-text-secondary mt-3 text-sm">Ты не участвовал</p>
+                      <p className="app-text-secondary mt-3 text-sm">Ты не участвовал в прошлой неделе</p>
                     )}
                   </div>
                 </div>
               </Link>
             ) : (
               <DashboardSecondaryEmptyCard
-                title="🏆 Итоги прошлой недели"
+                title="Итоги прошлой недели"
                 description="Итоги появятся после завершения недели гонки."
               />
-            )}
-          </section>
+              )}
+            </section>
+          ) : null}
           <section className="min-h-[284px]">
             <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
             <InfiniteWorkoutFeed

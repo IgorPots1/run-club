@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { isMatchingRacePodiumBadge } from './race-badges'
 
 export type RaceWeekSummary = {
   id: string
@@ -94,6 +95,11 @@ type RaceWeekResultWeekIdDbRow = {
 
 type LatestFinalizedRaceWeekIdDbRow = {
   race_week_id: string
+}
+
+type RaceWeekResultRankDbRow = {
+  user_id: string
+  rank: number | string | null
 }
 
 function toSafeNumber(value: number | string | null | undefined) {
@@ -231,21 +237,37 @@ export async function loadRaceWeekUserResult(weekId: string, userId: string) {
 }
 
 export async function loadRaceWeekUserBadge(weekId: string, userId: string) {
-  const { data, error } = await supabase
-    .from('user_badge_awards')
-    .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
-    .eq('race_week_id', weekId)
-    .eq('user_id', userId)
-    .eq('source_type', 'weekly_race')
-    .order('awarded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const [{ data: badgeRows, error: badgesError }, { data: resultRow, error: resultError }] = await Promise.all([
+    supabase
+      .from('user_badge_awards')
+      .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
+      .eq('race_week_id', weekId)
+      .eq('user_id', userId)
+      .eq('source_type', 'weekly_race')
+      .order('awarded_at', { ascending: false }),
+    supabase
+      .from('race_week_results')
+      .select('user_id, rank')
+      .eq('race_week_id', weekId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ])
 
-  if (error) {
+  if (badgesError || resultError) {
     throw new Error('Не удалось загрузить бейдж пользователя за неделю')
   }
 
-  return mapBadgeAward((data as RaceWeekBadgeDbRow | null) ?? null)
+  const actualRank = toSafeNumber((resultRow as RaceWeekResultRankDbRow | null)?.rank)
+
+  for (const row of (badgeRows as RaceWeekBadgeDbRow[] | null) ?? []) {
+    const badge = mapBadgeAward(row)
+
+    if (badge && isMatchingRacePodiumBadge(badge.badgeCode, actualRank)) {
+      return badge
+    }
+  }
+
+  return null
 }
 
 export async function loadUserRaceBadgeAwards(userId: string, limit = 3): Promise<UserRaceBadgeAwardSummary[]> {

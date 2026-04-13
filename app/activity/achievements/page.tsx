@@ -49,18 +49,13 @@ export default async function ActivityAchievementsPage() {
                   const cardContent = (
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="app-text-secondary text-xs font-medium uppercase tracking-wide">
+                        <p className="app-text-secondary inline-flex rounded-full border px-2 py-1 text-[11px] font-medium">
                           {getAchievementSourceLabel(achievement.source_type)}
                         </p>
                         <p className="app-text-primary mt-1 text-base font-semibold">{achievement.label}</p>
                         <p className="app-text-secondary mt-1 text-sm">{achievement.subtitle}</p>
                         <p className="app-text-secondary mt-2 text-xs">{formatAchievementDate(achievement.date)}</p>
                       </div>
-                      {achievement.rank ? (
-                        <p className="shrink-0 rounded-full border border-black/[0.06] bg-black/[0.04] px-2.5 py-1 text-xs font-semibold text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80">
-                          #{achievement.rank}
-                        </p>
-                      ) : null}
                     </div>
                   )
 

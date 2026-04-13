@@ -11,6 +11,7 @@ type WeeklyLeaderboardProps = {
   loading?: boolean
   error?: string
   compact?: boolean
+  href?: string
 }
 
 function getMotivationHint(gapToNext: number | null) {
@@ -27,6 +28,7 @@ export default function WeeklyLeaderboard({
   loading = false,
   error = '',
   compact = false,
+  href,
 }: WeeklyLeaderboardProps) {
   const week = leaderboard?.week ?? null
   const topRows = Array.isArray(leaderboard?.topRows) ? leaderboard.topRows : []
@@ -61,9 +63,11 @@ export default function WeeklyLeaderboard({
   const compactRows = shouldShowCompactCurrentUserRow && compactCurrentUserRow
     ? [...compactTopRows, compactCurrentUserRow]
     : compactTopRows
+  const cardClassName = 'app-card mb-4 min-h-[188px] overflow-hidden rounded-xl border p-4 shadow-sm'
+  const isCardClickable = typeof href === 'string' && href.length > 0
 
-  return (
-    <div className="app-card mb-4 min-h-[188px] overflow-hidden rounded-xl border p-4 shadow-sm">
+  const content = (
+    <>
       {compact && !loading && !error && week ? (
         <div className="flex items-center justify-between gap-3">
           <p className="app-text-secondary flex min-w-0 items-center gap-2 text-sm font-medium">
@@ -160,25 +164,32 @@ export default function WeeklyLeaderboard({
         <div className="mt-3 space-y-2">
           {topRows.map((row) => {
             const isCurrentUser = row.user_id === currentUserId
-
-            return (
-              <div
-                key={row.user_id}
-                className={
-                  isCurrentUser
-                    ? 'app-surface-muted rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15'
-                    : 'px-3 py-2'
-                }
-              >
+            const rowClassName =
+              isCurrentUser
+                ? 'app-surface-muted rounded-xl px-3 py-3 ring-1 ring-black/10 dark:ring-white/15'
+                : 'px-3 py-2'
+            const rowContent = (
+              <>
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <Link href={`/users/${row.user_id}`} className="app-text-primary min-w-0 flex-1 truncate">
-                    {row.rank}. {row.displayName}
-                    {isCurrentUser ? (
-                      <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
-                        Ты
-                      </span>
-                    ) : null}
-                  </Link>
+                  {isCardClickable ? (
+                    <div className="app-text-primary min-w-0 flex-1 truncate">
+                      {row.rank}. {row.displayName}
+                      {isCurrentUser ? (
+                        <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                          Ты
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <Link href={`/users/${row.user_id}`} className="app-text-primary min-w-0 flex-1 truncate">
+                      {row.rank}. {row.displayName}
+                      {isCurrentUser ? (
+                        <span className="app-text-secondary ml-2 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                          Ты
+                        </span>
+                      ) : null}
+                    </Link>
+                  )}
                   <p className="app-text-primary shrink-0 font-medium">{row.totalXp} XP</p>
                 </div>
                 {isCurrentUser ? (
@@ -194,6 +205,12 @@ export default function WeeklyLeaderboard({
                     ) : null}
                   </div>
                 ) : null}
+              </>
+            )
+
+            return (
+              <div key={row.user_id} className={rowClassName}>
+                {rowContent}
               </div>
             )
           })}
@@ -224,6 +241,20 @@ export default function WeeklyLeaderboard({
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   )
+
+  if (isCardClickable) {
+    return (
+      <Link
+        href={href}
+        aria-label="Открыть гонку недели"
+        className={`block transition-[transform,box-shadow] hover:shadow-md active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 dark:focus-visible:ring-white/20 ${cardClassName}`}
+      >
+        {content}
+      </Link>
+    )
+  }
+
+  return <div className={cardClassName}>{content}</div>
 }

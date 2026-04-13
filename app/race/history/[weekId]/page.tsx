@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import InnerPageHeader from '@/components/InnerPageHeader'
-import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel, getRacePodiumBadgeTone } from '@/lib/race-badges'
+import { formatRacePlacementLabel, formatRaceRankLabel, formatRaceWeekDateRange, getRaceBadgeLabel, getRacePodiumBadgeTone } from '@/lib/race-badges'
 import {
   loadFinalizedRaceWeek,
   loadRaceWeekBadgesByUserIds,
@@ -49,22 +49,6 @@ function getPodiumBadgeChipClass(badgeCode: string | null | undefined, rank: num
   return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
 }
 
-function getPodiumBadgeText(rank: number) {
-  if (rank === 1) {
-    return 'Победитель'
-  }
-
-  if (rank === 2) {
-    return '2 место'
-  }
-
-  if (rank === 3) {
-    return '3 место'
-  }
-
-  return ''
-}
-
 export default async function RaceHistoryWeekPage({ params }: PageProps) {
   const [{ user, error }, { weekId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -107,7 +91,6 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
     )
   }
 
-  const badgeLabel = getRaceBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null)
   const placementLabel = formatRacePlacementLabel({
     badgeCode: badge?.badgeCode,
     rank: badge?.sourceRank ?? userResult?.rank ?? null,
@@ -133,18 +116,14 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
               {placementLabel ? (
                 <p className="app-text-secondary mt-1 text-sm">{placementLabel}</p>
               ) : null}
-              <div className="mt-3 grid grid-cols-3 gap-3">
+              <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <p className="app-text-secondary text-xs uppercase tracking-wide">Ранг</p>
-                  <p className="app-text-primary mt-1 text-lg font-semibold">#{userResult.rank}</p>
+                  <p className="app-text-secondary text-xs uppercase tracking-wide">Место</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{formatRaceRankLabel(userResult.rank)}</p>
                 </div>
                 <div>
                   <p className="app-text-secondary text-xs uppercase tracking-wide">XP</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{userResult.totalXp}</p>
-                </div>
-                <div>
-                  <p className="app-text-secondary text-xs uppercase tracking-wide">Бейдж</p>
-                  <p className="app-text-primary mt-1 text-sm font-semibold">{badgeLabel}</p>
                 </div>
               </div>
               {userResult.raceBonusXp > 0 ? (
@@ -166,10 +145,7 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
                 {topResults.map((row) => {
                   const isCurrentUser = row.userId === user.id
                   const rowBadge = topResultBadgesByUserId.get(row.userId) ?? null
-                  const rowBadgeTitle = rowBadge
-                    ? getRaceBadgeLabel(rowBadge.badgeCode, rowBadge.sourceRank ?? row.rank)
-                    : ''
-                  const rowBadgeText = rowBadge ? getPodiumBadgeText(row.rank) : ''
+                  const rowBadgeTitle = rowBadge ? getRaceBadgeLabel(rowBadge.badgeCode, row.rank) : ''
 
                   return (
                     <div
@@ -187,22 +163,17 @@ export default async function RaceHistoryWeekPage({ params }: PageProps) {
                               {row.rank}. {row.displayName}
                             </p>
                             {rowBadge ? (
-                              <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap">
+                              <span className="inline-flex shrink-0 items-center whitespace-nowrap">
                                 <span
                                   title={rowBadgeTitle}
                                   aria-label={rowBadgeTitle}
                                   className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPodiumBadgeChipClass(
                                     rowBadge.badgeCode,
-                                    rowBadge.sourceRank ?? row.rank
+                                    row.rank
                                   )}`}
                                 >
                                   {rowBadgeTitle}
                                 </span>
-                                {rowBadgeText ? (
-                                  <span className="app-text-secondary text-xs font-medium">
-                                    {rowBadgeText}
-                                  </span>
-                                ) : null}
                               </span>
                             ) : null}
                           </div>

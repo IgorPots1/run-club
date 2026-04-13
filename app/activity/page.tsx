@@ -282,26 +282,6 @@ function getAchievementCardClass(achievement: Pick<UserAchievement, 'source_type
   return 'app-card app-surface-muted rounded-2xl border border-black/[0.05] p-4 shadow-sm dark:border-white/[0.08]'
 }
 
-function getAchievementRankClass(badgeCode: string | null | undefined) {
-  if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
-    return 'border border-amber-300/80 bg-amber-100/80 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100'
-  }
-
-  if (badgeCode === 'weekly_race_2') {
-    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
-  }
-
-  if (badgeCode === 'weekly_race_3') {
-    return 'border border-orange-300/80 bg-orange-100/90 text-orange-800 dark:border-orange-300/20 dark:bg-orange-300/10 dark:text-orange-100'
-  }
-
-  if (badgeCode === 'race_week_top_3') {
-    return 'border border-slate-300/80 bg-slate-100/90 text-slate-700 dark:border-slate-300/20 dark:bg-slate-300/10 dark:text-slate-100'
-  }
-
-  return 'border border-black/[0.06] bg-black/[0.04] text-black/70 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/80'
-}
-
 function getAchievementIconWrapperClass(achievement: Pick<UserAchievement, 'source_type' | 'badge_code'>) {
   if (achievement.source_type === 'challenge') {
     return 'border border-emerald-300/70 bg-emerald-100/90 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-100'
@@ -957,13 +937,6 @@ export default function ActivityPage() {
                             ) : null}
                           </div>
                         </div>
-                        {achievement.rank ? (
-                          <p
-                            className={`max-w-full break-words rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
-                          >
-                            #{achievement.rank}
-                          </p>
-                        ) : null}
                       </div>
                     </button>
                   ) : (
@@ -993,13 +966,6 @@ export default function ActivityPage() {
                             ) : null}
                           </div>
                         </div>
-                        {achievement.source_type === 'weekly_race' && achievement.rank ? (
-                          <p
-                            className={`max-w-full break-words rounded-full px-2.5 py-1 text-xs font-semibold ${getAchievementRankClass(achievement.badge_code)}`}
-                          >
-                            #{achievement.rank}
-                          </p>
-                        ) : null}
                       </div>
                     </div>
                   )

@@ -8,6 +8,30 @@ type RaceBadgeWeekDateRange = {
 
 export type RacePodiumBadgeTone = 'gold' | 'silver' | 'bronze' | null
 
+export function formatRaceRankLabel(rank: number | null | undefined) {
+  if (typeof rank !== 'number' || rank <= 0) {
+    return ''
+  }
+
+  return `${rank} место`
+}
+
+export function isMatchingRacePodiumBadge(badgeCode: string | null | undefined, rank: number | null | undefined) {
+  if (typeof rank !== 'number' || rank < 1 || rank > 3) {
+    return false
+  }
+
+  if (rank === 1) {
+    return badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner' || badgeCode === 'race_week_top_3'
+  }
+
+  if (rank === 2) {
+    return badgeCode === 'weekly_race_2' || badgeCode === 'race_week_top_3'
+  }
+
+  return badgeCode === 'weekly_race_3' || badgeCode === 'race_week_top_3'
+}
+
 export function getRacePodiumBadgeTone(badgeCode: string | null | undefined, rank: number | null | undefined): RacePodiumBadgeTone {
   if (badgeCode === 'weekly_race_1' || badgeCode === 'race_week_winner') {
     return 'gold'
@@ -66,11 +90,11 @@ export function getRaceBadgeLabel(badgeCode: string | null | undefined, rank: nu
   }
 
   if (badgeCode === 'race_week_top_10') {
-    return typeof rank === 'number' && rank > 0 ? `#${rank}` : 'Топ-10'
+    return typeof rank === 'number' && rank > 0 ? formatRaceRankLabel(rank) : 'Топ-10'
   }
 
   if (typeof rank === 'number' && rank > 0) {
-    return `#${rank}`
+    return formatRaceRankLabel(rank)
   }
 
   return 'Без бейджа'
@@ -110,7 +134,7 @@ export function formatRacePlacementLabel(args: {
   }
 
   if (typeof rank === 'number' && rank > 0) {
-    return `#${rank} из ${totalParticipants} участников`
+    return `${rank} из ${totalParticipants} участников`
   }
 
   return ''

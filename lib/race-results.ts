@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { isMatchingRacePodiumBadge } from './race-badges'
 import { createSupabaseServerClient } from './supabase-server'
 
 export type RaceWeekSummary = {
@@ -78,6 +79,11 @@ type RaceWeekResultIdDbRow = {
 
 type LatestFinalizedRaceWeekIdDbRow = {
   race_week_id: string
+}
+
+type RaceWeekResultRankDbRow = {
+  user_id: string
+  rank: number | string | null
 }
 
 function toSafeNumber(value: number | string | null | undefined) {
@@ -264,21 +270,37 @@ export async function loadRaceWeekUserResult(weekId: string, userId: string) {
 
 export async function loadRaceWeekUserBadge(weekId: string, userId: string) {
   const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('user_badge_awards')
-    .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
-    .eq('race_week_id', weekId)
-    .eq('user_id', userId)
-    .eq('source_type', 'weekly_race')
-    .order('awarded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const [{ data: badgeRows, error: badgesError }, { data: resultRow, error: resultError }] = await Promise.all([
+    supabase
+      .from('user_badge_awards')
+      .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
+      .eq('race_week_id', weekId)
+      .eq('user_id', userId)
+      .eq('source_type', 'weekly_race')
+      .order('awarded_at', { ascending: false }),
+    supabase
+      .from('race_week_results')
+      .select('user_id, rank')
+      .eq('race_week_id', weekId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ])
 
-  if (error) {
+  if (badgesError || resultError) {
     throw new Error('Не удалось загрузить бейдж пользователя за неделю')
   }
 
-  return mapBadgeAward((data as RaceWeekBadgeDbRow | null) ?? null)
+  const actualRank = toSafeNumber((resultRow as RaceWeekResultRankDbRow | null)?.rank)
+
+  for (const row of (badgeRows as RaceWeekBadgeDbRow[] | null) ?? []) {
+    const badge = mapBadgeAward(row)
+
+    if (badge && isMatchingRacePodiumBadge(badge.badgeCode, actualRank)) {
+      return badge
+    }
+  }
+
+  return null
 }
 
 export async function loadRaceWeekBadgesByUserIds(weekId: string, userIds: string[]) {
@@ -289,24 +311,35 @@ export async function loadRaceWeekBadgesByUserIds(weekId: string, userIds: strin
   }
 
   const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('user_badge_awards')
-    .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
-    .eq('race_week_id', weekId)
-    .eq('source_type', 'weekly_race')
-    .in('user_id', uniqueUserIds)
-    .order('awarded_at', { ascending: false })
+  const [{ data: badgeRows, error: badgesError }, { data: resultRows, error: resultsError }] = await Promise.all([
+    supabase
+      .from('user_badge_awards')
+      .select('id, user_id, badge_code, race_week_id, source_type, source_rank, awarded_at')
+      .eq('race_week_id', weekId)
+      .eq('source_type', 'weekly_race')
+      .in('user_id', uniqueUserIds)
+      .order('awarded_at', { ascending: false }),
+    supabase
+      .from('race_week_results')
+      .select('user_id, rank')
+      .eq('race_week_id', weekId)
+      .in('user_id', uniqueUserIds),
+  ])
 
-  if (error) {
+  if (badgesError || resultsError) {
     throw new Error('Не удалось загрузить бейджи недели для таблицы результатов')
   }
 
+  const resultRankByUserId = new Map(
+    (((resultRows as RaceWeekResultRankDbRow[] | null) ?? [])).map((row) => [row.user_id, toSafeNumber(row.rank)] as const)
+  )
   const badgesByUserId = new Map<string, RaceWeekBadgeAward>()
 
-  for (const row of (data as RaceWeekBadgeDbRow[] | null) ?? []) {
+  for (const row of (badgeRows as RaceWeekBadgeDbRow[] | null) ?? []) {
     const badge = mapBadgeAward(row)
+    const actualRank = badge ? resultRankByUserId.get(badge.userId) ?? 0 : 0
 
-    if (!badge || badgesByUserId.has(badge.userId)) {
+    if (!badge || badgesByUserId.has(badge.userId) || !isMatchingRacePodiumBadge(badge.badgeCode, actualRank)) {
       continue
     }
 

@@ -481,13 +481,8 @@ export default function ClubPage() {
             currentUserId={currentUserId}
             loading={authLoading || leaderboardLoading}
             error={leaderboardError}
+            href="/race"
           />
-
-          <div className="mb-4">
-            <Link href="/race" className="app-text-secondary text-sm underline underline-offset-4">
-              Открыть экран гонки недели
-            </Link>
-          </div>
         </div>
       )}
     </main>
