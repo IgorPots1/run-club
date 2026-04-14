@@ -44,6 +44,7 @@ import {
   toggleChatMessageReaction,
   type ChatMessageAttachment,
   type ChatMessageItem,
+  type ChatMessageMentionSpan,
   updateChatMessage,
 } from '@/lib/chat'
 import {
@@ -624,6 +625,9 @@ function getChatMessageRenderSignature(message: ChatMessageItem) {
     message.displayName,
     message.avatarUrl ?? '',
     message.text,
+    (message.mentionSpans ?? [])
+      .map((span) => `${span.userId}:${span.start}:${span.length}`)
+      .join('|'),
     message.messageType,
     message.imageUrl ?? '',
     message.mediaUrl ?? '',
@@ -1213,6 +1217,7 @@ type RealtimeChatMessageRow = {
   id: string
   user_id: string
   text: string | null
+  mention_spans: ChatMessageMentionSpan[] | null
   message_type: string | null
   image_url: string | null
   media_url: string | null
@@ -1240,6 +1245,7 @@ function toRealtimeChatMessageRow(value: unknown): RealtimeChatMessageRow | null
     id,
     user_id: userId,
     text: typeof row.text === 'string' ? row.text : null,
+    mention_spans: normalizeMessageMentionSpans(row.mention_spans, typeof row.text === 'string' ? row.text : ''),
     message_type: typeof row.message_type === 'string' ? row.message_type : null,
     image_url: typeof row.image_url === 'string' ? row.image_url : null,
     media_url: typeof row.media_url === 'string' ? row.media_url : null,
@@ -2389,6 +2395,7 @@ function finalizeOptimisticMessageFromRealtimeRow(
     id: realtimeRow.id,
     userId: realtimeRow.user_id,
     text: realtimeRow.text ?? '',
+    mentionSpans: realtimeRow.mention_spans,
     messageType,
     imageUrl,
     attachments,
@@ -3763,7 +3770,10 @@ function ChatMessageBodyComponent({
     onRetryFailedMessage &&
     (isMessageSendFailureState || (isAttachmentFailureState && !hasPendingAttachmentUploads))
   )
-  const messageTextContent = useMemo(() => renderMessageTextWithLinks(message.text), [message.text])
+  const messageTextContent = useMemo(
+    () => renderMessageText(message.text, message.mentionSpans),
+    [message.text, message.mentionSpans]
+  )
 
   return (
     <>
@@ -3975,6 +3985,136 @@ function renderMessageTextWithLinks(text: string): ReactNode {
     }
 
     return <Fragment key={`text-${index}`}>{part}</Fragment>
+  })
+}
+
+function normalizeMessageMentionSpans(rawValue: unknown, text: string): ChatMessageMentionSpan[] | null {
+  if (!Array.isArray(rawValue) || !text) {
+    return null
+  }
+
+  const mentionSpans: ChatMessageMentionSpan[] = []
+
+  for (const span of rawValue) {
+    if (!span || typeof span !== 'object') {
+      return null
+    }
+
+    const rawSpan = span as Record<string, unknown>
+    const userId = typeof rawSpan.userId === 'string'
+      ? rawSpan.userId.trim()
+      : typeof rawSpan.user_id === 'string'
+        ? rawSpan.user_id.trim()
+        : ''
+    const start = rawSpan.start
+    const length = rawSpan.length
+
+    if (
+      !userId ||
+      typeof start !== 'number' ||
+      typeof length !== 'number' ||
+      !Number.isInteger(start) ||
+      !Number.isInteger(length) ||
+      start < 0 ||
+      length <= 0 ||
+      start + length > text.length
+    ) {
+      return null
+    }
+
+    mentionSpans.push({ userId, start, length })
+  }
+
+  mentionSpans.sort((left, right) => {
+    if (left.start !== right.start) {
+      return left.start - right.start
+    }
+
+    if (left.length !== right.length) {
+      return left.length - right.length
+    }
+
+    return left.userId.localeCompare(right.userId)
+  })
+
+  return mentionSpans.length > 0 ? mentionSpans : null
+}
+
+function splitMessageTextByMentionSpans(
+  text: string,
+  mentionSpans: ChatMessageMentionSpan[] | null
+): { text: string; isMention: boolean }[] | null {
+  if (!text) {
+    return []
+  }
+
+  if (!mentionSpans || mentionSpans.length === 0) {
+    return [{ text, isMention: false }]
+  }
+
+  const segments: { text: string; isMention: boolean }[] = []
+  let cursor = 0
+
+  for (const span of mentionSpans) {
+    if (
+      !Number.isInteger(span.start) ||
+      !Number.isInteger(span.length) ||
+      span.start < cursor ||
+      span.length <= 0 ||
+      span.start + span.length > text.length
+    ) {
+      return null
+    }
+
+    if (cursor < span.start) {
+      segments.push({
+        text: text.slice(cursor, span.start),
+        isMention: false,
+      })
+    }
+
+    segments.push({
+      text: text.slice(span.start, span.start + span.length),
+      isMention: true,
+    })
+    cursor = span.start + span.length
+  }
+
+  if (cursor < text.length) {
+    segments.push({
+      text: text.slice(cursor),
+      isMention: false,
+    })
+  }
+
+  return segments
+}
+
+function renderMessageText(
+  text: string,
+  mentionSpans: ChatMessageMentionSpan[] | null
+): ReactNode {
+  const segments = splitMessageTextByMentionSpans(text, mentionSpans)
+
+  if (!segments) {
+    return renderMessageTextWithLinks(text)
+  }
+
+  return segments.map((segment, index) => {
+    const content = renderMessageTextWithLinks(segment.text)
+
+    if (!segment.isMention) {
+      return <Fragment key={`message-text-${index}`}>{content}</Fragment>
+    }
+
+    return (
+      <span
+        key={`message-mention-${index}`}
+        className="rounded-[4px] bg-black/[0.05] dark:bg-white/[0.08]"
+      >
+        {content}
+      </span>
+    )
   })
 }
 
@@ -7298,6 +7438,7 @@ export default function ChatSection({
                   ? {
                       ...message,
                       text: trimmedDraftMessage,
+                      mentionSpans: null,
                       previewText: trimmedDraftMessage,
                       editedAt: nextEditedAt,
                     }
@@ -7311,6 +7452,7 @@ export default function ChatSection({
           userId: currentUserId,
           text: trimmedDraftMessage,
           attachments: pendingImages,
+          mentionSpans,
         })
         const sendContentKind = getChatSendContentKind({
           textLength: trimmedDraftMessage.length,
@@ -7983,10 +8125,12 @@ export default function ChatSection({
     userId,
     text,
     attachments,
+    mentionSpans,
   }: {
     userId: string
     text: string
     attachments: PendingComposerImage[]
+    mentionSpans?: ChatMessageMentionSpan[] | null
   }): ChatMessageItem {
     const createdAt = new Date().toISOString()
     const optimisticMessageId = createOptimisticMessageId(attachments.length > 0 ? 'image' : 'text')
@@ -8006,6 +8150,7 @@ export default function ChatSection({
       id: optimisticMessageId,
       userId,
       text,
+      mentionSpans: mentionSpans ?? null,
       messageType,
       imageUrl: normalizedAttachments[0]?.publicUrl ?? null,
       attachments: normalizedAttachments,
@@ -8291,6 +8436,7 @@ export default function ChatSection({
         displayName: replyingToMessage.displayName,
         text: replyingToMessage.previewText || replyingToMessage.text,
       } : null,
+      mentionSpans: null,
       reactions: [],
       previewText: 'Голосовое сообщение',
       optimisticRenderKey: optimisticMessageId,

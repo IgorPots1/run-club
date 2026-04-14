@@ -25,6 +25,12 @@ export type ChatMessageAttachment = {
   sortOrder: number
 }
 
+export type ChatMessageMentionSpan = {
+  userId: string
+  start: number
+  length: number
+}
+
 export type ChatComposerImageUpload = {
   storagePath: string
   publicUrl: string
@@ -45,6 +51,7 @@ type ChatMessageRow = {
   is_deleted: boolean
   reply_to_id: string | null
   thread_id?: string | null
+  mention_spans?: unknown
 }
 
 type ChatMessageReactionRow = {
@@ -76,6 +83,7 @@ export type ChatMessageItem = {
   id: string
   userId: string
   text: string
+  mentionSpans: ChatMessageMentionSpan[] | null
   messageType: ChatMessageType
   imageUrl: string | null
   attachments: ChatMessageAttachment[]
@@ -262,6 +270,70 @@ function resolveChatMessageImageUrl(message: Pick<ChatMessageRow, 'message_type'
   return resolveChatMessageType(message) === 'image' ? message.media_url ?? null : null
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseChatMessageMentionSpan(rawValue: unknown, textLength: number): ChatMessageMentionSpan | null {
+  if (!isPlainObject(rawValue)) {
+    return null
+  }
+
+  const userId = typeof rawValue.userId === 'string'
+    ? rawValue.userId.trim()
+    : typeof rawValue.user_id === 'string'
+      ? rawValue.user_id.trim()
+      : ''
+  const rawStart = rawValue.start
+  const rawLength = rawValue.length
+
+  if (
+    !userId ||
+    typeof rawStart !== 'number' ||
+    typeof rawLength !== 'number' ||
+    !Number.isInteger(rawStart) ||
+    !Number.isInteger(rawLength) ||
+    rawStart < 0 ||
+    rawLength <= 0 ||
+    rawStart + rawLength > textLength
+  ) {
+    return null
+  }
+
+  return {
+    userId,
+    start: rawStart,
+    length: rawLength,
+  }
+}
+
+function normalizeChatMessageMentionSpans(rawValue: unknown, text: string) {
+  const rawMentionSpans = Array.isArray(rawValue) ? rawValue : []
+  const mentionSpans: ChatMessageMentionSpan[] = []
+
+  for (const rawMentionSpan of rawMentionSpans) {
+    const mentionSpan = parseChatMessageMentionSpan(rawMentionSpan, text.length)
+
+    if (!mentionSpan) {
+      return null
+    }
+
+    mentionSpans.push(mentionSpan)
+  }
+
+  return mentionSpans.sort((left, right) => {
+    if (left.start !== right.start) {
+      return left.start - right.start
+    }
+
+    if (left.length !== right.length) {
+      return left.length - right.length
+    }
+
+    return left.userId.localeCompare(right.userId)
+  })
+}
+
 function toChatMessageAttachment(row: ChatMessageAttachmentRow): ChatMessageAttachment {
   return {
     id: row.id,
@@ -346,6 +418,7 @@ function normalizeChatMessageRow(message: ChatMessageRow): ChatMessageRow {
     media_url: message.media_url ?? null,
     media_duration_seconds: message.media_duration_seconds ?? null,
     edited_at: message.edited_at ?? null,
+    mention_spans: message.mention_spans ?? null,
   }
 }
 
@@ -406,11 +479,13 @@ function toChatMessageItem(
 ): ChatMessageItem {
   const messageType = resolveChatMessageType(message)
   const attachments = normalizeChatMessageAttachments(message, attachmentRows)
+  const mentionSpans = normalizeChatMessageMentionSpans(message.mention_spans, message.text ?? '')
 
   return {
     id: message.id,
     userId: message.user_id,
     text: message.text ?? '',
+    mentionSpans: mentionSpans && mentionSpans.length > 0 ? mentionSpans : null,
     messageType,
     imageUrl: getPrimaryAttachmentImageUrl(attachments),
     attachments,
@@ -496,7 +571,7 @@ async function loadChatReplyRowsByIds(replyIds: string[], threadId?: string | nu
 
   const replyMessagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id, mention_spans')
     .in('id', replyIds)
 
   if (threadId) {
@@ -1164,7 +1239,7 @@ export async function softDeleteChatMessage(
 export async function loadChatMessageItem(messageId: string, threadId?: string | null): Promise<ChatMessageItem | null> {
   const messageQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id, mention_spans')
     .eq('id', messageId)
 
   if (threadId) {
@@ -1219,7 +1294,7 @@ export async function loadChatMessageById(messageId: string, threadId?: string |
 async function fetchRecentChatMessages(limit = 50, threadId?: string | null): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id, mention_spans')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -1342,7 +1417,7 @@ export async function loadOlderChatMessages(
 ): Promise<ChatMessageItem[]> {
   const messagesQuery = supabase
     .from('chat_messages')
-    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id')
+    .select('id, user_id, text, message_type, image_url, media_url, media_duration_seconds, edited_at, created_at, is_deleted, reply_to_id, thread_id, mention_spans')
     .eq('is_deleted', false)
     .or(`created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${beforeId})`)
     .order('created_at', { ascending: false })
