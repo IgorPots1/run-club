@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel } from './race-badges'
+import { formatRacePlacementLabel, formatRaceWeekDateRange, getRaceBadgeLabel, isMatchingRacePodiumBadge } from './race-badges'
 import { createSupabaseServerClient } from './supabase-server'
 
 type RaceBadgeAwardDbRow = {
@@ -22,6 +22,7 @@ type RaceWeekResultWeekIdDbRow = {
   id: string
   race_week_id: string
   user_id: string
+  rank: number | string | null
 }
 
 type ProfileAccessDbRow = {
@@ -61,6 +62,16 @@ type LoadUserAchievementsOptions = {
 function toSafeNumber(value: number | string | null | undefined) {
   const numericValue = typeof value === 'string' ? Number(value) : value
   return Number.isFinite(numericValue) ? Number(numericValue) : null
+}
+
+function isWeeklyRacePodiumBadgeCode(badgeCode: string | null | undefined) {
+  return (
+    badgeCode === 'weekly_race_1' ||
+    badgeCode === 'race_week_winner' ||
+    badgeCode === 'weekly_race_2' ||
+    badgeCode === 'weekly_race_3' ||
+    badgeCode === 'race_week_top_3'
+  )
 }
 
 function getChallengeSubtitle(challenge: Pick<ChallengeDbRow, 'description' | 'xp_reward'>) {
@@ -215,7 +226,7 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
     raceWeekIds.length > 0
       ? supabase
           .from('race_week_results')
-          .select('id, race_week_id, user_id')
+          .select('id, race_week_id, user_id, rank')
           .in('race_week_id', raceWeekIds)
       : Promise.resolve({ data: [] as RaceWeekResultWeekIdDbRow[], error: null }),
     loadChallengesByIds(supabase, challengeIds)
@@ -266,11 +277,30 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
     },
     {}
   )
+  const actualRankByWeekId = (((raceWeekResults as RaceWeekResultWeekIdDbRow[] | null) ?? [])).reduce<Map<string, number | null>>(
+    (totals, row) => {
+      if (row.user_id !== userId) {
+        return totals
+      }
+
+      totals.set(row.race_week_id, toSafeNumber(row.rank))
+      return totals
+    },
+    new Map<string, number | null>()
+  )
   const challengesById = new Map(((challenges as ChallengeDbRow[] | null) ?? []).map((challenge) => [challenge.id, challenge] as const))
 
-  const raceAchievements: UserAchievement[] = safeRaceAwards.map((award) => {
+  const raceAchievements = safeRaceAwards.reduce<UserAchievement[]>((achievements, award) => {
     const week = award.race_week_id ? raceWeeksById.get(award.race_week_id) : null
-    const rank = toSafeNumber(award.source_rank)
+    const sourceRank = toSafeNumber(award.source_rank)
+    const actualRank = award.race_week_id ? (actualRankByWeekId.get(award.race_week_id) ?? null) : null
+    const isPodiumBadge = isWeeklyRacePodiumBadgeCode(award.badge_code)
+
+    if (isPodiumBadge && !isMatchingRacePodiumBadge(award.badge_code, actualRank)) {
+      return achievements
+    }
+
+    const rank = isPodiumBadge && actualRank !== null ? actualRank : sourceRank
     const subtitle = formatRacePlacementLabel({
       badgeCode: award.badge_code,
       rank,
@@ -282,7 +312,7 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
       timezone: week?.timezone ?? null,
     })
 
-    return {
+    achievements.push({
       id: `race-${award.id}`,
       source_type: 'weekly_race',
       badge_code: award.badge_code,
@@ -291,8 +321,10 @@ export async function loadUserAchievements(userId: string, options: LoadUserAchi
       subtitle: subtitle ? `${dateRangeLabel} • ${subtitle}` : dateRangeLabel,
       href: award.race_week_id ? `/race/history/${award.race_week_id}` : null,
       rank,
-    }
-  })
+    })
+
+    return achievements
+  }, [])
 
   const challengeAchievements = safeChallengeCompletions.reduce<UserAchievement[]>((achievements, completion) => {
     const challenge = challengesById.get(completion.challenge_id)
