@@ -6436,7 +6436,13 @@ export default function ChatSection({
     }
 
     function updateMentionSuggestionsAnchorRect() {
-      setMentionSuggestionsAnchorRect(composerInputShellRef.current?.getBoundingClientRect() ?? null)
+      const nextRect = composerInputShellRef.current?.getBoundingClientRect() ?? null
+
+      if (!nextRect || nextRect.width <= 0 || nextRect.top <= 0) {
+        return
+      }
+
+      setMentionSuggestionsAnchorRect(nextRect)
     }
 
     updateMentionSuggestionsAnchorRect()
