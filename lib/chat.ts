@@ -526,6 +526,11 @@ type CreateTextChatMessageApiPayload = {
   kind?: 'text'
   text?: string
   imageUrl?: string | null
+  mentionSpans?: {
+    userId: string
+    start: number
+    length: number
+  }[] | null
   pendingAttachmentCount?: number | null
   attachments?: {
     type: ChatMessageAttachmentType
@@ -748,7 +753,15 @@ export async function createChatMessage(
   threadId?: string | null,
   attachments: ChatComposerImageUpload[] = [],
   imageUrl?: string | null,
-  options?: { pendingAttachmentCount?: number | null; optimisticMessageId?: string | null }
+  options?: {
+    pendingAttachmentCount?: number | null
+    optimisticMessageId?: string | null
+    mentionSpans?: {
+      userId: string
+      start: number
+      length: number
+    }[] | null
+  }
 ) {
   const trimmedText = text.trim()
   const normalizedAttachments = attachments
@@ -783,6 +796,7 @@ export async function createChatMessage(
       kind: 'text',
       text: trimmedText,
       imageUrl: imageUrl ?? null,
+      mentionSpans: options?.mentionSpans ?? null,
       pendingAttachmentCount: pendingAttachmentCount || null,
       attachments: normalizedAttachments,
       replyToId: replyToId ?? null,

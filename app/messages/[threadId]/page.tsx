@@ -819,6 +819,7 @@ export default function MessageThreadPage() {
           <ChatSection
             showTitle={false}
             threadId={threadId}
+            threadType={threadType}
             targetMessageId={targetMessageId}
             currentUserId={currentUserId}
             isKeyboardOpen={isKeyboardOpen}

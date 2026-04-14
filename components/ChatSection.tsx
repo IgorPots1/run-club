@@ -53,6 +53,7 @@ import {
   retryPendingChatMediaTask,
   subscribePendingChatMediaTasks,
 } from '@/lib/chat/pendingMediaUploads'
+import { getProfileDisplayName } from '@/lib/profiles'
 import { uploadVoiceMessage } from '@/lib/storage/uploadVoiceMessage'
 import { supabase } from '@/lib/supabase'
 import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream'
@@ -60,6 +61,7 @@ import { getVoiceStream, scheduleVoiceStreamStop } from '@/lib/voice/voiceStream
 type ChatSectionProps = {
   showTitle?: boolean
   threadId?: string | null
+  threadType?: 'club' | 'direct_coach' | null
   targetMessageId?: string | null
   currentUserId?: string | null
   isKeyboardOpen?: boolean
@@ -211,6 +213,36 @@ type PendingComposerImage = {
   height: number | null
 }
 
+type ChatDraftMention = {
+  userId: string
+  start: number
+  length: number
+  text: string
+}
+
+type ActiveChatMention = {
+  start: number
+  end: number
+  query: string
+}
+
+type ChatMentionSuggestion = {
+  userId: string
+  displayName: string
+}
+
+type MentionableProfileRow = {
+  id: string
+  name: string | null
+  nickname: string | null
+  email: string | null
+}
+
+type DirectMentionThreadRow = {
+  owner_user_id: string | null
+  coach_user_id: string | null
+}
+
 type ChatSendErrorGuardState = {
   hasRequestSuccess: boolean
   hasResponseOk: boolean
@@ -256,6 +288,8 @@ const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
 const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 320
 const CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO = '1 / 1'
 const MESSAGE_READERS_CACHE_TTL_MS = 25000
+const CHAT_MENTION_SUGGESTION_LIMIT = 10
+const CHAT_MENTION_QUERY_MAX_LENGTH = 50
 
 const CHAT_SEND_DEBUG_VISIBLE_PHASES = new Set([
   'panel_mounted',
@@ -318,6 +352,181 @@ function getSavedChatThreadScrollState(threadId?: string | null) {
   }
 
   return savedChatThreadScrollStateByThreadId.get(threadId) ?? null
+}
+
+function sortDraftMentions(mentions: ChatDraftMention[]) {
+  return [...mentions].sort((left, right) => left.start - right.start)
+}
+
+function detectActiveMention(text: string, selectionStart: number | null, selectionEnd: number | null): ActiveChatMention | null {
+  if (
+    typeof selectionStart !== 'number' ||
+    typeof selectionEnd !== 'number' ||
+    selectionStart !== selectionEnd
+  ) {
+    return null
+  }
+
+  const caretPosition = selectionStart
+  const beforeCaret = text.slice(0, caretPosition)
+  const match = /(^|\s)@$|(^|\s)@([^\s@]{0,50})$/.exec(beforeCaret)
+
+  if (!match) {
+    return null
+  }
+
+  const start = beforeCaret.lastIndexOf('@')
+
+  if (start < 0) {
+    return null
+  }
+
+  let end = caretPosition
+
+  while (end < text.length) {
+    const currentCharacter = text[end] ?? ''
+
+    if (!currentCharacter || /\s/.test(currentCharacter) || currentCharacter === '@') {
+      break
+    }
+
+    end += 1
+  }
+
+  const query = text.slice(start + 1, end)
+
+  if (query.length > CHAT_MENTION_QUERY_MAX_LENGTH || /[\s@]/.test(query)) {
+    return null
+  }
+
+  return {
+    start,
+    end,
+    query,
+  }
+}
+
+function reconcileDraftMentions(previousText: string, nextText: string, mentions: ChatDraftMention[]) {
+  if (mentions.length === 0 || previousText === nextText) {
+    return mentions
+  }
+
+  let prefixLength = 0
+
+  while (
+    prefixLength < previousText.length &&
+    prefixLength < nextText.length &&
+    previousText[prefixLength] === nextText[prefixLength]
+  ) {
+    prefixLength += 1
+  }
+
+  let previousSuffixStart = previousText.length
+  let nextSuffixStart = nextText.length
+
+  while (
+    previousSuffixStart > prefixLength &&
+    nextSuffixStart > prefixLength &&
+    previousText[previousSuffixStart - 1] === nextText[nextSuffixStart - 1]
+  ) {
+    previousSuffixStart -= 1
+    nextSuffixStart -= 1
+  }
+
+  const previousChangeStart = prefixLength
+  const previousChangeEnd = previousSuffixStart
+  const delta = nextText.length - previousText.length
+  const isPureInsertion = previousChangeStart === previousChangeEnd && delta > 0
+
+  return sortDraftMentions(
+    mentions
+      .map((mention) => {
+        const mentionStart = mention.start
+        const mentionEnd = mention.start + mention.length
+
+        if (isPureInsertion) {
+          if (previousChangeStart > mentionStart && previousChangeStart < mentionEnd) {
+            return null
+          }
+
+          if (previousChangeStart <= mentionStart) {
+            return {
+              ...mention,
+              start: mention.start + delta,
+            }
+          }
+
+          return mention
+        }
+
+        if (previousChangeEnd <= mentionStart) {
+          return {
+            ...mention,
+            start: mention.start + delta,
+          }
+        }
+
+        if (previousChangeStart >= mentionEnd) {
+          return mention
+        }
+
+        return null
+      })
+      .filter((mention): mention is ChatDraftMention => (
+        Boolean(mention) &&
+        mention.start >= 0 &&
+        mention.start + mention.length <= nextText.length &&
+        nextText.slice(mention.start, mention.start + mention.length) === mention.text
+      ))
+  )
+}
+
+function buildMentionSpansForSend(text: string, mentions: ChatDraftMention[]) {
+  if (!text.trim() || mentions.length === 0) {
+    return []
+  }
+
+  const trimStartOffset = text.length - text.trimStart().length
+  const trimmedText = text.trim()
+  const trimmedEnd = trimStartOffset + trimmedText.length
+  const nextMentionSpans: { userId: string; start: number; length: number }[] = []
+  let lastMentionEnd = -1
+
+  sortDraftMentions(mentions).forEach((mention) => {
+    const mentionEnd = mention.start + mention.length
+
+    if (mention.start < trimStartOffset || mentionEnd > trimmedEnd) {
+      return
+    }
+
+    if (text.slice(mention.start, mentionEnd) !== mention.text) {
+      return
+    }
+
+    const shiftedStart = mention.start - trimStartOffset
+
+    if (
+      shiftedStart < 0 ||
+      shiftedStart + mention.length > trimmedText.length ||
+      shiftedStart < lastMentionEnd ||
+      trimmedText.slice(shiftedStart, shiftedStart + mention.length) !== mention.text
+    ) {
+      return
+    }
+
+    nextMentionSpans.push({
+      userId: mention.userId,
+      start: shiftedStart,
+      length: mention.length,
+    })
+    lastMentionEnd = shiftedStart + mention.length
+  })
+
+  return nextMentionSpans
+}
+
+function sanitizeMentionSearchQuery(query: string) {
+  return query.replace(/[%_,()]/g, ' ').trim()
 }
 
 function setSavedChatThreadScrollState(
@@ -4027,6 +4236,7 @@ const ChatMessageList = memo(function ChatMessageList({
 export default function ChatSection({
   showTitle = true,
   threadId = null,
+  threadType = null,
   targetMessageId = null,
   currentUserId = null,
   isKeyboardOpen = false,
@@ -4041,6 +4251,7 @@ export default function ChatSection({
   description,
 }: ChatSectionProps) {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const draftMessageRef = useRef('')
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const scrollContentRef = useRef<HTMLDivElement | null>(null)
@@ -4109,6 +4320,11 @@ export default function ChatSection({
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true)
   const [error, setError] = useState('')
   const [draftMessage, setDraftMessage] = useState('')
+  const [draftMentions, setDraftMentions] = useState<ChatDraftMention[]>([])
+  const [activeMention, setActiveMention] = useState<ActiveChatMention | null>(null)
+  const [mentionSuggestions, setMentionSuggestions] = useState<ChatMentionSuggestion[]>([])
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
+  const [directMentionCandidates, setDirectMentionCandidates] = useState<ChatMentionSuggestion[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingVoice, setUploadingVoice] = useState(false)
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
@@ -4330,6 +4546,36 @@ export default function ChatSection({
   const canSubmitMessage = Boolean(trimmedDraftMessage || pendingImages.length > 0)
   const shouldShowVoiceRecorderButton = !editingMessage && !trimmedDraftMessage && !hasPendingImage
   const announcementReadOnlyMessage = readOnlyAnnouncementMessage.trim() || 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
+  draftMessageRef.current = draftMessage
+  const clearMentionComposerState = useCallback(() => {
+    setDraftMentions([])
+    setActiveMention(null)
+    setMentionSuggestions([])
+    setHighlightedIndex(0)
+  }, [])
+  const syncActiveMentionState = useCallback((
+    text: string,
+    selectionStart: number | null,
+    selectionEnd: number | null
+  ) => {
+    const nextActiveMention = detectActiveMention(text, selectionStart, selectionEnd)
+    setActiveMention(nextActiveMention)
+
+    if (!nextActiveMention) {
+      setMentionSuggestions([])
+      setHighlightedIndex(0)
+    }
+  }, [])
+  const applyDraftMessageChange = useCallback((
+    nextValue: string,
+    selectionStart: number | null,
+    selectionEnd: number | null
+  ) => {
+    setDraftMessage(nextValue)
+    setDraftMentions((currentMentions) => reconcileDraftMentions(draftMessageRef.current, nextValue, currentMentions))
+    setSubmitError('')
+    syncActiveMentionState(nextValue, selectionStart, selectionEnd)
+  }, [syncActiveMentionState])
   const handleDraftMessagePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const insertText = getClipboardInsertText(event.clipboardData)
     if (!insertText) {
@@ -4343,14 +4589,100 @@ export default function ChatSection({
     const nextValue = `${textarea.value.slice(0, selectionStart)}${insertText}${textarea.value.slice(selectionEnd)}`
     const nextCursorPosition = selectionStart + insertText.length
 
-    setDraftMessage(nextValue)
-    setSubmitError('')
+    applyDraftMessageChange(nextValue, nextCursorPosition, nextCursorPosition)
 
     window.requestAnimationFrame(() => {
       textarea.focus()
       textarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
     })
-  }, [])
+  }, [applyDraftMessageChange])
+  const handleMentionSelection = useCallback((suggestion: ChatMentionSuggestion) => {
+    if (!activeMention) {
+      return
+    }
+
+    const textarea = composerTextareaRef.current
+    const mentionText = `@${suggestion.displayName}`
+    const nextValue = `${draftMessage.slice(0, activeMention.start)}${mentionText}${draftMessage.slice(activeMention.end)}`
+    const mentionLengthDelta = mentionText.length - (activeMention.end - activeMention.start)
+    const nextCursorPosition = activeMention.start + mentionText.length
+
+    setDraftMessage(nextValue)
+    setDraftMentions((currentMentions) => sortDraftMentions([
+      ...currentMentions
+        .filter((mention) => mention.start + mention.length <= activeMention.start || mention.start >= activeMention.end)
+        .map((mention) => (
+          mention.start >= activeMention.end
+            ? {
+                ...mention,
+                start: mention.start + mentionLengthDelta,
+              }
+            : mention
+        )),
+      {
+        userId: suggestion.userId,
+        start: activeMention.start,
+        length: mentionText.length,
+        text: mentionText,
+      },
+    ]))
+    setSubmitError('')
+    setActiveMention(null)
+    setMentionSuggestions([])
+    setHighlightedIndex(0)
+
+    window.requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(nextCursorPosition, nextCursorPosition)
+    })
+  }, [activeMention, draftMessage])
+  const handleComposerSelectionChange = useCallback((event: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const textarea = event.currentTarget
+    syncActiveMentionState(
+      textarea.value,
+      textarea.selectionStart ?? textarea.value.length,
+      textarea.selectionEnd ?? textarea.value.length
+    )
+  }, [syncActiveMentionState])
+  const handleComposerKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!activeMention || mentionSuggestions.length === 0) {
+      if (event.key === 'Escape') {
+        setActiveMention(null)
+        setMentionSuggestions([])
+        setHighlightedIndex(0)
+      }
+      return
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setHighlightedIndex((currentIndex) => (
+        currentIndex + 1 >= mentionSuggestions.length ? 0 : currentIndex + 1
+      ))
+      return
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setHighlightedIndex((currentIndex) => (
+        currentIndex - 1 < 0 ? mentionSuggestions.length - 1 : currentIndex - 1
+      ))
+      return
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      handleMentionSelection(mentionSuggestions[highlightedIndex] ?? mentionSuggestions[0]!)
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setActiveMention(null)
+      setMentionSuggestions([])
+      setHighlightedIndex(0)
+    }
+  }, [activeMention, handleMentionSelection, highlightedIndex, mentionSuggestions])
   const canManageMessage = useCallback((message: ChatMessageItem) => {
     if (isAnnouncementChannel && isReadOnlyAnnouncement) {
       return false
@@ -4388,12 +4720,170 @@ export default function ChatSection({
     setReplyingToMessage(null)
     setEditingMessageId(null)
     setDraftMessage('')
+    clearMentionComposerState()
     setSubmitError('')
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
     setSelectedReactionDetails(null)
     clearSelectedImages()
-  }, [isReadOnlyAnnouncement])
+  }, [clearMentionComposerState, isReadOnlyAnnouncement])
+
+  useEffect(() => {
+    clearMentionComposerState()
+  }, [clearMentionComposerState, threadId])
+
+  useEffect(() => {
+    if (!threadId || !currentUserId || threadType !== 'direct_coach') {
+      setDirectMentionCandidates([])
+      return
+    }
+
+    let isCancelled = false
+
+    async function loadDirectMentionCandidates() {
+      try {
+        const { data: directThread, error: directThreadError } = await supabase
+          .from('chat_threads')
+          .select('owner_user_id, coach_user_id')
+          .eq('id', threadId)
+          .maybeSingle()
+
+        if (directThreadError) {
+          throw directThreadError
+        }
+
+        const memberUserIds = [
+          (directThread as DirectMentionThreadRow | null)?.owner_user_id ?? null,
+          (directThread as DirectMentionThreadRow | null)?.coach_user_id ?? null,
+        ].filter((userId): userId is string => Boolean(userId) && userId !== currentUserId)
+
+        if (memberUserIds.length === 0) {
+          if (!isCancelled) {
+            setDirectMentionCandidates([])
+          }
+          return
+        }
+
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, name, nickname, email')
+          .in('id', memberUserIds)
+          .eq('app_access_status', 'active')
+
+        if (profilesError) {
+          throw profilesError
+        }
+
+        if (isCancelled) {
+          return
+        }
+
+        setDirectMentionCandidates(
+          ((profiles as MentionableProfileRow[] | null) ?? [])
+            .map((profile) => ({
+              userId: profile.id,
+              displayName: getProfileDisplayName(profile, 'Бегун'),
+            }))
+            .filter((profile) => Boolean(profile.displayName.trim()))
+            .slice(0, CHAT_MENTION_SUGGESTION_LIMIT)
+        )
+      } catch (error) {
+        console.error('Failed to load direct mention candidates', error)
+
+        if (!isCancelled) {
+          setDirectMentionCandidates([])
+        }
+      }
+    }
+
+    void loadDirectMentionCandidates()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [currentUserId, threadId, threadType])
+
+  useEffect(() => {
+    if (!activeMention || !threadId || !currentUserId || !threadType) {
+      setMentionSuggestions([])
+      return
+    }
+
+    if (threadType === 'direct_coach') {
+      const normalizedQuery = activeMention.query.trim().toLowerCase()
+      setMentionSuggestions(
+        directMentionCandidates
+          .filter((candidate) => (
+            !normalizedQuery || candidate.displayName.toLowerCase().includes(normalizedQuery)
+          ))
+          .slice(0, CHAT_MENTION_SUGGESTION_LIMIT)
+      )
+      return
+    }
+
+    let isCancelled = false
+
+    async function loadClubMentionSuggestions() {
+      try {
+        const normalizedQuery = sanitizeMentionSearchQuery(activeMention.query)
+        let query = supabase
+          .from('profiles')
+          .select('id, name, nickname, email')
+          .neq('id', currentUserId)
+          .eq('app_access_status', 'active')
+          .limit(CHAT_MENTION_SUGGESTION_LIMIT)
+
+        if (normalizedQuery) {
+          const pattern = `%${normalizedQuery}%`
+          query = query.or(`nickname.ilike.${pattern},name.ilike.${pattern},email.ilike.${pattern}`)
+        } else {
+          query = query.order('name', { ascending: true })
+        }
+
+        const { data: profiles, error: profilesError } = await query
+
+        if (profilesError) {
+          throw profilesError
+        }
+
+        if (isCancelled) {
+          return
+        }
+
+        setMentionSuggestions(
+          ((profiles as MentionableProfileRow[] | null) ?? [])
+            .map((profile) => ({
+              userId: profile.id,
+              displayName: getProfileDisplayName(profile, 'Бегун'),
+            }))
+            .filter((profile) => Boolean(profile.displayName.trim()))
+            .slice(0, CHAT_MENTION_SUGGESTION_LIMIT)
+        )
+      } catch (error) {
+        console.error('Failed to load club mention suggestions', error)
+
+        if (!isCancelled) {
+          setMentionSuggestions([])
+        }
+      }
+    }
+
+    void loadClubMentionSuggestions()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [activeMention, currentUserId, directMentionCandidates, threadId, threadType])
+
+  useEffect(() => {
+    setHighlightedIndex((currentIndex) => (
+      mentionSuggestions.length === 0 ? 0 : Math.min(currentIndex, mentionSuggestions.length - 1)
+    ))
+  }, [mentionSuggestions])
+
+  useEffect(() => {
+    setHighlightedIndex(0)
+  }, [activeMention?.query, activeMention?.start])
 
   useEffect(() => {
     if (!CHAT_SEND_DEBUG) {
@@ -6759,6 +7249,13 @@ export default function ChatSection({
     setSubmitting(true)
     setSubmitError('')
     let submitOptimisticMessageId: string | null = null
+    const mentionSpans = (() => {
+      try {
+        return buildMentionSpansForSend(draftMessage, draftMentions)
+      } catch {
+        return []
+      }
+    })()
 
     try {
       const editingMessageSnapshot = editingMessage
@@ -6828,6 +7325,7 @@ export default function ChatSection({
         submitOptimisticMessageId = optimisticMessage.id
 
         setDraftMessage('')
+        clearMentionComposerState()
         clearSelectedImages({ revokePreviews: false })
         setReplyingToMessage(null)
         setEditingMessageId(null)
@@ -6835,12 +7333,13 @@ export default function ChatSection({
           resizeComposerTextarea()
         })
 
-        await sendOptimisticTextOrImageMessage(optimisticMessage)
+        await sendOptimisticTextOrImageMessage(optimisticMessage, mentionSpans.length > 0 ? mentionSpans : null)
       }
 
       setPendingNewMessagesCount(0)
       if (editingMessageId) {
         setDraftMessage('')
+        clearMentionComposerState()
         clearSelectedImages()
         setReplyingToMessage(null)
         setEditingMessageId(null)
@@ -6968,7 +7467,7 @@ export default function ChatSection({
     }
 
     try {
-      await sendOptimisticTextOrImageMessage(message)
+      await sendOptimisticTextOrImageMessage(message, null)
     } catch {
       setSubmitError('Не удалось повторно отправить сообщение')
     }
@@ -7160,6 +7659,7 @@ export default function ChatSection({
   function clearEditingMessage() {
     setEditingMessageId(null)
     setDraftMessage('')
+    clearMentionComposerState()
     setSubmitError('')
     window.requestAnimationFrame(() => {
       resizeComposerTextarea()
@@ -7189,6 +7689,7 @@ export default function ChatSection({
     setReplyingToMessage(null)
     clearSelectedImages()
     setDraftMessage(message.text)
+    clearMentionComposerState()
     setSubmitError('')
     setSelectedMessage(null)
     setIsActionSheetOpen(false)
@@ -7530,7 +8031,10 @@ export default function ChatSection({
     }
   }
 
-  async function sendOptimisticTextOrImageMessage(optimisticMessage: ChatMessageItem) {
+  async function sendOptimisticTextOrImageMessage(
+    optimisticMessage: ChatMessageItem,
+    mentionSpans: { userId: string; start: number; length: number }[] | null = null
+  ) {
     const hasPendingAttachmentUploads = hasPendingOptimisticImageAttachments(optimisticMessage)
     const workingMessage = {
       ...optimisticMessage,
@@ -7628,9 +8132,11 @@ export default function ChatSection({
           ? {
               pendingAttachmentCount: workingMessage.attachments.length,
               optimisticMessageId: workingMessage.id,
+              mentionSpans: mentionSpans && mentionSpans.length > 0 ? mentionSpans : null,
             }
           : {
               optimisticMessageId: workingMessage.id,
+              mentionSpans: mentionSpans && mentionSpans.length > 0 ? mentionSpans : null,
             }
       )
 
@@ -8600,7 +9106,7 @@ export default function ChatSection({
                 >
                   {uploadingImage ? '...' : '+'}
                 </button>
-                <div className="flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]">
+                <div className="relative flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]">
                   <label htmlFor="chat-message" className="sr-only">
                     Сообщение
                   </label>
@@ -8609,9 +9115,16 @@ export default function ChatSection({
                     id="chat-message"
                     value={draftMessage}
                     onPaste={handleDraftMessagePaste}
+                    onClick={handleComposerSelectionChange}
+                    onKeyDown={handleComposerKeyDown}
+                    onKeyUp={handleComposerSelectionChange}
+                    onSelect={handleComposerSelectionChange}
                     onChange={(event) => {
-                      setDraftMessage(event.target.value)
-                      setSubmitError('')
+                      applyDraftMessageChange(
+                        event.target.value,
+                        event.target.selectionStart ?? event.target.value.length,
+                        event.target.selectionEnd ?? event.target.value.length
+                      )
                     }}
                     placeholder={editingMessage ? 'Измените сообщение' : hasPendingImage ? 'Добавьте подпись к фото' : 'Сообщение'}
                     disabled={submitting || uploadingImage || uploadingVoice}
@@ -8619,6 +9132,33 @@ export default function ChatSection({
                     rows={1}
                     className="min-h-10 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2 text-sm leading-5 outline-none placeholder:app-text-secondary"
                   />
+                  {activeMention && mentionSuggestions.length > 0 ? (
+                    <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-2xl border border-black/10 bg-[color:var(--surface)] py-1 shadow-lg dark:border-white/10">
+                      {mentionSuggestions.map((suggestion, index) => {
+                        const isHighlighted = index === highlightedIndex
+
+                        return (
+                          <button
+                            key={`${suggestion.userId}:${suggestion.displayName}`}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault()
+                            }}
+                            onClick={() => {
+                              handleMentionSelection(suggestion)
+                            }}
+                            className={`flex w-full items-center px-3 py-2 text-left text-sm ${
+                              isHighlighted
+                                ? 'bg-black/[0.06] dark:bg-white/[0.08]'
+                                : 'bg-transparent'
+                            }`}
+                          >
+                            {suggestion.displayName}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
                 </div>
                 {shouldShowVoiceRecorderButton ? (
                   <button
