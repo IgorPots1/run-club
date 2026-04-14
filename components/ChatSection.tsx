@@ -4414,6 +4414,7 @@ export default function ChatSection({
   description,
 }: ChatSectionProps) {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerInputShellRef = useRef<HTMLDivElement | null>(null)
   const draftMessageRef = useRef('')
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -6403,7 +6404,7 @@ export default function ChatSection({
     }
 
     function updateMentionSuggestionsAnchorRect() {
-      setMentionSuggestionsAnchorRect(composerWrapperRef.current?.getBoundingClientRect() ?? null)
+      setMentionSuggestionsAnchorRect(composerInputShellRef.current?.getBoundingClientRect() ?? null)
     }
 
     updateMentionSuggestionsAnchorRect()
@@ -6855,9 +6856,27 @@ export default function ChatSection({
       return
     }
 
+    if (activeMention) {
+      return
+    }
+
+    if (!isNearBottom()) {
+      pendingAutoScrollToBottomRef.current = false
+      return
+    }
+
     let nestedAnimationFrameId: number | null = null
     const animationFrameId = window.requestAnimationFrame(() => {
       nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        if (activeMention) {
+          return
+        }
+
+        if (!isNearBottom()) {
+          pendingAutoScrollToBottomRef.current = false
+          return
+        }
+
         scrollPageToBottom('auto', 'pending-auto-scroll')
         pendingAutoScrollToBottomRef.current = false
       })
@@ -6869,7 +6888,7 @@ export default function ChatSection({
         window.cancelAnimationFrame(nestedAnimationFrameId)
       }
     }
-  }, [messages, scrollPageToBottom])
+  }, [activeMention, isNearBottom, messages, scrollPageToBottom])
 
   useLayoutEffect(() => {
     const pendingRestore = prependScrollRestoreRef.current
@@ -9315,7 +9334,10 @@ export default function ChatSection({
                 >
                   {uploadingImage ? '...' : '+'}
                 </button>
-                <div className="relative flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]">
+                <div
+                  ref={composerInputShellRef}
+                  className="relative flex min-w-0 flex-1 items-end rounded-[18px] bg-black/[0.035] px-2.5 dark:bg-white/[0.05]"
+                >
                   <label htmlFor="chat-message" className="sr-only">
                     Сообщение
                   </label>
