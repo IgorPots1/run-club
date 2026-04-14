@@ -4568,6 +4568,23 @@ export default function ChatSection({
   const [chatLayoutDebugEvents, setChatLayoutDebugEvents] = useState<ChatLayoutDebugOverlayEvent[]>([])
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
+  const getIntrinsicScrollContentHeight = useCallback(() => {
+    const scrollContent = scrollContentRef.current
+
+    if (!scrollContent || typeof window === 'undefined') {
+      return null
+    }
+
+    const computedStyle = window.getComputedStyle(scrollContent)
+    const paddingBottom = Number.parseFloat(computedStyle.paddingBottom) || 0
+    const lastChild = scrollContent.lastElementChild
+
+    if (!(lastChild instanceof HTMLElement)) {
+      return paddingBottom
+    }
+
+    return lastChild.offsetTop + lastChild.offsetHeight + paddingBottom
+  }, [])
   const updateThreadScrollableState = useCallback(() => {
     const scrollContainer = scrollContainerRef.current
 
@@ -4578,13 +4595,15 @@ export default function ChatSection({
     }
 
     const { scrollHeight, clientHeight } = scrollContainer
+    const intrinsicContentHeight = getIntrinsicScrollContentHeight()
     const isShortThread =
       isKeyboardOpen &&
-      scrollHeight <= clientHeight + SHORT_THREAD_KEYBOARD_LAYOUT_THRESHOLD_PX
+      intrinsicContentHeight !== null &&
+      intrinsicContentHeight <= clientHeight + SHORT_THREAD_KEYBOARD_LAYOUT_THRESHOLD_PX
 
     setIsShortThreadLayout(isShortThread)
     setIsThreadScrollable(!isShortThread && scrollHeight > clientHeight + 1)
-  }, [isKeyboardOpen])
+  }, [getIntrinsicScrollContentHeight, isKeyboardOpen])
   const updateChatMentionDebugSnapshot = useCallback(() => {
     const composerRect = composerInputShellRef.current?.getBoundingClientRect() ?? null
     const scrollContainer = scrollContainerRef.current
