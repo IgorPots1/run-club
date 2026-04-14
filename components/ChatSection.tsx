@@ -4474,6 +4474,7 @@ export default function ChatSection({
   const hasHandledVoiceRecordingStopRef = useRef(false)
   const isSendingVoiceMessageRef = useRef(false)
   const chatSendDebugCopyTimeoutRef = useRef<number | null>(null)
+  const lastScrollSourceRef = useRef('n/a')
   const [loading, setLoading] = useState(true)
   const [messages, setMessages] = useState<ChatMessageItem[]>([])
   const [pendingInitialScroll, setPendingInitialScroll] = useState(false)
@@ -4518,6 +4519,22 @@ export default function ChatSection({
   const [messageReaders, setMessageReaders] = useState<ChatMessageReader[]>([])
   const [isLoadingMessageReaders, setIsLoadingMessageReaders] = useState(false)
   const [messageReadersError, setMessageReadersError] = useState('')
+  const [chatMentionDebugEnabled, setChatMentionDebugEnabled] = useState(false)
+  const [chatMentionDebugSnapshot, setChatMentionDebugSnapshot] = useState<{
+    composerTop: number | null
+    composerLeft: number | null
+    scrollTop: number | null
+    scrollHeight: number | null
+    clientHeight: number | null
+    lastScrollSource: string
+  }>({
+    composerTop: null,
+    composerLeft: null,
+    scrollTop: null,
+    scrollHeight: null,
+    clientHeight: null,
+    lastScrollSource: 'n/a',
+  })
   const messageReadersCacheRef = useRef(new Map<string, {
     readers: ChatMessageReader[]
     loadedAt: number
@@ -4546,6 +4563,19 @@ export default function ChatSection({
   const [chatLayoutDebugEvents, setChatLayoutDebugEvents] = useState<ChatLayoutDebugOverlayEvent[]>([])
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
+  const updateChatMentionDebugSnapshot = useCallback(() => {
+    const composerRect = composerInputShellRef.current?.getBoundingClientRect() ?? null
+    const scrollContainer = scrollContainerRef.current
+
+    setChatMentionDebugSnapshot({
+      composerTop: composerRect?.top ?? null,
+      composerLeft: composerRect?.left ?? null,
+      scrollTop: scrollContainer?.scrollTop ?? null,
+      scrollHeight: scrollContainer?.scrollHeight ?? null,
+      clientHeight: scrollContainer?.clientHeight ?? null,
+      lastScrollSource: lastScrollSourceRef.current,
+    })
+  }, [])
   const handleOpenImageViewer = useCallback((attachments: ChatMessageAttachment[], index: number) => {
     setSelectedViewerState({
       attachments,
@@ -5494,10 +5524,12 @@ export default function ChatSection({
       return
     }
 
+    lastScrollSourceRef.current = source
     scrollContainer.scrollTo({
       top: scrollContainer.scrollHeight,
       behavior,
     })
+    updateChatMentionDebugSnapshot()
     pushChatLayoutDebugEvent('SCROLL_TO_BOTTOM', {
       behavior,
       source,
@@ -5505,7 +5537,7 @@ export default function ChatSection({
       scrollHeight: scrollContainer.scrollHeight,
       clientHeight: scrollContainer.clientHeight,
     })
-  }, [pushChatLayoutDebugEvent])
+  }, [pushChatLayoutDebugEvent, updateChatMentionDebugSnapshot])
 
   const clearPendingPrependRestore = useCallback(() => {
     if (prependScrollRestoreCleanupFrameRef.current !== null) {
@@ -6418,6 +6450,47 @@ export default function ChatSection({
       window.removeEventListener('resize', updateMentionSuggestionsAnchorRect)
     }
   }, [activeMention, mentionSuggestions.length])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    setChatMentionDebugEnabled(new URLSearchParams(window.location.search).get('chatDebug') === '1')
+  }, [])
+
+  useEffect(() => {
+    if (!chatMentionDebugEnabled) {
+      return
+    }
+
+    updateChatMentionDebugSnapshot()
+
+    const scrollContainer = scrollContainerRef.current
+
+    scrollContainer?.addEventListener('scroll', updateChatMentionDebugSnapshot, { passive: true })
+    window.addEventListener('resize', updateChatMentionDebugSnapshot)
+
+    return () => {
+      scrollContainer?.removeEventListener('scroll', updateChatMentionDebugSnapshot)
+      window.removeEventListener('resize', updateChatMentionDebugSnapshot)
+    }
+  }, [chatMentionDebugEnabled, updateChatMentionDebugSnapshot])
+
+  useEffect(() => {
+    if (!chatMentionDebugEnabled) {
+      return
+    }
+
+    updateChatMentionDebugSnapshot()
+  }, [
+    activeMention,
+    chatMentionDebugEnabled,
+    draftMessage,
+    mentionSuggestions.length,
+    mentionSuggestionsAnchorRect,
+    updateChatMentionDebugSnapshot,
+  ])
 
   useLayoutEffect(() => {
     if (!selectedMessage || !isActionSheetOpen) {
@@ -9659,6 +9732,21 @@ export default function ChatSection({
               </button>
             )
           })}
+        </div>
+      ) : null}
+      {chatMentionDebugEnabled ? (
+        <div className="fixed bottom-2 right-2 z-50 rounded bg-black/70 px-2 py-1 text-xs text-white">
+          <div>{`activeMention: ${activeMention ? 'true' : 'false'}`}</div>
+          <div>{`mentionSuggestions.length: ${mentionSuggestions.length}`}</div>
+          <div>{`mentionAnchor.top: ${formatChatLayoutDebugNumber(mentionSuggestionsAnchorRect?.top)}`}</div>
+          <div>{`mentionAnchor.left: ${formatChatLayoutDebugNumber(mentionSuggestionsAnchorRect?.left)}`}</div>
+          <div>{`mentionAnchor.width: ${formatChatLayoutDebugNumber(mentionSuggestionsAnchorRect?.width)}`}</div>
+          <div>{`composer.top: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.composerTop)}`}</div>
+          <div>{`composer.left: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.composerLeft)}`}</div>
+          <div>{`lastScrollSource: ${chatMentionDebugSnapshot.lastScrollSource}`}</div>
+          <div>{`scrollTop: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.scrollTop)}`}</div>
+          <div>{`scrollHeight: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.scrollHeight)}`}</div>
+          <div>{`clientHeight: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.clientHeight)}`}</div>
         </div>
       ) : null}
       {selectedMessageForReaders && isReadersSheetOpen ? (
