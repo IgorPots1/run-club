@@ -4810,8 +4810,10 @@ export default function ChatSection({
       return
     }
 
+    const currentActiveMention = activeMention
+
     if (threadType === 'direct_coach') {
-      const normalizedQuery = activeMention.query.trim().toLowerCase()
+      const normalizedQuery = currentActiveMention.query.trim().toLowerCase()
       setMentionSuggestions(
         directMentionCandidates
           .filter((candidate) => (
@@ -4826,7 +4828,7 @@ export default function ChatSection({
 
     async function loadClubMentionSuggestions() {
       try {
-        const normalizedQuery = sanitizeMentionSearchQuery(activeMention.query)
+        const normalizedQuery = sanitizeMentionSearchQuery(currentActiveMention.query)
         let query = supabase
           .from('profiles')
           .select('id, name, nickname, email')
