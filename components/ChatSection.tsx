@@ -5685,6 +5685,10 @@ export default function ChatSection({
   ])
 
   const keepInitialBottomLockAnchored = useCallback((source = 'unspecified') => {
+    if (activeMention) {
+      return
+    }
+
     if (initialBottomLockUserCancelledRef.current) {
       return
     }
@@ -5722,6 +5726,7 @@ export default function ChatSection({
     scheduleInitialBottomLockSafetyTimeout()
     scheduleInitialBottomLockStabilityCheck(source)
   }, [
+    activeMention,
     clearInitialBottomLockFrames,
     getInitialBottomLockGeometry,
     scheduleInitialBottomLockSafetyTimeout,
@@ -6685,7 +6690,7 @@ export default function ChatSection({
   ])
 
   useLayoutEffect(() => {
-    if (loading || !pendingInitialScroll) {
+    if (loading || !pendingInitialScroll || activeMention) {
       return
     }
 
@@ -6705,6 +6710,7 @@ export default function ChatSection({
     setIsInitialBottomLockActive(true)
     setPendingInitialScroll(false)
   }, [
+    activeMention,
     getInitialBottomLockGeometry,
     loading,
     messages.length,
@@ -6713,17 +6719,26 @@ export default function ChatSection({
   ])
 
   useLayoutEffect(() => {
-    if (!isInitialBottomLockActive || loading || messages.length === 0) {
+    if (!isInitialBottomLockActive || activeMention || loading || messages.length === 0) {
       return
     }
 
     const source = initialBottomLockNextSourceRef.current ?? 'bottom-lock-layout-effect'
     initialBottomLockNextSourceRef.current = null
     keepInitialBottomLockAnchored(source)
-  }, [isInitialBottomLockActive, keepInitialBottomLockAnchored, loading, messages.length])
+  }, [activeMention, isInitialBottomLockActive, keepInitialBottomLockAnchored, loading, messages.length])
 
   useEffect(() => {
-    if (!isInitialBottomLockActive) {
+    if (!activeMention || !isInitialBottomLockActive) {
+      return
+    }
+
+    initialBottomLockUserCancelledRef.current = true
+    deactivateInitialBottomLock('mention-mode', true)
+  }, [activeMention, deactivateInitialBottomLock, isInitialBottomLockActive])
+
+  useEffect(() => {
+    if (!isInitialBottomLockActive || activeMention) {
       return
     }
 
@@ -6776,7 +6791,7 @@ export default function ChatSection({
       observer.disconnect()
       window.removeEventListener('resize', handleWindowResize)
     }
-  }, [isInitialBottomLockActive, keepInitialBottomLockAnchored])
+  }, [activeMention, isInitialBottomLockActive, keepInitialBottomLockAnchored])
 
   useEffect(() => {
     if (!isInitialBottomLockActive) {
