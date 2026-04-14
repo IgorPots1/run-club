@@ -5805,14 +5805,26 @@ export default function ChatSection({
       return
     }
 
-    const shouldStickToBottom = isNearBottom(80) || !showScrollToBottomButton
+    const scrollContainer = scrollContainerRef.current
+    const isCurrentlyNearBottom = scrollContainer
+      ? scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight) <= 80
+      : true
 
-    if (!shouldStickToBottom) {
+    if (!isCurrentlyNearBottom) {
       return
     }
 
     window.requestAnimationFrame(() => {
       if (activeMention) {
+        return
+      }
+
+      const currentScrollContainer = scrollContainerRef.current
+      const isStillNearBottom = currentScrollContainer
+        ? currentScrollContainer.scrollHeight - (currentScrollContainer.scrollTop + currentScrollContainer.clientHeight) <= 80
+        : true
+
+      if (!isStillNearBottom) {
         return
       }
 
@@ -5822,10 +5834,8 @@ export default function ChatSection({
     activeMention,
     hasDeferredInitialSettle,
     isInitialBottomLockActive,
-    isNearBottom,
     isThreadLayoutReady,
     scrollPageToBottom,
-    showScrollToBottomButton,
   ])
 
   const clearReplyTargetHighlight = useCallback(() => {
