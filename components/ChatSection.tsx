@@ -5589,7 +5589,13 @@ export default function ChatSection({
     }
 
     const preservedScrollTop = scrollContainer.scrollTop
-    let nestedAnimationFrameId: number | null = null
+    const previousOverflowAnchor = scrollContainer.style.overflowAnchor
+    const closeSettleTarget = composerWrapperRef.current ?? scrollContainer
+    let animationFrameId: number | null = null
+    let settleTimeoutId: number | null = null
+    let fallbackTimeoutId: number | null = null
+    let observer: ResizeObserver | null = null
+    let isSettled = false
     const restoreScrollTop = () => {
       if (scrollContainerRef.current !== scrollContainer) {
         return
@@ -5599,20 +5605,63 @@ export default function ChatSection({
         scrollContainer.scrollTop = preservedScrollTop
       }
     }
-    const animationFrameId = window.requestAnimationFrame(() => {
-      // Keyboard close reintroduces bottom safe-area padding, so re-apply
-      // the pre-close offset after the layout settles to cancel anchor drift.
-      restoreScrollTop()
-      nestedAnimationFrameId = window.requestAnimationFrame(() => {
+
+    const finishSettle = () => {
+      if (isSettled) {
+        return
+      }
+
+      isSettled = true
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
+      }
+      if (settleTimeoutId !== null) {
+        window.clearTimeout(settleTimeoutId)
+        settleTimeoutId = null
+      }
+      if (fallbackTimeoutId !== null) {
+        window.clearTimeout(fallbackTimeoutId)
+        fallbackTimeoutId = null
+      }
+      observer?.disconnect()
+      scrollContainer.style.overflowAnchor = previousOverflowAnchor
+    }
+
+    const scheduleSettleCompletion = () => {
+      if (settleTimeoutId !== null) {
+        window.clearTimeout(settleTimeoutId)
+      }
+
+      settleTimeoutId = window.setTimeout(() => {
         restoreScrollTop()
-      })
+        finishSettle()
+      }, 80)
+    }
+
+    scrollContainer.style.overflowAnchor = 'none'
+    animationFrameId = window.requestAnimationFrame(() => {
+      // Keyboard close reintroduces bottom safe-area padding, so re-apply
+      // the pre-close offset immediately, then keep it stable through the
+      // compositor/safe-area settle that follows on iOS.
+      restoreScrollTop()
     })
 
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        restoreScrollTop()
+        scheduleSettleCompletion()
+      })
+      observer.observe(closeSettleTarget)
+    }
+
+    fallbackTimeoutId = window.setTimeout(() => {
+      restoreScrollTop()
+      finishSettle()
+    }, 250)
+
     return () => {
-      window.cancelAnimationFrame(animationFrameId)
-      if (nestedAnimationFrameId !== null) {
-        window.cancelAnimationFrame(nestedAnimationFrameId)
-      }
+      finishSettle()
     }
   }, [isKeyboardOpen, isNearBottom, pendingInitialSavedScrollRestore])
 
