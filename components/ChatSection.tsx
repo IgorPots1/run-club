@@ -4442,6 +4442,7 @@ export default function ChatSection({
   const animatedReactionTimeoutRef = useRef<number | null>(null)
   const pendingAutoScrollToBottomRef = useRef(false)
   const prependScrollRestoreCleanupFrameRef = useRef<number | null>(null)
+  const prependScrollRestoreCleanupTimeoutRef = useRef<number | null>(null)
   const prependScrollRestoreRef = useRef<{
     previousOldestMessageId: string | null
     anchorMessageId: string | null
@@ -5713,6 +5714,11 @@ export default function ChatSection({
     if (prependScrollRestoreCleanupFrameRef.current !== null) {
       window.cancelAnimationFrame(prependScrollRestoreCleanupFrameRef.current)
       prependScrollRestoreCleanupFrameRef.current = null
+    }
+
+    if (prependScrollRestoreCleanupTimeoutRef.current !== null) {
+      window.clearTimeout(prependScrollRestoreCleanupTimeoutRef.current)
+      prependScrollRestoreCleanupTimeoutRef.current = null
     }
 
     const pendingRestore = prependScrollRestoreRef.current
@@ -7228,40 +7234,98 @@ export default function ChatSection({
       return
     }
 
-    let didRestoreFromAnchor = false
-    const anchorMessageId = pendingRestore.anchorMessageId
+    const restoreScrollTop = pendingRestore.scrollTop
+    let resizeObserver: ResizeObserver | null = null
 
-    if (anchorMessageId && pendingRestore.anchorOffsetTop !== null) {
-      const anchorNode = messageRefs.current[anchorMessageId]
+    const applyPendingRestore = () => {
+      if (
+        prependScrollRestoreRef.current !== pendingRestore ||
+        scrollContainerRef.current !== scrollContainer
+      ) {
+        return false
+      }
 
-      if (anchorNode) {
-        const scrollContainerRect = scrollContainer.getBoundingClientRect()
-        const currentAnchorOffsetTop = anchorNode.getBoundingClientRect().top - scrollContainerRect.top
-        const anchorOffsetDelta = currentAnchorOffsetTop - pendingRestore.anchorOffsetTop
+      let didRestoreFromAnchor = false
+      const anchorMessageId = pendingRestore.anchorMessageId
 
-        if (anchorOffsetDelta !== 0) {
-          scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollTop + anchorOffsetDelta)
+      if (anchorMessageId && pendingRestore.anchorOffsetTop !== null) {
+        const anchorNode = messageRefs.current[anchorMessageId]
+
+        if (anchorNode) {
+          const scrollContainerRect = scrollContainer.getBoundingClientRect()
+          const currentAnchorOffsetTop = anchorNode.getBoundingClientRect().top - scrollContainerRect.top
+          const anchorOffsetDelta = currentAnchorOffsetTop - pendingRestore.anchorOffsetTop
+
+          if (anchorOffsetDelta !== 0) {
+            scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollTop + anchorOffsetDelta)
+          }
+
+          didRestoreFromAnchor = true
         }
-
-        didRestoreFromAnchor = true
       }
+
+      if (!didRestoreFromAnchor) {
+        const scrollHeightDelta = scrollContainer.scrollHeight - pendingRestore.scrollHeight
+
+        if (scrollHeightDelta !== 0) {
+          scrollContainer.scrollTop = Math.max(0, restoreScrollTop + scrollHeightDelta)
+        }
+      }
+
+      return true
     }
 
-    if (!didRestoreFromAnchor) {
-      const scrollHeightDelta = scrollContainer.scrollHeight - pendingRestore.scrollHeight
-
-      if (scrollHeightDelta !== 0) {
-        scrollContainer.scrollTop = Math.max(0, pendingRestore.scrollTop + scrollHeightDelta)
+    const scheduleCleanup = () => {
+      if (prependScrollRestoreCleanupTimeoutRef.current !== null) {
+        window.clearTimeout(prependScrollRestoreCleanupTimeoutRef.current)
       }
+
+      prependScrollRestoreCleanupTimeoutRef.current = window.setTimeout(() => {
+        prependScrollRestoreCleanupTimeoutRef.current = null
+
+        if (prependScrollRestoreRef.current === pendingRestore) {
+          clearPendingPrependRestore()
+        }
+      }, 400)
     }
+
+    applyPendingRestore()
+    scheduleCleanup()
 
     prependScrollRestoreCleanupFrameRef.current = window.requestAnimationFrame(() => {
       prependScrollRestoreCleanupFrameRef.current = null
 
-      if (prependScrollRestoreRef.current === pendingRestore) {
-        clearPendingPrependRestore()
+      if (applyPendingRestore()) {
+        scheduleCleanup()
       }
     })
+
+    const handleLayoutChange = () => {
+      if (applyPendingRestore()) {
+        scheduleCleanup()
+      }
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        handleLayoutChange()
+      })
+      resizeObserver.observe(scrollContainer)
+      if (scrollContentRef.current) {
+        resizeObserver.observe(scrollContentRef.current)
+      }
+    }
+
+    window.addEventListener('resize', handleLayoutChange)
+
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', handleLayoutChange)
+      if (prependScrollRestoreCleanupFrameRef.current !== null) {
+        window.cancelAnimationFrame(prependScrollRestoreCleanupFrameRef.current)
+        prependScrollRestoreCleanupFrameRef.current = null
+      }
+    }
   }, [clearPendingPrependRestore, messages])
 
   useEffect(() => {
