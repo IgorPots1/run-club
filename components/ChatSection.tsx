@@ -9301,7 +9301,7 @@ export default function ChatSection({
                     className="min-h-10 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2 text-sm leading-5 outline-none placeholder:app-text-secondary"
                   />
                   {activeMention && mentionSuggestions.length > 0 ? (
-                    <div className="absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-2xl border border-black/10 bg-[color:var(--surface)] py-1 shadow-lg dark:border-white/10">
+                    <div className="pointer-events-auto absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-black">
                       {mentionSuggestions.map((suggestion, index) => {
                         const isHighlighted = index === highlightedIndex
 
