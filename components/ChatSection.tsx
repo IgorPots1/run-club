@@ -4510,6 +4510,7 @@ export default function ChatSection({
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageItem | null>(null)
   const [selectedMessageAnchorRect, setSelectedMessageAnchorRect] = useState<DOMRect | null>(null)
+  const [mentionSuggestionsAnchorRect, setMentionSuggestionsAnchorRect] = useState<DOMRect | null>(null)
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false)
   const [selectedMessageForReaders, setSelectedMessageForReaders] = useState<ChatMessageItem | null>(null)
   const [isReadersSheetOpen, setIsReadersSheetOpen] = useState(false)
@@ -6389,6 +6390,32 @@ export default function ChatSection({
       ? selectedMessageForReaders?.id ?? null
       : null
   }, [isReadersSheetOpen, selectedMessageForReaders])
+
+  useLayoutEffect(() => {
+    if (!activeMention || mentionSuggestions.length === 0) {
+      setMentionSuggestionsAnchorRect(null)
+      return
+    }
+
+    function updateMentionSuggestionsAnchorRect() {
+      setMentionSuggestionsAnchorRect(composerWrapperRef.current?.getBoundingClientRect() ?? null)
+    }
+
+    updateMentionSuggestionsAnchorRect()
+
+    const scrollContainer = scrollContainerRef.current
+    scrollContainer?.addEventListener('scroll', updateMentionSuggestionsAnchorRect, { passive: true })
+    window.addEventListener('resize', updateMentionSuggestionsAnchorRect)
+    window.visualViewport?.addEventListener('resize', updateMentionSuggestionsAnchorRect)
+    window.visualViewport?.addEventListener('scroll', updateMentionSuggestionsAnchorRect)
+
+    return () => {
+      scrollContainer?.removeEventListener('scroll', updateMentionSuggestionsAnchorRect)
+      window.removeEventListener('resize', updateMentionSuggestionsAnchorRect)
+      window.visualViewport?.removeEventListener('resize', updateMentionSuggestionsAnchorRect)
+      window.visualViewport?.removeEventListener('scroll', updateMentionSuggestionsAnchorRect)
+    }
+  }, [activeMention, mentionSuggestions.length])
 
   useLayoutEffect(() => {
     if (!selectedMessage || !isActionSheetOpen) {
@@ -9300,36 +9327,6 @@ export default function ChatSection({
                     rows={1}
                     className="min-h-10 max-h-[120px] w-full resize-none overflow-hidden bg-transparent py-2 text-sm leading-5 outline-none placeholder:app-text-secondary"
                   />
-                  {activeMention && mentionSuggestions.length > 0 ? (
-                    <div className="pointer-events-auto absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-black">
-                      {mentionSuggestions.map((suggestion, index) => {
-                        const isHighlighted = index === highlightedIndex
-
-                        return (
-                          <button
-                            key={`${suggestion.userId}:${suggestion.displayName}`}
-                            type="button"
-                            onMouseDown={(event) => {
-                              event.preventDefault()
-                            }}
-                            onMouseEnter={() => {
-                              setHighlightedIndex(index)
-                            }}
-                            onClick={() => {
-                              handleMentionSelection(suggestion)
-                            }}
-                            className={`flex w-full items-center px-3 py-2 text-left text-sm ${
-                              isHighlighted
-                                ? 'bg-black/[0.06] dark:bg-white/[0.08]'
-                                : 'bg-transparent'
-                            }`}
-                          >
-                            {suggestion.displayName}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  ) : null}
                 </div>
                 {shouldShowVoiceRecorderButton ? (
                   <button
@@ -9591,6 +9588,47 @@ export default function ChatSection({
           onViewReaders={handleViewMessageReaders}
           onToggleReaction={handleToggleReaction}
         />
+      ) : null}
+      {activeMention && mentionSuggestions.length > 0 && mentionSuggestionsAnchorRect ? (
+        <div className="pointer-events-none fixed inset-0 z-50">
+          <div
+            className="pointer-events-auto absolute max-h-48 overflow-y-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-black"
+            style={{
+              top: `${mentionSuggestionsAnchorRect.top - 8}px`,
+              left: `${mentionSuggestionsAnchorRect.left}px`,
+              width: `${mentionSuggestionsAnchorRect.width}px`,
+              maxHeight: `${Math.min(192, Math.max(0, mentionSuggestionsAnchorRect.top - 20))}px`,
+              transform: 'translateY(-100%)',
+            }}
+          >
+            {mentionSuggestions.map((suggestion, index) => {
+              const isHighlighted = index === highlightedIndex
+
+              return (
+                <button
+                  key={`${suggestion.userId}:${suggestion.displayName}`}
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                  }}
+                  onMouseEnter={() => {
+                    setHighlightedIndex(index)
+                  }}
+                  onClick={() => {
+                    handleMentionSelection(suggestion)
+                  }}
+                  className={`flex w-full items-center px-3 py-2 text-left text-sm ${
+                    isHighlighted
+                      ? 'bg-black/[0.06] dark:bg-white/[0.08]'
+                      : 'bg-transparent'
+                  }`}
+                >
+                  {suggestion.displayName}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       ) : null}
       {selectedMessageForReaders && isReadersSheetOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4">
