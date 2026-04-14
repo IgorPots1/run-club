@@ -472,12 +472,17 @@ function reconcileDraftMentions(previousText: string, nextText: string, mentions
 
         return null
       })
-      .filter((mention): mention is ChatDraftMention => (
-        Boolean(mention) &&
-        mention.start >= 0 &&
-        mention.start + mention.length <= nextText.length &&
-        nextText.slice(mention.start, mention.start + mention.length) === mention.text
-      ))
+      .filter((mention): mention is ChatDraftMention => {
+        if (!mention) {
+          return false
+        }
+
+        return (
+          mention.start >= 0 &&
+          mention.start + mention.length <= nextText.length &&
+          nextText.slice(mention.start, mention.start + mention.length) === mention.text
+        )
+      })
   )
 }
 
@@ -496,11 +501,11 @@ function buildMentionSpansForSend(text: string, mentions: ChatDraftMention[]) {
     const mentionEnd = mention.start + mention.length
 
     if (mention.start < trimStartOffset || mentionEnd > trimmedEnd) {
-      return
+      throw new Error('chat_mention_outside_trimmed_text')
     }
 
     if (text.slice(mention.start, mentionEnd) !== mention.text) {
-      return
+      throw new Error('chat_mention_text_mismatch')
     }
 
     const shiftedStart = mention.start - trimStartOffset
@@ -511,7 +516,7 @@ function buildMentionSpansForSend(text: string, mentions: ChatDraftMention[]) {
       shiftedStart < lastMentionEnd ||
       trimmedText.slice(shiftedStart, shiftedStart + mention.length) !== mention.text
     ) {
-      return
+      throw new Error('chat_mention_span_invalid')
     }
 
     nextMentionSpans.push({
@@ -4547,12 +4552,15 @@ export default function ChatSection({
   const shouldShowVoiceRecorderButton = !editingMessage && !trimmedDraftMessage && !hasPendingImage
   const announcementReadOnlyMessage = readOnlyAnnouncementMessage.trim() || 'Это канал с важной информацией. Публиковать сообщения может только тренер.'
   draftMessageRef.current = draftMessage
-  const clearMentionComposerState = useCallback(() => {
-    setDraftMentions([])
+  const closeActiveMentionSuggestions = useCallback(() => {
     setActiveMention(null)
     setMentionSuggestions([])
     setHighlightedIndex(0)
   }, [])
+  const clearMentionComposerState = useCallback(() => {
+    setDraftMentions([])
+    closeActiveMentionSuggestions()
+  }, [closeActiveMentionSuggestions])
   const syncActiveMentionState = useCallback((
     text: string,
     selectionStart: number | null,
@@ -4562,10 +4570,9 @@ export default function ChatSection({
     setActiveMention(nextActiveMention)
 
     if (!nextActiveMention) {
-      setMentionSuggestions([])
-      setHighlightedIndex(0)
+      closeActiveMentionSuggestions()
     }
-  }, [])
+  }, [closeActiveMentionSuggestions])
   const applyDraftMessageChange = useCallback((
     nextValue: string,
     selectionStart: number | null,
@@ -4627,15 +4634,13 @@ export default function ChatSection({
       },
     ]))
     setSubmitError('')
-    setActiveMention(null)
-    setMentionSuggestions([])
-    setHighlightedIndex(0)
+    closeActiveMentionSuggestions()
 
     window.requestAnimationFrame(() => {
       textarea?.focus()
       textarea?.setSelectionRange(nextCursorPosition, nextCursorPosition)
     })
-  }, [activeMention, draftMessage])
+  }, [activeMention, closeActiveMentionSuggestions, draftMessage])
   const handleComposerSelectionChange = useCallback((event: React.SyntheticEvent<HTMLTextAreaElement>) => {
     const textarea = event.currentTarget
     syncActiveMentionState(
@@ -4647,9 +4652,7 @@ export default function ChatSection({
   const handleComposerKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!activeMention || mentionSuggestions.length === 0) {
       if (event.key === 'Escape') {
-        setActiveMention(null)
-        setMentionSuggestions([])
-        setHighlightedIndex(0)
+        closeActiveMentionSuggestions()
       }
       return
     }
@@ -4678,11 +4681,9 @@ export default function ChatSection({
 
     if (event.key === 'Escape') {
       event.preventDefault()
-      setActiveMention(null)
-      setMentionSuggestions([])
-      setHighlightedIndex(0)
+      closeActiveMentionSuggestions()
     }
-  }, [activeMention, handleMentionSelection, highlightedIndex, mentionSuggestions])
+  }, [activeMention, closeActiveMentionSuggestions, handleMentionSelection, highlightedIndex, mentionSuggestions])
   const canManageMessage = useCallback((message: ChatMessageItem) => {
     if (isAnnouncementChannel && isReadOnlyAnnouncement) {
       return false
@@ -7253,7 +7254,7 @@ export default function ChatSection({
       try {
         return buildMentionSpansForSend(draftMessage, draftMentions)
       } catch {
-        return []
+        return null
       }
     })()
 
@@ -7333,7 +7334,7 @@ export default function ChatSection({
           resizeComposerTextarea()
         })
 
-        await sendOptimisticTextOrImageMessage(optimisticMessage, mentionSpans.length > 0 ? mentionSpans : null)
+        await sendOptimisticTextOrImageMessage(optimisticMessage, mentionSpans && mentionSpans.length > 0 ? mentionSpans : null)
       }
 
       setPendingNewMessagesCount(0)
@@ -9115,6 +9116,7 @@ export default function ChatSection({
                     id="chat-message"
                     value={draftMessage}
                     onPaste={handleDraftMessagePaste}
+                    onBlur={closeActiveMentionSuggestions}
                     onClick={handleComposerSelectionChange}
                     onKeyDown={handleComposerKeyDown}
                     onKeyUp={handleComposerSelectionChange}
@@ -9143,6 +9145,9 @@ export default function ChatSection({
                             type="button"
                             onMouseDown={(event) => {
                               event.preventDefault()
+                            }}
+                            onMouseEnter={() => {
+                              setHighlightedIndex(index)
                             }}
                             onClick={() => {
                               handleMentionSelection(suggestion)
