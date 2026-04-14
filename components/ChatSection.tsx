@@ -5593,6 +5593,19 @@ export default function ChatSection({
       return
     }
 
+    const wasNearBottomOnClose = isNearBottom()
+
+    if (wasNearBottomOnClose) {
+      const settleTimeoutId = window.setTimeout(() => {
+        keyboardCloseSettlingRef.current = false
+      }, 280)
+
+      return () => {
+        window.clearTimeout(settleTimeoutId)
+        keyboardCloseSettlingRef.current = false
+      }
+    }
+
     const preservedScrollTop = scrollContainer.scrollTop
     const previousOverflowAnchor = scrollContainer.style.overflowAnchor
     const closeSettleTarget = composerWrapperRef.current ?? scrollContainer
