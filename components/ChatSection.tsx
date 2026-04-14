@@ -4471,7 +4471,6 @@ export default function ChatSection({
   const initialBottomLockLastGeometryRef = useRef<{ scrollHeight: number; clientHeight: number } | null>(null)
   const initialBottomLockStableSampleCountRef = useRef(0)
   const previousIsKeyboardOpenRef = useRef(isKeyboardOpen)
-  const keyboardCloseSettlingRef = useRef(false)
   const isStoppingVoiceRecordingRef = useRef(false)
   const shouldCancelVoiceRecordingRef = useRef(false)
   const hasHandledVoiceRecordingStopRef = useRef(false)
@@ -5573,8 +5572,6 @@ export default function ChatSection({
       return
     }
 
-    keyboardCloseSettlingRef.current = true
-
     if (
       prependScrollRestoreRef.current ||
       pendingInitialSavedScrollRestore ||
@@ -5582,14 +5579,12 @@ export default function ChatSection({
       initialSavedScrollRestoreActiveRef.current ||
       isLoadingOlderMessagesRef.current
     ) {
-      keyboardCloseSettlingRef.current = false
       return
     }
 
     const scrollContainer = scrollContainerRef.current
 
     if (!scrollContainer) {
-      keyboardCloseSettlingRef.current = false
       return
     }
 
@@ -5617,7 +5612,6 @@ export default function ChatSection({
       }
 
       isSettled = true
-      keyboardCloseSettlingRef.current = false
       if (animationFrameId !== null) {
         window.cancelAnimationFrame(animationFrameId)
         animationFrameId = null
@@ -5937,10 +5931,6 @@ export default function ChatSection({
       publicUrl,
     })
     scanChatSendTimingVisualComplete(messagesRef.current)
-
-    if (keyboardCloseSettlingRef.current) {
-      return
-    }
 
     if (
       prependScrollRestoreRef.current ||
