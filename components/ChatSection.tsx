@@ -4043,16 +4043,16 @@ function normalizeMessageMentionSpans(rawValue: unknown, text: string): ChatMess
 function splitMessageTextByMentionSpans(
   text: string,
   mentionSpans: ChatMessageMentionSpan[] | null
-): { text: string; isMention: boolean }[] | null {
+): { text: string; isMention: boolean; userId: string | null }[] | null {
   if (!text) {
     return []
   }
 
   if (!mentionSpans || mentionSpans.length === 0) {
-    return [{ text, isMention: false }]
+    return [{ text, isMention: false, userId: null }]
   }
 
-  const segments: { text: string; isMention: boolean }[] = []
+  const segments: { text: string; isMention: boolean; userId: string | null }[] = []
   let cursor = 0
 
   for (const span of mentionSpans) {
@@ -4070,12 +4070,14 @@ function splitMessageTextByMentionSpans(
       segments.push({
         text: text.slice(cursor, span.start),
         isMention: false,
+        userId: null,
       })
     }
 
     segments.push({
       text: text.slice(span.start, span.start + span.length),
       isMention: true,
+      userId: span.userId,
     })
     cursor = span.start + span.length
   }
@@ -4084,6 +4086,7 @@ function splitMessageTextByMentionSpans(
     segments.push({
       text: text.slice(cursor),
       isMention: false,
+      userId: null,
     })
   }
 
@@ -4107,13 +4110,28 @@ function renderMessageText(
       return <Fragment key={`message-text-${index}`}>{content}</Fragment>
     }
 
+    const mentionUserId = segment.userId?.trim()
+    const mentionClassName = 'rounded-[4px] bg-black/[0.05] dark:bg-white/[0.08]'
+
+    if (!mentionUserId) {
+      return (
+        <span
+          key={`message-mention-${index}`}
+          className={mentionClassName}
+        >
+          {content}
+        </span>
+      )
+    }
+
     return (
-      <span
+      <Link
         key={`message-mention-${index}`}
-        className="rounded-[4px] bg-black/[0.05] dark:bg-white/[0.08]"
+        href={`/users/${encodeURIComponent(mentionUserId)}`}
+        className={mentionClassName}
       >
         {content}
-      </span>
+      </Link>
     )
   })
 }
