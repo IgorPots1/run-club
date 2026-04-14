@@ -64,6 +64,7 @@ export function useIsolatedViewportHeight() {
       const viewportHeightDelta = baselineViewportHeight - effectiveViewportHeight
       let nextIsKeyboardOpen = lastKeyboardOpenRef.current ?? false
       const cssVarChanged = lastAppliedViewportHeightRef.current !== effectiveViewportHeight
+      const previousIsKeyboardOpen = lastKeyboardOpenRef.current
 
       if (!isMobileViewport) {
         nextIsKeyboardOpen = false
@@ -86,7 +87,18 @@ export function useIsolatedViewportHeight() {
         baselineViewportHeightRef.current = effectiveViewportHeight
       }
 
-      if (cssVarChanged) {
+      const keyboardStateChanged = previousIsKeyboardOpen !== nextIsKeyboardOpen
+      const isVisualViewportTransitionSource = source === 'vv-resize' || source === 'vv-scroll'
+      const isKeyboardTransitionActive = isMobileViewport && Boolean(visualViewport) && (
+        nextIsKeyboardOpen ||
+        previousIsKeyboardOpen === true ||
+        keyboardStateChanged
+      )
+      const shouldDeferCssVarWrite = isVisualViewportTransitionSource &&
+        cssVarChanged &&
+        isKeyboardTransitionActive
+
+      if (cssVarChanged && !shouldDeferCssVarWrite) {
         rootStyle.setProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
         lastAppliedViewportHeightRef.current = effectiveViewportHeight
       }
