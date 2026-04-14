@@ -4523,6 +4523,7 @@ export default function ChatSection({
   const [chatMentionDebugSnapshot, setChatMentionDebugSnapshot] = useState<{
     composerTop: number | null
     composerLeft: number | null
+    isNearBottom: boolean
     scrollTop: number | null
     scrollHeight: number | null
     clientHeight: number | null
@@ -4530,6 +4531,7 @@ export default function ChatSection({
   }>({
     composerTop: null,
     composerLeft: null,
+    isNearBottom: true,
     scrollTop: null,
     scrollHeight: null,
     clientHeight: null,
@@ -4566,10 +4568,14 @@ export default function ChatSection({
   const updateChatMentionDebugSnapshot = useCallback(() => {
     const composerRect = composerInputShellRef.current?.getBoundingClientRect() ?? null
     const scrollContainer = scrollContainerRef.current
+    const distanceFromBottom = scrollContainer
+      ? scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight)
+      : 0
 
     setChatMentionDebugSnapshot({
       composerTop: composerRect?.top ?? null,
       composerLeft: composerRect?.left ?? null,
+      isNearBottom: distanceFromBottom <= 80,
       scrollTop: scrollContainer?.scrollTop ?? null,
       scrollHeight: scrollContainer?.scrollHeight ?? null,
       clientHeight: scrollContainer?.clientHeight ?? null,
@@ -9749,14 +9755,9 @@ export default function ChatSection({
         </div>
       ) : null}
       {chatMentionDebugEnabled ? (
-        <div className="fixed bottom-2 right-2 z-50 rounded bg-black/70 px-2 py-1 text-xs text-white">
+        <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-black/70 px-3 py-2 text-xs text-white">
           <div>{`activeMention: ${activeMention ? 'true' : 'false'}`}</div>
-          <div>{`mentionSuggestions.length: ${mentionSuggestions.length}`}</div>
-          <div>{`mentionAnchor.top: ${formatChatLayoutDebugNumber(mentionSuggestionsAnchorRect?.top)}`}</div>
-          <div>{`mentionAnchor.left: ${formatChatLayoutDebugNumber(mentionSuggestionsAnchorRect?.left)}`}</div>
-          <div>{`mentionAnchor.width: ${formatChatLayoutDebugNumber(mentionSuggestionsAnchorRect?.width)}`}</div>
-          <div>{`composer.top: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.composerTop)}`}</div>
-          <div>{`composer.left: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.composerLeft)}`}</div>
+          <div>{`isNearBottom: ${chatMentionDebugSnapshot.isNearBottom ? 'true' : 'false'}`}</div>
           <div>{`lastScrollSource: ${chatMentionDebugSnapshot.lastScrollSource}`}</div>
           <div>{`scrollTop: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.scrollTop)}`}</div>
           <div>{`scrollHeight: ${formatChatLayoutDebugNumber(chatMentionDebugSnapshot.scrollHeight)}`}</div>
