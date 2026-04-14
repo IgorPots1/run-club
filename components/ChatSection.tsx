@@ -5795,6 +5795,10 @@ export default function ChatSection({
       return
     }
 
+    if (activeMention) {
+      return
+    }
+
     const shouldStickToBottom = isNearBottom(80) || !showScrollToBottomButton
 
     if (!shouldStickToBottom) {
@@ -5802,9 +5806,14 @@ export default function ChatSection({
     }
 
     window.requestAnimationFrame(() => {
+      if (activeMention) {
+        return
+      }
+
       scrollPageToBottom('auto', 'image-load')
     })
   }, [
+    activeMention,
     hasDeferredInitialSettle,
     isInitialBottomLockActive,
     isNearBottom,
