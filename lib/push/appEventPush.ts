@@ -48,6 +48,8 @@ type ChatPushDeliveryPayload = {
   threadId: string
   threadType: 'club' | 'direct_coach'
   priority: 'normal' | 'important'
+  hasMentions?: boolean
+  isMentioned?: boolean
   threadUnreadCount?: number
   badgeCount?: number
   unreadScope?: 'thread'
@@ -197,6 +199,9 @@ function buildGroupedChatPushPayload(group: ChatPushCoalescedGroup) {
     return null
   }
 
+  const hasMentions = Array.from(group.envelopes.values()).some((envelope) => envelope.hasMentions)
+  const isMentioned = Array.from(group.envelopes.values()).some((envelope) => envelope.isMentioned)
+
   const timestamp = Date.parse(group.latestEvent.createdAt)
   const basePayload: ChatPushDeliveryPayload = {
     title: latestEnvelope.title,
@@ -206,6 +211,8 @@ function buildGroupedChatPushPayload(group: ChatPushCoalescedGroup) {
     threadId: latestEnvelope.threadId,
     threadType: latestEnvelope.threadType,
     priority: latestEnvelope.priority,
+    hasMentions,
+    isMentioned,
     tag: latestEnvelope.priority === 'normal' ? `chat:${latestEnvelope.threadId}` : undefined,
     timestamp: Number.isNaN(timestamp) ? undefined : timestamp,
   }
@@ -781,6 +788,8 @@ async function processSingleChatAppEventPush(supabaseAdmin: SupabaseAdminClient,
     threadId: pushEnvelope.threadId,
     threadType: pushEnvelope.threadType,
     priority: pushEnvelope.priority,
+    hasMentions: pushEnvelope.hasMentions,
+    isMentioned: pushEnvelope.isMentioned,
     tag: pushEnvelope.priority === 'normal' ? `chat:${pushEnvelope.threadId}` : undefined,
     timestamp: Number.isNaN(timestamp) ? undefined : timestamp,
     ...unreadMetadata,

@@ -15,6 +15,8 @@ type TextChatMessageRequestBody = {
   replyToId?: string | null
   threadId?: string | null
   imageUrl?: string | null
+  mention_spans?: unknown
+  mentionSpans?: unknown
   pendingAttachmentCount?: number | null
   attachments?: {
     type?: 'image'
@@ -42,6 +44,7 @@ type InsertedChatMessageRow = {
   image_url: string | null
   media_url: string | null
   thread_id: string | null
+  mention_user_ids: string[] | null
   push_priority: PushPriority
 }
 
@@ -87,6 +90,8 @@ type ChatMessageInsertPayload = {
   media_duration_seconds?: number | null
   reply_to_id: string | null
   thread_id: string | null
+  mention_user_ids?: string[] | null
+  mention_spans?: ChatMessageMentionSpan[] | null
 }
 
 type ChatMessageValidationRow = {
@@ -97,10 +102,22 @@ type ChatMessageValidationRow = {
   thread_channel_key: CommonChannelKey | null
 }
 
+type ChatMessageMentionSpan = {
+  userId: string
+  start: number
+  length: number
+}
+
+type MentionableProfileRow = {
+  id: string
+}
+
 const CHAT_MEDIA_BUCKET = 'chat-media'
 const CHAT_MESSAGE_MAX_ATTACHMENTS = 8
 const SAFE_STORAGE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9_-]+$/
 const SAFE_STORAGE_FILE_NAME_REGEX = /^[A-Za-z0-9._-]+$/
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CHAT_API_ERROR_MESSAGE_BY_CODE: Record<string, string> = {
   auth_required: 'Authentication is required.',
   thread_not_found: 'Chat thread not found.',
@@ -156,6 +173,167 @@ function sanitizeStorageFileName(value: string) {
   }
 
   return trimmedValue
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isValidUuid(value: string) {
+  return UUID_REGEX.test(value)
+}
+
+function parseChatMessageMentionSpan(rawValue: unknown, textLength: number): ChatMessageMentionSpan | null {
+  if (!isPlainObject(rawValue)) {
+    return null
+  }
+
+  const userId = typeof rawValue.userId === 'string'
+    ? rawValue.userId.trim()
+    : typeof rawValue.user_id === 'string'
+      ? rawValue.user_id.trim()
+      : ''
+  const start = rawValue.start
+  const length = rawValue.length
+
+  if (
+    !userId ||
+    !isValidUuid(userId) ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(length) ||
+    start < 0 ||
+    length <= 0 ||
+    start + length > textLength
+  ) {
+    return null
+  }
+
+  return {
+    userId,
+    start,
+    length,
+  }
+}
+
+function normalizeChatMessageMentionSpans(rawValue: unknown, text: string) {
+  const rawMentionSpans = Array.isArray(rawValue) ? rawValue : []
+
+  return rawMentionSpans
+    .map((span) => parseChatMessageMentionSpan(span, text.length))
+    .filter((span): span is ChatMessageMentionSpan => span !== null)
+    .sort((left, right) => {
+      if (left.start !== right.start) {
+        return left.start - right.start
+      }
+
+      if (left.length !== right.length) {
+        return left.length - right.length
+      }
+
+      return left.userId.localeCompare(right.userId)
+    })
+}
+
+async function resolveChatMessageMentions(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  input: {
+    senderUserId: string
+    threadId?: string | null
+    text: string
+    mentionSpans: unknown
+  }
+) {
+  const normalizedMentionSpans = normalizeChatMessageMentionSpans(input.mentionSpans, input.text)
+
+  if (normalizedMentionSpans.length === 0) {
+    return {
+      mentionUserIds: null,
+      mentionSpans: null,
+    }
+  }
+
+  const requestedUserIds = Array.from(new Set(normalizedMentionSpans.map((span) => span.userId)))
+    .filter((userId) => userId !== input.senderUserId)
+
+  if (requestedUserIds.length === 0) {
+    return {
+      mentionUserIds: null,
+      mentionSpans: null,
+    }
+  }
+
+  let allowedMentionedUserIds = new Set<string>()
+
+  if (!input.threadId) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .in('id', requestedUserIds)
+      .eq('app_access_status', 'active')
+
+    if (error) {
+      throw error
+    }
+
+    allowedMentionedUserIds = new Set(
+      ((data as MentionableProfileRow[] | null) ?? []).map((profile) => profile.id)
+    )
+  } else {
+    const { data: thread, error: threadError } = await supabaseAdmin
+      .from('chat_threads')
+      .select('id, type, owner_user_id, coach_user_id')
+      .eq('id', input.threadId)
+      .maybeSingle()
+
+    if (threadError) {
+      throw threadError
+    }
+
+    const chatThread = (thread as ChatThreadRow | null) ?? null
+
+    if (!chatThread) {
+      return {
+        mentionUserIds: null,
+        mentionSpans: null,
+      }
+    }
+
+    if (chatThread.type === 'direct_coach') {
+      allowedMentionedUserIds = new Set(
+        requestedUserIds.filter((userId) => {
+          return userId === chatThread.owner_user_id || userId === chatThread.coach_user_id
+        })
+      )
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .in('id', requestedUserIds)
+        .eq('app_access_status', 'active')
+
+      if (error) {
+        throw error
+      }
+
+      allowedMentionedUserIds = new Set(
+        ((data as MentionableProfileRow[] | null) ?? []).map((profile) => profile.id)
+      )
+    }
+  }
+
+  const mentionSpans = normalizedMentionSpans.filter((span) => allowedMentionedUserIds.has(span.userId))
+
+  if (mentionSpans.length === 0) {
+    return {
+      mentionUserIds: null,
+      mentionSpans: null,
+    }
+  }
+
+  return {
+    mentionUserIds: Array.from(new Set(mentionSpans.map((span) => span.userId))),
+    mentionSpans,
+  }
 }
 
 function getSupabaseOrigin() {
@@ -387,7 +565,12 @@ async function validateChatMessageRequest(
 }
 
 function toInsertedMessageRow(
-  insertedRow: { id: string; thread_id?: string | null; push_priority?: string | null },
+  insertedRow: {
+    id: string
+    thread_id?: string | null
+    mention_user_ids?: string[] | null
+    push_priority?: string | null
+  },
   payload: ChatMessageInsertPayload
 ): InsertedChatMessageRow {
   return {
@@ -398,6 +581,7 @@ function toInsertedMessageRow(
     image_url: payload.image_url,
     media_url: payload.media_url ?? null,
     thread_id: insertedRow.thread_id ?? payload.thread_id,
+    mention_user_ids: insertedRow.mention_user_ids ?? payload.mention_user_ids ?? null,
     push_priority: normalizeChatMessagePushPriority(insertedRow),
   }
 }
@@ -502,6 +686,8 @@ async function emitChatMessageCreatedEvent(
         priority: message.push_priority,
         threadType: context.threadType,
         threadChannelKey: context.threadChannelKey,
+        hasMentions: (message.mention_user_ids?.length ?? 0) > 0,
+        isMentioned: (message.mention_user_ids ?? []).includes(recipientUserId),
       }),
     }))
   )
@@ -626,67 +812,73 @@ export async function POST(request: Request) {
       replyToId
     )
     let validatedTextAttachments: ValidatedImageAttachment[] = []
+    let insertPayload: ChatMessageInsertPayload
 
-    const insertPayload: ChatMessageInsertPayload =
-      kind === 'voice'
-        ? (() => {
-            const mediaPath = voiceBody?.mediaPath?.trim() ?? ''
+    if (kind === 'voice') {
+      const mediaPath = voiceBody?.mediaPath?.trim() ?? ''
 
-            if (!mediaPath) {
-              throw new Error('empty_voice_message')
-            }
+      if (!mediaPath) {
+        throw new Error('empty_voice_message')
+      }
 
-            const validatedMediaPath = validateVoiceMediaPath(mediaPath, userId)
+      const validatedMediaPath = validateVoiceMediaPath(mediaPath, userId)
 
-            return {
-              user_id: userId,
-              text: '',
-              message_type: 'voice',
-              media_url: validatedMediaPath,
-              media_duration_seconds: voiceBody?.mediaDurationSeconds ?? null,
-              image_url: null,
-              reply_to_id: safeReplyToId,
-              thread_id: threadId,
-            }
-          })()
-        : (() => {
-            const text = textBody?.text?.trim() ?? ''
-            const imageUrl = textBody?.imageUrl?.trim() || null
-            validatedTextAttachments = validateImageAttachments(textBody?.attachments, userId, threadId)
-            logPhase('validation_check', {
-              hasText: Boolean(text),
-              attachmentCount: validatedTextAttachments.length > 0
-                ? validatedTextAttachments.length
-                : imageUrl
-                  ? 1
-                  : pendingAttachmentCount,
-            })
+      insertPayload = {
+        user_id: userId,
+        text: '',
+        message_type: 'voice',
+        media_url: validatedMediaPath,
+        media_duration_seconds: voiceBody?.mediaDurationSeconds ?? null,
+        image_url: null,
+        reply_to_id: safeReplyToId,
+        thread_id: threadId,
+      }
+    } else {
+      const text = textBody?.text?.trim() ?? ''
+      const imageUrl = textBody?.imageUrl?.trim() || null
+      validatedTextAttachments = validateImageAttachments(textBody?.attachments, userId, threadId)
+      logPhase('validation_check', {
+        hasText: Boolean(text),
+        attachmentCount: validatedTextAttachments.length > 0
+          ? validatedTextAttachments.length
+          : imageUrl
+            ? 1
+            : pendingAttachmentCount,
+      })
 
-            if (!text && !imageUrl && validatedTextAttachments.length === 0 && pendingAttachmentCount === 0) {
-              throw new Error('empty_message')
-            }
+      if (!text && !imageUrl && validatedTextAttachments.length === 0 && pendingAttachmentCount === 0) {
+        throw new Error('empty_message')
+      }
 
-            if (text.length > 1000) {
-              throw new Error('message_too_long')
-            }
+      if (text.length > 1000) {
+        throw new Error('message_too_long')
+      }
 
-            const validatedImageUrl = validatedTextAttachments.length > 0
-              ? null
-              : imageUrl
-              ? validateChatImageUrl(imageUrl, userId, threadId)
-              : null
+      const validatedImageUrl = validatedTextAttachments.length > 0
+        ? null
+        : imageUrl
+          ? validateChatImageUrl(imageUrl, userId, threadId)
+          : null
+      const mentionMetadata = await resolveChatMessageMentions(supabaseAdmin, {
+        senderUserId: userId,
+        threadId,
+        text,
+        mentionSpans: textBody?.mention_spans ?? textBody?.mentionSpans ?? null,
+      })
 
-            return {
-              user_id: userId,
-              text,
-              message_type: validatedTextAttachments.length > 0 || validatedImageUrl || pendingAttachmentCount > 0
-                ? 'image'
-                : 'text',
-              image_url: validatedImageUrl,
-              reply_to_id: safeReplyToId,
-              thread_id: threadId,
-            }
-          })()
+      insertPayload = {
+        user_id: userId,
+        text,
+        message_type: validatedTextAttachments.length > 0 || validatedImageUrl || pendingAttachmentCount > 0
+          ? 'image'
+          : 'text',
+        image_url: validatedImageUrl,
+        reply_to_id: safeReplyToId,
+        thread_id: threadId,
+        mention_user_ids: mentionMetadata.mentionUserIds,
+        mention_spans: mentionMetadata.mentionSpans,
+      }
+    }
 
     logPhase('payload_validated', {
       messageType: insertPayload.message_type,
@@ -710,7 +902,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin
       .from('chat_messages')
       .insert(insertPayload)
-      .select('id, push_priority')
+      .select('id, thread_id, mention_user_ids, push_priority')
       .single()
 
     if (error) {
@@ -718,7 +910,12 @@ export async function POST(request: Request) {
     }
 
     const message = toInsertedMessageRow(
-      data as { id: string; thread_id?: string | null; push_priority?: string | null },
+      data as {
+        id: string
+        thread_id?: string | null
+        mention_user_ids?: string[] | null
+        push_priority?: string | null
+      },
       insertPayload
     )
     logPhase('message_insert_success', {

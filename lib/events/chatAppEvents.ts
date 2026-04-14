@@ -14,6 +14,8 @@ export type ChatMessageCreatedAppEventPayload = {
   messageId: string
   senderName: string
   messagePreview: string
+  hasMentions: boolean
+  isMentioned: boolean
   targetPath: string
   preview: ChatEventPreview
   priority: AppEventPriority
@@ -34,6 +36,8 @@ type ChatMessageCreatedAppEventInput = ChatPreviewInput & {
   recipientUserId: string
   messageId: string
   threadId: string
+  hasMentions: boolean
+  isMentioned: boolean
 }
 
 function getClubImportantTitle(channelKey: CommonChannelKey | null) {
@@ -116,6 +120,8 @@ export function buildChatMessageCreatedAppEvent(
       messageId: input.messageId,
       senderName: input.senderName,
       messagePreview: input.messagePreview,
+      hasMentions: input.hasMentions,
+      isMentioned: input.isMentioned,
       targetPath,
       preview,
       priority: input.priority,
@@ -137,6 +143,8 @@ export function getChatPushEnvelopeFromAppEvent(input: {
   messageId: string
   senderName: string
   messagePreview: string
+  hasMentions: boolean
+  isMentioned: boolean
   targetPath: string
   title: string
   body: string
@@ -151,6 +159,8 @@ export function getChatPushEnvelopeFromAppEvent(input: {
   const messageId = typeof payload?.messageId === 'string' ? payload.messageId.trim() : ''
   const senderName = typeof payload?.senderName === 'string' ? payload.senderName.trim() : ''
   const messagePreview = typeof payload?.messagePreview === 'string' ? payload.messagePreview.trim() : ''
+  const hasMentions = payload?.hasMentions === true
+  const isMentioned = payload?.isMentioned === true
   const threadType = payload?.threadType === 'club' || payload?.threadType === 'direct_coach'
     ? payload.threadType
     : null
@@ -167,6 +177,8 @@ export function getChatPushEnvelopeFromAppEvent(input: {
     messageId,
     senderName,
     messagePreview,
+    hasMentions,
+    isMentioned,
     targetPath,
     title,
     body,

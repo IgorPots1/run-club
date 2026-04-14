@@ -14,6 +14,8 @@ type SendWebPushInput = {
     threadId?: string
     threadType?: 'club' | 'direct_coach'
     priority?: 'normal' | 'important'
+    hasMentions?: boolean
+    isMentioned?: boolean
     threadUnreadCount?: number
     badgeCount?: number
     unreadScope?: 'thread'
@@ -72,6 +74,8 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
       threadId: input.payload.threadId,
       threadType: input.payload.threadType,
       priority: input.payload.priority,
+      hasMentions: input.payload.hasMentions,
+      isMentioned: input.payload.isMentioned,
       threadUnreadCount: input.payload.threadUnreadCount,
       badgeCount: input.payload.badgeCount,
       unreadScope: input.payload.unreadScope,
@@ -95,6 +99,8 @@ export async function sendWebPush(input: SendWebPushInput): Promise<SendWebPushR
         threadId: input.payload.threadId,
         threadType: input.payload.threadType,
         priority: input.payload.priority,
+        hasMentions: input.payload.hasMentions,
+        isMentioned: input.payload.isMentioned,
         threadUnreadCount: input.payload.threadUnreadCount,
         badgeCount: input.payload.badgeCount,
         unreadScope: input.payload.unreadScope,
