@@ -1046,6 +1046,7 @@ const OLDER_CHAT_BATCH_LIMIT = 10
 const AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES = 1
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
+const SHORT_THREAD_KEYBOARD_LAYOUT_THRESHOLD_PX = 24
 const SWIPE_REPLY_TRIGGER_PX = 80
 const SWIPE_REPLY_MAX_OFFSET_PX = 96
 const SWIPE_REPLY_VERTICAL_LOCK_PX = 12
@@ -4562,6 +4563,7 @@ export default function ChatSection({
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
   const [isThreadScrollable, setIsThreadScrollable] = useState(true)
+  const [isShortThreadLayout, setIsShortThreadLayout] = useState(false)
   const [chatLayoutDebugSnapshot, setChatLayoutDebugSnapshot] = useState<ChatLayoutDebugSnapshot>(EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT)
   const [chatLayoutDebugEvents, setChatLayoutDebugEvents] = useState<ChatLayoutDebugOverlayEvent[]>([])
   const pageTitle = title ?? 'Чат клуба'
@@ -4569,10 +4571,20 @@ export default function ChatSection({
   const updateThreadScrollableState = useCallback(() => {
     const scrollContainer = scrollContainerRef.current
 
-    setIsThreadScrollable(
-      !scrollContainer || scrollContainer.scrollHeight > scrollContainer.clientHeight + 1
-    )
-  }, [])
+    if (!scrollContainer) {
+      setIsShortThreadLayout(false)
+      setIsThreadScrollable(true)
+      return
+    }
+
+    const { scrollHeight, clientHeight } = scrollContainer
+    const isShortThread =
+      isKeyboardOpen &&
+      scrollHeight <= clientHeight + SHORT_THREAD_KEYBOARD_LAYOUT_THRESHOLD_PX
+
+    setIsShortThreadLayout(isShortThread)
+    setIsThreadScrollable(!isShortThread && scrollHeight > clientHeight + 1)
+  }, [isKeyboardOpen])
   const updateChatMentionDebugSnapshot = useCallback(() => {
     const composerRect = composerInputShellRef.current?.getBoundingClientRect() ?? null
     const scrollContainer = scrollContainerRef.current
@@ -6871,6 +6883,27 @@ export default function ChatSection({
     initialBottomLockNextSourceRef.current = null
     keepInitialBottomLockAnchored(source)
   }, [activeMention, isInitialBottomLockActive, keepInitialBottomLockAnchored, loading, messages.length])
+
+  useLayoutEffect(() => {
+    if (!isShortThreadLayout) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    if (isInitialBottomLockActive) {
+      initialBottomLockUserCancelledRef.current = true
+      deactivateInitialBottomLock('short-thread-layout', true)
+    }
+
+    if (scrollContainer.scrollTop !== 0) {
+      scrollContainer.scrollTop = 0
+    }
+  }, [deactivateInitialBottomLock, isInitialBottomLockActive, isShortThreadLayout])
 
   useEffect(() => {
     if (!activeMention || !isInitialBottomLockActive) {
@@ -9634,7 +9667,7 @@ export default function ChatSection({
             <div
               ref={scrollContentRef}
               className={`flex flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
-                isThreadScrollable ? 'min-h-full pb-3 md:pb-4' : 'pb-0'
+              isThreadScrollable && !isShortThreadLayout ? 'min-h-full pb-3 md:pb-4' : 'pb-0'
               } ${
                 showTitle ? '' : 'pt-4'
               }`}
