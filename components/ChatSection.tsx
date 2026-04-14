@@ -1043,7 +1043,6 @@ export function ChatLayoutDebugOverlay({
 const LONG_PRESS_MS = 450
 const INITIAL_CHAT_MESSAGE_LIMIT = 30
 const OLDER_CHAT_BATCH_LIMIT = 10
-const AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES = 1
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
 const SHORT_THREAD_KEYBOARD_LAYOUT_THRESHOLD_PX = 24
@@ -7385,81 +7384,6 @@ export default function ChatSection({
     currentUserId,
     loadOlderMessages,
     loading,
-  ])
-
-  useEffect(() => {
-    if (
-      loading ||
-      messages.length === 0 ||
-      !hasMoreOlderMessages ||
-      !currentUserId ||
-      targetMessageId ||
-      initialSavedScrollRestoreRef.current ||
-      pendingInitialSavedScrollRestore ||
-      !oldestLoadedMessageCreatedAt ||
-      !oldestLoadedMessageId
-    ) {
-      return
-    }
-
-    let isCancelled = false
-    let frameId: number | null = null
-
-    async function waitForLayout() {
-      await new Promise<void>((resolve) => {
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => resolve())
-        })
-      })
-    }
-
-    async function autoLoadOlderMessagesToFillViewport() {
-      await waitForLayout()
-
-      let remainingBatches = AUTO_FILL_OLDER_MESSAGES_MAX_BATCHES
-      let canLoadMore = hasMoreOlderMessages
-
-      while (!isCancelled && canLoadMore && remainingBatches > 0) {
-        const scrollContainer = scrollContainerRef.current
-
-        if (!scrollContainer || scrollContainer.scrollHeight > scrollContainer.clientHeight) {
-          return
-        }
-
-        const result = await loadOlderMessages({ requireNearTop: false })
-
-        if (isCancelled || !result?.didLoad) {
-          return
-        }
-
-        canLoadMore = result.hasMoreOlderMessages
-        remainingBatches -= 1
-        await waitForLayout()
-      }
-    }
-
-    frameId = window.requestAnimationFrame(() => {
-      void autoLoadOlderMessagesToFillViewport()
-    })
-
-    return () => {
-      isCancelled = true
-
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId)
-      }
-    }
-  }, [
-    currentUserId,
-    hasMoreOlderMessages,
-    loadOlderMessages,
-    loading,
-    messages.length,
-    oldestLoadedMessageCreatedAt,
-    oldestLoadedMessageId,
-    pendingInitialSavedScrollRestore,
-    targetMessageId,
-    threadId,
   ])
 
   useEffect(() => {
