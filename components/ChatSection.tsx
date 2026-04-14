@@ -6412,14 +6412,10 @@ export default function ChatSection({
     const scrollContainer = scrollContainerRef.current
     scrollContainer?.addEventListener('scroll', updateMentionSuggestionsAnchorRect, { passive: true })
     window.addEventListener('resize', updateMentionSuggestionsAnchorRect)
-    window.visualViewport?.addEventListener('resize', updateMentionSuggestionsAnchorRect)
-    window.visualViewport?.addEventListener('scroll', updateMentionSuggestionsAnchorRect)
 
     return () => {
       scrollContainer?.removeEventListener('scroll', updateMentionSuggestionsAnchorRect)
       window.removeEventListener('resize', updateMentionSuggestionsAnchorRect)
-      window.visualViewport?.removeEventListener('resize', updateMentionSuggestionsAnchorRect)
-      window.visualViewport?.removeEventListener('scroll', updateMentionSuggestionsAnchorRect)
     }
   }, [activeMention, mentionSuggestions.length])
 
