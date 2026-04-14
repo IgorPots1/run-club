@@ -4358,7 +4358,7 @@ const ChatMessageList = memo(function ChatMessageList({
   onMessageContextMenu: (message: ChatMessageItem, event: React.MouseEvent<HTMLDivElement>) => void
 }) {
   return (
-    <section className="mt-auto flex flex-col px-0 pt-1">
+    <section className="flex flex-col px-0 pt-1">
       <div className="flex flex-col">
         {messages.map((message, index) => {
           const previousMessage = index > 0 ? messages[index - 1] : null
@@ -4561,10 +4561,18 @@ export default function ChatSection({
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false)
+  const [isThreadScrollable, setIsThreadScrollable] = useState(true)
   const [chatLayoutDebugSnapshot, setChatLayoutDebugSnapshot] = useState<ChatLayoutDebugSnapshot>(EMPTY_CHAT_LAYOUT_DEBUG_SNAPSHOT)
   const [chatLayoutDebugEvents, setChatLayoutDebugEvents] = useState<ChatLayoutDebugOverlayEvent[]>([])
   const pageTitle = title ?? 'Чат клуба'
   const pageDescription = description ?? 'Последние 50 сообщений клуба в хронологическом порядке.'
+  const updateThreadScrollableState = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current
+
+    setIsThreadScrollable(
+      !scrollContainer || scrollContainer.scrollHeight > scrollContainer.clientHeight + 1
+    )
+  }, [])
   const updateChatMentionDebugSnapshot = useCallback(() => {
     const composerRect = composerInputShellRef.current?.getBoundingClientRect() ?? null
     const scrollContainer = scrollContainerRef.current
@@ -6324,6 +6332,37 @@ export default function ChatSection({
       window.removeEventListener('resize', updateScrollToBottomButtonVisibility)
     }
   }, [isNearBottom, messages.length])
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    const scrollContent = scrollContentRef.current
+
+    if (!scrollContainer) {
+      return
+    }
+
+    updateThreadScrollableState()
+
+    window.addEventListener('resize', updateThreadScrollableState)
+    window.visualViewport?.addEventListener('resize', updateThreadScrollableState)
+
+    let resizeObserver: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        updateThreadScrollableState()
+      })
+      resizeObserver.observe(scrollContainer)
+      if (scrollContent) {
+        resizeObserver.observe(scrollContent)
+      }
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateThreadScrollableState)
+      window.visualViewport?.removeEventListener('resize', updateThreadScrollableState)
+      resizeObserver?.disconnect()
+    }
+  }, [messages.length, updateThreadScrollableState])
 
   useEffect(() => {
     return () => {
@@ -9582,11 +9621,17 @@ export default function ChatSection({
           <div
             ref={scrollContainerRef}
             data-chat-scroll-container="true"
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] [WebkitOverflowScrolling:touch]"
+            className={`flex min-h-0 flex-1 flex-col ${
+              isThreadScrollable
+                ? 'overflow-y-auto [scrollbar-gutter:stable] [WebkitOverflowScrolling:touch]'
+                : 'overflow-y-hidden'
+            }`}
           >
             <div
               ref={scrollContentRef}
-              className={`flex min-h-full flex-col pb-3 pr-2 md:pb-4 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
+              className={`flex flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
+                isThreadScrollable ? 'min-h-full pb-3 md:pb-4' : 'pb-0'
+              } ${
                 showTitle ? '' : 'pt-4'
               }`}
             >
