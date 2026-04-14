@@ -5584,7 +5584,7 @@ export default function ChatSection({
 
     const scrollContainer = scrollContainerRef.current
 
-    if (!scrollContainer || isNearBottom()) {
+    if (!scrollContainer) {
       return
     }
 
