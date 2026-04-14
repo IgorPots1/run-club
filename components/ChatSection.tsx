@@ -5522,6 +5522,10 @@ export default function ChatSection({
       return true
     }
 
+    if (scrollContainer.scrollHeight <= scrollContainer.clientHeight + 1) {
+      return false
+    }
+
     const distanceFromBottom =
       scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight)
 
