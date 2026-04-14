@@ -536,7 +536,7 @@ export default function MessageThreadPage() {
   }, [currentUserId, error, loading, threadId])
 
   useEffect(() => {
-    if (!threadId || !currentUserId) {
+    if (!threadId || !currentUserId || loading || error) {
       setThreadPushLevel('all')
       setIsLoadingThreadMuteState(false)
       setThreadMuteError('')
@@ -544,35 +544,39 @@ export default function MessageThreadPage() {
     }
 
     let isMounted = true
-    setIsLoadingThreadMuteState(true)
+    const timeoutId = window.setTimeout(() => {
+      setIsLoadingThreadMuteState(true)
+
+      void loadThreadPushSettings(threadId)
+        .then((settings) => {
+          if (!isMounted) {
+            return
+          }
+
+          setThreadPushLevel(settings.push_level)
+        })
+        .catch(() => {
+          if (!isMounted) {
+            return
+          }
+
+          setThreadPushLevel('all')
+          setThreadMuteError('Не удалось загрузить настройки уведомлений')
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsLoadingThreadMuteState(false)
+          }
+        })
+    }, 200)
+
     setThreadMuteError('')
-
-    void loadThreadPushSettings(threadId)
-      .then((settings) => {
-        if (!isMounted) {
-          return
-        }
-
-        setThreadPushLevel(settings.push_level)
-      })
-      .catch(() => {
-        if (!isMounted) {
-          return
-        }
-
-        setThreadPushLevel('all')
-        setThreadMuteError('Не удалось загрузить настройки уведомлений')
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoadingThreadMuteState(false)
-        }
-      })
 
     return () => {
       isMounted = false
+      window.clearTimeout(timeoutId)
     }
-  }, [currentUserId, threadId])
+  }, [currentUserId, error, loading, threadId])
 
   useEffect(() => {
     if (!isHeaderMenuOpen) {
