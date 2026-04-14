@@ -9810,7 +9810,9 @@ export default function ChatSection({
           >
             <div
               ref={scrollContentRef}
-              className={`flex flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] pb-0 ${
+              className={`flex flex-col pr-2 md:pr-3 [padding-right:max(0.5rem,env(safe-area-inset-right))] ${
+              isThreadScrollable && !isShortThreadLayout ? 'min-h-full pb-3 md:pb-4' : 'pb-0'
+              } ${
                 showTitle ? '' : 'pt-4'
               }`}
             >
