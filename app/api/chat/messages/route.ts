@@ -193,25 +193,27 @@ function parseChatMessageMentionSpan(rawValue: unknown, textLength: number): Cha
     : typeof rawValue.user_id === 'string'
       ? rawValue.user_id.trim()
       : ''
-  const start = rawValue.start
-  const length = rawValue.length
+  const rawStart = rawValue.start
+  const rawLength = rawValue.length
 
   if (
     !userId ||
     !isValidUuid(userId) ||
-    !Number.isInteger(start) ||
-    !Number.isInteger(length) ||
-    start < 0 ||
-    length <= 0 ||
-    start + length > textLength
+    typeof rawStart !== 'number' ||
+    typeof rawLength !== 'number' ||
+    !Number.isInteger(rawStart) ||
+    !Number.isInteger(rawLength) ||
+    rawStart < 0 ||
+    rawLength <= 0 ||
+    rawStart + rawLength > textLength
   ) {
     return null
   }
 
   return {
     userId,
-    start,
-    length,
+    start: rawStart,
+    length: rawLength,
   }
 }
 
