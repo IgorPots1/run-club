@@ -5219,58 +5219,6 @@ export default function ChatSection({
     captureChatLayoutDebugSnapshot()
   }, [captureChatLayoutDebugSnapshot, chatLayoutDebugEnabled, isKeyboardOpen, pushChatLayoutDebugEvent])
 
-  useLayoutEffect(() => {
-    const wasKeyboardOpen = previousIsKeyboardOpenRef.current
-    previousIsKeyboardOpenRef.current = isKeyboardOpen
-
-    if (isKeyboardOpen || !wasKeyboardOpen) {
-      return
-    }
-
-    if (
-      prependScrollRestoreRef.current ||
-      pendingInitialSavedScrollRestore ||
-      Boolean(initialSavedScrollRestoreRef.current) ||
-      initialSavedScrollRestoreActiveRef.current ||
-      isLoadingOlderMessagesRef.current
-    ) {
-      return
-    }
-
-    const scrollContainer = scrollContainerRef.current
-
-    if (!scrollContainer || isNearBottom()) {
-      return
-    }
-
-    const preservedScrollTop = scrollContainer.scrollTop
-    let nestedAnimationFrameId: number | null = null
-    const restoreScrollTop = () => {
-      if (scrollContainerRef.current !== scrollContainer) {
-        return
-      }
-
-      if (scrollContainer.scrollTop !== preservedScrollTop) {
-        scrollContainer.scrollTop = preservedScrollTop
-      }
-    }
-    const animationFrameId = window.requestAnimationFrame(() => {
-      // Keyboard close reintroduces bottom safe-area padding, so re-apply
-      // the pre-close offset after the layout settles to cancel anchor drift.
-      restoreScrollTop()
-      nestedAnimationFrameId = window.requestAnimationFrame(() => {
-        restoreScrollTop()
-      })
-    })
-
-    return () => {
-      window.cancelAnimationFrame(animationFrameId)
-      if (nestedAnimationFrameId !== null) {
-        window.cancelAnimationFrame(nestedAnimationFrameId)
-      }
-    }
-  }, [isKeyboardOpen, isNearBottom, pendingInitialSavedScrollRestore])
-
   useEffect(() => {
     if (!chatLayoutDebugEnabled) {
       return
@@ -5615,6 +5563,58 @@ export default function ChatSection({
 
     return distanceFromBottom <= thresholdPx
   }, [])
+
+  useLayoutEffect(() => {
+    const wasKeyboardOpen = previousIsKeyboardOpenRef.current
+    previousIsKeyboardOpenRef.current = isKeyboardOpen
+
+    if (isKeyboardOpen || !wasKeyboardOpen) {
+      return
+    }
+
+    if (
+      prependScrollRestoreRef.current ||
+      pendingInitialSavedScrollRestore ||
+      Boolean(initialSavedScrollRestoreRef.current) ||
+      initialSavedScrollRestoreActiveRef.current ||
+      isLoadingOlderMessagesRef.current
+    ) {
+      return
+    }
+
+    const scrollContainer = scrollContainerRef.current
+
+    if (!scrollContainer || isNearBottom()) {
+      return
+    }
+
+    const preservedScrollTop = scrollContainer.scrollTop
+    let nestedAnimationFrameId: number | null = null
+    const restoreScrollTop = () => {
+      if (scrollContainerRef.current !== scrollContainer) {
+        return
+      }
+
+      if (scrollContainer.scrollTop !== preservedScrollTop) {
+        scrollContainer.scrollTop = preservedScrollTop
+      }
+    }
+    const animationFrameId = window.requestAnimationFrame(() => {
+      // Keyboard close reintroduces bottom safe-area padding, so re-apply
+      // the pre-close offset after the layout settles to cancel anchor drift.
+      restoreScrollTop()
+      nestedAnimationFrameId = window.requestAnimationFrame(() => {
+        restoreScrollTop()
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+      if (nestedAnimationFrameId !== null) {
+        window.cancelAnimationFrame(nestedAnimationFrameId)
+      }
+    }
+  }, [isKeyboardOpen, isNearBottom, pendingInitialSavedScrollRestore])
 
   const scrollPageToBottom = useCallback((
     behavior: ScrollBehavior = 'auto',
