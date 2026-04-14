@@ -9699,11 +9699,10 @@ export default function ChatSection({
         <div
           className="pointer-events-auto fixed z-50 max-h-48 overflow-y-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-black"
           style={{
-            top: `${mentionSuggestionsAnchorRect.top}px`,
+            top: `${mentionSuggestionsAnchorRect.top - 8}px`,
             left: `${mentionSuggestionsAnchorRect.left}px`,
             width: `${mentionSuggestionsAnchorRect.width}px`,
             maxHeight: `${Math.min(192, Math.max(0, mentionSuggestionsAnchorRect.top - 20))}px`,
-            transform: 'translateY(-100%)',
           }}
         >
           {mentionSuggestions.map((suggestion, index) => {
