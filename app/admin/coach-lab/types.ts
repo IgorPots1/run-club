@@ -74,6 +74,7 @@ export type CoachLabAiOutput = {
   matched_workouts: CoachLabMatchedWorkout[]
   missed_or_changed_workouts: CoachLabMissedOrChangedWorkout[]
   load_observations: string[]
+  ready_to_send_feedback: string
   athlete_feedback: string
   coach_note: string
   confidence: 'low' | 'medium' | 'high'

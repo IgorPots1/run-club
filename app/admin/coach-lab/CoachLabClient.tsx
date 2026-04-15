@@ -350,15 +350,28 @@ export default function CoachLabClient({ users }: CoachLabClientProps) {
                     )}
                   </div>
 
-                  <div>
-                    <h3 className="app-text-primary text-sm font-semibold uppercase tracking-[0.08em]">Athlete feedback</h3>
-                    {state.result.aiOutput.athlete_feedback.length === 0 ? (
-                      <p className="app-text-secondary mt-2 text-sm">No athlete feedback returned.</p>
-                    ) : (
-                      <p className="app-surface-muted mt-2 rounded-2xl border p-3 text-sm">
-                        {state.result.aiOutput.athlete_feedback}
-                      </p>
-                    )}
+                  <div className="space-y-5">
+                    <div>
+                      <h3 className="app-text-primary text-sm font-semibold uppercase tracking-[0.08em]">Ready to send feedback</h3>
+                      {state.result.aiOutput.ready_to_send_feedback.length === 0 ? (
+                        <p className="app-text-secondary mt-2 text-sm">No ready-to-send feedback returned.</p>
+                      ) : (
+                        <p className="app-surface-muted mt-2 rounded-2xl border p-3 text-sm">
+                          {state.result.aiOutput.ready_to_send_feedback}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="app-text-primary text-sm font-semibold uppercase tracking-[0.08em]">Athlete feedback</h3>
+                      {state.result.aiOutput.athlete_feedback.length === 0 ? (
+                        <p className="app-text-secondary mt-2 text-sm">No athlete feedback returned.</p>
+                      ) : (
+                        <p className="app-surface-muted mt-2 rounded-2xl border p-3 text-sm">
+                          {state.result.aiOutput.athlete_feedback}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
