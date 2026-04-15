@@ -40,6 +40,21 @@ type RunLapRow = {
   average_heartrate: number | null
 }
 
+type AggregatedRunSegment = {
+  name: 'warmup' | 'main' | 'cooldown'
+  duration_min: number | null
+  avg_pace_sec: number | null
+  avg_heartrate: number | null
+}
+
+type NormalizedRunLapMetrics = {
+  index: number
+  distance_km: number | null
+  duration_seconds: number | null
+  pace_sec: number | null
+  average_heartrate: number | null
+}
+
 const DEFAULT_MODEL = 'gpt-4.1-mini'
 const MAX_LAPS_PER_RUN = 15
 
@@ -251,6 +266,43 @@ function resolveLapPaceSeconds(lap: Pick<RunLapRow, 'distance_meters' | 'elapsed
   return null
 }
 
+function resolveLapDurationSeconds(lap: Pick<RunLapRow, 'distance_meters' | 'elapsed_time_seconds' | 'pace_seconds_per_km'>) {
+  if (Number.isFinite(lap.elapsed_time_seconds) && (lap.elapsed_time_seconds ?? 0) > 0) {
+    return Math.round(Number(lap.elapsed_time_seconds))
+  }
+
+  const paceSeconds = resolveLapPaceSeconds(lap)
+
+  if (
+    paceSeconds !== null &&
+    Number.isFinite(lap.distance_meters) &&
+    (lap.distance_meters ?? 0) > 0
+  ) {
+    return Math.round(paceSeconds * (Number(lap.distance_meters) / 1000))
+  }
+
+  return null
+}
+
+function normalizeRunLapMetrics(lap: RunLapRow, fallbackIndex: number): NormalizedRunLapMetrics {
+  return {
+    index:
+      Number.isFinite(lap.lap_index) && (lap.lap_index ?? 0) > 0
+        ? Math.round(Number(lap.lap_index))
+        : fallbackIndex,
+    distance_km:
+      Number.isFinite(lap.distance_meters) && (lap.distance_meters ?? 0) > 0
+        ? roundNumber(Number(lap.distance_meters) / 1000, 2)
+        : null,
+    duration_seconds: resolveLapDurationSeconds(lap),
+    pace_sec: resolveLapPaceSeconds(lap),
+    average_heartrate:
+      Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
+        ? Math.round(Number(lap.average_heartrate))
+        : null,
+  }
+}
+
 function buildRunLapsByRunId(data: RunLapRow[] | null) {
   const lapsByRunId = new Map<string, CoachLabActualRunLap[]>()
 
@@ -261,26 +313,139 @@ function buildRunLapsByRunId(data: RunLapRow[] | null) {
       continue
     }
 
+    const normalizedLap = normalizeRunLapMetrics(lap, existing.length + 1)
+
     existing.push({
-      index:
-        Number.isFinite(lap.lap_index) && (lap.lap_index ?? 0) > 0
-          ? Math.round(Number(lap.lap_index))
-          : existing.length + 1,
-      distance_km:
-        Number.isFinite(lap.distance_meters) && (lap.distance_meters ?? 0) > 0
-          ? roundNumber(Number(lap.distance_meters) / 1000, 2)
-          : null,
-      pace_sec: resolveLapPaceSeconds(lap),
-      average_heartrate:
-        Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
-          ? Math.round(Number(lap.average_heartrate))
-          : null,
+      index: normalizedLap.index,
+      distance_km: normalizedLap.distance_km,
+      pace_sec: normalizedLap.pace_sec,
+      average_heartrate: normalizedLap.average_heartrate,
     })
 
     lapsByRunId.set(lap.run_id, existing)
   }
 
   return lapsByRunId
+}
+
+function createEmptyRunSegment(name: AggregatedRunSegment['name']): AggregatedRunSegment {
+  return {
+    name,
+    duration_min: null,
+    avg_pace_sec: null,
+    avg_heartrate: null,
+  }
+}
+
+function aggregateRunSegment(
+  name: AggregatedRunSegment['name'],
+  laps: NormalizedRunLapMetrics[]
+): AggregatedRunSegment {
+  if (laps.length === 0) {
+    return createEmptyRunSegment(name)
+  }
+
+  let totalDurationSeconds = 0
+  let totalDistanceKm = 0
+  let hasDuration = false
+  let hasDistance = false
+  let weightedHeartRateTotal = 0
+  let weightedHeartRateDuration = 0
+  const unweightedHeartRates: number[] = []
+
+  for (const lap of laps) {
+    if (Number.isFinite(lap.duration_seconds) && (lap.duration_seconds ?? 0) > 0) {
+      totalDurationSeconds += Number(lap.duration_seconds)
+      hasDuration = true
+    }
+
+    if (Number.isFinite(lap.distance_km) && (lap.distance_km ?? 0) > 0) {
+      totalDistanceKm += Number(lap.distance_km)
+      hasDistance = true
+    }
+
+    if (Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0) {
+      if (Number.isFinite(lap.duration_seconds) && (lap.duration_seconds ?? 0) > 0) {
+        weightedHeartRateTotal += Number(lap.average_heartrate) * Number(lap.duration_seconds)
+        weightedHeartRateDuration += Number(lap.duration_seconds)
+      } else {
+        unweightedHeartRates.push(Number(lap.average_heartrate))
+      }
+    }
+  }
+
+  return {
+    name,
+    duration_min: hasDuration ? roundNumber(totalDurationSeconds / 60, 1) : null,
+    avg_pace_sec:
+      hasDuration && hasDistance && totalDistanceKm > 0
+        ? Math.round(totalDurationSeconds / totalDistanceKm)
+        : null,
+    avg_heartrate:
+      weightedHeartRateDuration > 0
+        ? Math.round(weightedHeartRateTotal / weightedHeartRateDuration)
+        : unweightedHeartRates.length > 0
+          ? Math.round(
+              unweightedHeartRates.reduce((sum, value) => sum + value, 0) / unweightedHeartRates.length
+            )
+          : null,
+  }
+}
+
+function buildRunSegmentsByRunId(data: RunLapRow[] | null) {
+  const normalizedLapsByRunId = new Map<string, NormalizedRunLapMetrics[]>()
+
+  for (const lap of data ?? []) {
+    const existing = normalizedLapsByRunId.get(lap.run_id) ?? []
+    existing.push(normalizeRunLapMetrics(lap, existing.length + 1))
+    normalizedLapsByRunId.set(lap.run_id, existing)
+  }
+
+  const segmentsByRunId = new Map<string, AggregatedRunSegment[]>()
+
+  for (const [runId, laps] of normalizedLapsByRunId.entries()) {
+    const sortedLaps = [...laps].sort((left, right) => left.index - right.index)
+    const totalLaps = sortedLaps.length
+
+    if (totalLaps === 0) {
+      segmentsByRunId.set(runId, [
+        createEmptyRunSegment('warmup'),
+        createEmptyRunSegment('main'),
+        createEmptyRunSegment('cooldown'),
+      ])
+      continue
+    }
+
+    if (totalLaps === 1) {
+      segmentsByRunId.set(runId, [
+        aggregateRunSegment('warmup', sortedLaps),
+        createEmptyRunSegment('main'),
+        createEmptyRunSegment('cooldown'),
+      ])
+      continue
+    }
+
+    if (totalLaps === 2) {
+      segmentsByRunId.set(runId, [
+        aggregateRunSegment('warmup', sortedLaps.slice(0, 1)),
+        createEmptyRunSegment('main'),
+        aggregateRunSegment('cooldown', sortedLaps.slice(1)),
+      ])
+      continue
+    }
+
+    const warmupCount = Math.max(1, Math.round(totalLaps * 0.2))
+    const cooldownCount = Math.max(1, Math.round(totalLaps * 0.2))
+    const cooldownStart = Math.max(warmupCount + 1, totalLaps - cooldownCount)
+
+    segmentsByRunId.set(runId, [
+      aggregateRunSegment('warmup', sortedLaps.slice(0, warmupCount)),
+      aggregateRunSegment('main', sortedLaps.slice(warmupCount, cooldownStart)),
+      aggregateRunSegment('cooldown', sortedLaps.slice(cooldownStart)),
+    ])
+  }
+
+  return segmentsByRunId
 }
 
 function getDayOfWeek(value: string): CoachLabActualRun['day_of_week'] {
@@ -370,7 +535,11 @@ function parsePlanDays(planText: string): CoachLabParsedPlanDay[] {
     })
 }
 
-function normalizeActualRuns(data: RunRow[] | null, lapsByRunId: Map<string, CoachLabActualRunLap[]>): CoachLabActualRun[] {
+function normalizeActualRuns(
+  data: RunRow[] | null,
+  lapsByRunId: Map<string, CoachLabActualRunLap[]>,
+  segmentsByRunId: Map<string, AggregatedRunSegment[]>
+): CoachLabActualRun[] {
   return (data ?? []).map((run) => {
     const distanceKm = Number.isFinite(run.distance_km) ? Number(run.distance_km) : null
     const movingTimeSeconds = Number.isFinite(run.moving_time_seconds) ? Math.round(Number(run.moving_time_seconds)) : null
@@ -382,6 +551,12 @@ function normalizeActualRuns(data: RunRow[] | null, lapsByRunId: Map<string, Coa
       averagePaceSeconds !== null
         ? `${Math.floor(averagePaceSeconds / 60)}:${String(averagePaceSeconds % 60).padStart(2, '0')}/km`
         : null
+    const laps = lapsByRunId.get(run.id) ?? []
+    const segments = segmentsByRunId.get(run.id) ?? [
+      createEmptyRunSegment('warmup'),
+      createEmptyRunSegment('main'),
+      createEmptyRunSegment('cooldown'),
+    ]
 
     return {
       id: run.id,
@@ -398,7 +573,8 @@ function normalizeActualRuns(data: RunRow[] | null, lapsByRunId: Map<string, Coa
       average_cadence: Number.isFinite(run.average_cadence) ? roundNumber(Number(run.average_cadence), 1) : null,
       average_heartrate: Number.isFinite(run.average_heartrate) ? Math.round(Number(run.average_heartrate)) : null,
       max_heartrate: Number.isFinite(run.max_heartrate) ? Math.round(Number(run.max_heartrate)) : null,
-      laps: lapsByRunId.get(run.id) ?? [],
+      laps,
+      segments,
       external_source: run.external_source?.trim() || null,
       external_id: run.external_id?.trim() || null,
     }
@@ -856,7 +1032,11 @@ export async function analyzeCoachLab(
   }
 
   const parsedPlanDays = parsePlanDays(form.planText)
-  const actualRuns = normalizeActualRuns(runRows, buildRunLapsByRunId(runLaps))
+  const actualRuns = normalizeActualRuns(
+    runRows,
+    buildRunLapsByRunId(runLaps),
+    buildRunSegmentsByRunId(runLaps)
+  )
   const userLabel = profile.name?.trim() || profile.id
   const weeklySummary = buildWeeklySummary(weekStartIso, weekEndIso, parsedPlanDays, actualRuns)
   const payload: CoachLabModelPayload = {
