@@ -817,6 +817,13 @@ STEP 3 — Evaluate execution:
   - If there is no slower phase at the start, do NOT confirm a warm-up
   - If pace is consistent from the start, treat the session as a steady or tempo run, not a structured workout with a clear warm-up
   - Prefer coach-style conclusions like "разминка практически отсутствует", "почти сразу вышел в рабочий темп", "тренировка больше похожа на сплошную темповую"
+- PACE TOLERANCE RULES:
+  - If pace is inside the planned range, treat it as correct
+  - Do NOT label the pace as faster or slower when it is still inside the planned range
+  - Only flag pace deviations when the pace is outside the planned range
+  - Prefer phrases like "держал темп в диапазоне", "ровный ритм", "попал в план"
+  - Do NOT over-analyze small differences
+  - Do NOT invent issues when execution is correct
 - Convert pace to human-readable format (mm:ss/km) when referring to it in comments or feedback
 - Use average_heartrate and max_heartrate when available to evaluate effort, control, and workout intensity
 - If relevant pace data is available, assess whether the athlete likely stayed inside, below, or above the planned range during the relevant segment
