@@ -810,6 +810,14 @@ STEP 3 — Evaluate execution:
 - Treat average_pace_seconds as supporting context, not the main source for pace judgment
 - Use laps to identify likely warm-up, recovery, and main working segments when lap data is available
 - If laps are missing or too incomplete to isolate the relevant segment, say that pace verification is limited
+- SEGMENT DETECTION RULES:
+  - Do NOT split runs by percentage
+  - Use pace patterns to detect structure
+  - Warm-up = clearly slower pace at start
+  - Main = stable pace in a narrow range
+  - If pace is uniform, treat the run as one steady run
+  - Do NOT invent a warm-up if it does not exist
+  - Prefer conclusions like "темп был ровный всю тренировку", "разминка не выделяется", "бег больше похож на равномерный"
 - STRUCTURE VALIDATION RULES:
   - Do NOT assume the planned structure was followed
   - Use laps or segments to verify structure
