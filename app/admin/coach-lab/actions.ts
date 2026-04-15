@@ -310,21 +310,36 @@ function parsePlanDays(planText: string): CoachLabParsedPlanDay[] {
 }
 
 function normalizeActualRuns(data: RunRow[] | null): CoachLabActualRun[] {
-  return (data ?? []).map((run) => ({
-    id: run.id,
-    created_at: run.created_at,
-    day_of_week: getDayOfWeek(run.created_at),
-    title: run.title?.trim() || run.name?.trim() || 'Untitled workout',
-    description: run.description?.trim() || null,
-    distance_km: Number.isFinite(run.distance_km) ? roundNumber(Number(run.distance_km), 2) : null,
-    duration_minutes: resolveDurationMinutes(run),
-    moving_time_seconds: Number.isFinite(run.moving_time_seconds) ? Math.round(Number(run.moving_time_seconds)) : null,
-    elevation_gain_meters: Number.isFinite(run.elevation_gain_meters) ? Math.round(Number(run.elevation_gain_meters)) : null,
-    average_heartrate: Number.isFinite(run.average_heartrate) ? Math.round(Number(run.average_heartrate)) : null,
-    max_heartrate: Number.isFinite(run.max_heartrate) ? Math.round(Number(run.max_heartrate)) : null,
-    external_source: run.external_source?.trim() || null,
-    external_id: run.external_id?.trim() || null,
-  }))
+  return (data ?? []).map((run) => {
+    const distanceKm = Number.isFinite(run.distance_km) ? Number(run.distance_km) : null
+    const movingTimeSeconds = Number.isFinite(run.moving_time_seconds) ? Math.round(Number(run.moving_time_seconds)) : null
+    const averagePaceSeconds =
+      movingTimeSeconds !== null && distanceKm !== null && distanceKm > 0
+        ? Math.round(movingTimeSeconds / distanceKm)
+        : null
+    const averagePaceLabel =
+      averagePaceSeconds !== null
+        ? `${Math.floor(averagePaceSeconds / 60)}:${String(averagePaceSeconds % 60).padStart(2, '0')}/km`
+        : null
+
+    return {
+      id: run.id,
+      created_at: run.created_at,
+      day_of_week: getDayOfWeek(run.created_at),
+      title: run.title?.trim() || run.name?.trim() || 'Untitled workout',
+      description: run.description?.trim() || null,
+      distance_km: distanceKm !== null ? roundNumber(distanceKm, 2) : null,
+      duration_minutes: resolveDurationMinutes(run),
+      moving_time_seconds: movingTimeSeconds,
+      average_pace_seconds: averagePaceSeconds,
+      average_pace_label: averagePaceLabel,
+      elevation_gain_meters: Number.isFinite(run.elevation_gain_meters) ? Math.round(Number(run.elevation_gain_meters)) : null,
+      average_heartrate: Number.isFinite(run.average_heartrate) ? Math.round(Number(run.average_heartrate)) : null,
+      max_heartrate: Number.isFinite(run.max_heartrate) ? Math.round(Number(run.max_heartrate)) : null,
+      external_source: run.external_source?.trim() || null,
+      external_id: run.external_id?.trim() || null,
+    }
+  })
 }
 
 function buildWeeklySummary(
