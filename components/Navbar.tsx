@@ -18,6 +18,9 @@ type NavbarUser = {
 const CORE_NAV_PREFETCH_ROUTES = new Set([
   '/dashboard',
   '/activity',
+  '/runs',
+  '/leaderboard',
+  '/challenges',
   '/messages',
   '/profile',
 ])
@@ -81,9 +84,9 @@ export default function Navbar({ initialUser }: { initialUser: NavbarUser | null
       <div className="flex gap-4">
           <Link href="/dashboard" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/dashboard')}>Главная</Link>
           <Link href="/activity" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/activity')}>Активность</Link>
-          <Link href="/runs" prefetch={false}>Тренировки</Link>
-          <Link href="/leaderboard" prefetch={false}>Рейтинг</Link>
-          <Link href="/challenges" prefetch={false}>Челленджи</Link>
+          <Link href="/runs" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/runs')}>Тренировки</Link>
+          <Link href="/leaderboard" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/leaderboard')}>Рейтинг</Link>
+          <Link href="/challenges" prefetch={CORE_NAV_PREFETCH_ROUTES.has('/challenges')}>Челленджи</Link>
           <Link
             href="/messages"
             prefetch={CORE_NAV_PREFETCH_ROUTES.has('/messages')}

@@ -1,13 +1,13 @@
 'use client'
 
 import { ArrowUpRight, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import ConfirmActionSheet from '@/components/ConfirmActionSheet'
 import RaceEventFormSheet from '@/components/RaceEventFormSheet'
 import { loadActivityRuns, type ActivityRunRow } from '@/lib/activity'
+import { isNativeCapacitorApp } from '@/lib/capacitor'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { useRunDetailReturnState } from '@/lib/run-detail-navigation'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
@@ -31,6 +31,8 @@ import {
 type RacesManagerProps = {
   userId: string
 }
+
+const SHOULD_REVALIDATE_RACES_ON_FOCUS = !isNativeCapacitorApp()
 
 type RaceEventCardProps = {
   raceEvent: RaceEvent
@@ -396,7 +398,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     ['activity-runs', userId] as const,
     ([, nextUserId]: readonly [string, string]) => loadActivityRuns(nextUserId),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: SHOULD_REVALIDATE_RACES_ON_FOCUS,
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: 15000,
@@ -412,7 +414,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
     ['race-events', userId] as const,
     () => loadRaceEvents(),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: SHOULD_REVALIDATE_RACES_ON_FOCUS,
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: 15000,

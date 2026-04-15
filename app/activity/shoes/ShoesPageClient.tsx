@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { Footprints, PencilLine, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
+import { isNativeCapacitorApp } from '@/lib/capacitor'
 import { formatShoeDistanceMetersAsKm, getShoeWearUi } from '@/lib/shoe-wear-ui'
 import {
   createUserShoe,
@@ -19,6 +20,8 @@ type ShoesPageClientProps = {
   initialShoes: UserShoeRecord[]
   initialCatalog: ShoeCatalogBrand[]
 }
+
+const SHOULD_REVALIDATE_SHOES_ON_FOCUS = !isNativeCapacitorApp()
 
 function toNullableTrimmedText(value: string) {
   const trimmedValue = value.trim()
@@ -998,7 +1001,7 @@ export default function ShoesPageClient({
   } = useSWR('user-shoes', loadUserShoes, {
     fallbackData: initialShoes,
     revalidateOnMount: false,
-    revalidateOnFocus: true,
+    revalidateOnFocus: SHOULD_REVALIDATE_SHOES_ON_FOCUS,
     revalidateOnReconnect: true,
     keepPreviousData: true,
     dedupingInterval: 15000,

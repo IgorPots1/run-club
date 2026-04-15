@@ -21,6 +21,7 @@ import {
   type ActivityPeriod,
 } from '@/lib/activity'
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements-client'
+import { isNativeCapacitorApp } from '@/lib/capacitor'
 import {
   formatAveragePace,
   formatDistanceKm,
@@ -38,6 +39,8 @@ const PERIOD_OPTIONS: { id: ActivityPeriod; label: string }[] = [
   { id: 'year', label: 'Год' },
   { id: 'all', label: 'Все' },
 ]
+
+const SHOULD_REVALIDATE_ACTIVITY_ON_FOCUS = !isNativeCapacitorApp()
 
 const DEFAULT_WORKOUT_NAME = 'Бег'
 const FASTEST_RUN_MIN_DISTANCE_KM = 3
@@ -390,7 +393,7 @@ export default function ActivityPage() {
     user ? (['activity-runs', user.id] as const) : null,
     ([, userId]: readonly [string, string]) => loadActivityRuns(userId),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: SHOULD_REVALIDATE_ACTIVITY_ON_FOCUS,
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: 15000,
@@ -405,7 +408,7 @@ export default function ActivityPage() {
     user ? (['activity-achievements', user.id] as const) : null,
     () => loadUserAchievements(),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: SHOULD_REVALIDATE_ACTIVITY_ON_FOCUS,
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: 60000,
@@ -419,7 +422,7 @@ export default function ActivityPage() {
     user ? (['race-events', user.id] as const) : null,
     () => loadRaceEvents(),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: SHOULD_REVALIDATE_ACTIVITY_ON_FOCUS,
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: 15000,
