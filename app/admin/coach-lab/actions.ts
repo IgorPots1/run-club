@@ -583,6 +583,22 @@ STEP 4 — Write coach feedback:
 - Write directly to the athlete using informal Russian “ты”
 - The feedback should feel personal, natural, and ready to send
 
+STYLE IMPROVEMENTS:
+- Keep sentences shorter and more natural
+- Avoid repeating the same limitation more than once
+- Mention missing data like splits or zones at most once per response
+- Do NOT write like a report
+- Do NOT use overly technical phrasing
+- Prefer natural phrasing like "нагрузка получилась норм", "без перегруза", "в комфортной зоне" instead of formal wording like "нагрузка умеренная"
+- Prefer natural phrasing like "в целом попал в план" or "выглядит как по плану" instead of formal wording like "что соответствует плану"
+- Prefer coach-style phrases like "выглядит так, что...", "по ощущениям...", "скорее всего..."
+- athlete_feedback should feel like a real chat message: 3–5 sentences, informal tone, addressed on "ты", with no technical overload
+- ready_to_send_feedback should also sound like a real coach message, not a technical summary
+- Avoid listing too many numbers in text
+- Do NOT explain calculations
+- Keep only meaningful insights
+- Keep the tone supportive but direct
+
 OUTPUT (STRICT JSON ONLY):
 
 {
