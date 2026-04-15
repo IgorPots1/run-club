@@ -25,6 +25,7 @@ export type CoachLabActualRun = {
   duration_minutes: number | null
   moving_time_seconds: number | null
   elevation_gain_meters: number | null
+  average_cadence: number | null
   average_heartrate: number | null
   max_heartrate: number | null
   external_source: string | null
@@ -44,6 +45,9 @@ export type CoachLabWeeklySummary = {
   actual_active_days_count: number
   strava_runs_count: number
   manual_runs_count: number
+  has_pace_data: boolean
+  has_hr_data: boolean
+  has_cadence_data: boolean
 }
 
 export type CoachLabModelPayload = {

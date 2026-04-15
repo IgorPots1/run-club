@@ -358,6 +358,9 @@ function buildWeeklySummary(
   const actualDurationMinutes = actualRuns.reduce((sum, run) => sum + Number(run.duration_minutes ?? 0), 0)
   const activeDays = new Set(actualRuns.map((run) => run.created_at.slice(0, 10)))
   const stravaRunsCount = actualRuns.filter((run) => run.external_source === 'strava').length
+  const hasPaceData = actualRuns.some((run) => Number(run.distance_km ?? 0) > 0 && Number(run.moving_time_seconds ?? 0) > 0)
+  const hasHrData = actualRuns.some((run) => Number(run.average_heartrate ?? 0) > 0)
+  const hasCadenceData = actualRuns.some((run) => Number(run.average_cadence ?? 0) > 0)
 
   return {
     range_start: weekStartIso,
@@ -372,6 +375,9 @@ function buildWeeklySummary(
     actual_active_days_count: activeDays.size,
     strava_runs_count: stravaRunsCount,
     manual_runs_count: actualRuns.length - stravaRunsCount,
+    has_pace_data: hasPaceData,
+    has_hr_data: hasHrData,
+    has_cadence_data: hasCadenceData,
   }
 }
 
