@@ -20,6 +20,7 @@ export default async function AdminLayout({
             </div>
             <nav className="flex flex-col gap-2">
               <AdminNavLink href="/admin/users">Пользователи</AdminNavLink>
+              <AdminNavLink href="/admin/coach-lab">Coach Lab</AdminNavLink>
               <AdminNavLink href="/admin/challenges">Челленджи</AdminNavLink>
               <AdminNavLink href="/admin/challenge-templates">Шаблоны челленджей</AdminNavLink>
               <AdminNavLink href="/admin/audit">Журнал действий</AdminNavLink>
