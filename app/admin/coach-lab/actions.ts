@@ -118,15 +118,19 @@ const AI_OUTPUT_SCHEMA = {
   },
 } as const
 
+function getFormString(value: FormDataEntryValue | null): string {
+  return typeof value === 'string' ? value : ''
+}
+
 function normalizeFormValues(formData: FormData): CoachLabFormValues {
-  const userId = typeof formData.get('user_id') === 'string' ? formData.get('user_id') : ''
-  const weekStart = typeof formData.get('week_start') === 'string' ? formData.get('week_start') : ''
-  const planText = typeof formData.get('plan_text') === 'string' ? formData.get('plan_text') : ''
+  const normalizedUserId = getFormString(formData.get('user_id'))
+  const normalizedWeekStart = getFormString(formData.get('week_start'))
+  const normalizedPlanText = getFormString(formData.get('plan_text'))
 
   return {
-    userId: userId.trim(),
-    weekStart: weekStart.trim(),
-    planText: planText.replace(/\r\n?/g, '\n').trim(),
+    userId: normalizedUserId.trim(),
+    weekStart: normalizedWeekStart.trim(),
+    planText: normalizedPlanText.replace(/\r\n?/g, '\n').trim(),
   }
 }
 
