@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type {
   CoachLabActualRun,
+  CoachLabActualRunLap,
   CoachLabAiOutput,
   CoachLabFormValues,
   CoachLabModelPayload,
@@ -30,7 +31,17 @@ type RunRow = {
   external_id: string | null
 }
 
+type RunLapRow = {
+  run_id: string
+  lap_index: number | null
+  distance_meters: number | null
+  elapsed_time_seconds: number | null
+  pace_seconds_per_km: number | null
+  average_heartrate: number | null
+}
+
 const DEFAULT_MODEL = 'gpt-4.1-mini'
+const MAX_LAPS_PER_RUN = 15
 
 const DAY_PATTERNS = [
   { label: 'Monday', regex: /\b(?:mon(?:day)?|пн|пон(?:едельник)?)\b/i },
@@ -223,6 +234,55 @@ function resolveDurationMinutes(run: Pick<RunRow, 'moving_time_seconds' | 'durat
   return null
 }
 
+function resolveLapPaceSeconds(lap: Pick<RunLapRow, 'distance_meters' | 'elapsed_time_seconds' | 'pace_seconds_per_km'>) {
+  if (Number.isFinite(lap.pace_seconds_per_km) && (lap.pace_seconds_per_km ?? 0) > 0) {
+    return Math.round(Number(lap.pace_seconds_per_km))
+  }
+
+  if (
+    Number.isFinite(lap.distance_meters) &&
+    (lap.distance_meters ?? 0) > 0 &&
+    Number.isFinite(lap.elapsed_time_seconds) &&
+    (lap.elapsed_time_seconds ?? 0) > 0
+  ) {
+    return Math.round(Number(lap.elapsed_time_seconds) / (Number(lap.distance_meters) / 1000))
+  }
+
+  return null
+}
+
+function buildRunLapsByRunId(data: RunLapRow[] | null) {
+  const lapsByRunId = new Map<string, CoachLabActualRunLap[]>()
+
+  for (const lap of data ?? []) {
+    const existing = lapsByRunId.get(lap.run_id) ?? []
+
+    if (existing.length >= MAX_LAPS_PER_RUN) {
+      continue
+    }
+
+    existing.push({
+      index:
+        Number.isFinite(lap.lap_index) && (lap.lap_index ?? 0) > 0
+          ? Math.round(Number(lap.lap_index))
+          : existing.length + 1,
+      distance_km:
+        Number.isFinite(lap.distance_meters) && (lap.distance_meters ?? 0) > 0
+          ? roundNumber(Number(lap.distance_meters) / 1000, 2)
+          : null,
+      pace_sec: resolveLapPaceSeconds(lap),
+      average_heartrate:
+        Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
+          ? Math.round(Number(lap.average_heartrate))
+          : null,
+    })
+
+    lapsByRunId.set(lap.run_id, existing)
+  }
+
+  return lapsByRunId
+}
+
 function getDayOfWeek(value: string): CoachLabActualRun['day_of_week'] {
   const date = new Date(value)
 
@@ -310,7 +370,7 @@ function parsePlanDays(planText: string): CoachLabParsedPlanDay[] {
     })
 }
 
-function normalizeActualRuns(data: RunRow[] | null): CoachLabActualRun[] {
+function normalizeActualRuns(data: RunRow[] | null, lapsByRunId: Map<string, CoachLabActualRunLap[]>): CoachLabActualRun[] {
   return (data ?? []).map((run) => {
     const distanceKm = Number.isFinite(run.distance_km) ? Number(run.distance_km) : null
     const movingTimeSeconds = Number.isFinite(run.moving_time_seconds) ? Math.round(Number(run.moving_time_seconds)) : null
@@ -338,6 +398,7 @@ function normalizeActualRuns(data: RunRow[] | null): CoachLabActualRun[] {
       average_cadence: Number.isFinite(run.average_cadence) ? roundNumber(Number(run.average_cadence), 1) : null,
       average_heartrate: Number.isFinite(run.average_heartrate) ? Math.round(Number(run.average_heartrate)) : null,
       max_heartrate: Number.isFinite(run.max_heartrate) ? Math.round(Number(run.max_heartrate)) : null,
+      laps: lapsByRunId.get(run.id) ?? [],
       external_source: run.external_source?.trim() || null,
       external_id: run.external_id?.trim() || null,
     }
@@ -768,8 +829,26 @@ export async function analyzeCoachLab(
     return buildErrorState(form, `Failed to load runs: ${runsError.message}`)
   }
 
+  const runRows = (runs as RunRow[] | null) ?? []
+  const runIds = runRows.map((run) => run.id)
+  let runLaps: RunLapRow[] | null = null
+
+  if (runIds.length > 0) {
+    const { data: runLapsData, error: runLapsError } = await supabase
+      .from('run_laps')
+      .select('run_id, lap_index, distance_meters, elapsed_time_seconds, pace_seconds_per_km, average_heartrate')
+      .in('run_id', runIds)
+      .order('lap_index', { ascending: true })
+
+    if (runLapsError) {
+      return buildErrorState(form, `Failed to load run laps: ${runLapsError.message}`)
+    }
+
+    runLaps = (runLapsData as RunLapRow[] | null) ?? []
+  }
+
   const parsedPlanDays = parsePlanDays(form.planText)
-  const actualRuns = normalizeActualRuns((runs as RunRow[] | null) ?? [])
+  const actualRuns = normalizeActualRuns(runRows, buildRunLapsByRunId(runLaps))
   const userLabel = profile.name?.trim() || profile.id
   const weeklySummary = buildWeeklySummary(weekStartIso, weekEndIso, parsedPlanDays, actualRuns)
   const payload: CoachLabModelPayload = {

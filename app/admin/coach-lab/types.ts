@@ -15,6 +15,13 @@ export type CoachLabParsedPlanDay = {
   notes: string | null
 }
 
+export type CoachLabActualRunLap = {
+  index: number
+  distance_km: number | null
+  pace_sec: number | null
+  average_heartrate: number | null
+}
+
 export type CoachLabActualRun = {
   id: string
   created_at: string
@@ -28,6 +35,7 @@ export type CoachLabActualRun = {
   average_cadence: number | null
   average_heartrate: number | null
   max_heartrate: number | null
+  laps: CoachLabActualRunLap[]
   external_source: string | null
   external_id: string | null
 }
