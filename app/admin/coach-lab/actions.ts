@@ -453,6 +453,7 @@ function normalizeAiOutput(value: unknown): CoachLabAiOutput | null {
   const coachNote = normalizeString(value.coach_note)
   const loadObservations = isStringArray(value.load_observations) ? value.load_observations.map((item) => item.trim()).filter(Boolean) : []
   const athleteFeedback = normalizeString(value.athlete_feedback)
+  const readyToSendFeedback = normalizeString(value.ready_to_send_feedback)
   const warnings = isStringArray(value.warnings) ? value.warnings.map((item) => item.trim()).filter(Boolean) : []
 
   if (!summary || !coachNote || !athleteFeedback) {
@@ -491,6 +492,7 @@ function normalizeAiOutput(value: unknown): CoachLabAiOutput | null {
     matched_workouts: normalizedMatched,
     missed_or_changed_workouts: normalizedMissed,
     load_observations: loadObservations,
+    ready_to_send_feedback: readyToSendFeedback || athleteFeedback,
     athlete_feedback: athleteFeedback,
     coach_note: coachNote,
     confidence,
