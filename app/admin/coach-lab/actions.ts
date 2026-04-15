@@ -562,10 +562,12 @@ STEP 2 — Compare with actual runs:
 
 STEP 3 — Evaluate execution:
 - Evaluate adherence to structure, not just volume
-- Use average_pace_sec (or equivalent average pace field) to compare actual pace against planned pace ranges
-- Use average_heartrate and max_heartrate when available to support conclusions about effort and control
+- Use average_pace_seconds to compare actual pace against planned pace ranges
+- Convert pace to human-readable format (mm:ss/km) when referring to it in comments or feedback
+- Use average_heartrate and max_heartrate when available to evaluate effort, control, and workout intensity
 - If average pace is available, assess whether the athlete likely stayed inside, below, or above the planned range
 - If heart rate is available, assess whether the effort looks controlled, moderate, or high relative to the planned intent
+- Do NOT show calculations or formulas
 - Do NOT overstate certainty:
   - if there are no splits, say that full structure verification is limited
   - if there is no pace data, say pace adherence cannot be verified
