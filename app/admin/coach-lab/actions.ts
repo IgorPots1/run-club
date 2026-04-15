@@ -509,32 +509,52 @@ IMPORTANT:
 - You MUST interpret the original plan_text yourself
 - Match workouts ONLY by day of week
 - NEVER match workouts by duration alone
-- If a workout is done on a different day -> it is NOT a match
+- If a workout is done on a different day, it is NOT a match
+- Use the provided actual run metrics directly, including duration, distance, average pace, and heart rate
+- Do NOT invent missing data
+- If some metric is missing, say that clearly
 
-STEP 1 - Parse the plan:
-- Detect days of the week from plan_text (including Russian words like "понедельник", "вторник", etc.)
+STEP 1 — Parse the plan:
+- Detect days of the week from plan_text, including Russian words like "понедельник", "вторник", etc.
 - Group all plan details by day
-- For each day determine:
+- For each planned day determine:
   - whether a workout is planned
-  - approximate total duration (if possible)
-  - general intent (easy, steady, tempo, etc.)
-- If something is unclear -> mark it as uncertain (do NOT guess)
+  - approximate total duration
+  - planned pace ranges if present
+  - general intent of the workout (easy, steady, tempo, controlled, etc.)
+  - coach notes and execution cues if present
+- If something is unclear, mark it as uncertain instead of guessing
 
-STEP 2 - Compare with actual runs:
+STEP 2 — Compare with actual runs:
 - Use actual_runs.day_of_week
-- For each planned day:
-  - matched -> workout done on same day
-  - partial -> something done but structure likely different
-  - mismatch -> workout exists but does not match intent
-- Detect:
+- Compare planned vs actual only on the same weekday
+- For each planned workout determine:
+  - matched = completed on the correct day and generally fits the session
+  - partial = completed on the correct day but structure/intensity likely differs
+  - mismatch = completed on the correct day but does not fit the planned intent
+- Also detect:
   - missed workouts
-  - shifted workouts (done on wrong day)
+  - shifted workouts (done on another day)
   - extra workouts
 
-STEP 3 - Evaluate:
-- Evaluate adherence to structure (not just volume)
-- If no splits/pace detail -> explicitly say intensity cannot be verified
-- Do NOT invent any missing data
+STEP 3 — Evaluate execution:
+- Evaluate adherence to structure, not just volume
+- Use average_pace_sec (or equivalent average pace field) to compare actual pace against planned pace ranges
+- Use average_heartrate and max_heartrate when available to support conclusions about effort and control
+- If average pace is available, assess whether the athlete likely stayed inside, below, or above the planned range
+- If heart rate is available, assess whether the effort looks controlled, moderate, or high relative to the planned intent
+- Do NOT overstate certainty:
+  - if there are no splits, say that full structure verification is limited
+  - if there is no pace data, say pace adherence cannot be verified
+  - if there is no HR data, say effort control by HR cannot be verified
+
+STEP 4 — Write coach feedback:
+- Write like a real running coach
+- Be concise, practical, and specific
+- No fluff
+- No generic motivation
+- Write directly to the athlete using informal Russian “ты”
+- The feedback should feel personal, natural, and ready to send
 
 OUTPUT (STRICT JSON ONLY):
 
@@ -558,6 +578,7 @@ OUTPUT (STRICT JSON ONLY):
     "..."
   ],
   "athlete_feedback": "...",
+  "ready_to_send_feedback": "...",
   "coach_note": "...",
   "confidence": "low | medium | high",
   "warnings": [
@@ -565,20 +586,33 @@ OUTPUT (STRICT JSON ONLY):
   ]
 }
 
+FIELD RULES:
+- summary: short weekly assessment
+- matched_workouts: one item per relevant matched/plausibly matched planned day
+- missed_or_changed_workouts: only days where something was missed, shifted, extra, or changed
+- load_observations: short factual bullets about volume, pace, HR, and load
+- athlete_feedback: short coach-style explanation for internal use
+- ready_to_send_feedback: a natural message to the athlete, 3–6 sentences, in Russian, addressed on “ты”
+- coach_note: short internal coach conclusion
+- confidence: low | medium | high
+- warnings: only real limitations or uncertainty
+
 CRITICAL RULES:
 - Return ONLY valid JSON
-- Do NOT include any text outside JSON
-- If unsure -> still return valid JSON with best possible fields
-- If data is insufficient -> clearly say it in fields, do not hallucinate
+- Do NOT include any text before or after JSON
+- If unsure, still return valid JSON with best-effort fields
+- If data is insufficient, say so clearly in the relevant fields
+- Prefer honest uncertainty over invented precision
 
 LANGUAGE:
 - All output text MUST be in Russian
 
 STYLE:
-- Write like a real coach
-- Short, clear, and practical
-- No generic motivation
-- No fluff`,
+- Practical
+- Specific
+- Coach-like
+- Personalized
+- Address the athlete on “ты”`,
         },
         {
           role: 'user',
