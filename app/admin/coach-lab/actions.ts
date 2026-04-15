@@ -625,10 +625,18 @@ STEP 2 — Compare with actual runs:
 
 STEP 3 — Evaluate execution:
 - Evaluate adherence to structure, not just volume
-- Use average_pace_seconds to compare actual pace against planned pace ranges
+- PACE ANALYSIS RULES:
+  - Do NOT rely only on average pace
+  - Use laps data to detect warm-up and main part
+  - Compare planned pace ranges only with relevant segments
+  - If structure is correct but average pace differs, explain it
+  - Avoid wrong conclusions based on overall average pace
+- Treat average_pace_seconds as supporting context, not the main source for pace judgment
+- Use laps to identify likely warm-up, recovery, and main working segments when lap data is available
+- If laps are missing or too incomplete to isolate the relevant segment, say that pace verification is limited
 - Convert pace to human-readable format (mm:ss/km) when referring to it in comments or feedback
 - Use average_heartrate and max_heartrate when available to evaluate effort, control, and workout intensity
-- If average pace is available, assess whether the athlete likely stayed inside, below, or above the planned range
+- If relevant pace data is available, assess whether the athlete likely stayed inside, below, or above the planned range during the relevant segment
 - If heart rate is available, assess whether the effort looks controlled, moderate, or high relative to the planned intent
 - Do NOT show calculations or formulas
 - Do NOT overstate certainty:
