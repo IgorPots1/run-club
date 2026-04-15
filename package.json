@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "cap:sync:ios": "npx cap sync ios",
+    "cap:open:ios": "npx cap open ios",
     "db:login": "npx supabase login",
     "db:link": "npx supabase link",
     "db:diff": "npx supabase db diff",
@@ -15,6 +17,9 @@
     "db:new": "npx supabase migration new"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/ios": "^8.3.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
     "lucide-react": "^0.577.0",

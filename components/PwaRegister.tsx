@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { isNativeCapacitorApp } from '@/lib/capacitor'
 import { setAppVisibilityState } from '@/lib/push/clientPresence'
 import { ensurePushServiceWorkerRegistration } from '@/lib/push/subscribeToPush'
 
@@ -19,12 +20,14 @@ export default function PwaRegister() {
   const router = useRouter()
   const pathname = usePathname()
   const lastHandledNavigationKeyRef = useRef<string | null>(null)
+  const isNativeApp = isNativeCapacitorApp()
 
   useEffect(() => {
+    if (isNativeApp) return
     if (!('serviceWorker' in navigator)) return
 
     void ensurePushServiceWorkerRegistration().catch(() => {})
-  }, [])
+  }, [isNativeApp])
 
   useEffect(() => {
     const syncVisibilityState = () => {
@@ -44,6 +47,7 @@ export default function PwaRegister() {
   }, [])
 
   useEffect(() => {
+    if (isNativeApp) return
     if (!('serviceWorker' in navigator)) return
 
     const handler = (event: MessageEvent<{
@@ -109,7 +113,7 @@ export default function PwaRegister() {
     return () => {
       navigator.serviceWorker.removeEventListener('message', handler)
     }
-  }, [pathname, router])
+  }, [isNativeApp, pathname, router])
 
   return null
 }

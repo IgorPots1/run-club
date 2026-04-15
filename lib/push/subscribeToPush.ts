@@ -1,5 +1,7 @@
 'use client'
 
+import { isNativeCapacitorApp } from '@/lib/capacitor'
+
 type PushSubscriptionPayload = {
   endpoint: string
   keys: {
@@ -63,6 +65,10 @@ function isStandaloneDisplayMode() {
 
 export function isPushSupportedInCurrentContext() {
   if (typeof window === 'undefined') {
+    return false
+  }
+
+  if (isNativeCapacitorApp()) {
     return false
   }
 
