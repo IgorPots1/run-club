@@ -41,6 +41,26 @@ const DAY_PATTERNS = [
   { label: 'Sunday', regex: /\b(?:sun(?:day)?|вс|воскресенье)\b/i },
 ] as const
 
+const OUTPUT_DAY_VALUES = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const
+
+const WEEKDAY_LABELS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const
+
 const WORKOUT_KEYWORDS = [
   { type: 'rest', regex: /\b(?:rest|off|выходной|отдых)\b/i, intensity: 'rest' },
   { type: 'long run', regex: /\b(?:long\s*run|longrun|дл(?:инная)?|длительный)\b/i, intensity: 'steady' },
@@ -52,6 +72,10 @@ const WORKOUT_KEYWORDS = [
   { type: 'strength', regex: /\b(?:strength|gym|силов)\w*/i, intensity: 'supporting' },
   { type: 'cross-training', regex: /\b(?:bike|ride|swim|cross|вел|плав)\w*/i, intensity: 'supporting' },
 ] as const
+
+const MATCHED_WORKOUT_STATUSES = ['matched', 'partial', 'mismatch'] as const
+
+const MISSED_WORKOUT_ISSUES = ['missed', 'shifted', 'different workout'] as const
 
 const AI_OUTPUT_SCHEMA = {
   name: 'coach_lab_analysis',
@@ -67,11 +91,14 @@ const AI_OUTPUT_SCHEMA = {
           type: 'object',
           additionalProperties: false,
           properties: {
-            plan_reference: { type: 'string' },
-            actual_reference: { type: 'string' },
-            comparison_note: { type: 'string' },
+            day: { type: 'string', enum: OUTPUT_DAY_VALUES },
+            status: {
+              type: 'string',
+              enum: MATCHED_WORKOUT_STATUSES,
+            },
+            comment: { type: 'string' },
           },
-          required: ['plan_reference', 'actual_reference', 'comparison_note'],
+          required: ['day', 'status', 'comment'],
         },
       },
       missed_or_changed_workouts: {
@@ -80,21 +107,21 @@ const AI_OUTPUT_SCHEMA = {
           type: 'object',
           additionalProperties: false,
           properties: {
-            plan_reference: { type: 'string' },
-            outcome: { type: 'string' },
-            details: { type: 'string' },
+            day: { type: 'string', enum: OUTPUT_DAY_VALUES },
+            issue: {
+              type: 'string',
+              enum: MISSED_WORKOUT_ISSUES,
+            },
+            comment: { type: 'string' },
           },
-          required: ['plan_reference', 'outcome', 'details'],
+          required: ['day', 'issue', 'comment'],
         },
       },
       load_observations: {
         type: 'array',
         items: { type: 'string' },
       },
-      athlete_feedback: {
-        type: 'array',
-        items: { type: 'string' },
-      },
+      athlete_feedback: { type: 'string' },
       coach_note: { type: 'string' },
       confidence: {
         type: 'string',
@@ -195,6 +222,16 @@ function resolveDurationMinutes(run: Pick<RunRow, 'moving_time_seconds' | 'durat
   return null
 }
 
+function getDayOfWeek(value: string): CoachLabActualRun['day_of_week'] {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'monday'
+  }
+
+  return WEEKDAY_LABELS[date.getUTCDay()]
+}
+
 function detectDayLabel(line: string) {
   const match = DAY_PATTERNS.find((item) => item.regex.test(line))
   return match?.label ?? null
@@ -276,6 +313,7 @@ function normalizeActualRuns(data: RunRow[] | null): CoachLabActualRun[] {
   return (data ?? []).map((run) => ({
     id: run.id,
     created_at: run.created_at,
+    day_of_week: getDayOfWeek(run.created_at),
     title: run.title?.trim() || run.name?.trim() || 'Untitled workout',
     description: run.description?.trim() || null,
     distance_km: Number.isFinite(run.distance_km) ? roundNumber(Number(run.distance_km), 2) : null,
@@ -332,6 +370,18 @@ function normalizeString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function isOutputDay(value: string): value is (typeof OUTPUT_DAY_VALUES)[number] {
+  return OUTPUT_DAY_VALUES.includes(value as (typeof OUTPUT_DAY_VALUES)[number])
+}
+
+function isMatchedWorkoutStatus(value: string): value is (typeof MATCHED_WORKOUT_STATUSES)[number] {
+  return MATCHED_WORKOUT_STATUSES.includes(value as (typeof MATCHED_WORKOUT_STATUSES)[number])
+}
+
+function isMissedWorkoutIssue(value: string): value is (typeof MISSED_WORKOUT_ISSUES)[number] {
+  return MISSED_WORKOUT_ISSUES.includes(value as (typeof MISSED_WORKOUT_ISSUES)[number])
+}
+
 function normalizeStructuredArray(
   value: unknown,
   requiredKeys: string[]
@@ -366,38 +416,57 @@ function normalizeAiOutput(value: unknown): CoachLabAiOutput | null {
   }
 
   const matched = normalizeStructuredArray(value.matched_workouts, [
-    'plan_reference',
-    'actual_reference',
-    'comparison_note',
+    'day',
+    'status',
+    'comment',
   ])
   const missed = normalizeStructuredArray(value.missed_or_changed_workouts, [
-    'plan_reference',
-    'outcome',
-    'details',
+    'day',
+    'issue',
+    'comment',
   ])
 
   const summary = normalizeString(value.summary)
   const coachNote = normalizeString(value.coach_note)
   const loadObservations = isStringArray(value.load_observations) ? value.load_observations.map((item) => item.trim()).filter(Boolean) : []
-  const athleteFeedback = isStringArray(value.athlete_feedback) ? value.athlete_feedback.map((item) => item.trim()).filter(Boolean) : []
+  const athleteFeedback = normalizeString(value.athlete_feedback)
   const warnings = isStringArray(value.warnings) ? value.warnings.map((item) => item.trim()).filter(Boolean) : []
 
-  if (!summary || !coachNote) {
+  if (!summary || !coachNote || !athleteFeedback) {
     return null
   }
 
+  const normalizedMatched = matched.flatMap((item) => {
+    if (!isOutputDay(item.day) || !isMatchedWorkoutStatus(item.status)) {
+      return []
+    }
+
+    return [
+      {
+        day: item.day,
+        status: item.status,
+        comment: item.comment,
+      },
+    ]
+  })
+  const normalizedMissed = missed.flatMap((item) => {
+    if (!isOutputDay(item.day) || !isMissedWorkoutIssue(item.issue)) {
+      return []
+    }
+
+    return [
+      {
+        day: item.day,
+        issue: item.issue,
+        comment: item.comment,
+      },
+    ]
+  })
+
   return {
     summary,
-    matched_workouts: matched.map((item) => ({
-      plan_reference: item.plan_reference,
-      actual_reference: item.actual_reference,
-      comparison_note: item.comparison_note,
-    })),
-    missed_or_changed_workouts: missed.map((item) => ({
-      plan_reference: item.plan_reference,
-      outcome: item.outcome,
-      details: item.details,
-    })),
+    matched_workouts: normalizedMatched,
+    missed_or_changed_workouts: normalizedMissed,
     load_observations: loadObservations,
     athlete_feedback: athleteFeedback,
     coach_note: coachNote,
@@ -431,17 +500,18 @@ async function callOpenAiAnalysis(payload: CoachLabModelPayload) {
         {
           role: 'system',
           content:
-            'You are an experienced running coach reviewing a planned training week against actual completed runs. Compare plan versus actual; do not merely summarize workouts. If matching is uncertain or data is incomplete, say so plainly. Do not invent exact conclusions when confidence is low. Keep the tone practical, specific, and coach-like. Return only JSON that matches the provided schema.',
+            'You are an experienced running coach. Analyze a weekly training plan written in free text and compare it with actual completed runs. Do not rely on any pre-parsed structure alone: you must interpret the original plan_text yourself, and parsed_plan_days may be incomplete or wrong. Extract days of the week from the raw text, including Russian day names, group the plan by day, and mark uncertainty explicitly instead of guessing. Match workouts only by day of week; never match by duration alone, and a workout done on another day is not a match. Detect completed workouts, missed workouts, extra workouts, and shifted workouts. Evaluate adherence to weekly structure, not just total volume. If pace, splits, or intensity data are missing, say that intensity cannot be verified. Do not invent details. Output all text in Russian, concise and coach-like. Return only JSON that matches the provided schema.',
         },
         {
           role: 'user',
           content: JSON.stringify({
-            task: 'Analyze whether the athlete followed the planned week and how the actual load differed.',
+            task: 'Проанализируй, насколько спортсмен выполнил недельный план по дням недели и как фактическая нагрузка отличалась от запланированной.',
             matching_rules: [
-              'Use both the raw plan_text and parsed_plan_days.',
-              'Look for likely matches by day, workout type, and load, but call out uncertainty explicitly.',
-              'Mention extra runs when they materially change the week.',
-              'If the parser missed something obvious, note that in warnings rather than pretending certainty.',
+              'Сначала интерпретируй исходный plan_text, а parsed_plan_days используй только как вспомогательную подсказку.',
+              'Сопоставляй только по дню недели. Если тренировка сделана в другой день, это не match.',
+              'Не подменяй совпадение по дню похожей длительностью или похожим объемом.',
+              'Если в плане или факте не хватает данных, явно укажи это в warnings или comment.',
+              'Если темп, сплиты или зона усилия не указаны, прямо скажи, что интенсивность нельзя проверить.',
             ],
             payload,
           }),

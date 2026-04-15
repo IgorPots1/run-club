@@ -30,6 +30,14 @@ function formatDateTime(value: string) {
   }).format(date)
 }
 
+function formatDayLabel(value: string) {
+  if (!value) {
+    return '-'
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
 function formatNumber(value: number | null | undefined, digits = 1) {
   if (!Number.isFinite(value)) {
     return '-'
@@ -258,6 +266,7 @@ export default function CoachLabClient({ users }: CoachLabClientProps) {
                         <span className="app-text-secondary text-xs">{formatDateTime(run.created_at)}</span>
                       </div>
                       <div className="app-text-secondary mt-2 flex flex-wrap gap-4 text-xs">
+                        <span>Day: {formatDayLabel(run.day_of_week)}</span>
                         <span>{formatNumber(run.distance_km, 2)} km</span>
                         <span>{formatDurationMinutes(run.duration_minutes)}</span>
                         <span>{run.elevation_gain_meters ? `${run.elevation_gain_meters} m gain` : 'No elevation data'}</span>
@@ -294,10 +303,12 @@ export default function CoachLabClient({ users }: CoachLabClientProps) {
                   ) : (
                     <div className="mt-2 space-y-2">
                       {state.result.aiOutput.matched_workouts.map((item, index) => (
-                        <div key={`${item.plan_reference}-${index}`} className="app-surface-muted rounded-2xl border p-3 text-sm">
-                          <p className="app-text-primary font-medium">{item.plan_reference}</p>
-                          <p className="app-text-secondary mt-1">{item.actual_reference}</p>
-                          <p className="app-text-primary mt-2">{item.comparison_note}</p>
+                        <div key={`${item.day}-${index}`} className="app-surface-muted rounded-2xl border p-3 text-sm">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="app-text-primary font-medium">{formatDayLabel(item.day)}</p>
+                            <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{item.status}</span>
+                          </div>
+                          <p className="app-text-primary mt-2">{item.comment}</p>
                         </div>
                       ))}
                     </div>
@@ -311,12 +322,12 @@ export default function CoachLabClient({ users }: CoachLabClientProps) {
                   ) : (
                     <div className="mt-2 space-y-2">
                       {state.result.aiOutput.missed_or_changed_workouts.map((item, index) => (
-                        <div key={`${item.plan_reference}-${index}`} className="app-surface-muted rounded-2xl border p-3 text-sm">
+                        <div key={`${item.day}-${index}`} className="app-surface-muted rounded-2xl border p-3 text-sm">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="app-text-primary font-medium">{item.plan_reference}</p>
-                            <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{item.outcome}</span>
+                            <p className="app-text-primary font-medium">{formatDayLabel(item.day)}</p>
+                            <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{item.issue}</span>
                           </div>
-                          <p className="app-text-primary mt-2">{item.details}</p>
+                          <p className="app-text-primary mt-2">{item.comment}</p>
                         </div>
                       ))}
                     </div>
@@ -344,13 +355,9 @@ export default function CoachLabClient({ users }: CoachLabClientProps) {
                     {state.result.aiOutput.athlete_feedback.length === 0 ? (
                       <p className="app-text-secondary mt-2 text-sm">No athlete feedback returned.</p>
                     ) : (
-                      <ul className="mt-2 space-y-2 text-sm">
-                        {state.result.aiOutput.athlete_feedback.map((item, index) => (
-                          <li key={`${item}-${index}`} className="app-surface-muted rounded-2xl border p-3">
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
+                      <p className="app-surface-muted mt-2 rounded-2xl border p-3 text-sm">
+                        {state.result.aiOutput.athlete_feedback}
+                      </p>
                     )}
                   </div>
                 </div>

@@ -18,6 +18,7 @@ export type CoachLabParsedPlanDay = {
 export type CoachLabActualRun = {
   id: string
   created_at: string
+  day_of_week: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
   title: string
   description: string | null
   distance_km: number | null
@@ -57,15 +58,15 @@ export type CoachLabModelPayload = {
 }
 
 export type CoachLabMatchedWorkout = {
-  plan_reference: string
-  actual_reference: string
-  comparison_note: string
+  day: string
+  status: 'matched' | 'partial' | 'mismatch'
+  comment: string
 }
 
 export type CoachLabMissedOrChangedWorkout = {
-  plan_reference: string
-  outcome: string
-  details: string
+  day: string
+  issue: 'missed' | 'shifted' | 'different workout'
+  comment: string
 }
 
 export type CoachLabAiOutput = {
@@ -73,7 +74,7 @@ export type CoachLabAiOutput = {
   matched_workouts: CoachLabMatchedWorkout[]
   missed_or_changed_workouts: CoachLabMissedOrChangedWorkout[]
   load_observations: string[]
-  athlete_feedback: string[]
+  athlete_feedback: string
   coach_note: string
   confidence: 'low' | 'medium' | 'high'
   warnings: string[]
