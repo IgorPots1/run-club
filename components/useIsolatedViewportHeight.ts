@@ -56,14 +56,12 @@ export function useIsolatedViewportHeight() {
 
     function applyViewportHeight(source: ViewportSyncSource) {
       const visualViewport = window.visualViewport
-      const viewportHeight = visualViewport?.height ?? window.innerHeight
-      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
+      const viewportHeight = Math.round(visualViewport?.height ?? window.innerHeight)
+      const viewportOffsetTop = Math.max(0, Math.round(visualViewport?.offsetTop ?? 0))
       const isMobileViewport = window.innerWidth < 768
-      const effectiveViewportHeight = Math.round(viewportHeight + viewportOffsetTop)
-      const baselineViewportHeight = baselineViewportHeightRef.current ?? effectiveViewportHeight
-      const viewportHeightDelta = baselineViewportHeight - effectiveViewportHeight
+      const baselineViewportHeight = baselineViewportHeightRef.current ?? viewportHeight
+      const viewportHeightDelta = baselineViewportHeight - viewportHeight
       let nextIsKeyboardOpen = lastKeyboardOpenRef.current ?? false
-      const cssVarChanged = lastAppliedViewportHeightRef.current !== effectiveViewportHeight
 
       if (!isMobileViewport) {
         nextIsKeyboardOpen = false
@@ -81,10 +79,15 @@ export function useIsolatedViewportHeight() {
 
       if (
         !nextIsKeyboardOpen &&
-        (baselineViewportHeightRef.current === null || effectiveViewportHeight > baselineViewportHeightRef.current)
+        (baselineViewportHeightRef.current === null || viewportHeight > baselineViewportHeightRef.current)
       ) {
-        baselineViewportHeightRef.current = effectiveViewportHeight
+        baselineViewportHeightRef.current = viewportHeight
       }
+
+      const effectiveViewportHeight = nextIsKeyboardOpen
+        ? viewportHeight
+        : viewportHeight + viewportOffsetTop
+      const cssVarChanged = lastAppliedViewportHeightRef.current !== effectiveViewportHeight
 
       if (cssVarChanged) {
         rootStyle.setProperty(ISOLATED_VIEWPORT_HEIGHT_CSS_VAR, `${effectiveViewportHeight}px`)
