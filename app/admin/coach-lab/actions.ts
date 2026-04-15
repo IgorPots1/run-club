@@ -810,6 +810,13 @@ STEP 3 — Evaluate execution:
 - Treat average_pace_seconds as supporting context, not the main source for pace judgment
 - Use laps to identify likely warm-up, recovery, and main working segments when lap data is available
 - If laps are missing or too incomplete to isolate the relevant segment, say that pace verification is limited
+- STRUCTURE VALIDATION RULES:
+  - Do NOT assume the planned structure was followed
+  - Use laps or segments to verify structure
+  - If the run starts at main pace, treat warm-up as missing
+  - If there is no slower phase at the start, do NOT confirm a warm-up
+  - If pace is consistent from the start, treat the session as a steady or tempo run, not a structured workout with a clear warm-up
+  - Prefer coach-style conclusions like "разминка практически отсутствует", "почти сразу вышел в рабочий темп", "тренировка больше похожа на сплошную темповую"
 - Convert pace to human-readable format (mm:ss/km) when referring to it in comments or feedback
 - Use average_heartrate and max_heartrate when available to evaluate effort, control, and workout intensity
 - If relevant pace data is available, assess whether the athlete likely stayed inside, below, or above the planned range during the relevant segment
