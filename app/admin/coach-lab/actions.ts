@@ -22,6 +22,7 @@ type RunRow = {
   duration_seconds: number | null
   moving_time_seconds: number | null
   elevation_gain_meters: number | null
+  average_cadence: number | null
   average_heartrate: number | null
   max_heartrate: number | null
   created_at: string
@@ -334,6 +335,7 @@ function normalizeActualRuns(data: RunRow[] | null): CoachLabActualRun[] {
       average_pace_seconds: averagePaceSeconds,
       average_pace_label: averagePaceLabel,
       elevation_gain_meters: Number.isFinite(run.elevation_gain_meters) ? Math.round(Number(run.elevation_gain_meters)) : null,
+      average_cadence: Number.isFinite(run.average_cadence) ? roundNumber(Number(run.average_cadence), 1) : null,
       average_heartrate: Number.isFinite(run.average_heartrate) ? Math.round(Number(run.average_heartrate)) : null,
       max_heartrate: Number.isFinite(run.max_heartrate) ? Math.round(Number(run.max_heartrate)) : null,
       external_source: run.external_source?.trim() || null,
@@ -719,7 +721,7 @@ export async function analyzeCoachLab(
     supabase
       .from('runs')
       .select(
-        'id, name, title, description, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, average_heartrate, max_heartrate, created_at, external_source, external_id'
+        'id, name, title, description, distance_km, duration_minutes, duration_seconds, moving_time_seconds, elevation_gain_meters, average_cadence, average_heartrate, max_heartrate, created_at, external_source, external_id'
       )
       .eq('user_id', form.userId)
       .eq('external_source', 'strava')
