@@ -360,6 +360,7 @@ export default function ActivityPage() {
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([])
   const suppressNextRunsUpdatedRefreshRef = useRef(false)
   const prepareRunDetailNavigationRef = useRef<(runId: string) => void>(() => {})
+  const prefetchedHrefsRef = useRef<Set<string>>(new Set())
   const userId = user?.id ?? null
 
   useEffect(() => {
@@ -727,6 +728,20 @@ export default function ActivityPage() {
     router.push(`/runs/${runId}`)
   }, [router])
 
+  const prefetchHref = useCallback((href: string) => {
+    if (!href || prefetchedHrefsRef.current.has(href)) {
+      return
+    }
+
+    prefetchedHrefsRef.current.add(href)
+
+    try {
+      router.prefetch(href)
+    } catch {
+      prefetchedHrefsRef.current.delete(href)
+    }
+  }, [router])
+
   if (!loadingUser && !user) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 pt-[calc(16px+env(safe-area-inset-top))]">
@@ -1016,6 +1031,9 @@ export default function ActivityPage() {
                         <div
                           role="button"
                           tabIndex={0}
+                          onMouseEnter={() => prefetchHref(`/runs/${run.id}`)}
+                          onTouchStart={() => prefetchHref(`/runs/${run.id}`)}
+                          onFocus={() => prefetchHref(`/runs/${run.id}`)}
                           onClick={() => handleOpenRunDetail(run.id)}
                           onKeyDown={(event) => {
                             if (event.key !== 'Enter' && event.key !== ' ') {

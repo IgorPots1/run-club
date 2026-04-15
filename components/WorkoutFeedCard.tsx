@@ -54,8 +54,10 @@ type WorkoutFeedCardProps = {
   onOpenLikesPreview?: () => void
   onCommentClick?: (runId: string) => void
   onNavigateToRun?: (runId: string) => void
+  onPrefetchRun?: (runId: string) => void
   profileHref?: string | null
   onNavigateToProfile?: (href: string) => void
+  onPrefetchProfile?: (href: string) => void
   photos?: WorkoutMediaPhoto[]
   onOpenXpBreakdown?: () => void
 }
@@ -158,8 +160,10 @@ function WorkoutFeedCard({
   onOpenLikesPreview,
   onCommentClick,
   onNavigateToRun,
+  onPrefetchRun,
   profileHref = null,
   onNavigateToProfile,
+  onPrefetchProfile,
   photos = [],
   onOpenXpBreakdown,
 }: WorkoutFeedCardProps) {
@@ -270,11 +274,22 @@ function WorkoutFeedCard({
     router.push(`/runs/${runId}`)
   }
 
+  function prefetchRunDetail() {
+    if (!runId) {
+      return
+    }
+
+    onPrefetchRun?.(runId)
+  }
+
   return (
     <div
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
       role="button"
       tabIndex={0}
+      onMouseEnter={prefetchRunDetail}
+      onTouchStart={prefetchRunDetail}
+      onFocus={prefetchRunDetail}
       onClick={(event) => {
         if (!runId) return
         const target = event.target as HTMLElement
@@ -298,6 +313,11 @@ function WorkoutFeedCard({
             level={level}
             href={profileHref}
             onNavigate={onNavigateToProfile}
+            onInteractionStart={() => {
+              if (profileHref) {
+                onPrefetchProfile?.(profileHref)
+              }
+            }}
             size="sm"
             nameWeightClass="font-medium"
             nameSizeClass="text-[15px]"

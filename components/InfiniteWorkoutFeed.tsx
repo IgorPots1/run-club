@@ -154,6 +154,8 @@ type RaceFeedCardProps = {
   onCommentClick: (raceEventId: string) => void
   onOpenLikes: (raceEventId: string) => void
   onOpenLikesPreview?: (raceEventId: string) => void
+  onPrefetchProfile: (href: string) => void
+  onPrefetchRaceEvent: (raceEventId: string) => void
   onOpenProfile: (href: string) => void
   onOpenRaceEvent: (raceEventId: string) => void
   onToggleLike: (raceEventId: string) => void
@@ -165,6 +167,8 @@ function RaceFeedCard({
   onCommentClick,
   onOpenLikes,
   onOpenLikesPreview,
+  onPrefetchProfile,
+  onPrefetchRaceEvent,
   onOpenProfile,
   onOpenRaceEvent,
   onToggleLike,
@@ -181,6 +185,9 @@ function RaceFeedCard({
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
       role="button"
       tabIndex={0}
+      onMouseEnter={() => onPrefetchRaceEvent(item.raceEventId)}
+      onTouchStart={() => onPrefetchRaceEvent(item.raceEventId)}
+      onFocus={() => onPrefetchRaceEvent(item.raceEventId)}
       onClick={(event) => {
         const target = event.target as HTMLElement
         if (target.closest('a,button')) return
@@ -200,6 +207,7 @@ function RaceFeedCard({
         level={getLevelFromXP(item.totalXp).level}
         href={`/users/${item.user_id}`}
         onNavigate={onOpenProfile}
+        onInteractionStart={() => onPrefetchProfile(`/users/${item.user_id}`)}
         size="sm"
       />
 
@@ -293,12 +301,14 @@ function RaceFeedCard({
 
 type ChallengeFeedCardProps = {
   item: ChallengeFeedItem
+  onPrefetchProfile: (href: string) => void
   onOpenProfile: (href: string) => void
   onOpenChallenge: (targetPath: string) => void
 }
 
 function ChallengeFeedCard({
   item,
+  onPrefetchProfile,
   onOpenProfile,
   onOpenChallenge,
 }: ChallengeFeedCardProps) {
@@ -331,6 +341,7 @@ function ChallengeFeedCard({
         level={getLevelFromXP(item.totalXp).level}
         href={`/users/${item.user_id}`}
         onNavigate={onOpenProfile}
+        onInteractionStart={() => onPrefetchProfile(`/users/${item.user_id}`)}
         size="sm"
       />
 
@@ -394,6 +405,7 @@ export default function InfiniteWorkoutFeed({
   const firstPageRequestPromiseRef = useRef<Promise<void> | null>(null)
   const firstPageRequestKeyRef = useRef<string>('')
   const restoredSnapshotRef = useRef<FeedRestoreSnapshot | null>(null)
+  const prefetchedHrefsRef = useRef<Set<string>>(new Set())
 
   const getActiveScrollContainer = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -468,6 +480,20 @@ export default function InfiniteWorkoutFeed({
     prepareForRunDetailNavigation()
     router.push(href)
   }, [prepareForRunDetailNavigation, router])
+
+  const prefetchHref = useCallback((href: string) => {
+    if (!href || prefetchedHrefsRef.current.has(href)) {
+      return
+    }
+
+    prefetchedHrefsRef.current.add(href)
+
+    try {
+      router.prefetch(href)
+    } catch {
+      prefetchedHrefsRef.current.delete(href)
+    }
+  }, [router])
 
   const updateRunItem = useCallback((runId: string, updater: (item: RunFeedItem) => RunFeedItem) => {
     const nextItems = itemsRef.current.map((item) => (
@@ -781,6 +807,14 @@ export default function InfiniteWorkoutFeed({
     navigateFromFeed(`/runs/${runId}`)
   }, [navigateFromFeed])
 
+  const prefetchRun = useCallback((runId: string) => {
+    if (!runId) {
+      return
+    }
+
+    prefetchHref(`/runs/${runId}`)
+  }, [prefetchHref])
+
   const navigateToRaceEvent = useCallback((raceEventId: string) => {
     if (!raceEventId) {
       return
@@ -789,9 +823,21 @@ export default function InfiniteWorkoutFeed({
     navigateFromFeed(`/races/${raceEventId}`)
   }, [navigateFromFeed])
 
+  const prefetchRaceEvent = useCallback((raceEventId: string) => {
+    if (!raceEventId) {
+      return
+    }
+
+    prefetchHref(`/races/${raceEventId}`)
+  }, [prefetchHref])
+
   const navigateToProfile = useCallback((href: string) => {
     navigateFromFeed(href)
   }, [navigateFromFeed])
+
+  const prefetchProfile = useCallback((href: string) => {
+    prefetchHref(href)
+  }, [prefetchHref])
 
   const navigateToChallenge = useCallback((targetPath: string) => {
     navigateFromFeed(targetPath)
@@ -1339,8 +1385,10 @@ export default function InfiniteWorkoutFeed({
                 }}
                 onCommentClick={handleCommentClick}
                 onNavigateToRun={navigateToRun}
+                onPrefetchRun={prefetchRun}
                 profileHref={`/users/${item.user_id}`}
                 onNavigateToProfile={navigateToProfile}
+                onPrefetchProfile={prefetchProfile}
                 onOpenXpBreakdown={() => setActiveXpRunId(item.id)}
               />
             ) : item.kind === 'race_event' ? (
@@ -1355,6 +1403,8 @@ export default function InfiniteWorkoutFeed({
                     void loadLikedUsersForRaceEvent(item.raceEventId)
                   }
                 }}
+                onPrefetchProfile={prefetchProfile}
+                onPrefetchRaceEvent={prefetchRaceEvent}
                 onOpenProfile={navigateToProfile}
                 onOpenRaceEvent={navigateToRaceEvent}
                 onToggleLike={handleRaceEventLikeToggle}
@@ -1363,6 +1413,7 @@ export default function InfiniteWorkoutFeed({
               <ChallengeFeedCard
                 key={item.id}
                 item={item}
+                onPrefetchProfile={prefetchProfile}
                 onOpenProfile={navigateToProfile}
                 onOpenChallenge={navigateToChallenge}
               />

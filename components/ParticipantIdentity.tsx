@@ -10,6 +10,7 @@ type ParticipantIdentityProps = {
   level: number
   href?: string | null
   onNavigate?: (href: string) => void
+  onInteractionStart?: () => void
   size: 'sm' | 'md'
   nameWeightClass?: 'font-medium' | 'font-semibold' | 'font-bold'
   nameSizeClass?: string
@@ -45,6 +46,7 @@ export default function ParticipantIdentity({
   level,
   href = null,
   onNavigate,
+  onInteractionStart,
   size,
   nameWeightClass = 'font-semibold',
   nameSizeClass,
@@ -84,6 +86,9 @@ export default function ParticipantIdentity({
       <button
         type="button"
         onClick={() => onNavigate(href)}
+        onMouseEnter={onInteractionStart}
+        onTouchStart={onInteractionStart}
+        onFocus={onInteractionStart}
         className="flex min-w-0 items-center gap-3 text-left"
       >
         {content}
@@ -93,7 +98,13 @@ export default function ParticipantIdentity({
 
   if (href) {
     return (
-      <Link href={href} className="flex min-w-0 items-center gap-3">
+      <Link
+        href={href}
+        onMouseEnter={onInteractionStart}
+        onTouchStart={onInteractionStart}
+        onFocus={onInteractionStart}
+        className="flex min-w-0 items-center gap-3"
+      >
         {content}
       </Link>
     )
