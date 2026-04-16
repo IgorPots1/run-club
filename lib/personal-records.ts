@@ -8,6 +8,11 @@ import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 export const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000, 21097, 42195] as const
 
+const HISTORICAL_PERSONAL_RECORD_HYDRATION_COOLDOWN_HOURS = 6
+const HISTORICAL_PERSONAL_RECORD_HYDRATION_COOLDOWN_MS =
+  HISTORICAL_PERSONAL_RECORD_HYDRATION_COOLDOWN_HOURS * 60 * 60 * 1000
+const HISTORICAL_PERSONAL_RECORD_HYDRATION_ERROR = 'historical_import_failed'
+
 const LOCAL_FULL_RUN_PERSONAL_RECORD_TOLERANCES: Record<number, number> = {
   5000: 25,
   10000: 25,
@@ -39,6 +44,9 @@ type PersonalRecordRow = {
 type PersonalRecordCanonicalRow = PersonalRecordRow & {
   source: string | null
   metadata: Record<string, unknown> | null
+  hydration_attempted_at: string | null
+  hydration_failed_at: string | null
+  hydration_error: string | null
 }
 
 export type PersonalRecordView = {
@@ -53,6 +61,9 @@ export type PersonalRecordView = {
 type PersonalRecordCanonicalView = PersonalRecordView & {
   source: string | null
   metadata: Record<string, unknown> | null
+  hydration_attempted_at: string | null
+  hydration_failed_at: string | null
+  hydration_error: string | null
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -339,7 +350,9 @@ async function loadCanonicalPersonalRecord(params: {
 }): Promise<PersonalRecordCanonicalView | null> {
   const { data, error } = await params.supabase
     .from('personal_records')
-    .select('distance_meters, duration_seconds, pace_seconds_per_km, record_date, run_id, strava_activity_id, source, metadata')
+    .select(
+      'distance_meters, duration_seconds, pace_seconds_per_km, record_date, run_id, strava_activity_id, source, metadata, hydration_attempted_at, hydration_failed_at, hydration_error'
+    )
     .eq('user_id', params.userId)
     .eq('distance_meters', params.distanceMeters)
     .maybeSingle()
@@ -350,6 +363,105 @@ async function loadCanonicalPersonalRecord(params: {
 
   const normalized = normalizePersonalRecordCanonicalRow((data as PersonalRecordCanonicalRow | null) ?? null)
   return normalized
+}
+
+function shouldAttemptHistoricalPersonalRecordHydration(record: PersonalRecordCanonicalView) {
+  if (record.run_id || !record.strava_activity_id || !toSupportedDistance(record.distance_meters)) {
+    return false
+  }
+
+  if (!record.hydration_attempted_at) {
+    return true
+  }
+
+  const attemptedAt = new Date(record.hydration_attempted_at)
+
+  if (Number.isNaN(attemptedAt.getTime())) {
+    return true
+  }
+
+  return Date.now() - attemptedAt.getTime() >= HISTORICAL_PERSONAL_RECORD_HYDRATION_COOLDOWN_MS
+}
+
+async function markHistoricalPersonalRecordHydrationAttempt(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance
+  record: PersonalRecordCanonicalView
+}) {
+  if (!shouldAttemptHistoricalPersonalRecordHydration(params.record)) {
+    return false
+  }
+
+  const attemptedAt = new Date().toISOString()
+  const cooldownThreshold = new Date(
+    Date.now() - HISTORICAL_PERSONAL_RECORD_HYDRATION_COOLDOWN_MS
+  ).toISOString()
+
+  let query = params.supabase
+    .from('personal_records')
+    .update({
+      hydration_attempted_at: attemptedAt,
+    })
+    .eq('user_id', params.userId)
+    .eq('distance_meters', params.distanceMeters)
+    .eq('strava_activity_id', params.record.strava_activity_id)
+    .is('run_id', null)
+    .select('distance_meters')
+    .maybeSingle()
+
+  query = params.record.hydration_attempted_at
+    ? query.lt('hydration_attempted_at', cooldownThreshold)
+    : query.is('hydration_attempted_at', null)
+
+  const { data, error } = await query
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return Boolean(data)
+}
+
+async function markHistoricalPersonalRecordHydrationFailure(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance
+  stravaActivityId: number
+}) {
+  const { error } = await params.supabase
+    .from('personal_records')
+    .update({
+      hydration_failed_at: new Date().toISOString(),
+      hydration_error: HISTORICAL_PERSONAL_RECORD_HYDRATION_ERROR,
+    })
+    .eq('user_id', params.userId)
+    .eq('distance_meters', params.distanceMeters)
+    .eq('strava_activity_id', params.stravaActivityId)
+    .is('run_id', null)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
+async function clearHistoricalPersonalRecordHydrationFailure(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance
+}) {
+  const { error } = await params.supabase
+    .from('personal_records')
+    .update({
+      hydration_failed_at: null,
+      hydration_error: null,
+    })
+    .eq('user_id', params.userId)
+    .eq('distance_meters', params.distanceMeters)
+
+  if (error) {
+    throw new Error(error.message)
+  }
 }
 
 async function maybeHydrateCanonicalPersonalRecordRun(params: {
@@ -364,11 +476,26 @@ async function maybeHydrateCanonicalPersonalRecordRun(params: {
     distanceMeters: params.distanceMeters,
   })
 
-  if (!record || record.run_id || !record.strava_activity_id) {
+  if (!record || !shouldAttemptHistoricalPersonalRecordHydration(record)) {
     return record
   }
 
   try {
+    const didMarkAttempt = await markHistoricalPersonalRecordHydrationAttempt({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+      record,
+    })
+
+    if (!didMarkAttempt) {
+      return await loadCanonicalPersonalRecord({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: params.distanceMeters,
+      }).catch(() => record) ?? record
+    }
+
     const { importHistoricalStravaActivityByIdForUser } = await import('@/lib/strava/strava-sync')
     const importedRunId = await importHistoricalStravaActivityByIdForUser(
       params.userId,
@@ -376,6 +503,20 @@ async function maybeHydrateCanonicalPersonalRecordRun(params: {
     )
 
     if (!importedRunId) {
+      await markHistoricalPersonalRecordHydrationFailure({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: params.distanceMeters,
+        stravaActivityId: record.strava_activity_id,
+      }).catch((error) => {
+        console.warn('Failed to persist historical personal record hydration failure', {
+          userId: params.userId,
+          distanceMeters: params.distanceMeters,
+          stravaActivityId: record.strava_activity_id,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      })
+
       return record
     }
 
@@ -392,12 +533,28 @@ async function maybeHydrateCanonicalPersonalRecordRun(params: {
     })
 
     if (hydratedRecord?.run_id) {
+      await clearHistoricalPersonalRecordHydrationFailure({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: params.distanceMeters,
+      }).catch((error) => {
+        console.warn('Failed to clear historical personal record hydration failure', {
+          userId: params.userId,
+          distanceMeters: params.distanceMeters,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      })
+
       return hydratedRecord
     }
 
     const { error } = await params.supabase
       .from('personal_records')
-      .update({ run_id: importedRunId })
+      .update({
+        run_id: importedRunId,
+        hydration_failed_at: null,
+        hydration_error: null,
+      })
       .eq('user_id', params.userId)
       .eq('distance_meters', params.distanceMeters)
       .eq('strava_activity_id', record.strava_activity_id)
@@ -413,6 +570,20 @@ async function maybeHydrateCanonicalPersonalRecordRun(params: {
       distanceMeters: params.distanceMeters,
     })
   } catch (error) {
+    await markHistoricalPersonalRecordHydrationFailure({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+      stravaActivityId: record.strava_activity_id,
+    }).catch((failureError) => {
+      console.warn('Failed to persist historical personal record hydration failure', {
+        userId: params.userId,
+        distanceMeters: params.distanceMeters,
+        stravaActivityId: record.strava_activity_id,
+        error: failureError instanceof Error ? failureError.message : 'unknown_error',
+      })
+    })
+
     console.warn('Historical personal record hydration failed', {
       userId: params.userId,
       distanceMeters: params.distanceMeters,
@@ -708,6 +879,9 @@ function normalizePersonalRecordCanonicalRow(row: PersonalRecordCanonicalRow | n
     ...normalizedRow,
     source: typeof row.source === 'string' && row.source.trim() ? row.source.trim() : null,
     metadata: asRecord(row.metadata),
+    hydration_attempted_at: toNullableTrimmedString(row.hydration_attempted_at),
+    hydration_failed_at: toNullableTrimmedString(row.hydration_failed_at),
+    hydration_error: toNullableTrimmedString(row.hydration_error),
   }
 }
 
