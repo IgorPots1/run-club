@@ -255,18 +255,18 @@ export async function DELETE(
     )
   }
 
-  const { data: affectedPersonalRecords, error: affectedPersonalRecordsError } = await supabaseAdmin
-    .from('personal_records')
+  const { data: affectedPersonalRecordSources, error: affectedPersonalRecordSourcesError } = await supabaseAdmin
+    .from('personal_record_sources')
     .select('distance_meters')
     .eq('user_id', user.id)
     .eq('run_id', existingRun.id)
     .in('distance_meters', [...SUPPORTED_PERSONAL_RECORD_DISTANCES])
 
-  if (affectedPersonalRecordsError) {
+  if (affectedPersonalRecordSourcesError) {
     return NextResponse.json(
       {
         ok: false,
-        error: affectedPersonalRecordsError.message,
+        error: affectedPersonalRecordSourcesError.message,
       },
       { status: 500 }
     )
@@ -274,7 +274,7 @@ export async function DELETE(
 
   const affectedDistances = Array.from(
     new Set(
-      ((affectedPersonalRecords ?? []) as Array<{ distance_meters: number | null }>)
+      ((affectedPersonalRecordSources ?? []) as Array<{ distance_meters: number | null }>)
         .map((row) => (
           SUPPORTED_PERSONAL_RECORD_DISTANCES.find((distance) => distance === row.distance_meters) ?? null
         ))

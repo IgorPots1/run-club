@@ -27,15 +27,6 @@ type PersonalRecordRow = {
   strava_activity_id: number | null
 }
 
-type PersonalRecordRecomputeRunRow = {
-  id: string
-  distance_meters: number | null
-  moving_time_seconds: number | null
-  created_at: string | null
-  external_source: string | null
-  raw_strava_payload: Record<string, unknown> | null
-}
-
 export type PersonalRecordView = {
   distance_meters: SupportedPersonalRecordDistance
   duration_seconds: number
@@ -244,69 +235,21 @@ async function upsertPersonalRecordCandidate(params: {
   return Boolean(data)
 }
 
-async function replacePersonalRecordForDistance(params: {
-  supabase: ReturnType<typeof createSupabaseAdminClient>
-  userId: string
-  runId: string | null
-  candidate: PersonalRecordCandidate
-}) {
-  const { error } = await params.supabase
-    .from('personal_records')
-    .upsert(
-      {
-        user_id: params.userId,
-        distance_meters: params.candidate.distance_meters,
-        duration_seconds: params.candidate.duration_seconds,
-        pace_seconds_per_km: params.candidate.pace_seconds_per_km,
-        run_id: params.runId,
-        strava_activity_id: params.candidate.strava_activity_id,
-        record_date: params.candidate.record_date,
-        source: params.candidate.source,
-        metadata: params.candidate.metadata,
-      },
-      {
-        onConflict: 'user_id,distance_meters',
-      }
-    )
-
-  if (error) {
-    throw new Error(error.message)
-  }
-}
-
-async function deletePersonalRecordForDistance(params: {
+async function recomputePersonalRecordWinner(params: {
   supabase: ReturnType<typeof createSupabaseAdminClient>
   userId: string
   distanceMeters: SupportedPersonalRecordDistance
 }) {
-  const { error } = await params.supabase
-    .from('personal_records')
-    .delete()
-    .eq('user_id', params.userId)
-    .eq('distance_meters', params.distanceMeters)
+  const { data, error } = await params.supabase.rpc('recompute_personal_record_for_user_distance', {
+    p_user_id: params.userId,
+    p_distance_meters: params.distanceMeters,
+  })
 
   if (error) {
     throw new Error(error.message)
   }
-}
 
-function selectFasterCandidate(
-  current:
-    | {
-        runId: string | null
-        candidate: PersonalRecordCandidate
-      }
-    | null,
-  next: {
-    runId: string | null
-    candidate: PersonalRecordCandidate
-  }
-) {
-  if (!current || next.candidate.duration_seconds < current.candidate.duration_seconds) {
-    return next
-  }
-
-  return current
+  return Boolean(data)
 }
 
 export async function upsertPersonalRecordsFromStravaPayload(params: {
@@ -390,69 +333,15 @@ export async function recomputePersonalRecordForUserDistance(params: {
   userId: string
   distanceMeters: SupportedPersonalRecordDistance
 }) {
-  const { data, error } = await params.supabase
-    .from('runs')
-    .select('id, distance_meters, moving_time_seconds, created_at, external_source, raw_strava_payload')
-    .eq('user_id', params.userId)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  let bestCandidate:
-    | {
-        runId: string | null
-        candidate: PersonalRecordCandidate
-      }
-    | null = null
-
-  for (const run of ((data as PersonalRecordRecomputeRunRow[] | null) ?? [])) {
-    const localCandidate = extractLocalFullRunPersonalRecordCandidate(run)
-
-    if (localCandidate?.distance_meters === params.distanceMeters) {
-      bestCandidate = selectFasterCandidate(bestCandidate, {
-        runId: run.id,
-        candidate: localCandidate,
-      })
-    }
-
-    for (const stravaCandidate of extractStravaPersonalRecordCandidates(run.raw_strava_payload)) {
-      if (stravaCandidate.distance_meters !== params.distanceMeters) {
-        continue
-      }
-
-      bestCandidate = selectFasterCandidate(bestCandidate, {
-        runId: run.id,
-        candidate: stravaCandidate,
-      })
-    }
-  }
-
-  if (!bestCandidate) {
-    await deletePersonalRecordForDistance({
-      supabase: params.supabase,
-      userId: params.userId,
-      distanceMeters: params.distanceMeters,
-    })
-
-    return {
-      updated: false,
-      deleted: true,
-    }
-  }
-
-  await replacePersonalRecordForDistance({
+  const hasWinner = await recomputePersonalRecordWinner({
     supabase: params.supabase,
     userId: params.userId,
-    runId: bestCandidate.runId,
-    candidate: bestCandidate.candidate,
+    distanceMeters: params.distanceMeters,
   })
 
   return {
-    updated: true,
-    deleted: false,
+    updated: hasWinner,
+    deleted: !hasWinner,
   }
 }
 

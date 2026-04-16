@@ -180,7 +180,7 @@ function extractStravaPersonalRecordCandidates(rawStravaPayload) {
         ?? toIsoDateValue(payloadRecord?.start_date)
         ?? toIsoDateValue(payloadRecord?.start_date_local),
       strava_activity_id: toPositiveInteger(activityRecord?.id ?? bestEffort.activity_id ?? payloadRecord?.id),
-      source: 'strava_best_effort',
+      source: 'historical_strava_best_effort',
       metadata: buildBestEffortMetadata(bestEffort),
     }
 
