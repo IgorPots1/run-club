@@ -3133,6 +3133,18 @@ export async function syncStravaRuns(
   try {
     activities = await fetchStravaActivities(connection.access_token, afterUnixSeconds)
   } catch (caughtError) {
+    if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+      console.warn('[strava-sync] rate_limited', {
+        userId,
+        connectionId: connection.id,
+        afterUnixSeconds,
+      })
+      return {
+        ok: false,
+        step: 'rate_limited',
+      }
+    }
+
     if (isStravaAuthError(caughtError)) {
       await markStravaConnectionReconnectRequired(connection.id)
       return {

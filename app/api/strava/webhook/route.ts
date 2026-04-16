@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchStravaActivityById, getStravaWebhookVerifyToken } from '@/lib/strava/strava-client'
+import { fetchStravaActivityById, getStravaWebhookVerifyToken, StravaApiError } from '@/lib/strava/strava-client'
 import { getStravaConnectionForAthlete, importStravaActivityForUser } from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
 
@@ -67,6 +67,10 @@ export async function GET(request: Request) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableStravaFetchError(error: unknown): error is StravaApiError {
+  return error instanceof StravaApiError && (error.status === 429 || error.status >= 500)
 }
 
 async function fetchStravaActivityByIdWithRetry(
@@ -231,6 +235,20 @@ export async function POST(request: Request) {
         step,
         error: caughtError instanceof Error ? caughtError.message : 'Unknown fetch activity error',
       })
+      if (isRetryableStravaFetchError(caughtError)) {
+        console.warn('[strava-webhook] deferring_processing_for_retry', {
+          activityId,
+          ownerId: event.owner_id,
+          step,
+          status: caughtError.status,
+        })
+
+        return NextResponse.json({
+          ok: false,
+          step: 'fetch_activity_deferred',
+        }, { status: 503 })
+      }
+
       console.info('[strava-webhook-debug] activity_not_ready_yet_will_be_picked_up_by_sync', {
         activityId,
         ownerId: event.owner_id,
