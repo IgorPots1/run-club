@@ -1,5 +1,8 @@
 import 'server-only'
 
+import { createAppEvent } from '@/lib/events/createAppEvent'
+import { buildPersonalRecordAchievedEvent } from '@/lib/events/returnTriggerEvents'
+import { processAppEventPushDeliveries } from '@/lib/push/appEventPush'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -33,6 +36,11 @@ type PersonalRecordRow = {
   strava_activity_id: number | null
 }
 
+type PersonalRecordCanonicalRow = PersonalRecordRow & {
+  source: string | null
+  metadata: Record<string, unknown> | null
+}
+
 export type PersonalRecordView = {
   distance_meters: SupportedPersonalRecordDistance
   duration_seconds: number
@@ -40,6 +48,11 @@ export type PersonalRecordView = {
   record_date: string | null
   run_id: string | null
   strava_activity_id: number | null
+}
+
+type PersonalRecordCanonicalView = PersonalRecordView & {
+  source: string | null
+  metadata: Record<string, unknown> | null
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -319,6 +332,102 @@ async function recomputePersonalRecordWinner(params: {
   return Boolean(data)
 }
 
+async function loadCanonicalPersonalRecord(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance
+}): Promise<PersonalRecordCanonicalView | null> {
+  const { data, error } = await params.supabase
+    .from('personal_records')
+    .select('distance_meters, duration_seconds, pace_seconds_per_km, record_date, run_id, strava_activity_id, source, metadata')
+    .eq('user_id', params.userId)
+    .eq('distance_meters', params.distanceMeters)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const normalized = normalizePersonalRecordCanonicalRow((data as PersonalRecordCanonicalRow | null) ?? null)
+  return normalized
+}
+
+function getPersonalRecordSourceKey(record: PersonalRecordCanonicalView) {
+  if (record.run_id) {
+    if (record.source === 'local_full_run') {
+      return `run:${record.run_id}`
+    }
+
+    if (record.source === 'strava_best_effort') {
+      return `run:${record.run_id}:distance:${record.distance_meters}`
+    }
+  }
+
+  if (record.strava_activity_id) {
+    return `strava_activity:${record.strava_activity_id}:distance:${record.distance_meters}`
+  }
+
+  return `legacy:${record.distance_meters}:${record.duration_seconds}`
+}
+
+async function maybeEmitPersonalRecordEvent(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance
+  before: PersonalRecordCanonicalView | null
+}) {
+  const after = await loadCanonicalPersonalRecord({
+    supabase: params.supabase,
+    userId: params.userId,
+    distanceMeters: params.distanceMeters,
+  })
+
+  if (!after) {
+    return false
+  }
+
+  if (after.source === 'historical_strava_best_effort') {
+    return false
+  }
+
+  if (params.before && params.before.duration_seconds <= after.duration_seconds) {
+    return false
+  }
+
+  const createdEvent = await createAppEvent(
+    buildPersonalRecordAchievedEvent({
+      actorUserId: params.userId,
+      targetUserId: params.userId,
+      distanceMeters: after.distance_meters,
+      durationSeconds: after.duration_seconds,
+      recordDate: after.record_date,
+      runId: after.run_id,
+      sourceKey: getPersonalRecordSourceKey(after),
+    })
+  ).catch((error) => {
+    if (
+      error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as { code?: string }).code === '23505'
+    ) {
+      return null
+    }
+
+    throw error
+  })
+
+  if (!createdEvent) {
+    return false
+  }
+
+  await processAppEventPushDeliveries({
+    appEventIds: [createdEvent.id],
+  })
+
+  return true
+}
+
 export async function upsertPersonalRecordsFromStravaPayload(params: {
   supabase: ReturnType<typeof createSupabaseAdminClient>
   userId: string
@@ -337,8 +446,14 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
   }
 
   let updated = 0
+  let eventsCreated = 0
 
   for (const candidate of candidates) {
+    const previousRecord = await loadCanonicalPersonalRecord({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: candidate.distance_meters,
+    })
     const wasUpdated = await upsertPersonalRecordCandidate({
       supabase: params.supabase,
       userId: params.userId,
@@ -350,12 +465,23 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
 
     if (wasUpdated) {
       updated += 1
+      const eventCreated = await maybeEmitPersonalRecordEvent({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: candidate.distance_meters,
+        before: previousRecord,
+      })
+
+      if (eventCreated) {
+        eventsCreated += 1
+      }
     }
   }
 
   return {
     checked: candidates.length,
     updated,
+    eventsCreated,
   }
 }
 
@@ -379,9 +505,15 @@ export async function upsertPersonalRecordForLocalRunIfEligible(params: {
     return {
       checked: 0,
       updated: 0,
+      eventsCreated: 0,
     }
   }
 
+  const previousRecord = await loadCanonicalPersonalRecord({
+    supabase: params.supabase,
+    userId: params.userId,
+    distanceMeters: candidate.distance_meters,
+  })
   const wasUpdated = await upsertPersonalRecordCandidate({
     supabase: params.supabase,
     userId: params.userId,
@@ -389,9 +521,19 @@ export async function upsertPersonalRecordForLocalRunIfEligible(params: {
     candidate,
   })
 
+  const eventCreated = wasUpdated
+    ? await maybeEmitPersonalRecordEvent({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: candidate.distance_meters,
+        before: previousRecord,
+      })
+    : false
+
   return {
     checked: 1,
     updated: wasUpdated ? 1 : 0,
+    eventsCreated: eventCreated ? 1 : 0,
   }
 }
 
@@ -432,6 +574,24 @@ function normalizePersonalRecordRow(row: PersonalRecordRow): PersonalRecordView 
   }
 }
 
+function normalizePersonalRecordCanonicalRow(row: PersonalRecordCanonicalRow | null): PersonalRecordCanonicalView | null {
+  if (!row) {
+    return null
+  }
+
+  const normalizedRow = normalizePersonalRecordRow(row)
+
+  if (!normalizedRow) {
+    return null
+  }
+
+  return {
+    ...normalizedRow,
+    source: typeof row.source === 'string' && row.source.trim() ? row.source.trim() : null,
+    metadata: asRecord(row.metadata),
+  }
+}
+
 export async function loadCurrentUserPersonalRecords(): Promise<PersonalRecordView[]> {
   const { user, error, supabase } = await getAuthenticatedUser()
 
@@ -447,6 +607,29 @@ export async function loadCurrentUserPersonalRecords(): Promise<PersonalRecordVi
 
   if (recordsError) {
     throw new Error(recordsError.message)
+  }
+
+  return ((data as PersonalRecordRow[] | null) ?? [])
+    .map(normalizePersonalRecordRow)
+    .filter((record): record is PersonalRecordView => record !== null)
+}
+
+export async function loadPublicUserPersonalRecords(userId: string): Promise<PersonalRecordView[]> {
+  const normalizedUserId = userId.trim()
+
+  if (!normalizedUserId) {
+    return []
+  }
+
+  const supabaseAdmin = createSupabaseAdminClient()
+  const { data, error } = await supabaseAdmin
+    .from('personal_records')
+    .select('distance_meters, duration_seconds, pace_seconds_per_km, record_date, run_id, strava_activity_id')
+    .eq('user_id', normalizedUserId)
+    .order('distance_meters', { ascending: true })
+
+  if (error) {
+    throw new Error(error.message)
   }
 
   return ((data as PersonalRecordRow[] | null) ?? [])

@@ -49,6 +49,45 @@ function formatRaceResultTime(totalSeconds: number | null | undefined) {
   ].join(':')
 }
 
+function formatPersonalRecordDistanceLabel(distanceMeters: number) {
+  switch (distanceMeters) {
+    case 5000:
+      return '5 км'
+    case 10000:
+      return '10 км'
+    case 21097:
+      return '21.1 км'
+    case 42195:
+      return '42.2 км'
+    default:
+      return `${Math.round(distanceMeters)} м`
+  }
+}
+
+function formatPersonalRecordResultTime(totalSeconds: number | null | undefined) {
+  if (!Number.isFinite(totalSeconds) || (totalSeconds ?? 0) <= 0) {
+    return null
+  }
+
+  const normalizedSeconds = Math.round(totalSeconds ?? 0)
+  const hours = Math.floor(normalizedSeconds / 3600)
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60)
+  const seconds = normalizedSeconds % 60
+
+  if (hours > 0) {
+    return [
+      String(hours),
+      String(minutes).padStart(2, '0'),
+      String(seconds).padStart(2, '0'),
+    ].join(':')
+  }
+
+  return [
+    String(minutes),
+    String(seconds).padStart(2, '0'),
+  ].join(':')
+}
+
 export function buildRunLikeCreatedEvent(input: {
   actorUserId: string
   targetUserId: string
@@ -291,6 +330,49 @@ export function buildRaceEventCompletedEvent(input: {
             ? Math.round(input.linkedRun?.movingTimeSeconds ?? 0)
             : null,
         linkedRunCreatedAt: trimToNull(input.linkedRun?.createdAt) ?? null,
+      },
+    },
+  }
+}
+
+export function buildPersonalRecordAchievedEvent(input: {
+  actorUserId: string
+  targetUserId: string
+  distanceMeters: number
+  durationSeconds: number
+  recordDate?: string | null
+  runId?: string | null
+  sourceKey: string
+}): CreateAppEventInput {
+  const distanceLabel = formatPersonalRecordDistanceLabel(input.distanceMeters)
+  const resultLabel = formatPersonalRecordResultTime(input.durationSeconds)
+  const targetPath = input.runId ? `/runs/${input.runId}` : '/activity/records'
+
+  return {
+    type: 'personal_record.achieved',
+    actorUserId: input.actorUserId,
+    targetUserId: input.targetUserId,
+    entityType: input.runId ? 'run' : 'personal_record',
+    entityId: input.runId ?? null,
+    category: 'run',
+    channel: 'both',
+    priority: 'normal',
+    targetPath,
+    dedupeKey: `personal_record:${input.targetUserId}:${input.distanceMeters}:${input.durationSeconds}:${input.sourceKey}`,
+    payload: {
+      v: EVENT_PAYLOAD_VERSION,
+      targetPath,
+      preview: {
+        title: `Новый личный рекорд на ${distanceLabel}`,
+        body: resultLabel,
+      },
+      context: {
+        distanceMeters: Math.round(input.distanceMeters),
+        durationSeconds: Math.round(input.durationSeconds),
+        resultLabel,
+        recordDate: trimToNull(input.recordDate) ?? null,
+        runId: input.runId ?? null,
+        sourceKey: input.sourceKey,
       },
     },
   }

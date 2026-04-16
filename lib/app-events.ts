@@ -8,6 +8,7 @@ export const INBOX_APP_EVENT_TYPES = [
   'race_event.liked',
   'run_comment.created',
   'run_comment.reply_created',
+  'personal_record.achieved',
   'challenge.completed',
   'weekly_race.result',
   'race_event.created',
@@ -122,6 +123,11 @@ function getFallbackEventCopy(type: string) {
     case 'run_comment.reply_created':
       return {
         title: 'Новый ответ на ваш комментарий',
+        body: null,
+      }
+    case 'personal_record.achieved':
+      return {
+        title: 'Новый личный рекорд',
         body: null,
       }
     case 'race_event.liked':

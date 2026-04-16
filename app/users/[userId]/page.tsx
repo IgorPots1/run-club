@@ -11,6 +11,11 @@ import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { loadUserAchievements, type UserAchievement } from '@/lib/achievements'
 import { buildActivityWindowStats, buildRollingWeeklyDistanceChart } from '@/lib/activity'
 import { formatAveragePace, formatDistanceKm, formatDurationCompact } from '@/lib/format'
+import {
+  loadPublicUserPersonalRecords,
+  SUPPORTED_PERSONAL_RECORD_DISTANCES,
+  type PersonalRecordView,
+} from '@/lib/personal-records'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
@@ -121,6 +126,52 @@ function formatAchievementDate(value: string) {
   }).format(date)
 }
 
+function formatPersonalRecordDistanceLabel(distanceMeters: number) {
+  switch (distanceMeters) {
+    case 5000:
+      return '5 км'
+    case 10000:
+      return '10 км'
+    case 21097:
+      return '21.1 км'
+    case 42195:
+      return '42.2 км'
+    default:
+      return `${distanceMeters} м`
+  }
+}
+
+function formatPersonalRecordTime(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.round(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const seconds = safeSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatPersonalRecordDate(value: string | null) {
+  if (!value) {
+    return 'Дата неизвестна'
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Дата неизвестна'
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
 function getAchievementSourceLabel(sourceType: UserAchievement['source_type']) {
   return sourceType === 'weekly_race' ? 'Гонка недели' : 'Челлендж'
 }
@@ -180,7 +231,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     redirect('/login')
   }
 
-  const [{ data: profile, error: profileError }, { data: runs, error: runsError }, achievementsResult] = await Promise.all([
+  const [{ data: profile, error: profileError }, { data: runs, error: runsError }, achievementsResult, personalRecordsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('id, name, nickname, avatar_url, club_joined_at, total_xp, app_access_status')
@@ -196,6 +247,12 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
         data: [] as UserAchievement[],
         error: 'Не удалось загрузить достижения',
       })),
+    loadPublicUserPersonalRecords(userId)
+      .then((data) => ({ data, error: null as string | null }))
+      .catch(() => ({
+        data: [] as PersonalRecordView[],
+        error: 'Не удалось загрузить личные рекорды',
+      })),
   ])
 
   const publicProfile = (profile as PublicProfileRow | null) ?? null
@@ -203,6 +260,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const hasLoadError = Boolean(profileError || runsError)
   const recentAchievements = achievementsResult.data
   const achievementsLoadError = achievementsResult.error
+  const personalRecords = personalRecordsResult.data
+  const personalRecordsLoadError = personalRecordsResult.error
+  const personalRecordByDistance = new Map(personalRecords.map((record) => [record.distance_meters, record]))
   const sortedAchievements = [...recentAchievements].sort(compareAchievementsByDateDesc)
   const challengeAchievements = sortedAchievements.filter((achievement) => achievement.source_type === 'challenge')
   const nonChallengeAchievements = sortedAchievements.filter((achievement) => achievement.source_type !== 'challenge')
@@ -390,6 +450,40 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
               </p>
             )}
           </div>
+        </section>
+        <section className="app-card rounded-3xl border p-4 shadow-sm sm:p-5">
+          <div className="min-w-0">
+            <h2 className="app-text-primary text-lg font-semibold">Личные рекорды</h2>
+            <p className="app-text-secondary mt-1 text-sm">Лучшие результаты на основных дистанциях.</p>
+          </div>
+
+          {personalRecordsLoadError ? (
+            <p className="mt-4 text-sm text-red-600">{personalRecordsLoadError}</p>
+          ) : (
+            <div className="mt-4 divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+              {SUPPORTED_PERSONAL_RECORD_DISTANCES.map((distanceMeters) => {
+                const record = personalRecordByDistance.get(distanceMeters) ?? null
+
+                return (
+                  <div key={distanceMeters} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="app-text-primary text-sm font-medium">
+                        {formatPersonalRecordDistanceLabel(distanceMeters)}
+                      </p>
+                      <p className="app-text-secondary mt-1 text-xs">
+                        {record ? formatPersonalRecordDate(record.record_date) : 'Пока нет результата'}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="app-text-primary text-sm font-semibold">
+                        {record ? formatPersonalRecordTime(record.duration_seconds) : '—'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </section>
         <section className="app-card rounded-3xl border p-4 shadow-sm sm:p-5">
           <div className="min-w-0">

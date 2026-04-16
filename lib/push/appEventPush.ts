@@ -410,6 +410,24 @@ function buildRaceEventLikedPushPayload(event: AppEvent): GenericPushDeliveryPay
   }
 }
 
+function buildPersonalRecordAchievedPushPayload(event: AppEvent): GenericPushDeliveryPayload | null {
+  if (!event.targetPath) {
+    return null
+  }
+
+  const preview = getGenericEventPreview(event)
+  const timestamp = Date.parse(event.createdAt)
+
+  return {
+    title: preview.title ?? 'Новый личный рекорд',
+    body: preview.body ?? 'Откройте рекорды',
+    targetUrl: event.targetPath,
+    priority: 'normal',
+    tag: event.dedupeKey ?? event.targetPath,
+    timestamp: Number.isNaN(timestamp) ? undefined : timestamp,
+  }
+}
+
 async function loadCoalescedChatPushGroup(
   supabaseAdmin: SupabaseAdminClient,
   descriptor: ChatPushCoalescingDescriptor
@@ -866,6 +884,8 @@ async function processSingleGenericAppEventPush(
     pushPayload = buildRaceEventLikedPushPayload(event)
     preferenceEnabled = false
     preferenceDisabledError = 'run_like_disabled'
+  } else if (event.type === 'personal_record.achieved') {
+    pushPayload = buildPersonalRecordAchievedPushPayload(event)
   }
 
   if (!pushPayload) {
