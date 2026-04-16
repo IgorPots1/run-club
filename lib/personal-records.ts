@@ -377,7 +377,19 @@ async function upsertPersonalRecordCandidate(params: {
   })
 
   if (error) {
-    throw new Error(error.message)
+    throw new Error(
+      [
+        `upsert_personal_record_if_better failed: ${error.message}`,
+        `code=${error.code ?? 'unknown'}`,
+        `details=${error.details ?? 'none'}`,
+        `hint=${error.hint ?? 'none'}`,
+        `distance_meters=${params.candidate.distance_meters}`,
+        `source=${params.candidate.source}`,
+        `run_id=${params.runId ?? 'none'}`,
+        `strava_activity_id=${nextStravaActivityId ?? 'none'}`,
+        `record_date=${nextRecordDate ?? 'none'}`,
+      ].join(' | ')
+    )
   }
 
   return Boolean(data)

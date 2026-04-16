@@ -2540,14 +2540,24 @@ export async function importStravaActivityForUser(
     })
 
     if (insertedRun?.id) {
-      await upsertPersonalRecordsFromStravaPayload({
-        supabase,
-        userId,
-        runId: insertedRun.id,
-        rawStravaPayload: payload.raw_strava_payload,
-        fallbackRecordDate: payload.created_at,
-        fallbackStravaActivityId: activityForImport.id,
-      })
+      try {
+        await upsertPersonalRecordsFromStravaPayload({
+          supabase,
+          userId,
+          runId: insertedRun.id,
+          rawStravaPayload: payload.raw_strava_payload,
+          fallbackRecordDate: payload.created_at,
+          fallbackStravaActivityId: activityForImport.id,
+        })
+      } catch (error) {
+        console.warn('[strava-sync] personal_record_upsert_failed', {
+          userId,
+          runId: insertedRun.id,
+          activityId: activityForImport.id,
+          path: 'insert',
+          message: error instanceof Error ? error.message : 'unknown_error',
+        })
+      }
     }
 
     const nextTotalXp = await loadProfileTotalXp(userId, { supabase })
@@ -2787,14 +2797,24 @@ export async function importStravaActivityForUser(
     attemptedCountry: runUpdatePayload.country,
   })
 
-  await upsertPersonalRecordsFromStravaPayload({
-    supabase,
-    userId,
-    runId: existingRunIdForSupplementalSync,
-    rawStravaPayload: payload.raw_strava_payload,
-    fallbackRecordDate: payload.created_at,
-    fallbackStravaActivityId: activityForImport.id,
-  })
+  try {
+    await upsertPersonalRecordsFromStravaPayload({
+      supabase,
+      userId,
+      runId: existingRunIdForSupplementalSync,
+      rawStravaPayload: payload.raw_strava_payload,
+      fallbackRecordDate: payload.created_at,
+      fallbackStravaActivityId: activityForImport.id,
+    })
+  } catch (error) {
+    console.warn('[strava-sync] personal_record_upsert_failed', {
+      userId,
+      runId: existingRunIdForSupplementalSync,
+      activityId: activityForImport.id,
+      path: 'update',
+      message: error instanceof Error ? error.message : 'unknown_error',
+    })
+  }
 
   const nextTotalXp = await loadProfileTotalXp(userId, { supabase })
   const levelState = getLevelUpState(previousTotalXp, nextTotalXp)
