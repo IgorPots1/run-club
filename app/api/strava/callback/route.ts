@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers'
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { ensureHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
 import { exchangeStravaCodeForToken } from '@/lib/strava/strava-client'
 
 export async function GET(request: Request) {
@@ -171,6 +172,17 @@ export async function GET(request: Request) {
 
       return clearStravaConnectCookies(buildRedirect('error'))
     }
+
+    after(async () => {
+      try {
+        await ensureHistoricalPersonalRecordBackfillForUser(connectUserId)
+      } catch (backfillError) {
+        console.error('Failed to auto-start personal record backfill after Strava connect', {
+          userId: connectUserId,
+          error: backfillError instanceof Error ? backfillError.message : 'unknown_error',
+        })
+      }
+    })
 
     if (debugMode) {
       return NextResponse.json({

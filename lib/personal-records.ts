@@ -3,8 +3,14 @@ import 'server-only'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
-export const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000] as const
-export const FULL_RUN_PERSONAL_RECORD_DISTANCE_TOLERANCE_METERS = 25
+export const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000, 21097, 42195] as const
+
+const LOCAL_FULL_RUN_PERSONAL_RECORD_TOLERANCES: Record<number, number> = {
+  5000: 25,
+  10000: 25,
+  21097: 30,
+  42195: 50,
+}
 
 export type SupportedPersonalRecordDistance = (typeof SUPPORTED_PERSONAL_RECORD_DISTANCES)[number]
 
@@ -65,8 +71,67 @@ function toNonNegativeInteger(value: unknown) {
 function toSupportedDistance(value: unknown): SupportedPersonalRecordDistance | null {
   const normalizedValue = toPositiveInteger(value)
 
-  if (normalizedValue === 5000 || normalizedValue === 10000) {
+  if (
+    normalizedValue === 5000
+    || normalizedValue === 10000
+    || normalizedValue === 21097
+    || normalizedValue === 42195
+  ) {
     return normalizedValue
+  }
+
+  return null
+}
+
+function normalizeBestEffortName(value: unknown) {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+    : ''
+}
+
+function resolveSupportedBestEffortDistance(bestEffort: Record<string, unknown>): SupportedPersonalRecordDistance | null {
+  const exactDistance = toSupportedDistance(bestEffort.distance)
+
+  if (exactDistance) {
+    return exactDistance
+  }
+
+  const normalizedName = normalizeBestEffortName(bestEffort.name)
+
+  if (!normalizedName) {
+    return null
+  }
+
+  if (normalizedName === '5k' || normalizedName === '5km' || normalizedName === '5000') {
+    return 5000
+  }
+
+  if (normalizedName === '10k' || normalizedName === '10km' || normalizedName === '10000') {
+    return 10000
+  }
+
+  if (
+    normalizedName === 'halfmarathon'
+    || normalizedName === '21k'
+    || normalizedName === '21km'
+    || normalizedName === '211km'
+    || normalizedName === '21097'
+    || normalizedName === '210975'
+    || normalizedName === '21097km'
+  ) {
+    return 21097
+  }
+
+  if (
+    normalizedName === 'marathon'
+    || normalizedName === '42k'
+    || normalizedName === '42km'
+    || normalizedName === '422km'
+    || normalizedName === '42195'
+    || normalizedName === '421950'
+    || normalizedName === '42195km'
+  ) {
+    return 42195
   }
 
   return null
@@ -80,7 +145,9 @@ function matchSupportedFullRunDistance(value: unknown): SupportedPersonalRecordD
   }
 
   for (const supportedDistance of SUPPORTED_PERSONAL_RECORD_DISTANCES) {
-    if (Math.abs(normalizedValue - supportedDistance) <= FULL_RUN_PERSONAL_RECORD_DISTANCE_TOLERANCE_METERS) {
+    const toleranceMeters = LOCAL_FULL_RUN_PERSONAL_RECORD_TOLERANCES[supportedDistance]
+
+    if (Math.abs(normalizedValue - supportedDistance) <= toleranceMeters) {
       return supportedDistance
     }
   }
@@ -137,7 +204,7 @@ export function extractStravaPersonalRecordCandidates(
       continue
     }
 
-    const distanceMeters = toSupportedDistance(bestEffort.distance)
+    const distanceMeters = resolveSupportedBestEffortDistance(bestEffort)
     const durationSeconds = toPositiveInteger(bestEffort.elapsed_time ?? bestEffort.moving_time)
 
     if (!distanceMeters || !durationSeconds) {

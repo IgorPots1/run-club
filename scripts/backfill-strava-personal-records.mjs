@@ -8,12 +8,13 @@ const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
 const STRAVA_PAGE_SIZE = 200
 const SUPABASE_PAGE_SIZE = 200
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
-const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000]
+const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000, 21097, 42195]
 const MAX_PAGES_PER_RUN = 5
 const MAX_DETAILED_ACTIVITIES_PER_RUN = 200
 const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
 const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
 const STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS = 1000
+const RUNNABLE_BACKFILL_JOB_STATUSES = ['pending', 'paused_rate_limited']
 const PERSONAL_RECORD_BACKFILL_JOB_COLUMNS = [
   'user_id',
   'status',
@@ -89,7 +90,7 @@ function toPositiveInteger(value) {
 
 function toSupportedDistance(value) {
   const normalizedValue = toPositiveInteger(value)
-  return normalizedValue === 5000 || normalizedValue === 10000 ? normalizedValue : null
+  return SUPPORTED_PERSONAL_RECORD_DISTANCES.includes(normalizedValue) ? normalizedValue : null
 }
 
 function normalizeBestEffortName(value) {
@@ -115,6 +116,26 @@ function resolveHistoricalBestEffortDistance(bestEffort) {
 
   if (normalizedName === '10k' || normalizedName === '10km' || normalizedName.includes('10000')) {
     return 10000
+  }
+
+  if (
+    normalizedName === 'halfmarathon'
+    || normalizedName === '21k'
+    || normalizedName === '21km'
+    || normalizedName === '211km'
+    || normalizedName.includes('21097')
+  ) {
+    return 21097
+  }
+
+  if (
+    normalizedName === 'marathon'
+    || normalizedName === '42k'
+    || normalizedName === '42km'
+    || normalizedName === '422km'
+    || normalizedName.includes('42195')
+  ) {
+    return 42195
   }
 
   return null
@@ -634,6 +655,27 @@ async function updateBackfillJob(supabase, userId, patch) {
   return normalizeBackfillJob(data, userId)
 }
 
+async function claimRunnableBackfillJob(supabase, userId, startedAt) {
+  const { data, error } = await supabase
+    .from('personal_record_backfill_jobs')
+    .update({
+      status: 'running',
+      last_error: null,
+      started_at: startedAt,
+      finished_at: null,
+    })
+    .eq('user_id', userId)
+    .in('status', RUNNABLE_BACKFILL_JOB_STATUSES)
+    .select(PERSONAL_RECORD_BACKFILL_JOB_COLUMNS)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data ? normalizeBackfillJob(data, userId) : null
+}
+
 async function loadConnections(supabase, userId) {
   const rows = []
 
@@ -736,6 +778,8 @@ async function processActivitiesPage(params) {
     activitiesWithBestEfforts: 0,
     fiveKilometerCandidates: 0,
     tenKilometerCandidates: 0,
+    halfMarathonCandidates: 0,
+    marathonCandidates: 0,
     detailedActivitiesFetched: 0,
     recordsUpdated: 0,
     skipped: 0,
@@ -853,6 +897,14 @@ async function processActivitiesPage(params) {
         summary.tenKilometerCandidates += 1
       }
 
+    if (candidate.distance_meters === 21097) {
+      summary.halfMarathonCandidates += 1
+    }
+
+    if (candidate.distance_meters === 42195) {
+      summary.marathonCandidates += 1
+    }
+
       candidatesToUpsert.push(candidate)
     }
 
@@ -907,6 +959,8 @@ async function processConnection(supabase, connection, options) {
     activitiesWithBestEfforts: 0,
     fiveKilometerCandidates: 0,
     tenKilometerCandidates: 0,
+    halfMarathonCandidates: 0,
+    marathonCandidates: 0,
     detailedActivitiesFetched: 0,
     recordsUpdated: 0,
     skipped: 0,
@@ -937,13 +991,45 @@ async function processConnection(supabase, connection, options) {
     return summary
   }
 
-  if (!options.dryRun) {
-    job = await updateBackfillJob(supabase, connection.user_id, {
-      status: 'running',
-      last_error: null,
-      started_at: job.started_at ?? new Date().toISOString(),
-      finished_at: null,
+  if (job.status === 'running') {
+    console.info('Backfill already running', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
     })
+    console.info('Final job state', formatBackfillJobStateForLog(job))
+    return summary
+  }
+
+  if (job.status === 'failed') {
+    console.info('Backfill will not auto-resume failed job', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      lastError: job.last_error,
+    })
+    console.info('Final job state', formatBackfillJobStateForLog(job))
+    return summary
+  }
+
+  if (!options.dryRun) {
+    const claimedJob = await claimRunnableBackfillJob(
+      supabase,
+      connection.user_id,
+      job.started_at ?? new Date().toISOString()
+    )
+
+    if (!claimedJob) {
+      job = await loadBackfillJob(supabase, connection.user_id)
+      summary.jobStatus = job.status
+      console.info('Backfill claim skipped because job is no longer runnable', {
+        userId: connection.user_id,
+        athleteId: connection.strava_athlete_id,
+        status: job.status,
+      })
+      console.info('Final job state', formatBackfillJobStateForLog(job))
+      return summary
+    }
+
+    job = claimedJob
   }
 
   console.info('Resuming historical personal record backfill', {
@@ -1020,7 +1106,9 @@ async function processConnection(supabase, connection, options) {
         startingCandidatesFound:
           job.candidates_found_count
           + summary.fiveKilometerCandidates
-          + summary.tenKilometerCandidates,
+          + summary.tenKilometerCandidates
+          + summary.halfMarathonCandidates
+          + summary.marathonCandidates,
         aggregateSkipReasons,
       })
       activeConnection = pageResult.connection
@@ -1032,6 +1120,8 @@ async function processConnection(supabase, connection, options) {
       summary.activitiesWithBestEfforts += pageResult.summary.activitiesWithBestEfforts
       summary.fiveKilometerCandidates += pageResult.summary.fiveKilometerCandidates
       summary.tenKilometerCandidates += pageResult.summary.tenKilometerCandidates
+      summary.halfMarathonCandidates += pageResult.summary.halfMarathonCandidates
+      summary.marathonCandidates += pageResult.summary.marathonCandidates
       summary.detailedActivitiesFetched += pageResult.summary.detailedActivitiesFetched
       summary.recordsUpdated += pageResult.summary.recordsUpdated
       summary.skipped += pageResult.summary.skipped
@@ -1073,7 +1163,11 @@ async function processConnection(supabase, connection, options) {
           scannedPagesCountWouldBe:
             job.scanned_pages_count + pagesProcessedThisRun,
           candidatesFoundCountWouldBe:
-            job.candidates_found_count + summary.fiveKilometerCandidates + summary.tenKilometerCandidates,
+            job.candidates_found_count
+            + summary.fiveKilometerCandidates
+            + summary.tenKilometerCandidates
+            + summary.halfMarathonCandidates
+            + summary.marathonCandidates,
           insertedOrUpdatedCountWouldBe:
             job.inserted_or_updated_count + summary.recordsUpdated,
           skippedCountWouldBe:
@@ -1176,6 +1270,103 @@ async function processConnection(supabase, connection, options) {
   return summary
 }
 
+export async function ensureHistoricalPersonalRecordBackfillForUser(userId) {
+  const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
+
+  if (!normalizedUserId) {
+    return {
+      ok: false,
+      reason: 'invalid_user_id',
+    }
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const connections = await loadConnections(supabase, normalizedUserId)
+  const connection = connections[0] ?? null
+
+  if (!connection) {
+    return {
+      ok: true,
+      reason: 'not_connected',
+      triggered: false,
+      jobStatus: 'missing',
+    }
+  }
+
+  const job = await loadBackfillJob(supabase, normalizedUserId)
+  const effectiveStatus = job.created_at ? job.status : 'missing'
+
+  if (effectiveStatus === 'completed') {
+    return {
+      ok: true,
+      reason: 'already_completed',
+      triggered: false,
+      jobStatus: 'completed',
+    }
+  }
+
+  if (effectiveStatus === 'running') {
+    return {
+      ok: true,
+      reason: 'already_running',
+      triggered: false,
+      jobStatus: 'running',
+    }
+  }
+
+  if (effectiveStatus === 'failed') {
+    return {
+      ok: true,
+      reason: 'failed_not_resumed',
+      triggered: false,
+      jobStatus: 'failed',
+    }
+  }
+
+  const summary = await processConnection(supabase, connection, {
+    dryRun: false,
+  })
+
+  return {
+    ok: true,
+    reason: effectiveStatus === 'missing' ? 'created_or_started' : 'resumed',
+    triggered: true,
+    jobStatus: summary.jobStatus,
+    summary,
+  }
+}
+
+export async function loadHistoricalPersonalRecordBackfillStateForUser(userId) {
+  const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
+
+  if (!normalizedUserId) {
+    return {
+      connected: false,
+      jobStatus: 'missing',
+    }
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const [{ data: connection, error: connectionError }, job] = await Promise.all([
+    supabase
+      .from('strava_connections')
+      .select('id, status')
+      .eq('user_id', normalizedUserId)
+      .eq('status', 'connected')
+      .maybeSingle(),
+    loadBackfillJob(supabase, normalizedUserId),
+  ])
+
+  if (connectionError) {
+    throw new Error(connectionError.message)
+  }
+
+  return {
+    connected: Boolean(connection),
+    jobStatus: job.created_at ? job.status : 'missing',
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   const supabase = createSupabaseAdminClient()
@@ -1218,6 +1409,8 @@ async function main() {
       accumulator.activitiesWithBestEfforts += summary.activitiesWithBestEfforts
       accumulator.fiveKilometerCandidates += summary.fiveKilometerCandidates
       accumulator.tenKilometerCandidates += summary.tenKilometerCandidates
+      accumulator.halfMarathonCandidates += summary.halfMarathonCandidates
+      accumulator.marathonCandidates += summary.marathonCandidates
       accumulator.detailedActivitiesFetched += summary.detailedActivitiesFetched
       accumulator.recordsUpdated += summary.recordsUpdated
       accumulator.skipped += summary.skipped
@@ -1230,6 +1423,8 @@ async function main() {
       activitiesWithBestEfforts: 0,
       fiveKilometerCandidates: 0,
       tenKilometerCandidates: 0,
+      halfMarathonCandidates: 0,
+      marathonCandidates: 0,
       detailedActivitiesFetched: 0,
       recordsUpdated: 0,
       skipped: 0,
@@ -1239,9 +1434,16 @@ async function main() {
   console.info('Personal record backfill complete', totals)
 }
 
-main().catch((error) => {
-  console.error('Personal record backfill failed', {
-    error: error instanceof Error ? error.message : 'unknown_error',
+const isDirectExecution = Boolean(
+  process.argv[1]
+  && new URL(import.meta.url).pathname === process.argv[1]
+)
+
+if (isDirectExecution) {
+  main().catch((error) => {
+    console.error('Personal record backfill failed', {
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+    process.exitCode = 1
   })
-  process.exitCode = 1
-})
+}

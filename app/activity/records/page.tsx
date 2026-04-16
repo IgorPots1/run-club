@@ -3,6 +3,15 @@ import { redirect } from 'next/navigation'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { loadCurrentUserPersonalRecords, type PersonalRecordView } from '@/lib/personal-records'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import BackfillEnsureOnLoad from './BackfillEnsureOnLoad'
+import { loadHistoricalPersonalRecordBackfillStateForUser } from '@/scripts/backfill-strava-personal-records.mjs'
+
+const RECORD_CARDS = [
+  { distanceMeters: 5000, label: '5 км' },
+  { distanceMeters: 10000, label: '10 км' },
+  { distanceMeters: 21097, label: '21.1 км' },
+  { distanceMeters: 42195, label: '42.2 км' },
+] as const
 
 function formatRecordTime(durationSeconds: number) {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -107,6 +116,13 @@ export default async function ActivityRecordsPage() {
 
   let records: PersonalRecordView[] = []
   let loadFailed = false
+  let backfillState: {
+    connected: boolean
+    jobStatus: 'missing' | 'pending' | 'paused_rate_limited' | 'running' | 'completed' | 'failed'
+  } = {
+    connected: false,
+    jobStatus: 'missing',
+  }
 
   try {
     records = await loadCurrentUserPersonalRecords()
@@ -114,11 +130,26 @@ export default async function ActivityRecordsPage() {
     loadFailed = true
   }
 
+  try {
+    backfillState = await loadHistoricalPersonalRecordBackfillStateForUser(user.id)
+  } catch {
+    // Keep the records page usable even if the backfill status helper fails.
+  }
+
   const recordsByDistance = new Map(records.map((record) => [record.distance_meters, record]))
   const hasAnyRecords = records.length > 0
+  const shouldShowBackfillPrompt = !backfillState.connected
+  const shouldShowBackfillStatus = backfillState.connected && backfillState.jobStatus !== 'completed'
+  const shouldTriggerBackfill = backfillState.connected && (
+    backfillState.jobStatus === 'missing'
+    || backfillState.jobStatus === 'pending'
+    || backfillState.jobStatus === 'paused_rate_limited'
+    || backfillState.jobStatus === 'running'
+  )
 
   return (
     <main className="min-h-screen">
+      <BackfillEnsureOnLoad shouldTrigger={shouldTriggerBackfill} />
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
         <InnerPageHeader title="Рекорды" fallbackHref="/activity" />
 
@@ -135,6 +166,27 @@ export default async function ActivityRecordsPage() {
         </div>
 
         <div className="mt-4">
+          {shouldShowBackfillPrompt ? (
+            <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm">
+                Исторические рекорды из Strava появятся после подключения Strava.
+              </p>
+              <Link href="/profile/strava" className="mt-2 inline-flex text-sm font-medium text-blue-600">
+                Подключить Strava
+              </Link>
+            </div>
+          ) : null}
+
+          {shouldShowBackfillStatus ? (
+            <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+              <p className="app-text-secondary text-sm">
+                {backfillState.jobStatus === 'running'
+                  ? 'Рекорды синхронизируются'
+                  : 'История рекордов обновляется'}
+              </p>
+            </div>
+          ) : null}
+
           {loadFailed ? (
             <div className="app-card rounded-2xl border p-4 shadow-sm">
               <p className="text-sm text-red-600">Не удалось загрузить рекорды</p>
@@ -143,13 +195,18 @@ export default async function ActivityRecordsPage() {
             <div className="app-card rounded-2xl border p-5 text-center shadow-sm md:p-6">
               <p className="app-text-secondary text-sm">Личные рекорды пока не найдены.</p>
               <p className="app-text-secondary mt-2 text-sm">
-                Рекорды появятся после подходящего полного забега на 5 км или 10 км и после синка Strava.
+                Рекорды появятся после подходящего полного забега на 5 км, 10 км, 21.1 км или 42.2 км и после синка Strava.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              <PersonalRecordCard distanceLabel="5 км" record={recordsByDistance.get(5000) ?? null} />
-              <PersonalRecordCard distanceLabel="10 км" record={recordsByDistance.get(10000) ?? null} />
+              {RECORD_CARDS.map((recordCard) => (
+                <PersonalRecordCard
+                  key={recordCard.distanceMeters}
+                  distanceLabel={recordCard.label}
+                  record={recordsByDistance.get(recordCard.distanceMeters) ?? null}
+                />
+              ))}
             </div>
           )}
         </div>

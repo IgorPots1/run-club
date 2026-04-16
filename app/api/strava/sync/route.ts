@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { syncStravaRuns } from '@/lib/strava/strava-sync'
+import { ensureHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
 
 type SyncDebugDiagnostics = {
   totalActivitiesFetched: number
@@ -128,6 +129,17 @@ export async function POST(request: Request) {
         detailedActivityDebug: result.debug?.detailedActivityDebug ?? null,
       })
     }
+
+    after(async () => {
+      try {
+        await ensureHistoricalPersonalRecordBackfillForUser(user.id)
+      } catch (backfillError) {
+        console.error('Failed to trigger personal record backfill after Strava sync', {
+          userId: user.id,
+          error: backfillError instanceof Error ? backfillError.message : 'unknown_error',
+        })
+      }
+    })
 
     return NextResponse.json({
       ok: true,

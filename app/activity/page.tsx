@@ -828,10 +828,10 @@ export default function ActivityPage() {
             <div className="min-w-0">
               <p className="app-text-primary text-base font-semibold">Рекорды</p>
               <p className="app-text-secondary mt-1 text-sm">
-                Лучшие 5 км и 10 км из локальных тренировок и Strava.
+                Лучшие 5 км, 10 км, 21.1 км и 42.2 км из локальных тренировок и Strava.
               </p>
               <p className="app-text-secondary mt-2 text-xs font-medium">
-                5 км и 10 км
+                5 км, 10 км, 21.1 км и 42.2 км
               </p>
             </div>
             <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
