@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { upsertPersonalRecordForLocalRunIfEligible } from '@/lib/personal-records'
+import {
+  recomputePersonalRecordForUserDistance,
+  SUPPORTED_PERSONAL_RECORD_DISTANCES,
+  upsertPersonalRecordForLocalRunIfEligible,
+} from '@/lib/personal-records'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { removeRunFromShoe, updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -251,6 +255,33 @@ export async function DELETE(
     )
   }
 
+  const { data: affectedPersonalRecords, error: affectedPersonalRecordsError } = await supabaseAdmin
+    .from('personal_records')
+    .select('distance_meters')
+    .eq('user_id', user.id)
+    .eq('run_id', existingRun.id)
+    .in('distance_meters', [...SUPPORTED_PERSONAL_RECORD_DISTANCES])
+
+  if (affectedPersonalRecordsError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: affectedPersonalRecordsError.message,
+      },
+      { status: 500 }
+    )
+  }
+
+  const affectedDistances = Array.from(
+    new Set(
+      ((affectedPersonalRecords ?? []) as Array<{ distance_meters: number | null }>)
+        .map((row) => (
+          SUPPORTED_PERSONAL_RECORD_DISTANCES.find((distance) => distance === row.distance_meters) ?? null
+        ))
+        .filter((distance): distance is (typeof SUPPORTED_PERSONAL_RECORD_DISTANCES)[number] => distance !== null)
+    )
+  )
+
   const { error: deleteError } = await supabaseAdmin
     .from('runs')
     .delete()
@@ -278,6 +309,23 @@ export async function DELETE(
       },
       { status: 500 }
     )
+  }
+
+  for (const distance of affectedDistances) {
+    try {
+      await recomputePersonalRecordForUserDistance({
+        supabase: supabaseAdmin,
+        userId: user.id,
+        distanceMeters: distance,
+      })
+    } catch (personalRecordError) {
+      console.error('Failed to recompute personal records after run delete', {
+        userId: user.id,
+        runId: existingRun.id,
+        distanceMeters: distance,
+        error: personalRecordError instanceof Error ? personalRecordError.message : 'unknown_error',
+      })
+    }
   }
 
   return NextResponse.json({
