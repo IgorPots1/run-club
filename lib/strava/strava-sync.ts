@@ -2835,8 +2835,13 @@ export async function importStravaActivityForUser(
 
 export async function importHistoricalStravaActivityByIdForUser(
   userId: string,
-  stravaActivityId: number
+  stravaActivityId: number,
+  options: {
+    ignoreCooldown?: boolean
+  } = {}
 ) {
+  void options?.ignoreCooldown
+
   const normalizedUserId = userId.trim()
   const normalizedActivityId = Math.round(Number(stravaActivityId))
 

@@ -25,7 +25,9 @@ async function importHistoricalStravaActivityByIdForUserWithRetry(userId: string
 
   for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
     try {
-      return await importHistoricalStravaActivityByIdForUser(userId, stravaActivityId)
+      return await importHistoricalStravaActivityByIdForUser(userId, stravaActivityId, {
+        ignoreCooldown: true,
+      })
     } catch (error) {
       const isRateLimitError = error instanceof StravaApiError && error.status === 429
 
@@ -57,12 +59,24 @@ export async function recoverKnownHistoricalPersonalRecord(
   actorUserId?: string | null
 ) {
   const supabaseAdmin = createSupabaseAdminClient()
-  const importedRunId = await importHistoricalStravaActivityByIdForUserWithRetry(
+  const { data: existingRunBeforeRecovery, error: existingRunBeforeRecoveryError } = await supabaseAdmin
+    .from('runs')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('external_source', 'strava')
+    .eq('external_id', String(RECOVERY_STRAVA_ACTIVITY_ID))
+    .maybeSingle()
+
+  if (existingRunBeforeRecoveryError) {
+    throw new Error(existingRunBeforeRecoveryError.message)
+  }
+
+  const recoveredRunId = await importHistoricalStravaActivityByIdForUserWithRetry(
     userId,
     RECOVERY_STRAVA_ACTIVITY_ID
   )
 
-  if (!importedRunId) {
+  if (!recoveredRunId) {
     return {
       ok: false as const,
       status: 409,
@@ -78,7 +92,7 @@ export async function recoverKnownHistoricalPersonalRecord(
   const { data: run, error: runError } = await supabaseAdmin
     .from('runs')
     .select('id, created_at, raw_strava_payload, external_id')
-    .eq('id', importedRunId)
+    .eq('id', recoveredRunId)
     .eq('user_id', userId)
     .eq('external_source', 'strava')
     .eq('external_id', String(RECOVERY_STRAVA_ACTIVITY_ID))
@@ -96,11 +110,14 @@ export async function recoverKnownHistoricalPersonalRecord(
         ok: false,
         step: 'missing_strava_payload',
         userId,
-        runId: importedRunId,
+        runId: recoveredRunId,
         stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
       },
     }
   }
+
+  const importedRunId = existingRunBeforeRecovery ? null : recoveredRunId
+  const existingRunId = existingRunBeforeRecovery?.id ?? null
 
   const upsertResult = await upsertPersonalRecordsForDistancesFromStravaPayload({
     supabase: supabaseAdmin,
@@ -127,6 +144,13 @@ export async function recoverKnownHistoricalPersonalRecord(
     })
   }
 
+  const halfMarathonRecomputed = recomputeResults.some(
+    (result) => result.distanceMeters === 21097 && result.updated
+  )
+  const marathonRecomputed = recomputeResults.some(
+    (result) => result.distanceMeters === 42195 && result.updated
+  )
+
   console.info('Recovered known historical personal record activity', {
     actorUserId: actorUserId ?? null,
     targetUserId: userId,
@@ -146,9 +170,10 @@ export async function recoverKnownHistoricalPersonalRecord(
       runId: run.id,
       stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
       distances: RECOVERY_DISTANCES,
-      import: {
-        runId: importedRunId,
-      },
+      importedRunId,
+      existingRunId,
+      halfMarathonRecomputed,
+      marathonRecomputed,
       upsert: upsertResult,
       recompute: recomputeResults,
     },
