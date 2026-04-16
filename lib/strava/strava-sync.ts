@@ -2970,7 +2970,7 @@ export async function syncStravaRuns(
     }
   }
 
-  if (!options.ignoreCooldown && hasActiveStravaRateLimitCooldown(connection)) {
+  if (!options?.ignoreCooldown && hasActiveStravaRateLimitCooldown(connection)) {
     logStravaCooldownActive('sync_start_blocked', connection, {
       mode: syncMode,
       targetDebugRunId: targetDebugRunId ?? null,
