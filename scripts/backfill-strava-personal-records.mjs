@@ -9,10 +9,26 @@ const STRAVA_PAGE_SIZE = 200
 const SUPABASE_PAGE_SIZE = 200
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
 const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000]
+const MAX_PAGES_PER_RUN = 5
+const MAX_DETAILED_ACTIVITIES_PER_RUN = 200
 const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
 const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
-const STRAVA_RATE_LIMIT_BACKOFF_MS = [15000, 30000, 60000]
 const STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS = 1000
+const PERSONAL_RECORD_BACKFILL_JOB_COLUMNS = [
+  'user_id',
+  'status',
+  'next_page',
+  'processed_activities_count',
+  'scanned_pages_count',
+  'candidates_found_count',
+  'inserted_or_updated_count',
+  'skipped_count',
+  'last_error',
+  'started_at',
+  'finished_at',
+  'updated_at',
+  'created_at',
+].join(', ')
 
 function getRequiredEnv(name) {
   const value = process.env[name]
@@ -126,6 +142,108 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+class StravaRateLimitError extends Error {
+  constructor(requestName, metadata, rateLimit) {
+    super(`Strava rate limited during ${requestName}`)
+    this.name = 'StravaRateLimitError'
+    this.status = 429
+    this.requestName = requestName
+    this.metadata = metadata
+    this.rateLimit = rateLimit
+  }
+}
+
+function isStravaRateLimitError(error) {
+  return error instanceof StravaRateLimitError || error?.status === 429
+}
+
+function toNonNegativeInteger(value, fallback = 0) {
+  const normalizedValue = Number(value)
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue < 0) {
+    return fallback
+  }
+
+  return Math.round(normalizedValue)
+}
+
+function buildDefaultBackfillJob(userId) {
+  return {
+    user_id: userId,
+    status: 'pending',
+    next_page: 1,
+    processed_activities_count: 0,
+    scanned_pages_count: 0,
+    candidates_found_count: 0,
+    inserted_or_updated_count: 0,
+    skipped_count: 0,
+    last_error: null,
+    started_at: null,
+    finished_at: null,
+    updated_at: null,
+    created_at: null,
+  }
+}
+
+function normalizeBackfillJob(row, userId) {
+  const defaultJob = buildDefaultBackfillJob(userId)
+
+  if (!row) {
+    return defaultJob
+  }
+
+  return {
+    ...defaultJob,
+    ...row,
+    next_page: Math.max(1, toNonNegativeInteger(row.next_page, 1)),
+    processed_activities_count: toNonNegativeInteger(row.processed_activities_count),
+    scanned_pages_count: toNonNegativeInteger(row.scanned_pages_count),
+    candidates_found_count: toNonNegativeInteger(row.candidates_found_count),
+    inserted_or_updated_count: toNonNegativeInteger(row.inserted_or_updated_count),
+    skipped_count: toNonNegativeInteger(row.skipped_count),
+  }
+}
+
+function formatBackfillJobStateForLog(job) {
+  return {
+    userId: job.user_id,
+    status: job.status,
+    nextPage: job.next_page,
+    processedActivitiesCount: job.processed_activities_count,
+    scannedPagesCount: job.scanned_pages_count,
+    candidatesFoundCount: job.candidates_found_count,
+    insertedOrUpdatedCount: job.inserted_or_updated_count,
+    skippedCount: job.skipped_count,
+    lastError: job.last_error,
+    startedAt: job.started_at,
+    finishedAt: job.finished_at,
+    updatedAt: job.updated_at,
+    createdAt: job.created_at,
+  }
+}
+
+function formatRateLimitLastError(error) {
+  const details = [`request=${error.requestName}`]
+
+  if (typeof error.metadata?.page === 'number') {
+    details.push(`page=${error.metadata.page}`)
+  }
+
+  if (typeof error.metadata?.activityId === 'number') {
+    details.push(`activity_id=${error.metadata.activityId}`)
+  }
+
+  if (error.rateLimit?.limit) {
+    details.push(`limit=${error.rateLimit.limit}`)
+  }
+
+  if (error.rateLimit?.usage) {
+    details.push(`usage=${error.rateLimit.usage}`)
+  }
+
+  return details.join(' ')
 }
 
 function isOnOrAfterHistoricalCutoff(value) {
@@ -284,35 +402,17 @@ function logStravaRateLimitHeaders(response, metadata) {
 }
 
 async function fetchStravaApiWithRateLimitRetry(url, init, options) {
-  for (let attempt = 0; attempt <= STRAVA_RATE_LIMIT_BACKOFF_MS.length; attempt += 1) {
-    const response = await fetch(url, init)
+  const response = await fetch(url, init)
 
-    if (response.status !== 429) {
-      return response
-    }
-
+  if (response.status === 429) {
     logStravaRateLimitHeaders(response, {
       request: options.requestName,
       ...options.metadata,
       status: response.status,
     })
-
-    const retryDelayMs = STRAVA_RATE_LIMIT_BACKOFF_MS[attempt]
-
-    if (!retryDelayMs) {
-      return response
-    }
-
-    console.warn('Strava rate limited, entering retry', {
-      request: options.requestName,
-      ...options.metadata,
-      retryAttempt: attempt + 1,
-      retryDelayMs,
-      status: response.status,
-    })
-
-    await sleep(retryDelayMs)
   }
+
+  return response
 }
 
 async function refreshStravaAccessToken(refreshToken) {
@@ -402,6 +502,14 @@ async function fetchStravaActivitiesPage(accessToken, page) {
     }
   )
 
+  if (response.status === 429) {
+    throw new StravaRateLimitError(
+      'activities_page',
+      { page },
+      getStravaRateLimitHeaders(response)
+    )
+  }
+
   if (!response.ok) {
     const error = new Error(`Strava activities fetch failed with status ${response.status}`)
     error.status = response.status
@@ -427,6 +535,14 @@ async function fetchStravaDetailedActivity(accessToken, activityId) {
       },
     }
   )
+
+  if (response.status === 429) {
+    throw new StravaRateLimitError(
+      'detailed_activity',
+      { activityId },
+      getStravaRateLimitHeaders(response)
+    )
+  }
 
   if (!response.ok) {
     const error = new Error(`Strava activity fetch failed with status ${response.status}`)
@@ -460,6 +576,62 @@ async function withStravaAuthRetry(supabase, connection, request) {
     connection: activeConnection,
     data: await request(activeConnection.access_token),
   }
+}
+
+async function loadBackfillJob(supabase, userId) {
+  const { data, error } = await supabase
+    .from('personal_record_backfill_jobs')
+    .select(PERSONAL_RECORD_BACKFILL_JOB_COLUMNS)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return normalizeBackfillJob(data, userId)
+}
+
+async function loadOrCreateBackfillJob(supabase, userId) {
+  const existingJob = await loadBackfillJob(supabase, userId)
+
+  if (existingJob.created_at) {
+    return existingJob
+  }
+
+  const { data, error } = await supabase
+    .from('personal_record_backfill_jobs')
+    .insert({
+      user_id: userId,
+      status: 'pending',
+    })
+    .select(PERSONAL_RECORD_BACKFILL_JOB_COLUMNS)
+    .single()
+
+  if (error) {
+    if (error.code === '23505') {
+      return loadBackfillJob(supabase, userId)
+    }
+
+    throw new Error(error.message)
+  }
+
+  return normalizeBackfillJob(data, userId)
+}
+
+async function updateBackfillJob(supabase, userId, patch) {
+  const { data, error } = await supabase
+    .from('personal_record_backfill_jobs')
+    .update(patch)
+    .eq('user_id', userId)
+    .select(PERSONAL_RECORD_BACKFILL_JOB_COLUMNS)
+    .single()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return normalizeBackfillJob(data, userId)
 }
 
 async function loadConnections(supabase, userId) {
@@ -556,194 +728,452 @@ async function upsertPersonalRecordIfBetter(params) {
   return Boolean(data)
 }
 
+async function processActivitiesPage(params) {
+  let activeConnection = params.activeConnection
+  const summary = {
+    activitiesListed: params.activities.length,
+    activitiesScanned: 0,
+    activitiesWithBestEfforts: 0,
+    fiveKilometerCandidates: 0,
+    tenKilometerCandidates: 0,
+    detailedActivitiesFetched: 0,
+    recordsUpdated: 0,
+    skipped: 0,
+    candidatesFound: 0,
+    skipReasons: {
+      noBestEfforts: 0,
+      unsupportedPrDistance: 0,
+      cutoffMismatch: 0,
+    },
+  }
+  const candidatesToUpsert = []
+
+  function logDetailedActivityProgress(force = false) {
+    const processed = params.startingDetailedActivitiesFetched + summary.detailedActivitiesFetched
+
+    if (processed === 0) {
+      return
+    }
+
+    if (!force && processed % DETAILED_ACTIVITY_PROGRESS_INTERVAL !== 0) {
+      return
+    }
+
+    console.info('Detailed activity progress', {
+      userId: params.connection.user_id,
+      athleteId: params.connection.strava_athlete_id,
+      page: params.page,
+      processed,
+      candidatesFound: params.startingCandidatesFound + summary.candidatesFound,
+      skipReasons: {
+        noBestEfforts: params.aggregateSkipReasons.noBestEfforts + summary.skipReasons.noBestEfforts,
+        unsupportedPrDistance:
+          params.aggregateSkipReasons.unsupportedPrDistance + summary.skipReasons.unsupportedPrDistance,
+        cutoffMismatch: params.aggregateSkipReasons.cutoffMismatch + summary.skipReasons.cutoffMismatch,
+      },
+    })
+  }
+
+  for (const activity of params.activities) {
+    if (!isValidHistoricalRun(activity)) {
+      if (isOnOrAfterHistoricalCutoff(activity?.start_date)) {
+        summary.skipReasons.cutoffMismatch += 1
+      }
+
+      continue
+    }
+
+    summary.activitiesScanned += 1
+
+    if (params.startingDetailedActivitiesFetched + summary.detailedActivitiesFetched > 0) {
+      await sleep(STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS)
+    }
+
+    const detailedActivityResult = await withStravaAuthRetry(
+      params.supabase,
+      activeConnection,
+      (accessToken) => withSlowStravaFetchLog(
+        'Strava detailed activity fetch',
+        {
+          userId: params.connection.user_id,
+          athleteId: params.connection.strava_athlete_id,
+          page: params.page,
+          activityId: activity.id,
+        },
+        () => fetchStravaDetailedActivity(accessToken, activity.id)
+      )
+    )
+    activeConnection = detailedActivityResult.connection
+    summary.detailedActivitiesFetched += 1
+
+    const detailedActivity = asRecord(detailedActivityResult.data)
+
+    if (!detailedActivity) {
+      summary.skipped += 1
+      continue
+    }
+
+    const bestEfforts = Array.isArray(detailedActivity.best_efforts) ? detailedActivity.best_efforts : []
+
+    if (bestEfforts.length === 0) {
+      summary.skipReasons.noBestEfforts += 1
+      summary.skipped += 1
+      logDetailedActivityProgress()
+      continue
+    }
+
+    summary.activitiesWithBestEfforts += 1
+    const candidates = extractStravaPersonalRecordCandidates(detailedActivity).map((candidate) => ({
+      ...candidate,
+      strava_activity_id: candidate.strava_activity_id ?? toPositiveInteger(detailedActivity.id),
+      record_date: candidate.record_date ?? toIsoDateValue(detailedActivity.start_date),
+    }))
+    summary.candidatesFound += candidates.length
+
+    if (candidates.length === 0) {
+      if (hasSupportedHistoricalBestEffort(bestEfforts)) {
+        if (isOnOrAfterHistoricalCutoff(detailedActivity.start_date)) {
+          summary.skipReasons.cutoffMismatch += 1
+        }
+      } else {
+        summary.skipReasons.unsupportedPrDistance += 1
+      }
+
+      summary.skipped += 1
+      logDetailedActivityProgress()
+      continue
+    }
+
+    for (const candidate of candidates) {
+      if (candidate.distance_meters === 5000) {
+        summary.fiveKilometerCandidates += 1
+      }
+
+      if (candidate.distance_meters === 10000) {
+        summary.tenKilometerCandidates += 1
+      }
+
+      candidatesToUpsert.push(candidate)
+    }
+
+    logDetailedActivityProgress()
+  }
+
+  for (const candidate of candidatesToUpsert) {
+    const wasUpdated = await upsertPersonalRecordIfBetter({
+      supabase: params.supabase,
+      userId: params.connection.user_id,
+      existingRecordsByDistance: params.existingRecordsByDistance,
+      candidate,
+      dryRun: params.dryRun,
+    })
+
+    if (wasUpdated) {
+      summary.recordsUpdated += 1
+    } else {
+      summary.skipped += 1
+    }
+  }
+
+  if (
+    summary.detailedActivitiesFetched > 0
+    && (params.startingDetailedActivitiesFetched + summary.detailedActivitiesFetched)
+      % DETAILED_ACTIVITY_PROGRESS_INTERVAL !== 0
+  ) {
+    logDetailedActivityProgress(true)
+  }
+
+  return {
+    connection: activeConnection,
+    summary,
+  }
+}
+
 async function processConnection(supabase, connection, options) {
   let activeConnection = await ensureFreshConnection(supabase, connection)
   const existingRecordsByDistance = options.dryRun
     ? await loadExistingRecordsByDistance(supabase, connection.user_id)
     : new Map()
-  let page = 1
-  let activitiesListed = 0
-  let activitiesScanned = 0
-  let activitiesWithBestEfforts = 0
-  let fiveKilometerCandidates = 0
-  let tenKilometerCandidates = 0
-  let detailedActivitiesFetched = 0
-  let recordsUpdated = 0
-  let skipped = 0
-  let candidatesFound = 0
-  const skipReasons = {
+  let job = options.dryRun
+    ? await loadBackfillJob(supabase, connection.user_id)
+    : await loadOrCreateBackfillJob(supabase, connection.user_id)
+  let page = job.next_page
+  let pagesProcessedThisRun = 0
+  const summary = {
+    userId: connection.user_id,
+    athleteId: connection.strava_athlete_id,
+    activitiesListed: 0,
+    activitiesScanned: 0,
+    activitiesWithBestEfforts: 0,
+    fiveKilometerCandidates: 0,
+    tenKilometerCandidates: 0,
+    detailedActivitiesFetched: 0,
+    recordsUpdated: 0,
+    skipped: 0,
+    jobStatus: job.status,
+  }
+  const aggregateSkipReasons = {
     noBestEfforts: 0,
     unsupportedPrDistance: 0,
     cutoffMismatch: 0,
   }
 
-  function logDetailedActivityProgress(force = false) {
-    if (!force && detailedActivitiesFetched % DETAILED_ACTIVITY_PROGRESS_INTERVAL !== 0) {
-      return
-    }
+  console.info('Current job state at start', formatBackfillJobStateForLog(job))
 
-    console.info('Detailed activity progress', {
+  if (options.dryRun && !job.created_at) {
+    console.info('Dry run would create backfill job', {
       userId: connection.user_id,
-      athleteId: connection.strava_athlete_id,
-      processed: detailedActivitiesFetched,
-      candidatesFound,
-      skipReasons,
+      initialStatus: 'pending',
+      nextPage: 1,
     })
   }
 
-  while (true) {
-    const activitiesPageResult = await withStravaAuthRetry(
-      supabase,
-      activeConnection,
-      (accessToken) => withSlowStravaFetchLog(
-        'Strava activities page fetch',
-        {
-          userId: connection.user_id,
-          athleteId: connection.strava_athlete_id,
-          page,
-        },
-        () => fetchStravaActivitiesPage(accessToken, page)
-      )
-    )
-    activeConnection = activitiesPageResult.connection
-    const activities = Array.isArray(activitiesPageResult.data) ? activitiesPageResult.data : []
-
-    console.info('Fetched Strava activities page', {
+  if (job.status === 'completed') {
+    console.info('Backfill already completed', {
       userId: connection.user_id,
       athleteId: connection.strava_athlete_id,
-      page,
-      activitiesReturned: activities.length,
     })
+    console.info('Final job state', formatBackfillJobStateForLog(job))
+    return summary
+  }
 
-    if (activities.length === 0) {
-      break
-    }
+  if (!options.dryRun) {
+    job = await updateBackfillJob(supabase, connection.user_id, {
+      status: 'running',
+      last_error: null,
+      started_at: job.started_at ?? new Date().toISOString(),
+      finished_at: null,
+    })
+  }
 
-    activitiesListed += activities.length
+  console.info('Resuming historical personal record backfill', {
+    userId: connection.user_id,
+    athleteId: connection.strava_athlete_id,
+    page,
+    maxPagesPerRun: MAX_PAGES_PER_RUN,
+    maxDetailedActivitiesPerRun: MAX_DETAILED_ACTIVITIES_PER_RUN,
+    dryRun: options.dryRun,
+  })
 
-    for (const activity of activities) {
-      if (!isValidHistoricalRun(activity)) {
-        if (isOnOrAfterHistoricalCutoff(activity?.start_date)) {
-          skipReasons.cutoffMismatch += 1
-        }
+  let completed = false
 
-        continue
-      }
-
-      activitiesScanned += 1
-
-      if (detailedActivitiesFetched > 0) {
-        await sleep(STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS)
-      }
-
-      const detailedActivityResult = await withStravaAuthRetry(
+  try {
+    while (
+      pagesProcessedThisRun < MAX_PAGES_PER_RUN
+      && summary.detailedActivitiesFetched < MAX_DETAILED_ACTIVITIES_PER_RUN
+    ) {
+      const currentPage = page
+      const activitiesPageResult = await withStravaAuthRetry(
         supabase,
         activeConnection,
         (accessToken) => withSlowStravaFetchLog(
-          'Strava detailed activity fetch',
+          'Strava activities page fetch',
           {
             userId: connection.user_id,
             athleteId: connection.strava_athlete_id,
-            activityId: activity.id,
+            page: currentPage,
           },
-          () => fetchStravaDetailedActivity(accessToken, activity.id)
+          () => fetchStravaActivitiesPage(accessToken, currentPage)
         )
       )
-      activeConnection = detailedActivityResult.connection
-      detailedActivitiesFetched += 1
+      activeConnection = activitiesPageResult.connection
+      const activities = Array.isArray(activitiesPageResult.data) ? activitiesPageResult.data : []
 
-      const detailedActivity = asRecord(detailedActivityResult.data)
+      console.info('Fetched Strava activities page', {
+        userId: connection.user_id,
+        athleteId: connection.strava_athlete_id,
+        page: currentPage,
+        activitiesReturned: activities.length,
+      })
 
-      if (!detailedActivity) {
-        skipped += 1
-        continue
+      if (activities.length === 0) {
+        completed = true
+        break
       }
 
-      const bestEfforts = Array.isArray(detailedActivity.best_efforts) ? detailedActivity.best_efforts : []
+      const validHistoricalRunsInPage = activities.filter((activity) => isValidHistoricalRun(activity)).length
 
-      if (bestEfforts.length === 0) {
-        skipReasons.noBestEfforts += 1
-        skipped += 1
-        logDetailedActivityProgress()
-        continue
-      }
-
-      activitiesWithBestEfforts += 1
-      const candidates = extractStravaPersonalRecordCandidates(detailedActivity).map((candidate) => ({
-        ...candidate,
-        strava_activity_id: candidate.strava_activity_id ?? toPositiveInteger(detailedActivity.id),
-        record_date: candidate.record_date ?? toIsoDateValue(detailedActivity.start_date),
-      }))
-      candidatesFound += candidates.length
-
-      if (candidates.length === 0) {
-        if (hasSupportedHistoricalBestEffort(bestEfforts)) {
-          if (isOnOrAfterHistoricalCutoff(detailedActivity.start_date)) {
-            skipReasons.cutoffMismatch += 1
-          }
-        } else {
-          skipReasons.unsupportedPrDistance += 1
-        }
-
-        skipped += 1
-        logDetailedActivityProgress()
-        continue
-      }
-
-      for (const candidate of candidates) {
-        if (candidate.distance_meters === 5000) {
-          fiveKilometerCandidates += 1
-        }
-
-        if (candidate.distance_meters === 10000) {
-          tenKilometerCandidates += 1
-        }
-
-        const wasUpdated = await upsertPersonalRecordIfBetter({
-          supabase,
+      if (
+        summary.detailedActivitiesFetched > 0
+        && summary.detailedActivitiesFetched + validHistoricalRunsInPage > MAX_DETAILED_ACTIVITIES_PER_RUN
+      ) {
+        console.info('Deferring page to keep run within detailed activity limit', {
           userId: connection.user_id,
-          existingRecordsByDistance,
-          candidate,
-          dryRun: options.dryRun,
+          athleteId: connection.strava_athlete_id,
+          page: currentPage,
+          currentDetailedActivitiesFetched: summary.detailedActivitiesFetched,
+          validHistoricalRunsInPage,
+          maxDetailedActivitiesPerRun: MAX_DETAILED_ACTIVITIES_PER_RUN,
+        })
+        break
+      }
+
+      const pageResult = await processActivitiesPage({
+        supabase,
+        connection,
+        activeConnection,
+        activities,
+        page: currentPage,
+        dryRun: options.dryRun,
+        existingRecordsByDistance,
+        startingDetailedActivitiesFetched: summary.detailedActivitiesFetched,
+        startingCandidatesFound:
+          job.candidates_found_count
+          + summary.fiveKilometerCandidates
+          + summary.tenKilometerCandidates,
+        aggregateSkipReasons,
+      })
+      activeConnection = pageResult.connection
+      pagesProcessedThisRun += 1
+      page = currentPage + 1
+
+      summary.activitiesListed += pageResult.summary.activitiesListed
+      summary.activitiesScanned += pageResult.summary.activitiesScanned
+      summary.activitiesWithBestEfforts += pageResult.summary.activitiesWithBestEfforts
+      summary.fiveKilometerCandidates += pageResult.summary.fiveKilometerCandidates
+      summary.tenKilometerCandidates += pageResult.summary.tenKilometerCandidates
+      summary.detailedActivitiesFetched += pageResult.summary.detailedActivitiesFetched
+      summary.recordsUpdated += pageResult.summary.recordsUpdated
+      summary.skipped += pageResult.summary.skipped
+      aggregateSkipReasons.noBestEfforts += pageResult.summary.skipReasons.noBestEfforts
+      aggregateSkipReasons.unsupportedPrDistance += pageResult.summary.skipReasons.unsupportedPrDistance
+      aggregateSkipReasons.cutoffMismatch += pageResult.summary.skipReasons.cutoffMismatch
+
+      console.info('Processed Strava activities page', {
+        userId: connection.user_id,
+        athleteId: connection.strava_athlete_id,
+        page: currentPage,
+        nextPage: page,
+        detailedActivitiesFetched: pageResult.summary.detailedActivitiesFetched,
+        candidatesFound: pageResult.summary.candidatesFound,
+        insertedOrUpdated: pageResult.summary.recordsUpdated,
+        skipped: pageResult.summary.skipped,
+      })
+
+      if (!options.dryRun) {
+        job = await updateBackfillJob(supabase, connection.user_id, {
+          status: 'running',
+          next_page: page,
+          processed_activities_count: job.processed_activities_count + pageResult.summary.detailedActivitiesFetched,
+          scanned_pages_count: job.scanned_pages_count + 1,
+          candidates_found_count: job.candidates_found_count + pageResult.summary.candidatesFound,
+          inserted_or_updated_count: job.inserted_or_updated_count + pageResult.summary.recordsUpdated,
+          skipped_count: job.skipped_count + pageResult.summary.skipped,
+          last_error: null,
         })
 
-        if (wasUpdated) {
-          recordsUpdated += 1
-        } else {
-          skipped += 1
-        }
+        console.info('Checkpoint saved', formatBackfillJobStateForLog(job))
+      } else {
+        console.info('Dry run checkpoint', {
+          userId: connection.user_id,
+          page: currentPage,
+          nextPage: page,
+          processedActivitiesCountWouldBe:
+            job.processed_activities_count + summary.detailedActivitiesFetched,
+          scannedPagesCountWouldBe:
+            job.scanned_pages_count + pagesProcessedThisRun,
+          candidatesFoundCountWouldBe:
+            job.candidates_found_count + summary.fiveKilometerCandidates + summary.tenKilometerCandidates,
+          insertedOrUpdatedCountWouldBe:
+            job.inserted_or_updated_count + summary.recordsUpdated,
+          skippedCountWouldBe:
+            job.skipped_count + summary.skipped,
+        })
       }
 
-      logDetailedActivityProgress()
+      if (activities.length < STRAVA_PAGE_SIZE) {
+        completed = true
+        break
+      }
+    }
+  } catch (error) {
+    if (isStravaRateLimitError(error)) {
+      const lastError = formatRateLimitLastError(error)
+
+      console.warn('Paused due to Strava rate limit', {
+        userId: connection.user_id,
+        athleteId: connection.strava_athlete_id,
+        nextPage: page,
+        lastError,
+      })
+
+      if (!options.dryRun) {
+        job = await updateBackfillJob(supabase, connection.user_id, {
+          status: 'paused_rate_limited',
+          last_error: lastError,
+          finished_at: null,
+        })
+
+        console.info('Checkpoint saved', formatBackfillJobStateForLog(job))
+        console.info('Final job state', formatBackfillJobStateForLog(job))
+      } else {
+        console.info('Final job state', formatBackfillJobStateForLog(job))
+      }
+
+      summary.jobStatus = 'paused_rate_limited'
+      return summary
     }
 
-    page += 1
+    if (!options.dryRun) {
+      job = await updateBackfillJob(supabase, connection.user_id, {
+        status: 'failed',
+        last_error: error instanceof Error ? error.message : 'unknown_error',
+        finished_at: null,
+      })
+
+      console.info('Final job state', formatBackfillJobStateForLog(job))
+    }
+
+    throw error
   }
 
-  if (skipReasons.noBestEfforts > 0 || skipReasons.unsupportedPrDistance > 0 || skipReasons.cutoffMismatch > 0) {
+  if (aggregateSkipReasons.noBestEfforts > 0
+    || aggregateSkipReasons.unsupportedPrDistance > 0
+    || aggregateSkipReasons.cutoffMismatch > 0) {
     console.info('Detailed activity skip reasons', {
       userId: connection.user_id,
       athleteId: connection.strava_athlete_id,
-      skipReasons,
+      skipReasons: aggregateSkipReasons,
     })
   }
 
-  if (detailedActivitiesFetched % DETAILED_ACTIVITY_PROGRESS_INTERVAL !== 0) {
-    logDetailedActivityProgress(true)
+  if (completed) {
+    if (!options.dryRun) {
+      job = await updateBackfillJob(supabase, connection.user_id, {
+        status: 'completed',
+        last_error: null,
+        finished_at: new Date().toISOString(),
+      })
+    }
+
+    console.info('Completed historical personal record backfill', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      nextPage: page,
+      dryRun: options.dryRun,
+    })
+  } else {
+    if (!options.dryRun) {
+      job = await updateBackfillJob(supabase, connection.user_id, {
+        status: 'pending',
+        last_error: null,
+        finished_at: null,
+      })
+    }
+
+    console.info('Backfill batch ended before history completion; another run is needed', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      nextPage: page,
+      pagesProcessedThisRun,
+      detailedActivitiesFetchedThisRun: summary.detailedActivitiesFetched,
+      dryRun: options.dryRun,
+    })
   }
 
-  return {
-    userId: connection.user_id,
-    athleteId: connection.strava_athlete_id,
-    activitiesListed,
-    activitiesScanned,
-    activitiesWithBestEfforts,
-    fiveKilometerCandidates,
-    tenKilometerCandidates,
-    detailedActivitiesFetched,
-    recordsUpdated,
-    skipped,
-  }
+  console.info('Final job state', formatBackfillJobStateForLog(job))
+  summary.jobStatus = completed ? 'completed' : 'pending'
+  return summary
 }
 
 async function main() {
