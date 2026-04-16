@@ -164,6 +164,7 @@ type SyncStravaRunsOptions = {
   debugRunId?: string
   allowTargetedDebugOwnerBypass?: boolean
   lookbackDays?: number
+  ignoreCooldown?: boolean
 }
 
 type RunDetailSeriesPoint = {
@@ -2969,7 +2970,7 @@ export async function syncStravaRuns(
     }
   }
 
-  if (hasActiveStravaRateLimitCooldown(connection)) {
+  if (!options.ignoreCooldown && hasActiveStravaRateLimitCooldown(connection)) {
     logStravaCooldownActive('sync_start_blocked', connection, {
       mode: syncMode,
       targetDebugRunId: targetDebugRunId ?? null,

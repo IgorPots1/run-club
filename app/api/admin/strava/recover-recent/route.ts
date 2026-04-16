@@ -52,6 +52,7 @@ export async function POST() {
   try {
     const result = await syncStravaRuns(user.id, {
       lookbackDays: RECOVERY_LOOKBACK_DAYS,
+      ignoreCooldown: true,
     })
 
     if (!result.ok) {
