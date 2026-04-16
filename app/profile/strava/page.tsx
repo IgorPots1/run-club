@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
+import type { StravaInitialSyncFailureStep } from '@/lib/strava/strava-types'
 
 type StravaConnectionState = 'connected' | 'reconnect_required' | 'disconnected'
 
@@ -33,7 +34,7 @@ type StravaSyncResponse =
     }
   | {
       ok: false
-      step?: string
+      step?: StravaInitialSyncFailureStep | 'auth_required' | 'initial_sync_failed'
       error?: string
     }
 

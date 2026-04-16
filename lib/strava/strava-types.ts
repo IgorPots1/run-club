@@ -141,6 +141,11 @@ export type StravaSyncDebugInfo = {
   } | null
 }
 
+export type StravaInitialSyncFailureStep =
+  | 'missing_connection'
+  | 'reconnect_required'
+  | 'rate_limited'
+
 export type StravaInitialSyncResult =
   | {
       ok: true
@@ -162,17 +167,7 @@ export type StravaInitialSyncResult =
     }
   | {
       ok: false
-      step: 'missing_connection'
-      debug?: StravaSyncDebugInfo
-    }
-  | {
-      ok: false
-      step: 'reconnect_required'
-      debug?: StravaSyncDebugInfo
-    }
-  | {
-      ok: false
-      step: 'rate_limited'
+      step: StravaInitialSyncFailureStep
       debug?: StravaSyncDebugInfo
     }
 
