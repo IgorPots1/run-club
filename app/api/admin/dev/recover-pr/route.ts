@@ -5,9 +5,23 @@ const TEMP_RECOVERY_USER_ID = '9c831c40-928d-4d0c-99f7-393b2b985290'
 
 // TEMP route for manual browser-triggered PR recovery.
 export async function GET() {
-  await recoverKnownHistoricalPersonalRecord(TEMP_RECOVERY_USER_ID)
+  try {
+    const result = await recoverKnownHistoricalPersonalRecord(TEMP_RECOVERY_USER_ID)
 
-  return NextResponse.json({
-    success: true,
-  })
+    if (!result.ok) {
+      throw new Error(result.body.error ?? result.body.step ?? 'recovery_failed')
+    }
+
+    return NextResponse.json({
+      success: true,
+    })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      },
+      { status: 500 }
+    )
+  }
 }
