@@ -398,7 +398,7 @@ async function markHistoricalPersonalRecordHydrationAttempt(params: {
     Date.now() - HISTORICAL_PERSONAL_RECORD_HYDRATION_COOLDOWN_MS
   ).toISOString()
 
-  let query = params.supabase
+  const baseQuery = params.supabase
     .from('personal_records')
     .update({
       hydration_attempted_at: attemptedAt,
@@ -408,13 +408,15 @@ async function markHistoricalPersonalRecordHydrationAttempt(params: {
     .eq('strava_activity_id', params.record.strava_activity_id)
     .is('run_id', null)
     .select('distance_meters')
-    .maybeSingle()
 
-  query = params.record.hydration_attempted_at
-    ? query.lt('hydration_attempted_at', cooldownThreshold)
-    : query.is('hydration_attempted_at', null)
+  let query = baseQuery
+  if (params.record.hydration_attempted_at) {
+    query = query.lt('hydration_attempted_at', cooldownThreshold)
+  } else {
+    query = query.is('hydration_attempted_at', null)
+  }
 
-  const { data, error } = await query
+  const { data, error } = await query.maybeSingle()
 
   if (error) {
     throw new Error(error.message)
