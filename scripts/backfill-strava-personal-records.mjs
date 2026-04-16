@@ -11,6 +11,7 @@ const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
 const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000, 21097, 42195]
 const MAX_PAGES_PER_RUN = 5
 const MAX_DETAILED_ACTIVITIES_PER_RUN = 200
+const STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS = 15 * 60 * 1000
 const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
 const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
 const STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS = 1000
@@ -264,6 +265,16 @@ function formatBackfillJobStateForLog(job) {
     updatedAt: job.updated_at,
     createdAt: job.created_at,
   }
+}
+
+function isStaleRunningBackfillJob(job, staleThresholdMs, now = Date.now()) {
+  if (job.status !== 'running' || typeof job.updated_at !== 'string') {
+    return false
+  }
+
+  const updatedAt = new Date(job.updated_at).getTime()
+
+  return Number.isFinite(updatedAt) && updatedAt <= now - staleThresholdMs
 }
 
 function formatRateLimitLastError(error) {
@@ -702,6 +713,25 @@ async function updateBackfillJob(supabase, userId, patch) {
   return normalizeBackfillJob(data, userId)
 }
 
+async function reclaimStaleRunningBackfillJob(supabase, userId, staleBeforeIso) {
+  const { data, error } = await supabase
+    .from('personal_record_backfill_jobs')
+    .update({
+      status: 'pending',
+    })
+    .eq('user_id', userId)
+    .eq('status', 'running')
+    .lt('updated_at', staleBeforeIso)
+    .select(PERSONAL_RECORD_BACKFILL_JOB_COLUMNS)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data ? normalizeBackfillJob(data, userId) : null
+}
+
 async function claimRunnableBackfillJob(supabase, userId, startedAt) {
   const { data, error } = await supabase
     .from('personal_record_backfill_jobs')
@@ -1036,12 +1066,41 @@ async function processConnection(supabase, connection, options) {
   }
 
   if (job.status === 'running') {
+    if (!options.dryRun && isStaleRunningBackfillJob(job, STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS)) {
+      const previousUpdatedAt = job.updated_at
+      const reclaimedJob = await reclaimStaleRunningBackfillJob(
+        supabase,
+        connection.user_id,
+        new Date(Date.now() - STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS).toISOString()
+      )
+
+      if (reclaimedJob) {
+        job = reclaimedJob
+        page = job.next_page
+        summary.jobStatus = job.status
+
+        console.info('Reclaimed stale running backfill job', {
+          userId: connection.user_id,
+          athleteId: connection.strava_athlete_id,
+          previousUpdatedAt,
+          staleTimeoutMs: STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS,
+          reclaimedStatus: job.status,
+        })
+      } else {
+        job = await loadBackfillJob(supabase, connection.user_id)
+        page = job.next_page
+        summary.jobStatus = job.status
+      }
+    }
+
+    if (job.status === 'running') {
     console.info('Backfill already running', {
       userId: connection.user_id,
       athleteId: connection.strava_athlete_id,
     })
     console.info('Final job state', formatBackfillJobStateForLog(job))
     return summary
+    }
   }
 
   if (job.status === 'failed') {
