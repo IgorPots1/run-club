@@ -69,7 +69,7 @@ function sleep(ms: number) {
 
 async function withStravaRequestThrottle<T>(request: () => Promise<T>) {
   const previousRequest = stravaRequestThrottleQueue
-  let releaseCurrentRequest: (() => void) | null = null
+  let releaseCurrentRequest: (() => void) | undefined
 
   stravaRequestThrottleQueue = new Promise<void>((resolve) => {
     releaseCurrentRequest = resolve
