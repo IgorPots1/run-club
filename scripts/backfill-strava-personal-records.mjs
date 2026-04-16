@@ -356,47 +356,44 @@ async function loadExistingRecordsByDistance(supabase, userId) {
 }
 
 async function upsertPersonalRecordIfBetter(params) {
-  const existingRecord = params.existingRecordsByDistance.get(params.candidate.distance_meters)
+  if (params.dryRun) {
+    const existingRecord = params.existingRecordsByDistance.get(params.candidate.distance_meters)
 
-  if (existingRecord && existingRecord.duration_seconds <= params.candidate.duration_seconds) {
-    return false
-  }
-
-  if (!params.dryRun) {
-    const { error } = await params.supabase
-      .from('personal_records')
-      .upsert(
-        {
-          user_id: params.userId,
-          distance_meters: params.candidate.distance_meters,
-          duration_seconds: params.candidate.duration_seconds,
-          pace_seconds_per_km: params.candidate.pace_seconds_per_km,
-          run_id: null,
-          strava_activity_id: params.candidate.strava_activity_id,
-          record_date: params.candidate.record_date,
-          source: params.candidate.source,
-          metadata: params.candidate.metadata,
-        },
-        {
-          onConflict: 'user_id,distance_meters',
-        }
-      )
-
-    if (error) {
-      throw new Error(error.message)
+    if (existingRecord && existingRecord.duration_seconds <= params.candidate.duration_seconds) {
+      return false
     }
+
+    params.existingRecordsByDistance.set(params.candidate.distance_meters, {
+      duration_seconds: params.candidate.duration_seconds,
+    })
+
+    return true
   }
 
-  params.existingRecordsByDistance.set(params.candidate.distance_meters, {
-    duration_seconds: params.candidate.duration_seconds,
+  const { data, error } = await params.supabase.rpc('upsert_personal_record_if_better', {
+    p_user_id: params.userId,
+    p_distance_meters: params.candidate.distance_meters,
+    p_duration_seconds: params.candidate.duration_seconds,
+    p_pace_seconds_per_km: params.candidate.pace_seconds_per_km,
+    p_run_id: null,
+    p_strava_activity_id: params.candidate.strava_activity_id,
+    p_record_date: params.candidate.record_date ? `${params.candidate.record_date}T00:00:00.000Z` : null,
+    p_source: params.candidate.source,
+    p_metadata: params.candidate.metadata,
   })
 
-  return true
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return Boolean(data)
 }
 
 async function processConnection(supabase, connection, options) {
   let activeConnection = await ensureFreshConnection(supabase, connection)
-  const existingRecordsByDistance = await loadExistingRecordsByDistance(supabase, connection.user_id)
+  const existingRecordsByDistance = options.dryRun
+    ? await loadExistingRecordsByDistance(supabase, connection.user_id)
+    : new Map()
   let page = 1
   let activitiesListed = 0
   let historicalRunsScanned = 0

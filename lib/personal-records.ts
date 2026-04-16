@@ -179,47 +179,25 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
       candidate.strava_activity_id
       ?? toPositiveInteger(params.fallbackStravaActivityId)
     const nextRecordDate = candidate.record_date ?? toIsoDateValue(params.fallbackRecordDate)
-    const { data, error } = await params.supabase
-      .from('personal_records')
-      .select('duration_seconds')
-      .eq('user_id', params.userId)
-      .eq('distance_meters', candidate.distance_meters)
-      .maybeSingle()
+    const { data, error } = await params.supabase.rpc('upsert_personal_record_if_better', {
+      p_user_id: params.userId,
+      p_distance_meters: candidate.distance_meters,
+      p_duration_seconds: candidate.duration_seconds,
+      p_pace_seconds_per_km: candidate.pace_seconds_per_km,
+      p_run_id: params.runId ?? null,
+      p_strava_activity_id: nextStravaActivityId,
+      p_record_date: nextRecordDate ? `${nextRecordDate}T00:00:00.000Z` : null,
+      p_source: candidate.source,
+      p_metadata: candidate.metadata,
+    })
 
     if (error) {
       throw new Error(error.message)
     }
 
-    const existingRecord = (data as { duration_seconds: number } | null) ?? null
-
-    if (existingRecord && existingRecord.duration_seconds <= candidate.duration_seconds) {
-      continue
+    if (data) {
+      updated += 1
     }
-
-    const { error: upsertError } = await params.supabase
-      .from('personal_records')
-      .upsert(
-        {
-          user_id: params.userId,
-          distance_meters: candidate.distance_meters,
-          duration_seconds: candidate.duration_seconds,
-          pace_seconds_per_km: candidate.pace_seconds_per_km,
-          run_id: params.runId ?? null,
-          strava_activity_id: nextStravaActivityId,
-          record_date: nextRecordDate,
-          source: candidate.source,
-          metadata: candidate.metadata,
-        },
-        {
-          onConflict: 'user_id,distance_meters',
-        }
-      )
-
-    if (upsertError) {
-      throw new Error(upsertError.message)
-    }
-
-    updated += 1
   }
 
   return {
