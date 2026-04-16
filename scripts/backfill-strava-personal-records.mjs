@@ -11,6 +11,8 @@ const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
 const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000]
 const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
 const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
+const STRAVA_RATE_LIMIT_BACKOFF_MS = [15000, 30000, 60000]
+const STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS = 1000
 
 function getRequiredEnv(name) {
   const value = process.env[name]
@@ -118,6 +120,13 @@ function toIsoDateValue(value) {
 
 function toNullableTrimmedString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    timer.unref?.()
+  })
 }
 
 function isOnOrAfterHistoricalCutoff(value) {
@@ -247,6 +256,66 @@ async function withSlowStravaFetchLog(label, metadata, request) {
   }
 }
 
+function getStravaRateLimitHeaders(response) {
+  const limit = response.headers.get('X-RateLimit-Limit')
+  const usage = response.headers.get('X-RateLimit-Usage')
+
+  if (!limit && !usage) {
+    return null
+  }
+
+  return {
+    limit,
+    usage,
+  }
+}
+
+function logStravaRateLimitHeaders(response, metadata) {
+  const rateLimit = getStravaRateLimitHeaders(response)
+
+  if (!rateLimit) {
+    return
+  }
+
+  console.info('Strava rate limit', {
+    ...metadata,
+    limit: rateLimit.limit,
+    usage: rateLimit.usage,
+  })
+}
+
+async function fetchStravaApiWithRateLimitRetry(url, init, options) {
+  for (let attempt = 0; attempt <= STRAVA_RATE_LIMIT_BACKOFF_MS.length; attempt += 1) {
+    const response = await fetch(url, init)
+
+    if (response.status !== 429) {
+      return response
+    }
+
+    logStravaRateLimitHeaders(response, {
+      request: options.requestName,
+      ...options.metadata,
+      status: response.status,
+    })
+
+    const retryDelayMs = STRAVA_RATE_LIMIT_BACKOFF_MS[attempt]
+
+    if (!retryDelayMs) {
+      return response
+    }
+
+    console.warn('Strava rate limited, entering retry', {
+      request: options.requestName,
+      ...options.metadata,
+      retryAttempt: attempt + 1,
+      retryDelayMs,
+      status: response.status,
+    })
+
+    await sleep(retryDelayMs)
+  }
+}
+
 async function refreshStravaAccessToken(refreshToken) {
   const response = await fetch(STRAVA_TOKEN_URL, {
     method: 'POST',
@@ -318,12 +387,21 @@ async function fetchStravaActivitiesPage(accessToken, page) {
     per_page: String(STRAVA_PAGE_SIZE),
   })
 
-  const response = await fetch(`${STRAVA_ACTIVITIES_URL}?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const response = await fetchStravaApiWithRateLimitRetry(
+    `${STRAVA_ACTIVITIES_URL}?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: 'no-store',
     },
-    cache: 'no-store',
-  })
+    {
+      requestName: 'activities_page',
+      metadata: {
+        page,
+      },
+    }
+  )
 
   if (!response.ok) {
     const error = new Error(`Strava activities fetch failed with status ${response.status}`)
@@ -335,12 +413,21 @@ async function fetchStravaActivitiesPage(accessToken, page) {
 }
 
 async function fetchStravaDetailedActivity(accessToken, activityId) {
-  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const response = await fetchStravaApiWithRateLimitRetry(
+    `${STRAVA_ACTIVITY_URL}/${activityId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: 'no-store',
     },
-    cache: 'no-store',
-  })
+    {
+      requestName: 'detailed_activity',
+      metadata: {
+        activityId,
+      },
+    }
+  )
 
   if (!response.ok) {
     const error = new Error(`Strava activity fetch failed with status ${response.status}`)
@@ -545,6 +632,11 @@ async function processConnection(supabase, connection, options) {
       }
 
       activitiesScanned += 1
+
+      if (detailedActivitiesFetched > 0) {
+        await sleep(STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS)
+      }
+
       const detailedActivityResult = await withStravaAuthRetry(
         supabase,
         activeConnection,
