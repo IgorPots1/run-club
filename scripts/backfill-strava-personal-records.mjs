@@ -9,6 +9,8 @@ const STRAVA_PAGE_SIZE = 200
 const SUPABASE_PAGE_SIZE = 200
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
 const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000]
+const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
+const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
 
 function getRequiredEnv(name) {
   const value = process.env[name]
@@ -118,6 +120,15 @@ function toNullableTrimmedString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function isOnOrAfterHistoricalCutoff(value) {
+  if (typeof value !== 'string') {
+    return false
+  }
+
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) && timestamp >= new Date(HISTORICAL_CUTOFF_ISO).getTime()
+}
+
 function buildBestEffortMetadata(bestEffort) {
   const metadataEntries = Object.entries({
     name: toNullableTrimmedString(bestEffort.name),
@@ -193,6 +204,47 @@ function isValidHistoricalRun(activity) {
     && Number.isFinite(activityTimestamp)
     && activityTimestamp < new Date(HISTORICAL_CUTOFF_ISO).getTime()
   )
+}
+
+function hasSupportedHistoricalBestEffort(bestEfforts) {
+  for (const bestEffortValue of bestEfforts) {
+    const bestEffort = asRecord(bestEffortValue)
+
+    if (bestEffort && resolveHistoricalBestEffortDistance(bestEffort)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+async function withSlowStravaFetchLog(label, metadata, request) {
+  const startedAt = Date.now()
+  let slowLogEmitted = false
+  const timer = setTimeout(() => {
+    slowLogEmitted = true
+    console.info(`${label} still in progress`, {
+      ...metadata,
+      elapsedMs: Date.now() - startedAt,
+    })
+  }, STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS)
+
+  timer.unref?.()
+
+  try {
+    const result = await request()
+
+    if (slowLogEmitted) {
+      console.info(`${label} completed`, {
+        ...metadata,
+        elapsedMs: Date.now() - startedAt,
+      })
+    }
+
+    return result
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 async function refreshStravaAccessToken(refreshToken) {
@@ -432,15 +484,50 @@ async function processConnection(supabase, connection, options) {
   let detailedActivitiesFetched = 0
   let recordsUpdated = 0
   let skipped = 0
+  let candidatesFound = 0
+  const skipReasons = {
+    noBestEfforts: 0,
+    unsupportedPrDistance: 0,
+    cutoffMismatch: 0,
+  }
+
+  function logDetailedActivityProgress(force = false) {
+    if (!force && detailedActivitiesFetched % DETAILED_ACTIVITY_PROGRESS_INTERVAL !== 0) {
+      return
+    }
+
+    console.info('Detailed activity progress', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      processed: detailedActivitiesFetched,
+      candidatesFound,
+      skipReasons,
+    })
+  }
 
   while (true) {
     const activitiesPageResult = await withStravaAuthRetry(
       supabase,
       activeConnection,
-      (accessToken) => fetchStravaActivitiesPage(accessToken, page)
+      (accessToken) => withSlowStravaFetchLog(
+        'Strava activities page fetch',
+        {
+          userId: connection.user_id,
+          athleteId: connection.strava_athlete_id,
+          page,
+        },
+        () => fetchStravaActivitiesPage(accessToken, page)
+      )
     )
     activeConnection = activitiesPageResult.connection
     const activities = Array.isArray(activitiesPageResult.data) ? activitiesPageResult.data : []
+
+    console.info('Fetched Strava activities page', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      page,
+      activitiesReturned: activities.length,
+    })
 
     if (activities.length === 0) {
       break
@@ -450,6 +537,10 @@ async function processConnection(supabase, connection, options) {
 
     for (const activity of activities) {
       if (!isValidHistoricalRun(activity)) {
+        if (isOnOrAfterHistoricalCutoff(activity?.start_date)) {
+          skipReasons.cutoffMismatch += 1
+        }
+
         continue
       }
 
@@ -457,7 +548,15 @@ async function processConnection(supabase, connection, options) {
       const detailedActivityResult = await withStravaAuthRetry(
         supabase,
         activeConnection,
-        (accessToken) => fetchStravaDetailedActivity(accessToken, activity.id)
+        (accessToken) => withSlowStravaFetchLog(
+          'Strava detailed activity fetch',
+          {
+            userId: connection.user_id,
+            athleteId: connection.strava_athlete_id,
+            activityId: activity.id,
+          },
+          () => fetchStravaDetailedActivity(accessToken, activity.id)
+        )
       )
       activeConnection = detailedActivityResult.connection
       detailedActivitiesFetched += 1
@@ -472,7 +571,9 @@ async function processConnection(supabase, connection, options) {
       const bestEfforts = Array.isArray(detailedActivity.best_efforts) ? detailedActivity.best_efforts : []
 
       if (bestEfforts.length === 0) {
+        skipReasons.noBestEfforts += 1
         skipped += 1
+        logDetailedActivityProgress()
         continue
       }
 
@@ -482,9 +583,19 @@ async function processConnection(supabase, connection, options) {
         strava_activity_id: candidate.strava_activity_id ?? toPositiveInteger(detailedActivity.id),
         record_date: candidate.record_date ?? toIsoDateValue(detailedActivity.start_date),
       }))
+      candidatesFound += candidates.length
 
       if (candidates.length === 0) {
+        if (hasSupportedHistoricalBestEffort(bestEfforts)) {
+          if (isOnOrAfterHistoricalCutoff(detailedActivity.start_date)) {
+            skipReasons.cutoffMismatch += 1
+          }
+        } else {
+          skipReasons.unsupportedPrDistance += 1
+        }
+
         skipped += 1
+        logDetailedActivityProgress()
         continue
       }
 
@@ -511,9 +622,23 @@ async function processConnection(supabase, connection, options) {
           skipped += 1
         }
       }
+
+      logDetailedActivityProgress()
     }
 
     page += 1
+  }
+
+  if (skipReasons.noBestEfforts > 0 || skipReasons.unsupportedPrDistance > 0 || skipReasons.cutoffMismatch > 0) {
+    console.info('Detailed activity skip reasons', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      skipReasons,
+    })
+  }
+
+  if (detailedActivitiesFetched % DETAILED_ACTIVITY_PROGRESS_INTERVAL !== 0) {
+    logDetailedActivityProgress(true)
   }
 
   return {
