@@ -9,7 +9,12 @@ export async function GET() {
     const result = await recoverKnownHistoricalPersonalRecord(TEMP_RECOVERY_USER_ID)
 
     if (!result.ok) {
-      throw new Error(result.body.error ?? result.body.step ?? 'recovery_failed')
+      const errorMessage =
+        'error' in result.body && result.body.error
+          ? result.body.error
+          : result.body.step ?? 'recovery_failed'
+
+      throw new Error(errorMessage)
     }
 
     return NextResponse.json({
