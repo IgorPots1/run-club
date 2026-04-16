@@ -820,6 +820,22 @@ export default function ActivityPage() {
             </div>
             <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
           </Link>
+
+          <Link
+            href="/activity/records"
+            className="app-card flex items-start justify-between gap-3 rounded-2xl p-4 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:ring-white/10"
+          >
+            <div className="min-w-0">
+              <p className="app-text-primary text-base font-semibold">Рекорды</p>
+              <p className="app-text-secondary mt-1 text-sm">
+                Лучшие 5 км и 10 км из локальных тренировок и Strava.
+              </p>
+              <p className="app-text-secondary mt-2 text-xs font-medium">
+                5 км и 10 км
+              </p>
+            </div>
+            <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+          </Link>
         </div>
 
         <div className="mb-5 flex flex-wrap gap-2 md:mb-8 md:gap-2.5">

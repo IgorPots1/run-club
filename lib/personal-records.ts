@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 export const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000] as const
+export const FULL_RUN_PERSONAL_RECORD_DISTANCE_TOLERANCE_METERS = 25
 
 export type SupportedPersonalRecordDistance = (typeof SUPPORTED_PERSONAL_RECORD_DISTANCES)[number]
 
@@ -13,7 +14,7 @@ type PersonalRecordCandidate = {
   pace_seconds_per_km: number
   record_date: string | null
   strava_activity_id: number | null
-  source: 'strava_best_effort'
+  source: 'strava_best_effort' | 'local_full_run'
   metadata: Record<string, unknown> | null
 }
 
@@ -66,6 +67,22 @@ function toSupportedDistance(value: unknown): SupportedPersonalRecordDistance | 
 
   if (normalizedValue === 5000 || normalizedValue === 10000) {
     return normalizedValue
+  }
+
+  return null
+}
+
+function matchSupportedFullRunDistance(value: unknown): SupportedPersonalRecordDistance | null {
+  const normalizedValue = Number(value)
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return null
+  }
+
+  for (const supportedDistance of SUPPORTED_PERSONAL_RECORD_DISTANCES) {
+    if (Math.abs(normalizedValue - supportedDistance) <= FULL_RUN_PERSONAL_RECORD_DISTANCE_TOLERANCE_METERS) {
+      return supportedDistance
+    }
   }
 
   return null
@@ -155,6 +172,69 @@ export function extractStravaPersonalRecordCandidates(
     .filter((candidate): candidate is PersonalRecordCandidate => candidate !== null)
 }
 
+export function extractLocalFullRunPersonalRecordCandidate(rawRun: {
+  distance_meters: unknown
+  moving_time_seconds: unknown
+  created_at: unknown
+  external_source?: unknown
+}): PersonalRecordCandidate | null {
+  const externalSource = toNullableTrimmedString(rawRun.external_source)
+
+  if (externalSource === 'strava') {
+    return null
+  }
+
+  const distanceMeters = matchSupportedFullRunDistance(rawRun.distance_meters)
+  const durationSeconds = toPositiveInteger(rawRun.moving_time_seconds)
+
+  if (!distanceMeters || !durationSeconds) {
+    return null
+  }
+
+  return {
+    distance_meters: distanceMeters,
+    duration_seconds: durationSeconds,
+    pace_seconds_per_km: Math.round(durationSeconds / (distanceMeters / 1000)),
+    record_date: toIsoDateValue(rawRun.created_at),
+    strava_activity_id: null,
+    source: 'local_full_run',
+    metadata: externalSource && externalSource !== 'manual'
+      ? { external_source: externalSource }
+      : null,
+  }
+}
+
+async function upsertPersonalRecordCandidate(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  runId?: string | null
+  fallbackRecordDate?: string | null
+  fallbackStravaActivityId?: number | string | null
+  candidate: PersonalRecordCandidate
+}) {
+  const nextStravaActivityId =
+    params.candidate.strava_activity_id
+    ?? toPositiveInteger(params.fallbackStravaActivityId)
+  const nextRecordDate = params.candidate.record_date ?? toIsoDateValue(params.fallbackRecordDate)
+  const { data, error } = await params.supabase.rpc('upsert_personal_record_if_better', {
+    p_user_id: params.userId,
+    p_distance_meters: params.candidate.distance_meters,
+    p_duration_seconds: params.candidate.duration_seconds,
+    p_pace_seconds_per_km: params.candidate.pace_seconds_per_km,
+    p_run_id: params.runId ?? null,
+    p_strava_activity_id: nextStravaActivityId,
+    p_record_date: nextRecordDate ? `${nextRecordDate}T00:00:00.000Z` : null,
+    p_source: params.candidate.source,
+    p_metadata: params.candidate.metadata,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return Boolean(data)
+}
+
 export async function upsertPersonalRecordsFromStravaPayload(params: {
   supabase: ReturnType<typeof createSupabaseAdminClient>
   userId: string
@@ -175,27 +255,16 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
   let updated = 0
 
   for (const candidate of candidates) {
-    const nextStravaActivityId =
-      candidate.strava_activity_id
-      ?? toPositiveInteger(params.fallbackStravaActivityId)
-    const nextRecordDate = candidate.record_date ?? toIsoDateValue(params.fallbackRecordDate)
-    const { data, error } = await params.supabase.rpc('upsert_personal_record_if_better', {
-      p_user_id: params.userId,
-      p_distance_meters: candidate.distance_meters,
-      p_duration_seconds: candidate.duration_seconds,
-      p_pace_seconds_per_km: candidate.pace_seconds_per_km,
-      p_run_id: params.runId ?? null,
-      p_strava_activity_id: nextStravaActivityId,
-      p_record_date: nextRecordDate ? `${nextRecordDate}T00:00:00.000Z` : null,
-      p_source: candidate.source,
-      p_metadata: candidate.metadata,
+    const wasUpdated = await upsertPersonalRecordCandidate({
+      supabase: params.supabase,
+      userId: params.userId,
+      runId: params.runId,
+      fallbackRecordDate: params.fallbackRecordDate,
+      fallbackStravaActivityId: params.fallbackStravaActivityId,
+      candidate,
     })
 
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    if (data) {
+    if (wasUpdated) {
       updated += 1
     }
   }
@@ -203,6 +272,42 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
   return {
     checked: candidates.length,
     updated,
+  }
+}
+
+export async function upsertPersonalRecordForLocalRunIfEligible(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  runId: string
+  distanceMeters: unknown
+  movingTimeSeconds: unknown
+  createdAt: unknown
+  externalSource?: unknown
+}) {
+  const candidate = extractLocalFullRunPersonalRecordCandidate({
+    distance_meters: params.distanceMeters,
+    moving_time_seconds: params.movingTimeSeconds,
+    created_at: params.createdAt,
+    external_source: params.externalSource,
+  })
+
+  if (!candidate) {
+    return {
+      checked: 0,
+      updated: 0,
+    }
+  }
+
+  const wasUpdated = await upsertPersonalRecordCandidate({
+    supabase: params.supabase,
+    userId: params.userId,
+    runId: params.runId,
+    candidate,
+  })
+
+  return {
+    checked: 1,
+    updated: wasUpdated ? 1 : 0,
   }
 }
 

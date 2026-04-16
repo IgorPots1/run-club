@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { upsertPersonalRecordForLocalRunIfEligible } from '@/lib/personal-records'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { removeRunFromShoe, updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -12,6 +13,9 @@ type RunMutationRow = {
   description_manually_edited: boolean | null
   shoe_id: string | null
   distance_meters: number | null
+  moving_time_seconds: number | null
+  external_source: string | null
+  created_at: string
 }
 
 type UpdateRunRequestBody = {
@@ -29,7 +33,7 @@ async function loadOwnedRun(
   const supabaseAdmin = createSupabaseAdminClient()
   const result = await supabaseAdmin
     .from('runs')
-    .select('id, user_id, name, description, name_manually_edited, description_manually_edited, shoe_id, distance_meters')
+    .select('id, user_id, name, description, name_manually_edited, description_manually_edited, shoe_id, distance_meters, moving_time_seconds, external_source, created_at')
     .eq('id', runId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -162,6 +166,24 @@ export async function PATCH(
       },
       { status: 500 }
     )
+  }
+
+  try {
+    await upsertPersonalRecordForLocalRunIfEligible({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      runId: existingRun.id,
+      distanceMeters: existingRun.distance_meters,
+      movingTimeSeconds: existingRun.moving_time_seconds,
+      createdAt: existingRun.created_at,
+      externalSource: existingRun.external_source,
+    })
+  } catch (personalRecordError) {
+    console.error('Failed to update personal records after local run update', {
+      userId: user.id,
+      runId: existingRun.id,
+      error: personalRecordError instanceof Error ? personalRecordError.message : 'unknown_error',
+    })
   }
 
   return NextResponse.json({

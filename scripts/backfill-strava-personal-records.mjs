@@ -8,6 +8,7 @@ const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
 const STRAVA_PAGE_SIZE = 200
 const SUPABASE_PAGE_SIZE = 200
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
+const SUPPORTED_PERSONAL_RECORD_DISTANCES = [5000, 10000]
 
 function getRequiredEnv(name) {
   const value = process.env[name]
@@ -71,6 +72,34 @@ function toSupportedDistance(value) {
   return normalizedValue === 5000 || normalizedValue === 10000 ? normalizedValue : null
 }
 
+function normalizeBestEffortName(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, '') : ''
+}
+
+function resolveHistoricalBestEffortDistance(bestEffort) {
+  const exactDistance = toSupportedDistance(bestEffort.distance)
+
+  if (exactDistance) {
+    return exactDistance
+  }
+
+  const normalizedName = normalizeBestEffortName(bestEffort.name)
+
+  if (!normalizedName) {
+    return null
+  }
+
+  if (normalizedName === '5k' || normalizedName === '5km' || normalizedName.includes('5000')) {
+    return 5000
+  }
+
+  if (normalizedName === '10k' || normalizedName === '10km' || normalizedName.includes('10000')) {
+    return 10000
+  }
+
+  return null
+}
+
 function toIsoDateValue(value) {
   if (typeof value !== 'string' || !value.trim()) {
     return null
@@ -114,7 +143,7 @@ function extractStravaPersonalRecordCandidates(rawStravaPayload) {
       continue
     }
 
-    const distanceMeters = toSupportedDistance(bestEffort.distance)
+    const distanceMeters = resolveHistoricalBestEffortDistance(bestEffort)
     const durationSeconds = toPositiveInteger(bestEffort.elapsed_time ?? bestEffort.moving_time)
 
     if (!distanceMeters || !durationSeconds) {
@@ -143,7 +172,7 @@ function extractStravaPersonalRecordCandidates(rawStravaPayload) {
     }
   }
 
-  return [5000, 10000]
+  return SUPPORTED_PERSONAL_RECORD_DISTANCES
     .map((distanceMeters) => candidatesByDistance.get(distanceMeters) ?? null)
     .filter(Boolean)
 }
@@ -396,9 +425,13 @@ async function processConnection(supabase, connection, options) {
     : new Map()
   let page = 1
   let activitiesListed = 0
-  let historicalRunsScanned = 0
+  let activitiesScanned = 0
+  let activitiesWithBestEfforts = 0
+  let fiveKilometerCandidates = 0
+  let tenKilometerCandidates = 0
   let detailedActivitiesFetched = 0
   let recordsUpdated = 0
+  let skipped = 0
 
   while (true) {
     const activitiesPageResult = await withStravaAuthRetry(
@@ -420,7 +453,7 @@ async function processConnection(supabase, connection, options) {
         continue
       }
 
-      historicalRunsScanned += 1
+      activitiesScanned += 1
       const detailedActivityResult = await withStravaAuthRetry(
         supabase,
         activeConnection,
@@ -432,16 +465,38 @@ async function processConnection(supabase, connection, options) {
       const detailedActivity = asRecord(detailedActivityResult.data)
 
       if (!detailedActivity) {
+        skipped += 1
         continue
       }
 
+      const bestEfforts = Array.isArray(detailedActivity.best_efforts) ? detailedActivity.best_efforts : []
+
+      if (bestEfforts.length === 0) {
+        skipped += 1
+        continue
+      }
+
+      activitiesWithBestEfforts += 1
       const candidates = extractStravaPersonalRecordCandidates(detailedActivity).map((candidate) => ({
         ...candidate,
         strava_activity_id: candidate.strava_activity_id ?? toPositiveInteger(detailedActivity.id),
         record_date: candidate.record_date ?? toIsoDateValue(detailedActivity.start_date),
       }))
 
+      if (candidates.length === 0) {
+        skipped += 1
+        continue
+      }
+
       for (const candidate of candidates) {
+        if (candidate.distance_meters === 5000) {
+          fiveKilometerCandidates += 1
+        }
+
+        if (candidate.distance_meters === 10000) {
+          tenKilometerCandidates += 1
+        }
+
         const wasUpdated = await upsertPersonalRecordIfBetter({
           supabase,
           userId: connection.user_id,
@@ -452,6 +507,8 @@ async function processConnection(supabase, connection, options) {
 
         if (wasUpdated) {
           recordsUpdated += 1
+        } else {
+          skipped += 1
         }
       }
     }
@@ -463,9 +520,13 @@ async function processConnection(supabase, connection, options) {
     userId: connection.user_id,
     athleteId: connection.strava_athlete_id,
     activitiesListed,
-    historicalRunsScanned,
+    activitiesScanned,
+    activitiesWithBestEfforts,
+    fiveKilometerCandidates,
+    tenKilometerCandidates,
     detailedActivitiesFetched,
     recordsUpdated,
+    skipped,
   }
 }
 
@@ -507,17 +568,25 @@ async function main() {
     (accumulator, summary) => {
       accumulator.users += 1
       accumulator.activitiesListed += summary.activitiesListed
-      accumulator.historicalRunsScanned += summary.historicalRunsScanned
+      accumulator.activitiesScanned += summary.activitiesScanned
+      accumulator.activitiesWithBestEfforts += summary.activitiesWithBestEfforts
+      accumulator.fiveKilometerCandidates += summary.fiveKilometerCandidates
+      accumulator.tenKilometerCandidates += summary.tenKilometerCandidates
       accumulator.detailedActivitiesFetched += summary.detailedActivitiesFetched
       accumulator.recordsUpdated += summary.recordsUpdated
+      accumulator.skipped += summary.skipped
       return accumulator
     },
     {
       users: 0,
       activitiesListed: 0,
-      historicalRunsScanned: 0,
+      activitiesScanned: 0,
+      activitiesWithBestEfforts: 0,
+      fiveKilometerCandidates: 0,
+      tenKilometerCandidates: 0,
       detailedActivitiesFetched: 0,
       recordsUpdated: 0,
+      skipped: 0,
     }
   )
 

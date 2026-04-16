@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { upsertPersonalRecordForLocalRunIfEligible } from '@/lib/personal-records'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import { buildPersistedRunXpBreakdown, calculateRunXp } from '@/lib/run-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -179,6 +180,23 @@ export async function POST(request: Request) {
   const previousLevel = getLevelFromXP(previousTotalXp).level
   const nextLevel = getLevelFromXP(nextTotalXp).level
   const levelUp = nextLevel > previousLevel
+
+  try {
+    await upsertPersonalRecordForLocalRunIfEligible({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      runId: insertedRun.id,
+      distanceMeters,
+      movingTimeSeconds,
+      createdAt,
+    })
+  } catch (personalRecordError) {
+    console.error('Failed to update personal records after local run create', {
+      userId: user.id,
+      runId: insertedRun.id,
+      error: personalRecordError instanceof Error ? personalRecordError.message : 'unknown_error',
+    })
+  }
 
   return NextResponse.json(
     {
