@@ -13,6 +13,10 @@ const STRAVA_ACTIVITIES_URL = 'https://www.strava.com/api/v3/athlete/activities'
 const STRAVA_ACTIVITY_URL = 'https://www.strava.com/api/v3/activities'
 const STRAVA_ACTIVITY_STREAM_KEYS = 'time,distance,heartrate,cadence,altitude,velocity_smooth'
 const STRAVA_MVP_SCOPE = 'read,activity:read_all'
+const STRAVA_REQUEST_THROTTLE_MS = 350
+
+let stravaRequestThrottleQueue: Promise<void> = Promise.resolve()
+let nextStravaRequestAllowedAt = 0
 
 type StravaActivityStreamEnvelope = {
   data?: unknown
@@ -55,6 +59,42 @@ async function readErrorBody(response: Response) {
   } catch {
     return null
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function withStravaRequestThrottle<T>(request: () => Promise<T>) {
+  const previousRequest = stravaRequestThrottleQueue
+  let releaseCurrentRequest: (() => void) | null = null
+
+  stravaRequestThrottleQueue = new Promise<void>((resolve) => {
+    releaseCurrentRequest = resolve
+  })
+
+  await previousRequest
+
+  const now = Date.now()
+  const waitMs = Math.max(0, nextStravaRequestAllowedAt - now)
+
+  if (waitMs > 0) {
+    await sleep(waitMs)
+  }
+
+  nextStravaRequestAllowedAt = Date.now() + STRAVA_REQUEST_THROTTLE_MS
+
+  try {
+    return await request()
+  } finally {
+    releaseCurrentRequest?.()
+  }
+}
+
+async function fetchStravaApi(url: string, init: RequestInit) {
+  return withStravaRequestThrottle(() => fetch(url, init))
 }
 
 export function isStravaAuthError(error: unknown): error is StravaApiError {
@@ -160,7 +200,7 @@ export async function fetchStravaActivities(
     per_page: '200',
   })
 
-  const response = await fetch(`${STRAVA_ACTIVITIES_URL}?${params.toString()}`, {
+  const response = await fetchStravaApi(`${STRAVA_ACTIVITIES_URL}?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -180,7 +220,7 @@ export async function fetchStravaActivityById(
   accessToken: string,
   activityId: number | string
 ): Promise<StravaActivitySummary> {
-  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}`, {
+  const response = await fetchStravaApi(`${STRAVA_ACTIVITY_URL}/${activityId}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -206,7 +246,7 @@ export async function fetchStravaActivityPhotos(
     size: String(size),
   })
 
-  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}/photos?${params.toString()}`, {
+  const response = await fetchStravaApi(`${STRAVA_ACTIVITY_URL}/${activityId}/photos?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -230,7 +270,7 @@ export async function fetchActivityStreams(
     key_by_type: 'true',
   })
 
-  const response = await fetch(`${STRAVA_ACTIVITY_URL}/${activityId}/streams?${params.toString()}`, {
+  const response = await fetchStravaApi(`${STRAVA_ACTIVITY_URL}/${activityId}/streams?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },

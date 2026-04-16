@@ -6,6 +6,7 @@ create table if not exists public.strava_connections (
   refresh_token text not null,
   expires_at timestamptz not null,
   last_synced_at timestamptz,
+  rate_limited_until timestamptz,
   status text not null default 'connected',
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())

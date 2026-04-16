@@ -170,6 +170,11 @@ export type StravaInitialSyncResult =
       step: 'reconnect_required'
       debug?: StravaSyncDebugInfo
     }
+  | {
+      ok: false
+      step: 'rate_limited'
+      debug?: StravaSyncDebugInfo
+    }
 
 export type StravaWebhookEvent = {
   aspect_type: string

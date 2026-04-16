@@ -119,9 +119,11 @@ export default async function ActivityRecordsPage() {
   let backfillState: {
     connected: boolean
     jobStatus: 'missing' | 'pending' | 'paused_rate_limited' | 'running' | 'completed' | 'failed'
+    cooldownActive: boolean
   } = {
     connected: false,
     jobStatus: 'missing',
+    cooldownActive: false,
   }
 
   try {
@@ -140,7 +142,7 @@ export default async function ActivityRecordsPage() {
   const hasAnyRecords = records.length > 0
   const shouldShowBackfillPrompt = !backfillState.connected
   const shouldShowBackfillStatus = backfillState.connected && backfillState.jobStatus !== 'completed'
-  const shouldTriggerBackfill = backfillState.connected && (
+  const shouldTriggerBackfill = backfillState.connected && !backfillState.cooldownActive && (
     backfillState.jobStatus === 'missing'
     || backfillState.jobStatus === 'pending'
     || backfillState.jobStatus === 'paused_rate_limited'
@@ -180,7 +182,9 @@ export default async function ActivityRecordsPage() {
           {shouldShowBackfillStatus ? (
             <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
               <p className="app-text-secondary text-sm">
-                {backfillState.jobStatus === 'running'
+                {backfillState.cooldownActive
+                  ? 'История рекордов временно отложена из-за лимита Strava'
+                  : backfillState.jobStatus === 'running'
                   ? 'Рекорды синхронизируются'
                   : 'История рекордов обновляется'}
               </p>

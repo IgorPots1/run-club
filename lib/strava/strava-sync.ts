@@ -47,6 +47,7 @@ const ALLOWED_STRAVA_RUN_TYPES: StravaActivityType[] = ['Run']
 const STRAVA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000
 const MAX_SERIES_POINTS = 48
 const MIN_SERIES_POINTS = 4
+const STRAVA_RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000
 
 type StravaRunInsertPayload = {
   user_id: string
@@ -89,6 +90,7 @@ type StravaConnectionRow = {
   refresh_token: string
   expires_at: string
   last_synced_at: string | null
+  rate_limited_until: string | null
   status: string
 }
 
@@ -245,6 +247,74 @@ function getLevelUpState(previousTotalXp: number, nextTotalXp: number) {
     levelUp,
     newLevel: levelUp ? nextLevel : null,
   }
+}
+
+function getStravaRateLimitCooldownRemainingMs(rateLimitedUntil: string | null | undefined) {
+  if (!rateLimitedUntil) {
+    return 0
+  }
+
+  const untilMs = new Date(rateLimitedUntil).getTime()
+
+  if (!Number.isFinite(untilMs)) {
+    return 0
+  }
+
+  return Math.max(0, untilMs - Date.now())
+}
+
+function hasActiveStravaRateLimitCooldown(connection: Pick<StravaConnectionRow, 'rate_limited_until'>) {
+  return getStravaRateLimitCooldownRemainingMs(connection.rate_limited_until) > 0
+}
+
+function buildStravaRateLimitCooldownUntilIso(nowMs = Date.now()) {
+  return new Date(nowMs + STRAVA_RATE_LIMIT_COOLDOWN_MS).toISOString()
+}
+
+export async function recordStravaRateLimitCooldown(
+  connectionId: string,
+  context: string,
+  metadata: Record<string, unknown> = {}
+) {
+  const supabase = createSupabaseAdminClient()
+  const rateLimitedUntil = buildStravaRateLimitCooldownUntilIso()
+  const { error } = await supabase
+    .from('strava_connections')
+    .update({
+      rate_limited_until: rateLimitedUntil,
+    })
+    .eq('id', connectionId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  console.warn('Strava cooldown recorded after rate limit', {
+    connectionId,
+    context,
+    rateLimitedUntil,
+    cooldownMs: STRAVA_RATE_LIMIT_COOLDOWN_MS,
+    ...metadata,
+  })
+
+  return rateLimitedUntil
+}
+
+function logStravaCooldownActive(
+  context: string,
+  connection: Pick<StravaConnectionRow, 'id' | 'user_id' | 'rate_limited_until'>,
+  metadata: Record<string, unknown> = {}
+) {
+  const remainingMs = getStravaRateLimitCooldownRemainingMs(connection.rate_limited_until)
+
+  console.info('Strava cooldown active', {
+    connectionId: connection.id,
+    userId: connection.user_id,
+    context,
+    rateLimitedUntil: connection.rate_limited_until,
+    remainingMs,
+    ...metadata,
+  })
 }
 
 function shouldDebugRunDetailSeries(input: {
@@ -513,20 +583,15 @@ async function getStravaActivityForImport(
   activity: StravaActivitySummary,
   accessToken?: string
 ) {
-  if (!accessToken) {
-    return activity
-  }
-
-  try {
-    return await fetchStravaActivityById(accessToken, activity.id)
-  } catch (caughtError) {
-    console.warn('Strava detailed activity fetch skipped during import enrichment', {
+  if (accessToken) {
+    console.info('Strava detailed activity fetch deferred on import hot path', {
       activityId: activity.id,
-      error: caughtError instanceof Error ? caughtError.message : 'Unknown detailed activity fetch error',
+      request: 'activities/{id}',
+      reason: 'fresh_import_priority',
     })
-
-    return activity
   }
+
+  return activity
 }
 
 function normalizeIntegerField(field: string, value: number) {
@@ -809,7 +874,8 @@ async function syncRunDetailSeriesForActivity(
   runId: string,
   activityId: number,
   accessToken: string,
-  debugRunId?: string
+  debugRunId?: string,
+  connectionId?: string
 ): Promise<boolean> {
   const shouldDebug =
     shouldDebugRunDetailSeries({ runId, activityId }) || matchesDebugRunId(runId, debugRunId)
@@ -1012,6 +1078,22 @@ async function syncRunDetailSeriesForActivity(
       return false
     }
 
+    if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+      if (connectionId) {
+        await recordStravaRateLimitCooldown(connectionId, 'supplemental_streams', {
+          runId,
+          activityId,
+        })
+      }
+
+      console.warn('Strava supplemental sync deferred due to rate pressure', {
+        runId,
+        activityId,
+        request: 'activities/{id}/streams',
+      })
+      return false
+    }
+
     if (shouldDebug) {
       console.warn('[run-detail-debug] run_detail_series_sync_failed', {
         runId,
@@ -1041,7 +1123,8 @@ async function syncRunLapsForActivity(
   runId: string,
   activityId: number,
   accessToken: string,
-  debugRunId?: string
+  debugRunId?: string,
+  connectionId?: string
 ): Promise<RunLapsSyncResult> {
   const shouldDebug =
     shouldDebugRunDetailSeries({ runId, activityId }) || matchesDebugRunId(runId, debugRunId)
@@ -1126,6 +1209,30 @@ async function syncRunLapsForActivity(
       }
     }
 
+    if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+      if (connectionId) {
+        await recordStravaRateLimitCooldown(connectionId, 'supplemental_laps', {
+          runId,
+          activityId,
+        })
+      }
+
+      console.warn('Strava supplemental sync deferred due to rate pressure', {
+        runId,
+        activityId,
+        request: 'activities/{id}',
+        resource: 'laps',
+      })
+      return {
+        synced: false,
+        fetchedCount,
+        savedCount: 0,
+        status: fetchedCount > 0 ? 'fetched_but_not_saved' : 'laps_fetch_failed',
+        errorMessage: caughtError.message,
+        httpStatus: caughtError.status,
+      }
+    }
+
     console.warn('Strava run laps sync skipped', {
       runId,
       activityId,
@@ -1156,7 +1263,8 @@ async function syncRunPhotosForActivity(
   runId: string,
   activityId: number,
   accessToken: string,
-  debugRunId?: string
+  debugRunId?: string,
+  connectionId?: string
 ) {
   const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
 
@@ -1236,6 +1344,22 @@ async function syncRunPhotosForActivity(
 
     return true
   } catch (caughtError) {
+    if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+      if (connectionId) {
+        await recordStravaRateLimitCooldown(connectionId, 'supplemental_photos', {
+          runId,
+          activityId,
+        })
+      }
+
+      console.warn('Strava supplemental sync deferred due to rate pressure', {
+        runId,
+        activityId,
+        request: 'activities/{id}/photos',
+      })
+      return false
+    }
+
     console.warn('Strava run photos sync skipped', {
       runId,
       activityId,
@@ -1254,26 +1378,44 @@ async function syncRunPhotosForActivity(
   }
 }
 
+function logDeferredHotPathSupplementalSync(params: {
+  runId: string
+  activityId: number
+  outcome: StravaImportOutcome
+  reason: string
+}) {
+  console.info('Strava supplemental sync deferred on import hot path', {
+    runId: params.runId,
+    activityId: params.activityId,
+    outcome: params.outcome,
+    reason: params.reason,
+    deferredRequests: ['activities/{id}/streams', 'activities/{id}', 'activities/{id}/photos'],
+  })
+}
+
 async function syncRunSupplementalStravaDataForActivity(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   runId: string,
   activityId: number,
   accessToken: string,
-  debugRunId?: string
+  debugRunId?: string,
+  connectionId?: string
 ) {
   const detailSeriesSynced = await syncRunDetailSeriesForActivity(
     supabase,
     runId,
     activityId,
     accessToken,
-    debugRunId
+    debugRunId,
+    connectionId
   )
   const lapsSyncResult = await syncRunLapsForActivity(
     supabase,
     runId,
     activityId,
     accessToken,
-    debugRunId
+    debugRunId,
+    connectionId
   )
   console.log('[PHOTO_SYNC_CALL]', { runId, activityId })
   const photosSynced = await syncRunPhotosForActivity(
@@ -1281,57 +1423,11 @@ async function syncRunSupplementalStravaDataForActivity(
     runId,
     activityId,
     accessToken,
-    debugRunId
+    debugRunId,
+    connectionId
   )
 
   return detailSeriesSynced || lapsSyncResult.synced || photosSynced
-}
-
-async function syncRunSupplementalStravaDataIfAvailable(
-  supabase: ReturnType<typeof createSupabaseAdminClient>,
-  runId: string,
-  activityId: number,
-  externalId: string,
-  outcome: StravaImportOutcome,
-  accessToken?: string,
-  debugRunId?: string
-) {
-  if (!accessToken) {
-    console.info('[strava-photo-debug] supplemental_sync_skipped', {
-      activityId,
-      externalId,
-      outcome,
-      resolvedRunId: runId,
-      reason: 'missing_access_token',
-      supplementalSyncCalled: false,
-    })
-
-    if (shouldDebugRunDetailSeries({ runId, activityId })) {
-      console.warn('[run-detail-debug] target_run_skipped', {
-        runId,
-        activityId,
-        reason: 'missing_access_token',
-      })
-    }
-
-    return false
-  }
-
-  console.info('[strava-photo-debug] supplemental_sync_call', {
-    activityId,
-    externalId,
-    outcome,
-    resolvedRunId: runId,
-    supplementalSyncCalled: true,
-  })
-
-  return syncRunSupplementalStravaDataForActivity(
-    supabase,
-    runId,
-    activityId,
-    accessToken,
-    debugRunId
-  )
 }
 
 async function resolveExistingStravaRunIdForSupplementalSync(
@@ -1355,7 +1451,8 @@ async function resolveExistingStravaRunIdForSupplementalSync(
 async function backfillMissingRunDetailSeriesForUser(
   userId: string,
   accessToken: string,
-  debugRunId?: string
+  debugRunId?: string,
+  connectionId?: string
 ) {
   const supabase = createSupabaseAdminClient()
 
@@ -1416,7 +1513,8 @@ async function backfillMissingRunDetailSeriesForUser(
       targetRun.id,
       activityId,
       accessToken,
-      debugRunId
+      debugRunId,
+      connectionId
     )
     return
   }
@@ -1541,11 +1639,15 @@ async function backfillMissingRunDetailSeriesForUser(
       fallback_reason: getMissingRunDetailSeriesReasons(existingSeriesRowsByRunId.get(run.id) ?? null),
     })
 
-    await syncRunSupplementalStravaDataForActivity(supabase, run.id, activityId, accessToken)
+    await syncRunSupplementalStravaDataForActivity(supabase, run.id, activityId, accessToken, undefined, connectionId)
   }
 }
 
-async function backfillMissingHeartratePointsForUser(userId: string, accessToken: string) {
+async function backfillMissingHeartratePointsForUser(
+  userId: string,
+  accessToken: string,
+  connectionId?: string
+) {
   const recentWindowStartIso = new Date(
     Date.now() - HEARTRATE_BACKFILL_WINDOW_DAYS * 24 * 60 * 60 * 1000
   ).toISOString()
@@ -1672,6 +1774,23 @@ async function backfillMissingHeartratePointsForUser(userId: string, accessToken
           runId: run.id,
           activityId,
           status: caughtError.status,
+        })
+        continue
+      }
+
+      if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+        if (connectionId) {
+          await recordStravaRateLimitCooldown(connectionId, 'heartrate_backfill', {
+            runId: run.id,
+            activityId,
+          })
+        }
+
+        console.warn('Strava supplemental sync deferred due to rate pressure', {
+          runId: run.id,
+          activityId,
+          request: 'activities/{id}/streams',
+          resource: 'heartrate_backfill',
         })
         continue
       }
@@ -2020,7 +2139,7 @@ async function getStravaConnectionByColumn(
 
   const { data, error } = await supabase
     .from('strava_connections')
-    .select('id, user_id, strava_athlete_id, access_token, refresh_token, expires_at, last_synced_at, status')
+    .select('id, user_id, strava_athlete_id, access_token, refresh_token, expires_at, last_synced_at, rate_limited_until, status')
     .eq(column, value)
     .maybeSingle()
 
@@ -2384,15 +2503,14 @@ export async function importStravaActivityForUser(
         })
 
         if (resolvedRunId) {
-          await syncRunSupplementalStravaDataIfAvailable(
-            supabase,
-            resolvedRunId,
-            activityForImport.id,
-            payload.external_id,
-            options.updateExisting ? 'updated' : 'skipped_existing',
-            options.accessToken,
-            options.debugRunId
-          )
+          if (options.accessToken) {
+            logDeferredHotPathSupplementalSync({
+              runId: resolvedRunId,
+              activityId: activityForImport.id,
+              outcome: options.updateExisting ? 'updated' : 'skipped_existing',
+              reason: 'fresh_import_priority',
+            })
+          }
         }
 
         // #region agent log
@@ -2444,13 +2562,12 @@ export async function importStravaActivityForUser(
         resolvedRunId: insertedRun.id,
       })
 
-      await syncRunSupplementalStravaDataForActivity(
-        supabase,
-        insertedRun.id,
-        activityForImport.id,
-        options.accessToken,
-        options.debugRunId
-      )
+      logDeferredHotPathSupplementalSync({
+        runId: insertedRun.id,
+        activityId: activityForImport.id,
+        outcome: 'imported',
+        reason: 'fresh_import_priority',
+      })
     }
 
     if (insertedRun?.id) {
@@ -2520,15 +2637,14 @@ export async function importStravaActivityForUser(
       runDistanceMeters: payload.distance_meters,
     })
 
-    await syncRunSupplementalStravaDataIfAvailable(
-      supabase,
-      existingRunIdForSupplementalSync,
-      activityForImport.id,
-      payload.external_id,
-      'skipped_existing',
-      options.accessToken,
-      options.debugRunId
-    )
+    if (options.accessToken) {
+      logDeferredHotPathSupplementalSync({
+        runId: existingRunIdForSupplementalSync,
+        activityId: activityForImport.id,
+        outcome: 'skipped_existing',
+        reason: 'fresh_import_priority',
+      })
+    }
     // #region agent log
     if (options.debugRunId) {
       fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: options.debugRunId, hypothesisId: 'H3', location: 'lib/strava/strava-sync.ts:importStravaActivityForUser:duplicate_skip', message: 'Skipping existing Strava run', data: { userId, externalId: payload.external_id, existingRunUserId: normalizedExistingRun.user_id }, timestamp: Date.now() }) }).catch(() => {})
@@ -2682,44 +2798,12 @@ export async function importStravaActivityForUser(
   const levelState = getLevelUpState(previousTotalXp, nextTotalXp)
 
   if (options.accessToken) {
-    const { data: existingSeriesRow, error: existingSeriesError } = await supabase
-      .from('run_detail_series')
-      .select('run_id, cadence_points, altitude_points')
-      .eq('run_id', normalizedExistingRun.id)
-      .maybeSingle()
-
-    if (existingSeriesError) {
-      console.warn('Strava run detail series existence check failed', {
-        runId: existingRunIdForSupplementalSync,
-          activityId: activityForImport.id,
-        error: existingSeriesError.message,
-      })
-    } else {
-      const missingReasons = getMissingRunDetailSeriesReasons(
-        (existingSeriesRow as ExistingRunDetailSeriesStatusRow | null) ?? null
-      )
-
-      if (missingReasons.length > 0) {
-        console.info('Strava run detail series fallback sync triggered', {
-          runId: existingRunIdForSupplementalSync,
-          activityId: activityForImport.id,
-          fallback_reason: missingReasons,
-        })
-      } else {
-        console.info('Strava run detail series already complete', {
-          runId: existingRunIdForSupplementalSync,
-          activityId: activityForImport.id,
-        })
-      }
-    }
-
-    await syncRunSupplementalStravaDataForActivity(
-      supabase,
-      existingRunIdForSupplementalSync,
-      activityForImport.id,
-      options.accessToken,
-      options.debugRunId
-    )
+    logDeferredHotPathSupplementalSync({
+      runId: existingRunIdForSupplementalSync,
+      activityId: activityForImport.id,
+      outcome: 'updated',
+      reason: 'fresh_import_priority',
+    })
   } else if (shouldDebugRunDetailSeries({ runId: existingRunIdForSupplementalSync, activityId: activityForImport.id })) {
     console.warn('[run-detail-debug] target_run_skipped', {
       runId: existingRunIdForSupplementalSync,
@@ -2877,6 +2961,17 @@ export async function syncStravaRuns(
         afterParamUsed: null,
         latestExistingStravaRunAt: null,
       },
+    }
+  }
+
+  if (hasActiveStravaRateLimitCooldown(connection)) {
+    logStravaCooldownActive('sync_start_blocked', connection, {
+      mode: syncMode,
+      targetDebugRunId: targetDebugRunId ?? null,
+    })
+    return {
+      ok: false,
+      step: 'rate_limited',
     }
   }
 
@@ -3051,7 +3146,8 @@ export async function syncStravaRuns(
       targetRun.id,
       targetedActivityId,
       connection.access_token,
-      targetDebugRunId
+      targetDebugRunId,
+      connection.id
     )
 
     return {
@@ -3134,10 +3230,15 @@ export async function syncStravaRuns(
     activities = await fetchStravaActivities(connection.access_token, afterUnixSeconds)
   } catch (caughtError) {
     if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+      const rateLimitedUntil = await recordStravaRateLimitCooldown(connection.id, 'sync_activity_list', {
+        userId,
+        afterUnixSeconds,
+      })
       console.warn('[strava-sync] rate_limited', {
         userId,
         connectionId: connection.id,
         afterUnixSeconds,
+        rateLimitedUntil,
       })
       return {
         ok: false,
@@ -3251,8 +3352,16 @@ export async function syncStravaRuns(
     }
   }
 
-  await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, targetDebugRunId)
-  await backfillMissingHeartratePointsForUser(userId, connection.access_token)
+  if (targetDebugRunId) {
+    await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, targetDebugRunId, connection.id)
+    await backfillMissingHeartratePointsForUser(userId, connection.access_token, connection.id)
+  } else {
+    console.info('Strava supplemental backfill deferred after sync', {
+      userId,
+      reason: 'fresh_import_priority',
+      deferredRequests: ['activities/{id}/streams', 'activities/{id}', 'activities/{id}/photos'],
+    })
+  }
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:before_touch_connection', message: 'About to update last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})

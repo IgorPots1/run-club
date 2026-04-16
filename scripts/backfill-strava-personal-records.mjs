@@ -15,6 +15,7 @@ const STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS = 15 * 60 * 1000
 const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
 const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
 const STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS = 1000
+const STRAVA_RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000
 const RUNNABLE_BACKFILL_JOB_STATUSES = ['pending', 'paused_rate_limited']
 const STRAVA_FULL_RUN_FALLBACK_WINDOWS = {
   21097: {
@@ -249,6 +250,14 @@ function normalizeBackfillJob(row, userId) {
   }
 }
 
+function effectiveCooldownJobStatus(job) {
+  if (job.status === 'completed' || job.status === 'running' || job.status === 'failed') {
+    return job.status
+  }
+
+  return 'paused_rate_limited'
+}
+
 function formatBackfillJobStateForLog(job) {
   return {
     userId: job.user_id,
@@ -297,6 +306,56 @@ function formatRateLimitLastError(error) {
   }
 
   return details.join(' ')
+}
+
+function getConnectionRateLimitCooldownRemainingMs(rateLimitedUntil) {
+  if (typeof rateLimitedUntil !== 'string' || !rateLimitedUntil) {
+    return 0
+  }
+
+  const untilMs = new Date(rateLimitedUntil).getTime()
+
+  if (!Number.isFinite(untilMs)) {
+    return 0
+  }
+
+  return Math.max(0, untilMs - Date.now())
+}
+
+function hasActiveConnectionRateLimitCooldown(connection) {
+  return getConnectionRateLimitCooldownRemainingMs(connection?.rate_limited_until) > 0
+}
+
+function buildConnectionRateLimitCooldownUntilIso(nowMs = Date.now()) {
+  return new Date(nowMs + STRAVA_RATE_LIMIT_COOLDOWN_MS).toISOString()
+}
+
+async function recordConnectionRateLimitCooldown(supabase, connection, context, metadata = {}) {
+  const rateLimitedUntil = buildConnectionRateLimitCooldownUntilIso()
+  const { error } = await supabase
+    .from('strava_connections')
+    .update({
+      rate_limited_until: rateLimitedUntil,
+    })
+    .eq('id', connection.id)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  connection.rate_limited_until = rateLimitedUntil
+
+  console.warn('Recorded Strava cooldown for personal record backfill', {
+    connectionId: connection.id,
+    userId: connection.user_id,
+    athleteId: connection.strava_athlete_id,
+    context,
+    rateLimitedUntil,
+    cooldownMs: STRAVA_RATE_LIMIT_COOLDOWN_MS,
+    ...metadata,
+  })
+
+  return rateLimitedUntil
 }
 
 function isOnOrAfterHistoricalCutoff(value) {
@@ -759,7 +818,7 @@ async function loadConnections(supabase, userId) {
   for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
     let query = supabase
       .from('strava_connections')
-      .select('id, user_id, strava_athlete_id, access_token, refresh_token, expires_at, status')
+      .select('id, user_id, strava_athlete_id, access_token, refresh_token, expires_at, status, rate_limited_until')
       .eq('status', 'connected')
       .order('user_id', { ascending: true })
       .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
@@ -1048,6 +1107,20 @@ async function processConnection(supabase, connection, options) {
 
   console.info('Current job state at start', formatBackfillJobStateForLog(job))
 
+  if (!options.ignoreCooldown && hasActiveConnectionRateLimitCooldown(activeConnection)) {
+    const remainingMs = getConnectionRateLimitCooldownRemainingMs(activeConnection.rate_limited_until)
+
+    console.info('Strava cooldown active for personal record backfill', {
+      userId: connection.user_id,
+      athleteId: connection.strava_athlete_id,
+      rateLimitedUntil: activeConnection.rate_limited_until,
+      remainingMs,
+    })
+
+    summary.jobStatus = effectiveCooldownJobStatus(job)
+    return summary
+  }
+
   if (options.dryRun && !job.created_at) {
     console.info('Dry run would create backfill job', {
       userId: connection.user_id,
@@ -1290,12 +1363,19 @@ async function processConnection(supabase, connection, options) {
   } catch (error) {
     if (isStravaRateLimitError(error)) {
       const lastError = formatRateLimitLastError(error)
+      const rateLimitedUntil = !options.dryRun
+        ? await recordConnectionRateLimitCooldown(supabase, activeConnection, 'personal_record_backfill', {
+            nextPage: page,
+            lastError,
+          })
+        : buildConnectionRateLimitCooldownUntilIso()
 
       console.warn('Paused due to Strava rate limit', {
         userId: connection.user_id,
         athleteId: connection.strava_athlete_id,
         nextPage: page,
         lastError,
+        rateLimitedUntil,
       })
 
       if (!options.dryRun) {
@@ -1377,7 +1457,7 @@ async function processConnection(supabase, connection, options) {
   return summary
 }
 
-export async function ensureHistoricalPersonalRecordBackfillForUser(userId) {
+export async function ensureHistoricalPersonalRecordBackfillForUser(userId, options = {}) {
   const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
 
   if (!normalizedUserId) {
@@ -1402,6 +1482,27 @@ export async function ensureHistoricalPersonalRecordBackfillForUser(userId) {
 
   const job = await loadBackfillJob(supabase, normalizedUserId)
   const effectiveStatus = job.created_at ? job.status : 'missing'
+  const cooldownActive = hasActiveConnectionRateLimitCooldown(connection)
+
+  if (cooldownActive && !options.ignoreCooldown) {
+    const remainingMs = getConnectionRateLimitCooldownRemainingMs(connection.rate_limited_until)
+
+    console.info('Skipping personal record backfill auto-start during Strava cooldown', {
+      userId: normalizedUserId,
+      athleteId: connection.strava_athlete_id,
+      jobStatus: effectiveStatus,
+      rateLimitedUntil: connection.rate_limited_until,
+      remainingMs,
+    })
+
+    return {
+      ok: true,
+      reason: 'cooldown_active',
+      triggered: false,
+      jobStatus: effectiveStatus === 'missing' ? 'paused_rate_limited' : effectiveCooldownJobStatus(job),
+      cooldownUntil: connection.rate_limited_until ?? null,
+    }
+  }
 
   if (effectiveStatus === 'completed') {
     return {
@@ -1432,6 +1533,7 @@ export async function ensureHistoricalPersonalRecordBackfillForUser(userId) {
 
   const summary = await processConnection(supabase, connection, {
     dryRun: false,
+    ignoreCooldown: options.ignoreCooldown === true,
   })
 
   return {
@@ -1450,6 +1552,8 @@ export async function loadHistoricalPersonalRecordBackfillStateForUser(userId) {
     return {
       connected: false,
       jobStatus: 'missing',
+      cooldownActive: false,
+      cooldownUntil: null,
     }
   }
 
@@ -1457,7 +1561,7 @@ export async function loadHistoricalPersonalRecordBackfillStateForUser(userId) {
   const [{ data: connection, error: connectionError }, job] = await Promise.all([
     supabase
       .from('strava_connections')
-      .select('id, status')
+      .select('id, status, rate_limited_until')
       .eq('user_id', normalizedUserId)
       .eq('status', 'connected')
       .maybeSingle(),
@@ -1470,7 +1574,13 @@ export async function loadHistoricalPersonalRecordBackfillStateForUser(userId) {
 
   return {
     connected: Boolean(connection),
-    jobStatus: job.created_at ? job.status : 'missing',
+    jobStatus: connection && hasActiveConnectionRateLimitCooldown(connection)
+      ? effectiveCooldownJobStatus(job)
+      : job.created_at
+        ? job.status
+        : 'missing',
+    cooldownActive: Boolean(connection) && hasActiveConnectionRateLimitCooldown(connection),
+    cooldownUntil: connection?.rate_limited_until ?? null,
   }
 }
 

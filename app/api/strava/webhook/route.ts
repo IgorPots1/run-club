@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchStravaActivityById, getStravaWebhookVerifyToken, StravaApiError } from '@/lib/strava/strava-client'
-import { getStravaConnectionForAthlete, importStravaActivityForUser } from '@/lib/strava/strava-sync'
+import { getStravaConnectionForAthlete, importStravaActivityForUser, recordStravaRateLimitCooldown } from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
 
 const STRAVA_WEBHOOK_FETCH_RETRY_DELAYS_MS = [1500, 3000]
@@ -70,7 +70,7 @@ function sleep(ms: number) {
 }
 
 function isRetryableStravaFetchError(error: unknown): error is StravaApiError {
-  return error instanceof StravaApiError && (error.status === 429 || error.status >= 500)
+  return error instanceof StravaApiError && error.status >= 500
 }
 
 async function fetchStravaActivityByIdWithRetry(
@@ -113,6 +113,10 @@ async function fetchStravaActivityByIdWithRetry(
         totalAttempts,
         error: caughtError instanceof Error ? caughtError.message : 'Unknown fetch activity error',
       })
+
+      if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+        break
+      }
 
       if (attempt >= totalAttempts) {
         break
@@ -241,6 +245,24 @@ export async function POST(request: Request) {
           ownerId: event.owner_id,
           step,
           status: caughtError.status,
+        })
+
+        return NextResponse.json({
+          ok: false,
+          step: 'fetch_activity_deferred',
+        }, { status: 503 })
+      }
+
+      if (caughtError instanceof StravaApiError && caughtError.status === 429) {
+        const rateLimitedUntil = await recordStravaRateLimitCooldown(connection.id, 'webhook_activity_fetch', {
+          activityId,
+          ownerId: event.owner_id,
+        })
+
+        console.warn('[strava-webhook] cooldown_recorded_after_rate_limit', {
+          activityId,
+          ownerId: event.owner_id,
+          rateLimitedUntil,
         })
 
         return NextResponse.json({
