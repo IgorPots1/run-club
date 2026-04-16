@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { upsertPersonalRecordsFromStravaPayload } from '@/lib/personal-records'
 import { reverseGeocode } from '@/lib/geocoding/mapbox'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import {
@@ -2414,6 +2415,18 @@ export async function importStravaActivityForUser(
       attemptedRegion: payload.region,
       attemptedCountry: payload.country,
     })
+
+    if (insertedRun?.id) {
+      await upsertPersonalRecordsFromStravaPayload({
+        supabase,
+        userId,
+        runId: insertedRun.id,
+        rawStravaPayload: payload.raw_strava_payload,
+        fallbackRecordDate: payload.created_at,
+        fallbackStravaActivityId: activityForImport.id,
+      })
+    }
+
     const nextTotalXp = await loadProfileTotalXp(userId, { supabase })
     const levelState = getLevelUpState(previousTotalXp, nextTotalXp)
 
@@ -2650,6 +2663,16 @@ export async function importStravaActivityForUser(
     attemptedRegion: runUpdatePayload.region,
     attemptedCountry: runUpdatePayload.country,
   })
+
+  await upsertPersonalRecordsFromStravaPayload({
+    supabase,
+    userId,
+    runId: existingRunIdForSupplementalSync,
+    rawStravaPayload: payload.raw_strava_payload,
+    fallbackRecordDate: payload.created_at,
+    fallbackStravaActivityId: activityForImport.id,
+  })
+
   const nextTotalXp = await loadProfileTotalXp(userId, { supabase })
   const levelState = getLevelUpState(previousTotalXp, nextTotalXp)
 

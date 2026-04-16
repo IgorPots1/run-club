@@ -26,7 +26,7 @@ import {
 } from '@/lib/app-events-client'
 import { loadDashboardOverview } from '@/lib/dashboard'
 import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
-import { formatDistanceKm } from '@/lib/format'
+import { formatAveragePace, formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
@@ -56,6 +56,15 @@ type DashboardInitialLevelProgress = {
   currentLevelXp: number
   xpToNextLevel: number
   progressPercent: number
+}
+
+type DashboardPersonalRecord = {
+  distance_meters: 5000 | 10000
+  duration_seconds: number
+  pace_seconds_per_km: number | null
+  record_date: string | null
+  run_id: string | null
+  strava_activity_id: number | null
 }
 
 type LastWeekResultsCardData = {
@@ -305,6 +314,102 @@ function DashboardSecondaryEmptyCard({
   )
 }
 
+function formatPersonalRecordResultTime(durationSeconds: number) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return '—'
+  }
+
+  const safeSeconds = Math.max(0, Math.round(durationSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const seconds = safeSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatPersonalRecordDate(recordDate: string | null) {
+  if (!recordDate) {
+    return 'Дата неизвестна'
+  }
+
+  const parsedDate = new Date(`${recordDate}T12:00:00Z`)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'Дата неизвестна'
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(parsedDate)
+}
+
+function PersonalRecordsCard({
+  records,
+}: {
+  records: DashboardPersonalRecord[]
+}) {
+  const recordsByDistance = new Map(records.map((record) => [record.distance_meters, record]))
+
+  return (
+    <section className="app-card mb-4 rounded-xl border p-4 shadow-sm">
+      <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+        <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+        <span>Личные рекорды</span>
+      </p>
+      <div className="mt-3 space-y-3">
+        {([5000, 10000] as const).map((distanceMeters) => {
+          const record = recordsByDistance.get(distanceMeters) ?? null
+
+          return (
+            <div
+              key={distanceMeters}
+              className="app-surface-muted rounded-2xl border border-black/[0.06] px-4 py-3 dark:border-white/[0.08]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="app-text-secondary text-xs font-medium uppercase tracking-wide">
+                    {distanceMeters === 5000 ? '5 км' : '10 км'}
+                  </p>
+                  <p className="app-text-primary mt-1 text-xl font-semibold">
+                    {record ? formatPersonalRecordResultTime(record.duration_seconds) : 'Пока нет'}
+                  </p>
+                </div>
+                {record ? (
+                  <span className="app-text-secondary text-xs">
+                    {record.pace_seconds_per_km
+                      ? formatAveragePace(record.pace_seconds_per_km, 1)
+                      : 'Темп неизвестен'}
+                  </span>
+                ) : null}
+              </div>
+              <p className="app-text-secondary mt-2 text-sm">
+                {record ? formatPersonalRecordDate(record.record_date) : 'Рекорд появится после синка Strava'}
+              </p>
+              {record ? (
+                record.run_id ? (
+                  <Link href={`/runs/${record.run_id}`} className="mt-2 inline-flex text-sm font-medium text-blue-600">
+                    Открыть тренировку
+                  </Link>
+                ) : (
+                  <p className="app-text-secondary mt-2 text-sm">
+                    Исторический PR из Strava без локальной тренировки
+                  </p>
+                )
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
@@ -313,6 +418,7 @@ export default function DashboardPageClient({
   initialActiveChallenges,
   initialAllChallengesCompleted,
   initialInboxUnreadCount,
+  initialPersonalRecords,
 }: {
   initialUser: DashboardInitialUser
   initialProfileSummary: DashboardInitialProfileSummary
@@ -321,6 +427,7 @@ export default function DashboardPageClient({
   initialActiveChallenges: DashboardActiveChallenge[]
   initialAllChallengesCompleted: boolean
   initialInboxUnreadCount: number
+  initialPersonalRecords: DashboardPersonalRecord[]
 }) {
   const pathname = usePathname()
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
@@ -691,6 +798,7 @@ export default function DashboardPageClient({
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </Link>
           )}
+          <PersonalRecordsCard records={initialPersonalRecords} />
           <section className="mb-4 min-h-[236px]">
             <div className="mb-3 flex items-center gap-2">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
