@@ -172,6 +172,16 @@ function formatPersonalRecordDate(value: string | null) {
   }).format(date)
 }
 
+function getPersonalRecordRowClass(hasHref: boolean) {
+  const baseClass = 'flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0'
+
+  if (!hasHref) {
+    return baseClass
+  }
+
+  return `${baseClass} -mx-2 rounded-xl px-2 transition-colors hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.06]`
+}
+
 function getAchievementSourceLabel(sourceType: UserAchievement['source_type']) {
   return sourceType === 'weekly_race' ? 'Гонка недели' : 'Челлендж'
 }
@@ -463,9 +473,9 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
             <div className="mt-4 divide-y divide-black/[0.06] dark:divide-white/[0.08]">
               {SUPPORTED_PERSONAL_RECORD_DISTANCES.map((distanceMeters) => {
                 const record = personalRecordByDistance.get(distanceMeters) ?? null
-
-                return (
-                  <div key={distanceMeters} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                const hasHref = Boolean(record?.run_id)
+                const content = (
+                  <>
                     <div className="min-w-0">
                       <p className="app-text-primary text-sm font-medium">
                         {formatPersonalRecordDistanceLabel(distanceMeters)}
@@ -478,7 +488,30 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                       <p className="app-text-primary text-sm font-semibold">
                         {record ? formatPersonalRecordTime(record.duration_seconds) : '—'}
                       </p>
+                      {record && !record.run_id ? (
+                        <p className="app-text-secondary mt-1 text-[11px]">
+                          Исторический результат
+                        </p>
+                      ) : null}
                     </div>
+                  </>
+                )
+
+                if (record?.run_id) {
+                  return (
+                    <Link
+                      key={distanceMeters}
+                      href={`/runs/${record.run_id}`}
+                      className={getPersonalRecordRowClass(hasHref)}
+                    >
+                      {content}
+                    </Link>
+                  )
+                }
+
+                return (
+                  <div key={distanceMeters} className={getPersonalRecordRowClass(false)}>
+                    {content}
                   </div>
                 )
               })}

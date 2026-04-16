@@ -352,6 +352,103 @@ async function loadCanonicalPersonalRecord(params: {
   return normalized
 }
 
+async function maybeHydrateCanonicalPersonalRecordRun(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance
+  record?: PersonalRecordCanonicalView | null
+}) {
+  const record = params.record ?? await loadCanonicalPersonalRecord({
+    supabase: params.supabase,
+    userId: params.userId,
+    distanceMeters: params.distanceMeters,
+  })
+
+  if (!record || record.run_id || !record.strava_activity_id) {
+    return record
+  }
+
+  try {
+    const { importHistoricalStravaActivityByIdForUser } = await import('@/lib/strava/strava-sync')
+    const importedRunId = await importHistoricalStravaActivityByIdForUser(
+      params.userId,
+      record.strava_activity_id
+    )
+
+    if (!importedRunId) {
+      return record
+    }
+
+    await recomputePersonalRecordWinner({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+    })
+
+    const hydratedRecord = await loadCanonicalPersonalRecord({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+    })
+
+    if (hydratedRecord?.run_id) {
+      return hydratedRecord
+    }
+
+    const { error } = await params.supabase
+      .from('personal_records')
+      .update({ run_id: importedRunId })
+      .eq('user_id', params.userId)
+      .eq('distance_meters', params.distanceMeters)
+      .eq('strava_activity_id', record.strava_activity_id)
+      .is('run_id', null)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    return await loadCanonicalPersonalRecord({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+    })
+  } catch (error) {
+    console.warn('Historical personal record hydration failed', {
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+      stravaActivityId: record.strava_activity_id,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    })
+
+    return record
+  }
+}
+
+async function hydratePersonalRecordViews(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  records: PersonalRecordView[]
+}) {
+  const hydratedRecords: PersonalRecordView[] = []
+
+  for (const record of params.records) {
+    if (record.run_id || !record.strava_activity_id) {
+      hydratedRecords.push(record)
+      continue
+    }
+
+    const hydratedRecord = await maybeHydrateCanonicalPersonalRecordRun({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: record.distance_meters,
+    })
+
+    hydratedRecords.push(hydratedRecord ?? record)
+  }
+
+  return hydratedRecords
+}
+
 function getPersonalRecordSourceKey(record: PersonalRecordCanonicalView) {
   if (record.run_id) {
     if (record.source === 'local_full_run') {
@@ -475,6 +572,12 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
       if (eventCreated) {
         eventsCreated += 1
       }
+
+      await maybeHydrateCanonicalPersonalRecordRun({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: candidate.distance_meters,
+      })
     }
   }
 
@@ -530,6 +633,14 @@ export async function upsertPersonalRecordForLocalRunIfEligible(params: {
       })
     : false
 
+  if (wasUpdated) {
+    await maybeHydrateCanonicalPersonalRecordRun({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: candidate.distance_meters,
+    })
+  }
+
   return {
     checked: 1,
     updated: wasUpdated ? 1 : 0,
@@ -547,6 +658,14 @@ export async function recomputePersonalRecordForUserDistance(params: {
     userId: params.userId,
     distanceMeters: params.distanceMeters,
   })
+
+  if (hasWinner) {
+    await maybeHydrateCanonicalPersonalRecordRun({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: params.distanceMeters,
+    })
+  }
 
   return {
     updated: hasWinner,
@@ -609,9 +728,16 @@ export async function loadCurrentUserPersonalRecords(): Promise<PersonalRecordVi
     throw new Error(recordsError.message)
   }
 
-  return ((data as PersonalRecordRow[] | null) ?? [])
+  const normalizedRecords = ((data as PersonalRecordRow[] | null) ?? [])
     .map(normalizePersonalRecordRow)
     .filter((record): record is PersonalRecordView => record !== null)
+
+  const supabaseAdmin = createSupabaseAdminClient()
+  return hydratePersonalRecordViews({
+    supabase: supabaseAdmin,
+    userId: user.id,
+    records: normalizedRecords,
+  })
 }
 
 export async function loadPublicUserPersonalRecords(userId: string): Promise<PersonalRecordView[]> {
@@ -632,7 +758,13 @@ export async function loadPublicUserPersonalRecords(userId: string): Promise<Per
     throw new Error(error.message)
   }
 
-  return ((data as PersonalRecordRow[] | null) ?? [])
+  const normalizedRecords = ((data as PersonalRecordRow[] | null) ?? [])
     .map(normalizePersonalRecordRow)
     .filter((record): record is PersonalRecordView => record !== null)
+
+  return hydratePersonalRecordViews({
+    supabase: supabaseAdmin,
+    userId: normalizedUserId,
+    records: normalizedRecords,
+  })
 }

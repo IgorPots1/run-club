@@ -142,6 +142,7 @@ type StravaImportOutcome = 'imported' | 'updated' | 'skipped_existing' | 'skippe
 type StravaImportResult = {
   status: StravaImportOutcome
   activityId: string
+  runId?: string | null
   xpGained?: number
   breakdown?: XpBreakdownItem[]
   levelUp?: boolean
@@ -2147,6 +2148,7 @@ export async function importStravaActivityForUser(
     return {
       status: 'skipped_invalid',
       activityId: String(activityForImport.id),
+      runId: null,
     }
   }
 
@@ -2401,6 +2403,7 @@ export async function importStravaActivityForUser(
         return {
           status: options.updateExisting ? 'updated' : 'skipped_existing',
           activityId: payload.external_id,
+          runId: resolvedRunId ?? null,
         }
       }
 
@@ -2463,6 +2466,7 @@ export async function importStravaActivityForUser(
     return {
       status: 'imported',
       activityId: payload.external_id,
+      runId: insertedRun?.id ?? null,
       xpGained: Math.max(0, Math.round(Number(runXp?.xp ?? 0))),
       breakdown: runXp?.breakdown ?? [],
       levelUp: levelState.levelUp,
@@ -2533,6 +2537,7 @@ export async function importStravaActivityForUser(
     return {
       status: 'skipped_existing',
       activityId: payload.external_id,
+      runId: existingRunIdForSupplementalSync,
     }
   }
 
@@ -2734,11 +2739,64 @@ export async function importStravaActivityForUser(
   return {
     status: 'updated',
     activityId: payload.external_id,
+    runId: existingRunIdForSupplementalSync,
     xpGained: shouldAttemptXpRecovery ? Math.max(0, Math.round(Number(runXp?.xp ?? 0))) : 0,
     breakdown: shouldAttemptXpRecovery ? runXp?.breakdown ?? [] : [],
     levelUp: levelState.levelUp,
     newLevel: levelState.newLevel,
   }
+}
+
+export async function importHistoricalStravaActivityByIdForUser(
+  userId: string,
+  stravaActivityId: number
+) {
+  const normalizedUserId = userId.trim()
+  const normalizedActivityId = Math.round(Number(stravaActivityId))
+
+  if (!normalizedUserId || !Number.isFinite(normalizedActivityId) || normalizedActivityId <= 0) {
+    return null
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const externalId = String(normalizedActivityId)
+  const { data: existingRun, error: existingRunError } = await supabase
+    .from('runs')
+    .select('id, user_id')
+    .eq('external_source', STRAVA_EXTERNAL_SOURCE)
+    .eq('external_id', externalId)
+    .maybeSingle()
+
+  if (existingRunError) {
+    throw new Error(formatSupabaseError(existingRunError))
+  }
+
+  if (existingRun?.id && existingRun.user_id === normalizedUserId) {
+    return existingRun.id
+  }
+
+  let connection: StravaConnectionRow | null = null
+
+  try {
+    connection = await getStravaConnectionForUser(normalizedUserId)
+  } catch (error) {
+    if (error instanceof StravaReconnectRequiredError) {
+      return null
+    }
+
+    throw error
+  }
+
+  if (!connection) {
+    return null
+  }
+
+  const activity = await fetchStravaActivityById(connection.access_token, normalizedActivityId)
+  const result = await importStravaActivityForUser(normalizedUserId, activity, {
+    updateExisting: true,
+  })
+
+  return result.runId ?? null
 }
 
 export async function syncStravaRuns(
