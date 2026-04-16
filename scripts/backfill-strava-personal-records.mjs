@@ -124,8 +124,7 @@ function toNullableTrimmedString(value) {
 
 function sleep(ms) {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    timer.unref?.()
+    setTimeout(resolve, ms)
   })
 }
 
