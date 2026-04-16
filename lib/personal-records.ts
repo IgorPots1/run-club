@@ -835,6 +835,73 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
   }
 }
 
+export async function upsertPersonalRecordsForDistancesFromStravaPayload(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  runId?: string | null
+  rawStravaPayload: Record<string, unknown> | null
+  distanceMeters: SupportedPersonalRecordDistance[]
+  fallbackRecordDate?: string | null
+  fallbackStravaActivityId?: number | string | null
+}) {
+  const targetDistances = new Set(params.distanceMeters)
+  const candidates = extractStravaPersonalRecordCandidates(params.rawStravaPayload)
+    .filter((candidate) => targetDistances.has(candidate.distance_meters))
+
+  if (candidates.length === 0) {
+    return {
+      checked: 0,
+      updated: 0,
+      eventsCreated: 0,
+    }
+  }
+
+  let updated = 0
+  let eventsCreated = 0
+
+  for (const candidate of candidates) {
+    const previousRecord = await loadCanonicalPersonalRecord({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: candidate.distance_meters,
+    })
+    const wasUpdated = await upsertPersonalRecordCandidate({
+      supabase: params.supabase,
+      userId: params.userId,
+      runId: params.runId,
+      fallbackRecordDate: params.fallbackRecordDate,
+      fallbackStravaActivityId: params.fallbackStravaActivityId,
+      candidate,
+    })
+
+    if (wasUpdated) {
+      updated += 1
+      const eventCreated = await maybeEmitPersonalRecordEvent({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: candidate.distance_meters,
+        before: previousRecord,
+      })
+
+      if (eventCreated) {
+        eventsCreated += 1
+      }
+
+      await maybeHydrateCanonicalPersonalRecordRun({
+        supabase: params.supabase,
+        userId: params.userId,
+        distanceMeters: candidate.distance_meters,
+      })
+    }
+  }
+
+  return {
+    checked: candidates.length,
+    updated,
+    eventsCreated,
+  }
+}
+
 export async function upsertPersonalRecordForLocalRunIfEligible(params: {
   supabase: ReturnType<typeof createSupabaseAdminClient>
   userId: string
