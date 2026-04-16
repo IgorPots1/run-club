@@ -20,6 +20,23 @@ const LOCAL_FULL_RUN_PERSONAL_RECORD_TOLERANCES: Record<number, number> = {
   42195: 50,
 }
 
+const STRAVA_FULL_RUN_FALLBACK_WINDOWS = {
+  21097: {
+    minimumDistanceMeters: 20597,
+    maximumDistanceMeters: 21597,
+  },
+  42195: {
+    minimumDistanceMeters: 41695,
+    maximumDistanceMeters: 42695,
+  },
+} as const satisfies Record<
+  21097 | 42195,
+  {
+    minimumDistanceMeters: number
+    maximumDistanceMeters: number
+  }
+>
+
 export type SupportedPersonalRecordDistance = (typeof SUPPORTED_PERSONAL_RECORD_DISTANCES)[number]
 
 type PersonalRecordCandidate = {
@@ -179,6 +196,20 @@ function matchSupportedFullRunDistance(value: unknown): SupportedPersonalRecordD
   return null
 }
 
+function isDistanceWithinStravaFullRunFallbackWindow(
+  value: unknown,
+  distanceMeters: 21097 | 42195
+) {
+  const normalizedValue = Number(value)
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return false
+  }
+
+  const window = STRAVA_FULL_RUN_FALLBACK_WINDOWS[distanceMeters]
+  return normalizedValue >= window.minimumDistanceMeters && normalizedValue <= window.maximumDistanceMeters
+}
+
 function toIsoDateValue(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) {
     return null
@@ -256,6 +287,32 @@ export function extractStravaPersonalRecordCandidates(
     if (!existingCandidate || candidate.duration_seconds < existingCandidate.duration_seconds) {
       candidatesByDistance.set(distanceMeters, candidate)
     }
+  }
+
+  const fullRunDurationSeconds = toPositiveInteger(payloadRecord?.moving_time ?? payloadRecord?.elapsed_time)
+  const fullRunActivityId = toPositiveInteger(payloadRecord?.id)
+  const fullRunRecordDate =
+    toIsoDateValue(payloadRecord?.start_date)
+    ?? toIsoDateValue(payloadRecord?.start_date_local)
+
+  for (const distanceMeters of [21097, 42195] as const) {
+    if (
+      candidatesByDistance.has(distanceMeters)
+      || !isDistanceWithinStravaFullRunFallbackWindow(payloadRecord?.distance, distanceMeters)
+      || !fullRunDurationSeconds
+    ) {
+      continue
+    }
+
+    candidatesByDistance.set(distanceMeters, {
+      distance_meters: distanceMeters,
+      duration_seconds: fullRunDurationSeconds,
+      pace_seconds_per_km: Math.round(fullRunDurationSeconds / (distanceMeters / 1000)),
+      record_date: fullRunRecordDate,
+      strava_activity_id: fullRunActivityId,
+      source: 'strava_best_effort',
+      metadata: null,
+    })
   }
 
   return SUPPORTED_PERSONAL_RECORD_DISTANCES

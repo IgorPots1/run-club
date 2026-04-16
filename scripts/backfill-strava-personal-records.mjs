@@ -15,6 +15,16 @@ const DETAILED_ACTIVITY_PROGRESS_INTERVAL = 10
 const STRAVA_FETCH_SLOW_LOG_THRESHOLD_MS = 5000
 const STRAVA_DETAILED_ACTIVITY_REQUEST_DELAY_MS = 1000
 const RUNNABLE_BACKFILL_JOB_STATUSES = ['pending', 'paused_rate_limited']
+const STRAVA_FULL_RUN_FALLBACK_WINDOWS = {
+  21097: {
+    minimumDistanceMeters: 20597,
+    maximumDistanceMeters: 21597,
+  },
+  42195: {
+    minimumDistanceMeters: 41695,
+    maximumDistanceMeters: 42695,
+  },
+}
 const PERSONAL_RECORD_BACKFILL_JOB_COLUMNS = [
   'user_id',
   'status',
@@ -139,6 +149,17 @@ function resolveHistoricalBestEffortDistance(bestEffort) {
   }
 
   return null
+}
+
+function isDistanceWithinStravaFullRunFallbackWindow(value, distanceMeters) {
+  const normalizedValue = Number(value)
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return false
+  }
+
+  const window = STRAVA_FULL_RUN_FALLBACK_WINDOWS[distanceMeters]
+  return normalizedValue >= window.minimumDistanceMeters && normalizedValue <= window.maximumDistanceMeters
 }
 
 function toIsoDateValue(value) {
@@ -328,6 +349,32 @@ function extractStravaPersonalRecordCandidates(rawStravaPayload) {
     if (!existingCandidate || candidate.duration_seconds < existingCandidate.duration_seconds) {
       candidatesByDistance.set(distanceMeters, candidate)
     }
+  }
+
+  const fullRunDurationSeconds = toPositiveInteger(payloadRecord?.moving_time ?? payloadRecord?.elapsed_time)
+  const fullRunActivityId = toPositiveInteger(payloadRecord?.id)
+  const fullRunRecordDate =
+    toIsoDateValue(payloadRecord?.start_date)
+    ?? toIsoDateValue(payloadRecord?.start_date_local)
+
+  for (const distanceMeters of [21097, 42195]) {
+    if (
+      candidatesByDistance.has(distanceMeters)
+      || !isDistanceWithinStravaFullRunFallbackWindow(payloadRecord?.distance, distanceMeters)
+      || !fullRunDurationSeconds
+    ) {
+      continue
+    }
+
+    candidatesByDistance.set(distanceMeters, {
+      distance_meters: distanceMeters,
+      duration_seconds: fullRunDurationSeconds,
+      pace_seconds_per_km: Math.round(fullRunDurationSeconds / (distanceMeters / 1000)),
+      record_date: fullRunRecordDate,
+      strava_activity_id: fullRunActivityId,
+      source: 'historical_strava_best_effort',
+      metadata: null,
+    })
   }
 
   return SUPPORTED_PERSONAL_RECORD_DISTANCES
@@ -858,15 +905,10 @@ async function processActivitiesPage(params) {
     }
 
     const bestEfforts = Array.isArray(detailedActivity.best_efforts) ? detailedActivity.best_efforts : []
-
-    if (bestEfforts.length === 0) {
-      summary.skipReasons.noBestEfforts += 1
-      summary.skipped += 1
-      logDetailedActivityProgress()
-      continue
+    if (bestEfforts.length > 0) {
+      summary.activitiesWithBestEfforts += 1
     }
 
-    summary.activitiesWithBestEfforts += 1
     const candidates = extractStravaPersonalRecordCandidates(detailedActivity).map((candidate) => ({
       ...candidate,
       strava_activity_id: candidate.strava_activity_id ?? toPositiveInteger(detailedActivity.id),
@@ -875,7 +917,9 @@ async function processActivitiesPage(params) {
     summary.candidatesFound += candidates.length
 
     if (candidates.length === 0) {
-      if (hasSupportedHistoricalBestEffort(bestEfforts)) {
+      if (bestEfforts.length === 0) {
+        summary.skipReasons.noBestEfforts += 1
+      } else if (hasSupportedHistoricalBestEffort(bestEfforts)) {
         if (isOnOrAfterHistoricalCutoff(detailedActivity.start_date)) {
           summary.skipReasons.cutoffMismatch += 1
         }
