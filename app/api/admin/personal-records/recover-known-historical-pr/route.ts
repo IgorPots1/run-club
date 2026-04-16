@@ -14,6 +14,109 @@ function normalizeUserId(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+export async function recoverKnownHistoricalPersonalRecord(
+  userId: string,
+  actorUserId?: string | null
+) {
+  const supabaseAdmin = createSupabaseAdminClient()
+  const importedRunId = await importHistoricalStravaActivityByIdForUser(
+    userId,
+    RECOVERY_STRAVA_ACTIVITY_ID
+  )
+
+  if (!importedRunId) {
+    return {
+      ok: false as const,
+      status: 409,
+      body: {
+        ok: false,
+        step: 'historical_import_unavailable',
+        userId,
+        stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+      },
+    }
+  }
+
+  const { data: run, error: runError } = await supabaseAdmin
+    .from('runs')
+    .select('id, created_at, raw_strava_payload, external_id')
+    .eq('id', importedRunId)
+    .eq('user_id', userId)
+    .eq('external_source', 'strava')
+    .eq('external_id', String(RECOVERY_STRAVA_ACTIVITY_ID))
+    .maybeSingle()
+
+  if (runError) {
+    throw new Error(runError.message)
+  }
+
+  if (!run?.raw_strava_payload || typeof run.raw_strava_payload !== 'object') {
+    return {
+      ok: false as const,
+      status: 404,
+      body: {
+        ok: false,
+        step: 'missing_strava_payload',
+        userId,
+        runId: importedRunId,
+        stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+      },
+    }
+  }
+
+  const upsertResult = await upsertPersonalRecordsForDistancesFromStravaPayload({
+    supabase: supabaseAdmin,
+    userId,
+    runId: run.id,
+    rawStravaPayload: run.raw_strava_payload as Record<string, unknown>,
+    distanceMeters: [...RECOVERY_DISTANCES],
+    fallbackRecordDate: run.created_at,
+    fallbackStravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+  })
+
+  const recomputeResults = []
+
+  for (const distanceMeters of RECOVERY_DISTANCES) {
+    const recomputeResult = await recomputePersonalRecordForUserDistance({
+      supabase: supabaseAdmin,
+      userId,
+      distanceMeters,
+    })
+
+    recomputeResults.push({
+      distanceMeters,
+      ...recomputeResult,
+    })
+  }
+
+  console.info('Recovered known historical personal record activity', {
+    actorUserId: actorUserId ?? null,
+    targetUserId: userId,
+    runId: run.id,
+    stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+    distances: RECOVERY_DISTANCES,
+    checked: upsertResult.checked,
+    updated: upsertResult.updated,
+  })
+
+  return {
+    ok: true as const,
+    status: 200,
+    body: {
+      ok: true,
+      userId,
+      runId: run.id,
+      stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+      distances: RECOVERY_DISTANCES,
+      import: {
+        runId: importedRunId,
+      },
+      upsert: upsertResult,
+      recompute: recomputeResults,
+    },
+  }
+}
+
 export async function POST(request: NextRequest) {
   const { user, error } = await getAuthenticatedUser()
 
@@ -82,96 +185,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const importedRunId = await importHistoricalStravaActivityByIdForUser(
-      userId,
-      RECOVERY_STRAVA_ACTIVITY_ID
-    )
-
-    if (!importedRunId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          step: 'historical_import_unavailable',
-          userId,
-          stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
-        },
-        { status: 409 }
-      )
-    }
-
-    const { data: run, error: runError } = await supabaseAdmin
-      .from('runs')
-      .select('id, created_at, raw_strava_payload, external_id')
-      .eq('id', importedRunId)
-      .eq('user_id', userId)
-      .eq('external_source', 'strava')
-      .eq('external_id', String(RECOVERY_STRAVA_ACTIVITY_ID))
-      .maybeSingle()
-
-    if (runError) {
-      throw new Error(runError.message)
-    }
-
-    if (!run?.raw_strava_payload || typeof run.raw_strava_payload !== 'object') {
-      return NextResponse.json(
-        {
-          ok: false,
-          step: 'missing_strava_payload',
-          userId,
-          runId: importedRunId,
-          stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
-        },
-        { status: 404 }
-      )
-    }
-
-    const upsertResult = await upsertPersonalRecordsForDistancesFromStravaPayload({
-      supabase: supabaseAdmin,
-      userId,
-      runId: run.id,
-      rawStravaPayload: run.raw_strava_payload as Record<string, unknown>,
-      distanceMeters: [...RECOVERY_DISTANCES],
-      fallbackRecordDate: run.created_at,
-      fallbackStravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
-    })
-
-    const recomputeResults = []
-
-    for (const distanceMeters of RECOVERY_DISTANCES) {
-      const recomputeResult = await recomputePersonalRecordForUserDistance({
-        supabase: supabaseAdmin,
-        userId,
-        distanceMeters,
-      })
-
-      recomputeResults.push({
-        distanceMeters,
-        ...recomputeResult,
-      })
-    }
-
-    console.info('Recovered known historical personal record activity', {
-      actorUserId: user.id,
-      targetUserId: userId,
-      runId: run.id,
-      stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
-      distances: RECOVERY_DISTANCES,
-      checked: upsertResult.checked,
-      updated: upsertResult.updated,
-    })
-
-    return NextResponse.json({
-      ok: true,
-      userId,
-      runId: run.id,
-      stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
-      distances: RECOVERY_DISTANCES,
-      import: {
-        runId: importedRunId,
-      },
-      upsert: upsertResult,
-      recompute: recomputeResults,
-    })
+    const result = await recoverKnownHistoricalPersonalRecord(userId, user.id)
+    return NextResponse.json(result.body, { status: result.status })
   } catch (recoveryError) {
     return NextResponse.json(
       {
