@@ -5,13 +5,51 @@ import {
 } from '@/lib/personal-records'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { StravaApiError } from '@/lib/strava/strava-client'
 import { importHistoricalStravaActivityByIdForUser } from '@/lib/strava/strava-sync'
 
 const RECOVERY_STRAVA_ACTIVITY_ID = 7293646236
 const RECOVERY_DISTANCES = [21097, 42195] as const
+const STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS = [15000, 30000, 60000]
 
 function normalizeUserId(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function importHistoricalStravaActivityByIdForUserWithRetry(userId: string, stravaActivityId: number) {
+  const totalAttempts = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS.length + 1
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      return await importHistoricalStravaActivityByIdForUser(userId, stravaActivityId)
+    } catch (error) {
+      const isRateLimitError = error instanceof StravaApiError && error.status === 429
+
+      if (!isRateLimitError) {
+        throw error
+      }
+
+      if (attempt >= totalAttempts) {
+        throw new Error('Strava activity fetch rate-limited after 3 retries')
+      }
+
+      console.warn('Temporary PR recovery hit Strava rate limit; retrying', {
+        userId,
+        stravaActivityId,
+        attempt,
+        totalAttempts,
+        retryDelayMs: STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1],
+      })
+
+      await sleep(STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1])
+    }
+  }
+
+  throw new Error('Strava activity fetch rate-limited after 3 retries')
 }
 
 export async function recoverKnownHistoricalPersonalRecord(
@@ -19,7 +57,7 @@ export async function recoverKnownHistoricalPersonalRecord(
   actorUserId?: string | null
 ) {
   const supabaseAdmin = createSupabaseAdminClient()
-  const importedRunId = await importHistoricalStravaActivityByIdForUser(
+  const importedRunId = await importHistoricalStravaActivityByIdForUserWithRetry(
     userId,
     RECOVERY_STRAVA_ACTIVITY_ID
   )
