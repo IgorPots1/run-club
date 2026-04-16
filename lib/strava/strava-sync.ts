@@ -163,6 +163,7 @@ type SyncStravaRunsOptions = {
   mode?: StravaSyncMode
   debugRunId?: string
   allowTargetedDebugOwnerBypass?: boolean
+  lookbackDays?: number
 }
 
 type RunDetailSeriesPoint = {
@@ -2893,6 +2894,10 @@ export async function syncStravaRuns(
   )
   const sessionDebugId = `sync-${Date.now()}-${userId.slice(0, 8)}`
   const syncMode: StravaSyncMode = options.mode ?? 'incremental'
+  const lookbackDays =
+    Number.isInteger(options.lookbackDays) && Number(options.lookbackDays) > 0
+      ? Number(options.lookbackDays)
+      : null
   let connection: StravaConnectionRow | null = null
 
   console.info('[strava-sync-debug] debug_context', {
@@ -3206,11 +3211,19 @@ export async function syncStravaRuns(
   const latestImportedRunTimestamp = latestImportedRun?.created_at
     ? Math.floor(new Date(latestImportedRun.created_at).getTime() / 1000)
     : null
-  const afterUnixSeconds = syncMode === 'backfill'
-    ? INITIAL_SYNC_CUTOFF_UNIX_SECONDS
-    : latestImportedRunTimestamp
-      ? Math.max(0, latestImportedRunTimestamp - 1)
-      : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+  const boundedLookbackUnixSeconds = lookbackDays
+    ? Math.max(
+        INITIAL_SYNC_CUTOFF_UNIX_SECONDS,
+        Math.floor(Date.now() / 1000) - lookbackDays * 24 * 60 * 60
+      )
+    : null
+  const afterUnixSeconds = boundedLookbackUnixSeconds ?? (
+    syncMode === 'backfill'
+      ? INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+      : latestImportedRunTimestamp
+        ? Math.max(0, latestImportedRunTimestamp - 1)
+        : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+  )
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_param', message: 'Computed Strava activities after parameter', data: { userId, connectionId: connection.id, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, afterParamUsed: afterUnixSeconds, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import AdminNavLink from './AdminNavLink'
+import AdminStravaRecoveryButton from './AdminStravaRecoveryButton'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export default async function AdminLayout({
@@ -25,6 +26,7 @@ export default async function AdminLayout({
               <AdminNavLink href="/admin/challenge-templates">Шаблоны челленджей</AdminNavLink>
               <AdminNavLink href="/admin/audit">Журнал действий</AdminNavLink>
             </nav>
+            <AdminStravaRecoveryButton />
           </div>
         </aside>
         <main className="min-w-0 flex-1">
