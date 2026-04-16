@@ -1185,14 +1185,18 @@ async function processConnection(supabase, connection, options) {
       })
 
       if (!options.dryRun) {
+        const freshJob = await loadBackfillJob(supabase, connection.user_id)
+
         job = await updateBackfillJob(supabase, connection.user_id, {
           status: 'running',
           next_page: page,
-          processed_activities_count: job.processed_activities_count + pageResult.summary.detailedActivitiesFetched,
-          scanned_pages_count: job.scanned_pages_count + 1,
-          candidates_found_count: job.candidates_found_count + pageResult.summary.candidatesFound,
-          inserted_or_updated_count: job.inserted_or_updated_count + pageResult.summary.recordsUpdated,
-          skipped_count: job.skipped_count + pageResult.summary.skipped,
+          processed_activities_count:
+            freshJob.processed_activities_count + pageResult.summary.detailedActivitiesFetched,
+          scanned_pages_count: freshJob.scanned_pages_count + 1,
+          candidates_found_count: freshJob.candidates_found_count + pageResult.summary.candidatesFound,
+          inserted_or_updated_count:
+            freshJob.inserted_or_updated_count + pageResult.summary.recordsUpdated,
+          skipped_count: freshJob.skipped_count + pageResult.summary.skipped,
           last_error: null,
         })
 
