@@ -6,8 +6,11 @@ import {
 } from '@/lib/personal-records'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
-import { StravaApiError } from '@/lib/strava/strava-client'
-import { importHistoricalStravaActivityByIdForUser } from '@/lib/strava/strava-sync'
+import { fetchStravaActivityById, StravaApiError } from '@/lib/strava/strava-client'
+import {
+  getStravaConnectionForUser,
+  importHistoricalStravaActivityByIdForUser,
+} from '@/lib/strava/strava-sync'
 
 const RECOVERY_DISTANCES = [21097, 42195] as const
 const STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS = [15000, 30000, 60000]
@@ -28,6 +31,23 @@ function normalizeStravaActivityId(value: unknown) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function toRawJsonObject(value: unknown) {
+  try {
+    const serialized = JSON.stringify(value)
+
+    if (!serialized) {
+      return null
+    }
+
+    const parsed = JSON.parse(serialized) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
 }
 
 async function importHistoricalStravaActivityByIdForUserWithRetry(userId: string, stravaActivityId: number) {
@@ -51,6 +71,54 @@ async function importHistoricalStravaActivityByIdForUserWithRetry(userId: string
       }
 
       console.warn('Historical activity recovery hit Strava rate limit; retrying', {
+        userId,
+        stravaActivityId,
+        attempt,
+        totalAttempts,
+        retryDelayMs: STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1],
+      })
+
+      await sleep(STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1])
+    }
+  }
+
+  throw new Error('Strava activity fetch rate-limited after 3 retries')
+}
+
+async function fetchHistoricalStravaActivityPayloadForUserWithRetry(
+  userId: string,
+  stravaActivityId: number
+) {
+  const totalAttempts = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS.length + 1
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      const connection = await getStravaConnectionForUser(userId)
+
+      if (!connection) {
+        return null
+      }
+
+      const activity = await fetchStravaActivityById(connection.access_token, stravaActivityId)
+      const payload = toRawJsonObject(activity)
+
+      if (!payload) {
+        throw new Error('Fetched Strava activity payload is not a valid object')
+      }
+
+      return payload
+    } catch (error) {
+      const isRateLimitError = error instanceof StravaApiError && error.status === 429
+
+      if (!isRateLimitError) {
+        throw error
+      }
+
+      if (attempt >= totalAttempts) {
+        throw new Error('Strava activity fetch rate-limited after 3 retries')
+      }
+
+      console.warn('Historical activity payload refresh hit Strava rate limit; retrying', {
         userId,
         stravaActivityId,
         attempt,
@@ -149,6 +217,7 @@ export async function POST(request: NextRequest) {
   const errors: string[] = []
   let runId: string | null = null
   let stravaActivityFreshlyFetched = false
+  let payloadPersisted = false
   let prRepairAttempted = false
   let recomputeAttempted = false
   let upsertChecked = 0
@@ -185,6 +254,7 @@ export async function POST(request: NextRequest) {
           stravaActivityId,
           runId,
           stravaActivityFreshlyFetched,
+          payloadPersisted,
           prRepairAttempted,
           recomputeAttempted,
           upsertChecked,
@@ -196,6 +266,74 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       )
     }
+
+    const freshStravaPayload = await fetchHistoricalStravaActivityPayloadForUserWithRetry(
+      userId,
+      stravaActivityId
+    )
+
+    if (!freshStravaPayload) {
+      warnings.push('Missing Strava connection for payload refresh')
+      return NextResponse.json(
+        {
+          ok: false,
+          userId,
+          stravaActivityId,
+          runId,
+          stravaActivityFreshlyFetched,
+          payloadPersisted,
+          prRepairAttempted,
+          recomputeAttempted,
+          upsertChecked,
+          upsertUpdated,
+          candidateDistancesAttempted,
+          warnings,
+          errors,
+        },
+        { status: 409 }
+      )
+    }
+
+    const { data: persistedRun, error: persistPayloadError } = await supabaseAdmin
+      .from('runs')
+      .update({
+        raw_strava_payload: freshStravaPayload,
+        strava_synced_at: new Date().toISOString(),
+      })
+      .eq('id', runId)
+      .eq('user_id', userId)
+      .eq('external_source', 'strava')
+      .eq('external_id', String(stravaActivityId))
+      .select('id')
+      .maybeSingle()
+
+    if (persistPayloadError) {
+      throw new Error(persistPayloadError.message)
+    }
+
+    if (!persistedRun?.id) {
+      warnings.push('Recovered run payload was not persisted')
+      return NextResponse.json(
+        {
+          ok: false,
+          userId,
+          stravaActivityId,
+          runId,
+          stravaActivityFreshlyFetched,
+          payloadPersisted,
+          prRepairAttempted,
+          recomputeAttempted,
+          upsertChecked,
+          upsertUpdated,
+          candidateDistancesAttempted,
+          warnings,
+          errors,
+        },
+        { status: 409 }
+      )
+    }
+
+    payloadPersisted = true
 
     const { data: run, error: runError } = await supabaseAdmin
       .from('runs')
@@ -266,6 +404,7 @@ export async function POST(request: NextRequest) {
       stravaActivityId,
       runId,
       stravaActivityFreshlyFetched,
+      payloadPersisted,
       prRepairAttempted,
       recomputeAttempted,
       upsertChecked,
@@ -284,6 +423,7 @@ export async function POST(request: NextRequest) {
         stravaActivityId,
         runId,
         stravaActivityFreshlyFetched,
+        payloadPersisted,
         prRepairAttempted,
         recomputeAttempted,
         upsertChecked,
