@@ -334,9 +334,7 @@ export async function POST(request: NextRequest) {
       throw new Error(runError.message)
     }
 
-    const dbPayload = run?.raw_strava_payload && typeof run.raw_strava_payload === 'object'
-      ? (run.raw_strava_payload as Record<string, unknown>)
-      : null
+    const dbPayload = run?.raw_strava_payload ?? null
     const prPayloadForUpsert = freshStravaPayload ?? dbPayload
     prPayloadSource = freshStravaPayload ? 'fresh_activity' : 'db_payload'
     let hasMarathonCandidateFromPayload = false
@@ -365,6 +363,8 @@ export async function POST(request: NextRequest) {
             distanceMeters: [...RECOVERY_DISTANCES],
             fallbackRecordDate: run.created_at,
             fallbackStravaActivityId: stravaActivityId,
+            fallbackDistanceMeters: run.distance_meters,
+            fallbackMovingTimeSeconds: run.moving_time_seconds,
           })
           upsertChecked = upsertResult.checked
           upsertUpdated = upsertResult.updated

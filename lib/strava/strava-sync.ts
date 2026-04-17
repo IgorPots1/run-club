@@ -2565,6 +2565,8 @@ export async function importStravaActivityForUser(
               rawStravaPayload: payload.raw_strava_payload,
               fallbackRecordDate: payload.created_at,
               fallbackStravaActivityId: activityForImport.id,
+              fallbackDistanceMeters: payload.distance_meters,
+              fallbackMovingTimeSeconds: payload.moving_time_seconds,
             })
           } catch (error) {
             console.warn('[strava-sync] personal_record_upsert_failed', {
@@ -2619,6 +2621,8 @@ export async function importStravaActivityForUser(
           rawStravaPayload: payload.raw_strava_payload,
           fallbackRecordDate: payload.created_at,
           fallbackStravaActivityId: activityForImport.id,
+          fallbackDistanceMeters: payload.distance_meters,
+          fallbackMovingTimeSeconds: payload.moving_time_seconds,
         })
       } catch (error) {
         console.warn('[strava-sync] personal_record_upsert_failed', {
@@ -2720,6 +2724,8 @@ export async function importStravaActivityForUser(
         rawStravaPayload: payload.raw_strava_payload,
         fallbackRecordDate: payload.created_at,
         fallbackStravaActivityId: activityForImport.id,
+        fallbackDistanceMeters: payload.distance_meters,
+        fallbackMovingTimeSeconds: payload.moving_time_seconds,
       })
     } catch (error) {
       console.warn('[strava-sync] personal_record_upsert_failed', {
@@ -2895,6 +2901,8 @@ export async function importStravaActivityForUser(
       rawStravaPayload: payload.raw_strava_payload,
       fallbackRecordDate: payload.created_at,
       fallbackStravaActivityId: activityForImport.id,
+      fallbackDistanceMeters: payload.distance_meters,
+      fallbackMovingTimeSeconds: payload.moving_time_seconds,
     })
   } catch (error) {
     console.warn('[strava-sync] personal_record_upsert_failed', {

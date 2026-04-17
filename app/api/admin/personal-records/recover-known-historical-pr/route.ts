@@ -91,7 +91,7 @@ export async function recoverKnownHistoricalPersonalRecord(
 
   const { data: run, error: runError } = await supabaseAdmin
     .from('runs')
-    .select('id, created_at, raw_strava_payload, external_id')
+    .select('id, created_at, raw_strava_payload, external_id, distance_meters, moving_time_seconds')
     .eq('id', recoveredRunId)
     .eq('user_id', userId)
     .eq('external_source', 'strava')
@@ -102,18 +102,31 @@ export async function recoverKnownHistoricalPersonalRecord(
     throw new Error(runError.message)
   }
 
-  if (!run?.raw_strava_payload || typeof run.raw_strava_payload !== 'object') {
+  if (!run) {
     return {
       ok: false as const,
       status: 404,
       body: {
         ok: false,
-        step: 'missing_strava_payload',
+        step: 'missing_run',
         userId,
         runId: recoveredRunId,
         stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
       },
     }
+  }
+
+  if (!run.raw_strava_payload || typeof run.raw_strava_payload !== 'object') {
+    console.warn('Known historical PR recovery found non-object raw_strava_payload; using run-level fallback metrics', {
+      userId,
+      runId: run.id,
+      stravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+      payloadType: run.raw_strava_payload === null
+        ? 'null'
+        : Array.isArray(run.raw_strava_payload)
+          ? 'array'
+          : typeof run.raw_strava_payload,
+    })
   }
 
   const importedRunId = existingRunBeforeRecovery ? null : recoveredRunId
@@ -123,10 +136,12 @@ export async function recoverKnownHistoricalPersonalRecord(
     supabase: supabaseAdmin,
     userId,
     runId: run.id,
-    rawStravaPayload: run.raw_strava_payload as Record<string, unknown>,
+    rawStravaPayload: run.raw_strava_payload,
     distanceMeters: [...RECOVERY_DISTANCES],
     fallbackRecordDate: run.created_at,
     fallbackStravaActivityId: RECOVERY_STRAVA_ACTIVITY_ID,
+    fallbackDistanceMeters: run.distance_meters,
+    fallbackMovingTimeSeconds: run.moving_time_seconds,
   })
 
   const recomputeResults = []
