@@ -289,7 +289,12 @@ export function extractStravaPersonalRecordCandidates(
     }
   }
 
-  const fullRunDurationSeconds = toPositiveInteger(payloadRecord?.moving_time ?? payloadRecord?.elapsed_time)
+  const fullRunDurationSeconds = toPositiveInteger(
+    payloadRecord?.moving_time
+    ?? payloadRecord?.elapsed_time
+    ?? payloadRecord?.moving_time_seconds
+    ?? payloadRecord?.elapsed_time_seconds
+  )
   const fullRunActivityId = toPositiveInteger(payloadRecord?.id)
   const fullRunRecordDate =
     toIsoDateValue(payloadRecord?.start_date)
