@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { fetchStravaActivityById, getStravaWebhookVerifyToken, StravaApiError } from '@/lib/strava/strava-client'
-import { getStravaConnectionForAthlete, importStravaActivityForUser, recordStravaRateLimitCooldown } from '@/lib/strava/strava-sync'
+import { getStravaConnectionForAthlete, importStravaActivityForUser, recordStravaRateLimitCooldown, syncStravaRuns } from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
 
 const STRAVA_WEBHOOK_FETCH_RETRY_DELAYS_MS = [1500, 3000]
+const STRAVA_WEBHOOK_MAX_BACKGROUND_COOLDOWN_WAIT_MS = 30 * 1000
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
@@ -71,6 +72,59 @@ function sleep(ms: number) {
 
 function isRetryableStravaFetchError(error: unknown): error is StravaApiError {
   return error instanceof StravaApiError && error.status >= 500
+}
+
+function scheduleIncrementalRecoverySync(input: {
+  userId: string
+  ownerId: number
+  activityId: number
+  rateLimitedUntil: string
+}) {
+  const cooldownRemainingMs = Math.max(new Date(input.rateLimitedUntil).getTime() - Date.now(), 0)
+  const canWaitForCooldownInBackground = cooldownRemainingMs <= STRAVA_WEBHOOK_MAX_BACKGROUND_COOLDOWN_WAIT_MS
+
+  console.info('[strava-webhook] incremental_sync_recovery_scheduled', {
+    userId: input.userId,
+    ownerId: input.ownerId,
+    activityId: input.activityId,
+    rateLimitedUntil: input.rateLimitedUntil,
+    cooldownRemainingMs,
+    canWaitForCooldownInBackground,
+  })
+
+  after(async () => {
+    try {
+      if (canWaitForCooldownInBackground && cooldownRemainingMs > 0) {
+        await sleep(cooldownRemainingMs + 1000)
+      } else if (!canWaitForCooldownInBackground) {
+        console.info('[strava-webhook] incremental_sync_recovery_deferred_to_scheduled_sync', {
+          userId: input.userId,
+          ownerId: input.ownerId,
+          activityId: input.activityId,
+          rateLimitedUntil: input.rateLimitedUntil,
+          cooldownRemainingMs,
+        })
+        return
+      }
+
+      const syncResult = await syncStravaRuns(input.userId, { mode: 'incremental' })
+
+      console.info('[strava-webhook] incremental_sync_recovery_completed', {
+        userId: input.userId,
+        ownerId: input.ownerId,
+        activityId: input.activityId,
+        ok: syncResult.ok,
+        step: syncResult.ok ? 'initial_sync_complete' : syncResult.step,
+      })
+    } catch (caughtError) {
+      console.error('[strava-webhook] incremental_sync_recovery_failed', {
+        userId: input.userId,
+        ownerId: input.ownerId,
+        activityId: input.activityId,
+        error: caughtError instanceof Error ? caughtError.message : 'Unknown webhook recovery sync error',
+      })
+    }
+  })
 }
 
 async function fetchStravaActivityByIdWithRetry(
@@ -259,6 +313,13 @@ export async function POST(request: Request) {
           ownerId: event.owner_id,
         })
 
+        scheduleIncrementalRecoverySync({
+          userId: connection.user_id,
+          ownerId: event.owner_id,
+          activityId,
+          rateLimitedUntil,
+        })
+
         console.warn('[strava-webhook] cooldown_recorded_after_rate_limit', {
           activityId,
           ownerId: event.owner_id,
@@ -266,9 +327,9 @@ export async function POST(request: Request) {
         })
 
         return NextResponse.json({
-          ok: false,
-          step: 'fetch_activity_deferred',
-        }, { status: 503 })
+          ok: true,
+          step: 'fetch_activity_deferred_to_sync',
+        })
       }
 
       console.info('[strava-webhook-debug] activity_not_ready_yet_will_be_picked_up_by_sync', {
