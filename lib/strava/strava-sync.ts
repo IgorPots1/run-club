@@ -2557,6 +2557,25 @@ export async function importStravaActivityForUser(
         })
 
         if (resolvedRunId) {
+          try {
+            await upsertPersonalRecordsFromStravaPayload({
+              supabase,
+              userId,
+              runId: resolvedRunId,
+              rawStravaPayload: payload.raw_strava_payload,
+              fallbackRecordDate: payload.created_at,
+              fallbackStravaActivityId: activityForImport.id,
+            })
+          } catch (error) {
+            console.warn('[strava-sync] personal_record_upsert_failed', {
+              userId,
+              runId: resolvedRunId,
+              activityId: activityForImport.id,
+              path: 'insert_conflict_existing',
+              message: error instanceof Error ? error.message : 'unknown_error',
+            })
+          }
+
           if (options.accessToken) {
             logDeferredHotPathSupplementalSync({
               runId: resolvedRunId,
@@ -2693,6 +2712,25 @@ export async function importStravaActivityForUser(
   })
 
   if (!options.updateExisting && !requiresOwnerRepair) {
+    try {
+      await upsertPersonalRecordsFromStravaPayload({
+        supabase,
+        userId,
+        runId: existingRunIdForSupplementalSync,
+        rawStravaPayload: payload.raw_strava_payload,
+        fallbackRecordDate: payload.created_at,
+        fallbackStravaActivityId: activityForImport.id,
+      })
+    } catch (error) {
+      console.warn('[strava-sync] personal_record_upsert_failed', {
+        userId,
+        runId: existingRunIdForSupplementalSync,
+        activityId: activityForImport.id,
+        path: 'skipped_existing',
+        message: error instanceof Error ? error.message : 'unknown_error',
+      })
+    }
+
     await autoLinkRunToRaceEvent({
       supabase,
       userId,
