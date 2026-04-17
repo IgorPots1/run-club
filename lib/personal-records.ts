@@ -247,9 +247,20 @@ function buildBestEffortMetadata(bestEffort: Record<string, unknown>) {
 }
 
 export function extractStravaPersonalRecordCandidates(
-  rawStravaPayload: Record<string, unknown> | null | undefined
+  rawStravaPayload: unknown,
+  options?: {
+    fallbackDistanceMeters?: unknown
+    fallbackMovingTimeSeconds?: unknown
+    fallbackRecordDate?: unknown
+    fallbackStravaActivityId?: unknown
+  }
 ): PersonalRecordCandidate[] {
   const payloadRecord = asRecord(rawStravaPayload)
+  if (!payloadRecord) {
+    console.warn('extractStravaPersonalRecordCandidates received non-object raw_strava_payload; using run-level fallback metrics', {
+      payloadType: rawStravaPayload === null ? 'null' : Array.isArray(rawStravaPayload) ? 'array' : typeof rawStravaPayload,
+    })
+  }
   const bestEfforts = Array.isArray(payloadRecord?.best_efforts) ? payloadRecord.best_efforts : []
   const candidatesByDistance = new Map<SupportedPersonalRecordDistance, PersonalRecordCandidate>()
 
@@ -295,16 +306,19 @@ export function extractStravaPersonalRecordCandidates(
     ?? payloadRecord?.elapsed_time
     ?? payloadRecord?.moving_time_seconds
     ?? payloadRecord?.elapsed_time_seconds
+    ?? options?.fallbackMovingTimeSeconds
   )
-  const fullRunActivityId = toPositiveInteger(payloadRecord?.id)
+  const fullRunActivityId = toPositiveInteger(payloadRecord?.id ?? options?.fallbackStravaActivityId)
   const fullRunRecordDate =
     toIsoDateValue(payloadRecord?.start_date)
     ?? toIsoDateValue(payloadRecord?.start_date_local)
+    ?? toIsoDateValue(options?.fallbackRecordDate)
+  const fullRunDistanceMeters = payloadRecord?.distance ?? payloadRecord?.distance_meters ?? options?.fallbackDistanceMeters
 
   for (const distanceMeters of [21097, 42195] as const) {
     if (
       candidatesByDistance.has(distanceMeters)
-      || !isDistanceWithinStravaFullRunFallbackWindow(payloadRecord?.distance, distanceMeters)
+      || !isDistanceWithinStravaFullRunFallbackWindow(fullRunDistanceMeters, distanceMeters)
       || !fullRunDurationSeconds
     ) {
       continue
@@ -325,7 +339,7 @@ export function extractStravaPersonalRecordCandidates(
     .map((distanceMeters) => candidatesByDistance.get(distanceMeters) ?? null)
     .filter((candidate): candidate is PersonalRecordCandidate => candidate !== null)
 
-  const activityDistanceMeters = Number(payloadRecord?.distance ?? payloadRecord?.distance_meters)
+  const activityDistanceMeters = Number(fullRunDistanceMeters)
 
   if (
     !candidates.some((candidate) => candidate.distance_meters === 42195)
@@ -815,11 +829,18 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
   supabase: ReturnType<typeof createSupabaseAdminClient>
   userId: string
   runId?: string | null
-  rawStravaPayload: Record<string, unknown> | null
+  rawStravaPayload: unknown
   fallbackRecordDate?: string | null
   fallbackStravaActivityId?: number | string | null
+  fallbackDistanceMeters?: unknown
+  fallbackMovingTimeSeconds?: unknown
 }) {
-  const candidates = extractStravaPersonalRecordCandidates(params.rawStravaPayload)
+  const candidates = extractStravaPersonalRecordCandidates(params.rawStravaPayload, {
+    fallbackDistanceMeters: params.fallbackDistanceMeters,
+    fallbackMovingTimeSeconds: params.fallbackMovingTimeSeconds,
+    fallbackRecordDate: params.fallbackRecordDate,
+    fallbackStravaActivityId: params.fallbackStravaActivityId,
+  })
 
   if (candidates.length === 0) {
     return {
@@ -878,13 +899,20 @@ export async function upsertPersonalRecordsForDistancesFromStravaPayload(params:
   supabase: ReturnType<typeof createSupabaseAdminClient>
   userId: string
   runId?: string | null
-  rawStravaPayload: Record<string, unknown> | null
+  rawStravaPayload: unknown
   distanceMeters: SupportedPersonalRecordDistance[]
   fallbackRecordDate?: string | null
   fallbackStravaActivityId?: number | string | null
+  fallbackDistanceMeters?: unknown
+  fallbackMovingTimeSeconds?: unknown
 }) {
   const targetDistances = new Set(params.distanceMeters)
-  const candidates = extractStravaPersonalRecordCandidates(params.rawStravaPayload)
+  const candidates = extractStravaPersonalRecordCandidates(params.rawStravaPayload, {
+    fallbackDistanceMeters: params.fallbackDistanceMeters,
+    fallbackMovingTimeSeconds: params.fallbackMovingTimeSeconds,
+    fallbackRecordDate: params.fallbackRecordDate,
+    fallbackStravaActivityId: params.fallbackStravaActivityId,
+  })
     .filter((candidate) => targetDistances.has(candidate.distance_meters))
 
   if (candidates.length === 0) {
