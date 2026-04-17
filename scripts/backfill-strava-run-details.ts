@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { backfillStravaRunDetailSeriesForRun } from '../lib/strava/strava-sync'
+import { backfillStravaSupplementalDataForRun } from '../lib/strava/strava-sync'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const DEFAULT_BATCH_SIZE = 100
@@ -203,38 +203,20 @@ async function main() {
       continue
     }
 
-    const result = await backfillStravaRunDetailSeriesForRun(run.user_id, run.id)
-    const success = result.ok && result.status === 'updated'
+    const success = await backfillStravaSupplementalDataForRun(run.user_id, run.id)
 
     console.info('Run detail backfill result', {
       runId: run.id,
       success,
-      status: result.status,
-      activityId: result.activityId,
-      message: result.message ?? null,
+      activityId: run.external_id,
     })
 
-    if (result.status === 'updated') {
+    if (success) {
       summary.updated += 1
       continue
     }
 
-    if (result.status === 'skipped_already_present') {
-      summary.skipped += 1
-      continue
-    }
-
     summary.failed += 1
-
-    if (result.status === 'cooldown_active') {
-      summary.stoppedDueToCooldown = true
-      console.warn('Stopping early because Strava cooldown is active.', {
-        runId: run.id,
-        activityId: result.activityId,
-        message: result.message ?? null,
-      })
-      break
-    }
   }
 
   console.info('Strava run detail series backfill complete', summary)
