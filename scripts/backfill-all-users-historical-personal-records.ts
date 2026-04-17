@@ -1,10 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
-  recomputePersonalRecordForUserDistance,
   upsertPersonalRecordsForDistancesFromStravaPayload,
-} from '../lib/personal-records'
-import { StravaApiError } from '../lib/strava/strava-client'
-import { importHistoricalStravaActivityByIdForUser } from '../lib/strava/strava-sync'
+} from '../lib/personal-records-backfill-shared'
+import { recomputePersonalRecordForUserDistance } from '../lib/personal-records-recompute'
 
 const DEFAULT_BATCH_SIZE = 20
 const DEFAULT_SOURCE_PAGE_SIZE = 500
@@ -25,6 +23,14 @@ type ConnectionRow = {
 
 type RunRow = {
   external_id: string | null
+}
+
+type RecoveryRunRow = {
+  id: string
+  created_at: string | null
+  raw_strava_payload: unknown
+  distance_meters: number | null
+  moving_time_seconds: number | null
 }
 
 type UserBatch = {
@@ -286,73 +292,147 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function isRateLimitError(error: unknown) {
+  if (!error || typeof error !== 'object' || !('status' in error)) {
+    return false
+  }
+
+  return Number((error as { status?: unknown }).status) === 429
+}
+
+type FetchStravaActivityError = Error & { status?: number }
+
+function buildFetchStravaActivityError(message: string, status: number) {
+  const error = new Error(message) as FetchStravaActivityError
+  error.status = status
+  return error
+}
+
+async function fetchStravaAccessTokenForUser(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from('strava_connections')
+    .select('access_token')
+    .eq('user_id', userId)
+    .eq('status', 'connected')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (!data?.access_token || !data.access_token.trim()) {
+    return null
+  }
+
+  return data.access_token.trim()
+}
+
+async function fetchStravaActivityPayload(accessToken: string, activityId: number) {
+  const response = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '')
+    throw buildFetchStravaActivityError(
+      `Strava activity fetch failed with status ${response.status}${bodyText ? `: ${bodyText}` : ''}`,
+      response.status
+    )
+  }
+
+  return await response.json()
+}
+
 async function recoverHistoricalActivityForUser(params: {
   supabase: SupabaseClient
   userId: string
   activityId: number
 }) {
-  const totalAttempts = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS.length + 1
-  let recoveredRunId: string | null = null
-
-  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
-    try {
-      recoveredRunId = await importHistoricalStravaActivityByIdForUser(
-        params.userId,
-        params.activityId,
-        {
-          ignoreCooldown: true,
-          forceRefreshExistingRun: true,
-        }
-      )
-      break
-    } catch (error) {
-      const isRateLimitError = error instanceof StravaApiError && error.status === 429
-
-      if (!isRateLimitError) {
-        throw error
-      }
-
-      if (attempt >= totalAttempts) {
-        throw new Error('Strava activity fetch rate-limited after 3 retries')
-      }
-
-      const retryDelayMs = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1]
-      console.warn('Historical activity recovery hit Strava rate limit; retrying', {
-        userId: params.userId,
-        activityId: params.activityId,
-        attempt,
-        totalAttempts,
-        retryDelayMs,
-      })
-      await sleep(retryDelayMs)
-    }
-  }
-
-  if (!recoveredRunId) {
-    return {
-      ok: false,
-      error: 'historical_import_unavailable',
-    }
-  }
-
-  const { data: run, error: runError } = await params.supabase
+  const externalId = String(params.activityId)
+  const { data: existingRun, error: existingRunError } = await params.supabase
     .from('runs')
     .select('id, created_at, raw_strava_payload, distance_meters, moving_time_seconds')
-    .eq('id', recoveredRunId)
     .eq('user_id', params.userId)
     .eq('external_source', 'strava')
-    .eq('external_id', String(params.activityId))
+    .eq('external_id', externalId)
     .maybeSingle()
 
-  if (runError) {
-    throw new Error(runError.message)
+  if (existingRunError) {
+    throw new Error(existingRunError.message)
   }
 
-  if (!run) {
+  const run = (existingRun as RecoveryRunRow | null) ?? null
+
+  if (!run?.id) {
     return {
       ok: false,
-      error: 'missing_run_after_recovery',
+      error: 'missing_existing_run_for_activity',
     }
+  }
+
+  if (!run.raw_strava_payload) {
+    const accessToken = await fetchStravaAccessTokenForUser(params.supabase, params.userId)
+
+    if (!accessToken) {
+      return {
+        ok: false,
+        error: 'missing_connected_strava_access_token',
+      }
+    }
+
+    const totalAttempts = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS.length + 1
+    let updatedPayload: unknown = null
+
+    for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      try {
+        updatedPayload = await fetchStravaActivityPayload(accessToken, params.activityId)
+        break
+      } catch (error) {
+        if (!isRateLimitError(error)) {
+          throw error
+        }
+
+        if (attempt >= totalAttempts) {
+          throw new Error('Strava activity fetch rate-limited after 3 retries')
+        }
+
+        const retryDelayMs = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1]
+        console.warn('Historical activity recovery hit Strava rate limit; retrying', {
+          userId: params.userId,
+          activityId: params.activityId,
+          attempt,
+          totalAttempts,
+          retryDelayMs,
+        })
+        await sleep(retryDelayMs)
+      }
+    }
+
+    if (!updatedPayload || typeof updatedPayload !== 'object' || Array.isArray(updatedPayload)) {
+      return {
+        ok: false,
+        error: 'invalid_strava_activity_payload',
+      }
+    }
+
+    const { error: updateError } = await params.supabase
+      .from('runs')
+      .update({
+        raw_strava_payload: updatedPayload,
+        strava_synced_at: new Date().toISOString(),
+      })
+      .eq('id', run.id)
+      .eq('user_id', params.userId)
+
+    if (updateError) {
+      throw new Error(updateError.message)
+    }
+
+    run.raw_strava_payload = updatedPayload
   }
 
   const personalRecordSupabase = params.supabase as PersonalRecordSupabase
