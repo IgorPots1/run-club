@@ -379,7 +379,7 @@ function WorkoutFeedCard({
       ) : null}
 
       {shouldRenderMediaCarousel && mapPreviewUrl ? (
-        <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+        <div className="mt-2">
           <div
             ref={mediaScrollRef}
             className="overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
