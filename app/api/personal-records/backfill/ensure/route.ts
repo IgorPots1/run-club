@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ensureHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
+import { ensureHistoricalPersonalRecordBackfillForUser } from '@/lib/personal-records/runHistoricalPersonalRecordBackfillForUser.mjs'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 export async function POST(request: Request) {

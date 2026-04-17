@@ -4,7 +4,7 @@ import {
   SUPPORTED_PERSONAL_RECORD_DISTANCES,
   recomputePersonalRecordForUserDistance,
 } from '@/lib/personal-records-recompute'
-import { runHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
+import { runHistoricalPersonalRecordBackfillForUser } from '@/lib/personal-records/runHistoricalPersonalRecordBackfillForUser.mjs'
 
 type StravaConnectionRow = {
   id: string

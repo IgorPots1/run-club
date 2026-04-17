@@ -4,7 +4,7 @@ import InnerPageHeader from '@/components/InnerPageHeader'
 import { loadCurrentUserPersonalRecords, type PersonalRecordView } from '@/lib/personal-records'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import BackfillEnsureOnLoad from './BackfillEnsureOnLoad'
-import { loadHistoricalPersonalRecordBackfillStateForUser } from '@/scripts/backfill-strava-personal-records.mjs'
+import { loadHistoricalPersonalRecordBackfillStateForUser } from '@/lib/personal-records/runHistoricalPersonalRecordBackfillForUser.mjs'
 
 const RECORD_CARDS = [
   { distanceMeters: 5000, label: '5 км' },
