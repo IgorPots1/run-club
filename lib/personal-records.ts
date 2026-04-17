@@ -290,7 +290,9 @@ export function extractStravaPersonalRecordCandidates(
   }
 
   const fullRunDurationSeconds = toPositiveInteger(payloadRecord?.moving_time ?? payloadRecord?.elapsed_time)
+  const fullRunMovingTimeSeconds = toPositiveInteger(payloadRecord?.moving_time_seconds)
   const fullRunActivityId = toPositiveInteger(payloadRecord?.id)
+  const fullRunDistanceMeters = payloadRecord?.distance ?? payloadRecord?.distance_meters
   const fullRunRecordDate =
     toIsoDateValue(payloadRecord?.start_date)
     ?? toIsoDateValue(payloadRecord?.start_date_local)
@@ -308,6 +310,22 @@ export function extractStravaPersonalRecordCandidates(
       distance_meters: distanceMeters,
       duration_seconds: fullRunDurationSeconds,
       pace_seconds_per_km: Math.round(fullRunDurationSeconds / (distanceMeters / 1000)),
+      record_date: fullRunRecordDate,
+      strava_activity_id: fullRunActivityId,
+      source: 'strava_best_effort',
+      metadata: null,
+    })
+  }
+
+  if (
+    !candidatesByDistance.has(42195)
+    && isDistanceWithinStravaFullRunFallbackWindow(fullRunDistanceMeters, 42195)
+    && fullRunMovingTimeSeconds
+  ) {
+    candidatesByDistance.set(42195, {
+      distance_meters: 42195,
+      duration_seconds: fullRunMovingTimeSeconds,
+      pace_seconds_per_km: Math.round(fullRunMovingTimeSeconds / 42.195),
       record_date: fullRunRecordDate,
       strava_activity_id: fullRunActivityId,
       source: 'strava_best_effort',
