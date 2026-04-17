@@ -323,7 +323,7 @@ export async function POST(request: NextRequest) {
 
     const { data: run, error: runError } = await supabaseAdmin
       .from('runs')
-      .select('id, created_at, raw_strava_payload')
+      .select('id, created_at, raw_strava_payload, distance_meters, moving_time_seconds')
       .eq('id', runId)
       .eq('user_id', userId)
       .eq('external_source', 'strava')
@@ -339,36 +339,68 @@ export async function POST(request: NextRequest) {
       : null
     const prPayloadForUpsert = freshStravaPayload ?? dbPayload
     prPayloadSource = freshStravaPayload ? 'fresh_activity' : 'db_payload'
+    let hasMarathonCandidateFromPayload = false
 
     if (!run) {
       warnings.push('Recovered run was not found for this user/activity')
-    } else if (!prPayloadForUpsert) {
-      warnings.push('Recovered run missing raw Strava payload; PR upsert skipped')
     } else {
-      prRepairAttempted = true
+      if (!prPayloadForUpsert) {
+        warnings.push('Recovered run missing raw Strava payload; PR upsert skipped')
+      } else {
+        prRepairAttempted = true
 
-      try {
-        candidateDistancesAttempted = extractStravaPersonalRecordCandidates(
-          prPayloadForUpsert
-        )
-          .map((candidate) => candidate.distance_meters)
-          .filter((distanceMeters) => RECOVERY_DISTANCES.includes(distanceMeters as 21097 | 42195))
+        try {
+          const extractedCandidates = extractStravaPersonalRecordCandidates(prPayloadForUpsert)
+          candidateDistancesAttempted = extractedCandidates
+            .map((candidate) => candidate.distance_meters)
+            .filter((distanceMeters) => RECOVERY_DISTANCES.includes(distanceMeters as 21097 | 42195))
+          hasMarathonCandidateFromPayload = extractedCandidates
+            .some((candidate) => candidate.distance_meters === 42195)
 
-        const upsertResult = await upsertPersonalRecordsForDistancesFromStravaPayload({
-          supabase: supabaseAdmin,
-          userId,
-          runId: run.id,
-          rawStravaPayload: prPayloadForUpsert,
-          distanceMeters: [...RECOVERY_DISTANCES],
-          fallbackRecordDate: run.created_at,
-          fallbackStravaActivityId: stravaActivityId,
-        })
-        upsertChecked = upsertResult.checked
-        upsertUpdated = upsertResult.updated
-      } catch (prError) {
-        errors.push(
-          `pr_upsert_failed:${prError instanceof Error ? prError.message : 'unknown_error'}`
-        )
+          const upsertResult = await upsertPersonalRecordsForDistancesFromStravaPayload({
+            supabase: supabaseAdmin,
+            userId,
+            runId: run.id,
+            rawStravaPayload: prPayloadForUpsert,
+            distanceMeters: [...RECOVERY_DISTANCES],
+            fallbackRecordDate: run.created_at,
+            fallbackStravaActivityId: stravaActivityId,
+          })
+          upsertChecked = upsertResult.checked
+          upsertUpdated = upsertResult.updated
+        } catch (prError) {
+          errors.push(
+            `pr_upsert_failed:${prError instanceof Error ? prError.message : 'unknown_error'}`
+          )
+        }
+      }
+
+      if (!prPayloadForUpsert || !hasMarathonCandidateFromPayload) {
+        const runDistanceMeters = Number(run.distance_meters ?? 0)
+        const runMovingTimeSeconds = Math.round(Number(run.moving_time_seconds ?? 0))
+
+        if (Number.isFinite(runDistanceMeters) && runDistanceMeters > 40000 && runMovingTimeSeconds > 0) {
+          const { error: marathonFallbackError } = await supabaseAdmin.rpc(
+            'upsert_personal_record_if_better',
+            {
+              p_user_id: userId,
+              p_distance_meters: 42195,
+              p_duration_seconds: runMovingTimeSeconds,
+              p_pace_seconds_per_km: runMovingTimeSeconds / (42195 / 1000),
+              p_run_id: run.id,
+              p_strava_activity_id: stravaActivityId,
+              p_record_date: run.created_at ?? null,
+              p_source: 'strava_best_effort',
+              p_metadata: { recovery_fallback: 'run_table' },
+            }
+          )
+
+          if (marathonFallbackError) {
+            errors.push(
+              `marathon_fallback_upsert_failed:${marathonFallbackError.message}`
+            )
+          }
+        }
       }
     }
 
