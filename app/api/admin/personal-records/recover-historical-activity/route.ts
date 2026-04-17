@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  extractStravaPersonalRecordCandidates,
   recomputePersonalRecordForUserDistance,
   upsertPersonalRecordsForDistancesFromStravaPayload,
 } from '@/lib/personal-records'
@@ -36,6 +37,7 @@ async function importHistoricalStravaActivityByIdForUserWithRetry(userId: string
     try {
       return await importHistoricalStravaActivityByIdForUser(userId, stravaActivityId, {
         ignoreCooldown: true,
+        forceRefreshExistingRun: true,
       })
     } catch (error) {
       const isRateLimitError = error instanceof StravaApiError && error.status === 429
@@ -146,8 +148,12 @@ export async function POST(request: NextRequest) {
   const warnings: string[] = []
   const errors: string[] = []
   let runId: string | null = null
+  let stravaActivityFreshlyFetched = false
   let prRepairAttempted = false
   let recomputeAttempted = false
+  let upsertChecked = 0
+  let upsertUpdated = 0
+  let candidateDistancesAttempted: number[] = []
 
   try {
     const { data: existingRunBeforeRecovery, error: existingRunBeforeRecoveryError } = await supabaseAdmin
@@ -163,18 +169,27 @@ export async function POST(request: NextRequest) {
     }
 
     const recoveredRunId = await importHistoricalStravaActivityByIdForUserWithRetry(userId, stravaActivityId)
-    runId = recoveredRunId ?? existingRunBeforeRecovery?.id ?? null
+    runId = recoveredRunId
+    stravaActivityFreshlyFetched = Boolean(recoveredRunId)
 
     if (!runId) {
-      warnings.push('Historical import returned no run id')
+      warnings.push(
+        existingRunBeforeRecovery
+          ? 'Historical import did not refresh existing run from Strava'
+          : 'Historical import returned no run id'
+      )
       return NextResponse.json(
         {
           ok: false,
           userId,
           stravaActivityId,
           runId,
+          stravaActivityFreshlyFetched,
           prRepairAttempted,
           recomputeAttempted,
+          upsertChecked,
+          upsertUpdated,
+          candidateDistancesAttempted,
           warnings,
           errors,
         },
@@ -203,7 +218,13 @@ export async function POST(request: NextRequest) {
       prRepairAttempted = true
 
       try {
-        await upsertPersonalRecordsForDistancesFromStravaPayload({
+        candidateDistancesAttempted = extractStravaPersonalRecordCandidates(
+          run.raw_strava_payload as Record<string, unknown>
+        )
+          .map((candidate) => candidate.distance_meters)
+          .filter((distanceMeters) => RECOVERY_DISTANCES.includes(distanceMeters as 21097 | 42195))
+
+        const upsertResult = await upsertPersonalRecordsForDistancesFromStravaPayload({
           supabase: supabaseAdmin,
           userId,
           runId: run.id,
@@ -212,6 +233,8 @@ export async function POST(request: NextRequest) {
           fallbackRecordDate: run.created_at,
           fallbackStravaActivityId: stravaActivityId,
         })
+        upsertChecked = upsertResult.checked
+        upsertUpdated = upsertResult.updated
       } catch (prError) {
         errors.push(
           `pr_upsert_failed:${prError instanceof Error ? prError.message : 'unknown_error'}`
@@ -242,8 +265,12 @@ export async function POST(request: NextRequest) {
       userId,
       stravaActivityId,
       runId,
+      stravaActivityFreshlyFetched,
       prRepairAttempted,
       recomputeAttempted,
+      upsertChecked,
+      upsertUpdated,
+      candidateDistancesAttempted,
       warnings,
       errors,
     })
@@ -256,8 +283,12 @@ export async function POST(request: NextRequest) {
         userId,
         stravaActivityId,
         runId,
+        stravaActivityFreshlyFetched,
         prRepairAttempted,
         recomputeAttempted,
+        upsertChecked,
+        upsertUpdated,
+        candidateDistancesAttempted,
         warnings,
         errors,
       },

@@ -2948,6 +2948,7 @@ export async function importHistoricalStravaActivityByIdForUser(
   stravaActivityId: number,
   options: {
     ignoreCooldown?: boolean
+    forceRefreshExistingRun?: boolean
   } = {}
 ) {
   void options?.ignoreCooldown
@@ -2972,7 +2973,7 @@ export async function importHistoricalStravaActivityByIdForUser(
     throw new Error(formatSupabaseError(existingRunError))
   }
 
-  if (existingRun?.id && existingRun.user_id === normalizedUserId) {
+  if (!options.forceRefreshExistingRun && existingRun?.id && existingRun.user_id === normalizedUserId) {
     return existingRun.id
   }
 
