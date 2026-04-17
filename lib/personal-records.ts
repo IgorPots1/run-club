@@ -26,8 +26,8 @@ const STRAVA_FULL_RUN_FALLBACK_WINDOWS = {
     maximumDistanceMeters: 21597,
   },
   42195: {
-    minimumDistanceMeters: 41695,
-    maximumDistanceMeters: 42695,
+    minimumDistanceMeters: 42000,
+    maximumDistanceMeters: 43000,
   },
 } as const satisfies Record<
   21097 | 42195,
