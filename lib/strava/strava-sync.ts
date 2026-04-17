@@ -124,6 +124,8 @@ type MissingRunDetailSeriesRow = {
 
 type ExistingRunDetailSeriesStatusRow = {
   run_id: string
+  pace_points: unknown | null
+  heartrate_points: unknown | null
   cadence_points: unknown | null
   altitude_points: unknown | null
 }
@@ -230,11 +232,28 @@ type RunLapsSyncResult = {
 }
 
 function getMissingRunDetailSeriesReasons(row: ExistingRunDetailSeriesStatusRow | null) {
-  const reasons: Array<'missing_detail_series_row' | 'missing_cadence_points' | 'missing_altitude_points'> = []
+  const reasons: Array<
+    | 'missing_detail_series_row'
+    | 'missing_pace_points'
+    | 'missing_heartrate_points'
+    | 'missing_cadence_points'
+    | 'missing_altitude_points'
+  > = []
 
   if (!row) {
     reasons.push('missing_detail_series_row')
     return reasons
+  }
+
+  if (row.pace_points == null || (Array.isArray(row.pace_points) && row.pace_points.length === 0)) {
+    reasons.push('missing_pace_points')
+  }
+
+  if (
+    row.heartrate_points == null ||
+    (Array.isArray(row.heartrate_points) && row.heartrate_points.length === 0)
+  ) {
+    reasons.push('missing_heartrate_points')
   }
 
   if (row.cadence_points == null) {
@@ -893,7 +912,7 @@ async function syncRunDetailSeriesForActivity(
   try {
     const { data: existingSeriesStatus, error: existingSeriesStatusError } = await supabase
       .from('run_detail_series')
-      .select('run_id, cadence_points, altitude_points')
+      .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points')
       .eq('run_id', runId)
       .maybeSingle()
 
@@ -1566,7 +1585,7 @@ async function backfillMissingRunDetailSeriesForUser(
 
   const { data: existingSeriesRows, error: existingSeriesError } = await supabase
     .from('run_detail_series')
-    .select('run_id, cadence_points, altitude_points')
+    .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points')
     .in('run_id', candidateRuns.map((run) => run.id))
 
   if (existingSeriesError) {
@@ -3501,6 +3520,7 @@ export async function syncStravaRuns(
   let workoutXpGained = 0
   let distanceXpGained = 0
   let highestLevelUp: number | null = null
+  const postImportSupplementalSyncCandidates: Array<{ runId: string; activityId: number }> = []
 
   for (const activity of runActivities) {
     let payload: StravaRunInsertPayload | null = null
@@ -3519,6 +3539,17 @@ export async function syncStravaRuns(
         updated += 1
       } else if (result.status === 'skipped_existing' || result.status === 'skipped_invalid') {
         skipped += 1
+      }
+
+      if (
+        (result.status === 'imported' || result.status === 'updated') &&
+        typeof result.runId === 'string' &&
+        result.runId.length > 0
+      ) {
+        const activityId = Number(activity.id)
+        if (Number.isFinite(activityId) && activityId > 0) {
+          postImportSupplementalSyncCandidates.push({ runId: result.runId, activityId })
+        }
       }
 
       xpGained += Number(result.xpGained ?? 0)
@@ -3583,6 +3614,48 @@ export async function syncStravaRuns(
     await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, targetDebugRunId, connection.id)
     await backfillMissingHeartratePointsForUser(userId, connection.access_token, connection.id)
   } else {
+    const POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT = 5
+    const postImportSupplementalSyncTargets = Array.from(
+      new Map(
+        postImportSupplementalSyncCandidates.map((candidate) => [candidate.runId, candidate] as const)
+      ).values()
+    ).slice(0, POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
+
+    if (postImportSupplementalSyncTargets.length > 0) {
+      const supabase = createSupabaseAdminClient()
+      let supplementalSyncSucceeded = 0
+
+      for (const target of postImportSupplementalSyncTargets) {
+        try {
+          const synced = await syncRunSupplementalStravaDataForActivity(
+            supabase,
+            target.runId,
+            target.activityId,
+            connection.access_token,
+            undefined,
+            connection.id
+          )
+          if (synced) {
+            supplementalSyncSucceeded += 1
+          }
+        } catch (error) {
+          console.warn('Strava post-import supplemental detail sync failed', {
+            userId,
+            runId: target.runId,
+            activityId: target.activityId,
+            error: error instanceof Error ? error.message : 'unknown_error',
+          })
+        }
+      }
+
+      console.info('Strava post-import supplemental detail sync completed', {
+        userId,
+        attemptedRuns: postImportSupplementalSyncTargets.length,
+        succeededRuns: supplementalSyncSucceeded,
+        maxRuns: POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT,
+      })
+    }
+
     console.info('Strava supplemental backfill deferred after sync', {
       userId,
       reason: 'fresh_import_priority',
