@@ -92,7 +92,6 @@ async function loadLatestBackfillJobState(
     .select('status, last_error')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
-    .order('id', { ascending: false })
     .limit(1)
     .maybeSingle()
 

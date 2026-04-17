@@ -52,6 +52,8 @@ type BackfillJobRow = {
   user_id: string | null
   status: string | null
   last_error: string | null
+  processed_activities_count: number | null
+  scanned_pages_count: number | null
 }
 
 type RunUserRow = {
@@ -358,8 +360,22 @@ async function fetchStravaRunCountsForUsers(
 async function fetchBackfillJobStatusesForUsers(
   supabase: SupabaseClient,
   userIds: string[]
-): Promise<Map<string, Pick<BackfillJobRow, 'status' | 'last_error'>>> {
-  const backfillStatesByUserId = new Map<string, Pick<BackfillJobRow, 'status' | 'last_error'>>()
+): Promise<
+  Map<
+    string,
+    Pick<
+      BackfillJobRow,
+      'status' | 'last_error' | 'processed_activities_count' | 'scanned_pages_count'
+    >
+  >
+> {
+  const backfillStatesByUserId = new Map<
+    string,
+    Pick<
+      BackfillJobRow,
+      'status' | 'last_error' | 'processed_activities_count' | 'scanned_pages_count'
+    >
+  >()
 
   if (userIds.length === 0) {
     return backfillStatesByUserId
@@ -367,7 +383,7 @@ async function fetchBackfillJobStatusesForUsers(
 
   const { data, error } = await supabase
     .from('personal_record_backfill_jobs')
-    .select('user_id, status, last_error')
+    .select('user_id, status, last_error, processed_activities_count, scanned_pages_count')
     .in('user_id', userIds)
 
   if (error) {
@@ -384,6 +400,8 @@ async function fetchBackfillJobStatusesForUsers(
     backfillStatesByUserId.set(row.user_id, {
       status: row.status,
       last_error: row.last_error,
+      processed_activities_count: row.processed_activities_count,
+      scanned_pages_count: row.scanned_pages_count,
     })
   }
 
@@ -449,6 +467,8 @@ function deriveStatus(input: {
   hasBackfillJob: boolean
   backfillJobStatus: string | null
   backfillLastError: string | null
+  backfillProcessedActivitiesCount: number | null
+  backfillScannedPagesCount: number | null
   historicalDistances: number[]
   canonicalDistances: number[]
   missingDistances: number[]
@@ -478,6 +498,10 @@ function deriveStatus(input: {
       || input.backfillJobStatus === 'running'
       || input.backfillJobStatus === 'paused_rate_limited'
       || input.backfillLastError === 'empty_first_historical_page'
+      || (
+        input.backfillProcessedActivitiesCount === 0
+        && input.backfillScannedPagesCount === 0
+      )
     )
   )
 
@@ -610,6 +634,8 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
         const latestBackfillState = backfillStatesByUserId.get(profile.id) ?? null
         const backfillJobStatus = latestBackfillState?.status ?? null
         const backfillLastError = latestBackfillState?.last_error ?? null
+        const backfillProcessedActivitiesCount = latestBackfillState?.processed_activities_count ?? null
+        const backfillScannedPagesCount = latestBackfillState?.scanned_pages_count ?? null
         const historicalDistances = toDistanceArray(historicalByUserId.get(profile.id) ?? new Set<number>())
         const canonicalDistances = toDistanceArray(canonicalByUserId.get(profile.id) ?? new Set<number>())
         const missingDistances = getMissingDistances(new Set(canonicalDistances))
@@ -632,6 +658,8 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
             hasBackfillJob: latestBackfillState !== null,
             backfillJobStatus,
             backfillLastError,
+            backfillProcessedActivitiesCount,
+            backfillScannedPagesCount,
             historicalDistances,
             canonicalDistances,
             missingDistances,
