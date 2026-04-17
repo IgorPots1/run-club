@@ -1,5 +1,6 @@
 import {
   auditPersonalRecordsPipeline,
+  getAuditStatusLogLabel,
   hasActiveRateLimit,
   type AuditStatus,
 } from './audit-personal-records-pipeline'
@@ -100,6 +101,14 @@ function isRetryableStatus(status: AuditStatus): status is RetryableAuditStatus 
   return (RETRYABLE_STATUSES as readonly AuditStatus[]).includes(status)
 }
 
+function getRetryLogLabel(status: AuditStatus | 'rate_limited') {
+  if (status === 'rate_limited') {
+    return status
+  }
+
+  return getAuditStatusLogLabel(status)
+}
+
 function createSummary(): Summary {
   return {
     auditedUsers: 0,
@@ -128,6 +137,7 @@ async function main() {
     sourcePageSize: args.sourcePageSize,
     targetUserId: args.userId,
     retryableStatuses: [...RETRYABLE_STATUSES],
+    retryableStatusLabels: RETRYABLE_STATUSES.map((status) => getAuditStatusLogLabel(status)),
     maxAttemptsPerUser,
     mode: 'sequential',
   })
@@ -146,7 +156,19 @@ async function main() {
   }
 
   const retryRows = auditResult.auditRows.filter((row) => isRetryableStatus(row.status))
+  const partialDataMissingRows = auditResult.auditRows.filter(
+    (row) => row.status === 'partial_data_missing'
+  )
   summary.retryCandidates = retryRows.length
+
+  if (partialDataMissingRows.length > 0) {
+    console.log('Skipping users with valid missing-distance gaps', {
+      skippedUsers: partialDataMissingRows.length,
+      auditStatus: 'partial_data_missing',
+      auditStatusLabel: getAuditStatusLogLabel('partial_data_missing'),
+      action: 'no_retry',
+    })
+  }
 
   for (const row of retryRows) {
     if (hasActiveRateLimit(row.rate_limited_until)) {
@@ -156,6 +178,7 @@ async function main() {
         userId: row.user_id,
         displayName: row.display_name,
         auditStatus: row.status,
+        auditStatusLabel: getAuditStatusLogLabel(row.status),
         attemptsUsed: 0,
         finalStatus: 'rate_limited',
         rateLimitedUntil: row.rate_limited_until,
@@ -205,11 +228,14 @@ async function main() {
         userId: row.user_id,
         displayName: row.display_name,
         initialAuditStatus: row.status,
+        initialAuditStatusLabel: getAuditStatusLogLabel(row.status),
         attemptNumber,
         maxAttemptsPerUser,
         resultStatus: lastResult.status,
         updatedAuditStatus: updatedAuditRow.status,
+        updatedAuditStatusLabel: getAuditStatusLogLabel(updatedAuditRow.status),
         finalStatus,
+        finalStatusLabel: getRetryLogLabel(finalStatus),
         ...(lastResult.status === 'success'
           ? {
               backfillReason: lastResult.backfillReason,
@@ -246,10 +272,13 @@ async function main() {
       userId: row.user_id,
       displayName: row.display_name,
       initialAuditStatus: row.status,
+      initialAuditStatusLabel: getAuditStatusLogLabel(row.status),
       attemptsUsed,
       maxAttemptsPerUser,
       finalAuditStatus,
+      finalAuditStatusLabel: getAuditStatusLogLabel(finalAuditStatus),
       finalStatus,
+      finalStatusLabel: getRetryLogLabel(finalStatus),
       rateLimitedUntil: finalRateLimitedUntil,
       lastResultStatus: lastResult?.status ?? null,
     })
