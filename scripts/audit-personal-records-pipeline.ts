@@ -597,7 +597,13 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
 
     let connectionsByUserId = new Map<string, StravaConnectionRow>()
     let stravaRunCountsByUserId = new Map<string, number>()
-    let backfillStatesByUserId = new Map<string, Pick<BackfillJobRow, 'status' | 'last_error'>>()
+    let backfillStatesByUserId = new Map<
+      string,
+      Pick<
+        BackfillJobRow,
+        'status' | 'last_error' | 'processed_activities_count' | 'scanned_pages_count'
+      >
+    >()
     let historicalByUserId = new Map<string, Set<number>>()
     let canonicalByUserId = new Map<string, Set<number>>()
     let batchError: string | null = null
