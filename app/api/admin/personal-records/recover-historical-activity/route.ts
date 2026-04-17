@@ -218,11 +218,13 @@ export async function POST(request: NextRequest) {
   let runId: string | null = null
   let stravaActivityFreshlyFetched = false
   let payloadPersisted = false
+  let prPayloadSource: 'fresh_activity' | 'db_payload' = 'db_payload'
   let prRepairAttempted = false
   let recomputeAttempted = false
   let upsertChecked = 0
   let upsertUpdated = 0
   let candidateDistancesAttempted: number[] = []
+  let freshStravaPayload: Record<string, unknown> | null = null
 
   try {
     const { data: existingRunBeforeRecovery, error: existingRunBeforeRecoveryError } = await supabaseAdmin
@@ -255,6 +257,7 @@ export async function POST(request: NextRequest) {
           runId,
           stravaActivityFreshlyFetched,
           payloadPersisted,
+          prPayloadSource,
           prRepairAttempted,
           recomputeAttempted,
           upsertChecked,
@@ -267,73 +270,56 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const freshStravaPayload = await fetchHistoricalStravaActivityPayloadForUserWithRetry(
+    freshStravaPayload = await fetchHistoricalStravaActivityPayloadForUserWithRetry(
       userId,
       stravaActivityId
     )
 
-    if (!freshStravaPayload) {
-      warnings.push('Missing Strava connection for payload refresh')
-      return NextResponse.json(
-        {
-          ok: false,
-          userId,
-          stravaActivityId,
-          runId,
-          stravaActivityFreshlyFetched,
-          payloadPersisted,
-          prRepairAttempted,
-          recomputeAttempted,
-          upsertChecked,
-          upsertUpdated,
-          candidateDistancesAttempted,
-          warnings,
-          errors,
-        },
-        { status: 409 }
-      )
+    if (freshStravaPayload) {
+      const { data: persistedRun, error: persistPayloadError } = await supabaseAdmin
+        .from('runs')
+        .update({
+          raw_strava_payload: freshStravaPayload,
+          strava_synced_at: new Date().toISOString(),
+        })
+        .eq('id', runId)
+        .eq('user_id', userId)
+        .eq('external_source', 'strava')
+        .eq('external_id', String(stravaActivityId))
+        .select('id')
+        .maybeSingle()
+
+      if (persistPayloadError) {
+        throw new Error(persistPayloadError.message)
+      }
+
+      if (!persistedRun?.id) {
+        warnings.push('Recovered run payload was not persisted')
+        return NextResponse.json(
+          {
+            ok: false,
+            userId,
+            stravaActivityId,
+            runId,
+            stravaActivityFreshlyFetched,
+            payloadPersisted,
+            prPayloadSource,
+            prRepairAttempted,
+            recomputeAttempted,
+            upsertChecked,
+            upsertUpdated,
+            candidateDistancesAttempted,
+            warnings,
+            errors,
+          },
+          { status: 409 }
+        )
+      }
+
+      payloadPersisted = true
+    } else {
+      warnings.push('Fresh Strava activity payload unavailable; falling back to DB payload')
     }
-
-    const { data: persistedRun, error: persistPayloadError } = await supabaseAdmin
-      .from('runs')
-      .update({
-        raw_strava_payload: freshStravaPayload,
-        strava_synced_at: new Date().toISOString(),
-      })
-      .eq('id', runId)
-      .eq('user_id', userId)
-      .eq('external_source', 'strava')
-      .eq('external_id', String(stravaActivityId))
-      .select('id')
-      .maybeSingle()
-
-    if (persistPayloadError) {
-      throw new Error(persistPayloadError.message)
-    }
-
-    if (!persistedRun?.id) {
-      warnings.push('Recovered run payload was not persisted')
-      return NextResponse.json(
-        {
-          ok: false,
-          userId,
-          stravaActivityId,
-          runId,
-          stravaActivityFreshlyFetched,
-          payloadPersisted,
-          prRepairAttempted,
-          recomputeAttempted,
-          upsertChecked,
-          upsertUpdated,
-          candidateDistancesAttempted,
-          warnings,
-          errors,
-        },
-        { status: 409 }
-      )
-    }
-
-    payloadPersisted = true
 
     const { data: run, error: runError } = await supabaseAdmin
       .from('runs')
@@ -348,16 +334,22 @@ export async function POST(request: NextRequest) {
       throw new Error(runError.message)
     }
 
+    const dbPayload = run?.raw_strava_payload && typeof run.raw_strava_payload === 'object'
+      ? (run.raw_strava_payload as Record<string, unknown>)
+      : null
+    const prPayloadForUpsert = freshStravaPayload ?? dbPayload
+    prPayloadSource = freshStravaPayload ? 'fresh_activity' : 'db_payload'
+
     if (!run) {
       warnings.push('Recovered run was not found for this user/activity')
-    } else if (!run.raw_strava_payload || typeof run.raw_strava_payload !== 'object') {
+    } else if (!prPayloadForUpsert) {
       warnings.push('Recovered run missing raw Strava payload; PR upsert skipped')
     } else {
       prRepairAttempted = true
 
       try {
         candidateDistancesAttempted = extractStravaPersonalRecordCandidates(
-          run.raw_strava_payload as Record<string, unknown>
+          prPayloadForUpsert
         )
           .map((candidate) => candidate.distance_meters)
           .filter((distanceMeters) => RECOVERY_DISTANCES.includes(distanceMeters as 21097 | 42195))
@@ -366,7 +358,7 @@ export async function POST(request: NextRequest) {
           supabase: supabaseAdmin,
           userId,
           runId: run.id,
-          rawStravaPayload: run.raw_strava_payload as Record<string, unknown>,
+          rawStravaPayload: prPayloadForUpsert,
           distanceMeters: [...RECOVERY_DISTANCES],
           fallbackRecordDate: run.created_at,
           fallbackStravaActivityId: stravaActivityId,
@@ -405,6 +397,7 @@ export async function POST(request: NextRequest) {
       runId,
       stravaActivityFreshlyFetched,
       payloadPersisted,
+      prPayloadSource,
       prRepairAttempted,
       recomputeAttempted,
       upsertChecked,
@@ -424,6 +417,7 @@ export async function POST(request: NextRequest) {
         runId,
         stravaActivityFreshlyFetched,
         payloadPersisted,
+        prPayloadSource,
         prRepairAttempted,
         recomputeAttempted,
         upsertChecked,
