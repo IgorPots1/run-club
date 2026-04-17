@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import ChallengesSection from '@/components/ChallengesSection'
+import ClubPersonalRecordsLeaderboard from '@/components/ClubPersonalRecordsLeaderboard'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import { getBootstrapUser } from '@/lib/auth'
@@ -503,6 +504,8 @@ export default function ClubPage() {
               <p className="text-sm text-red-600">{statsError}</p>
             </div>
           ) : null}
+
+          <ClubPersonalRecordsLeaderboard />
 
           <WeeklyLeaderboard
             leaderboard={leaderboard}
