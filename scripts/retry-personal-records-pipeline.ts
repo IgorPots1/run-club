@@ -8,6 +8,7 @@ import { runInitialPersonalRecordsSyncForUser } from '@/lib/personal-records/run
 const DEFAULT_BATCH_SIZE = 200
 const DEFAULT_SOURCE_PAGE_SIZE = 1000
 const RETRYABLE_STATUSES = ['needs_retry', 'backfill_missing', 'recompute_missing', 'partial'] as const
+const maxAttemptsPerUser = 3
 
 type RetryableAuditStatus = (typeof RETRYABLE_STATUSES)[number]
 
@@ -127,6 +128,7 @@ async function main() {
     sourcePageSize: args.sourcePageSize,
     targetUserId: args.userId,
     retryableStatuses: [...RETRYABLE_STATUSES],
+    maxAttemptsPerUser,
     mode: 'sequential',
   })
 
@@ -154,54 +156,115 @@ async function main() {
         userId: row.user_id,
         displayName: row.display_name,
         auditStatus: row.status,
+        attemptsUsed: 0,
+        finalStatus: 'rate_limited',
         rateLimitedUntil: row.rate_limited_until,
       })
       continue
     }
 
     summary.attempted += 1
+    let attemptsUsed = 0
+    let finalStatus: AuditStatus | 'rate_limited' = row.status
+    let finalAuditStatus = row.status
+    let finalRateLimitedUntil = row.rate_limited_until
+    let lastResult: Awaited<ReturnType<typeof runInitialPersonalRecordsSyncForUser>> | null = null
 
-    const result = await runInitialPersonalRecordsSyncForUser(row.user_id)
+    for (let attemptNumber = 1; attemptNumber <= maxAttemptsPerUser; attemptNumber += 1) {
+      attemptsUsed = attemptNumber
+      lastResult = await runInitialPersonalRecordsSyncForUser(row.user_id)
+
+      const updatedAuditResult = await auditPersonalRecordsPipeline({
+        batchSize: args.batchSize,
+        sourcePageSize: args.sourcePageSize,
+        targetUserId: row.user_id,
+        logProgress: false,
+      })
+      const updatedAuditRow = updatedAuditResult.auditRows[0] ?? null
+
+      if (!updatedAuditRow) {
+        finalStatus = 'failed'
+
+        console.log('Retry candidate audit missing after attempt', {
+          userId: row.user_id,
+          displayName: row.display_name,
+          attemptNumber,
+          maxAttemptsPerUser,
+          resultStatus: lastResult.status,
+        })
+        break
+      }
+
+      finalAuditStatus = updatedAuditRow.status
+      finalRateLimitedUntil = updatedAuditRow.rate_limited_until
+      finalStatus = hasActiveRateLimit(updatedAuditRow.rate_limited_until)
+        ? 'rate_limited'
+        : updatedAuditRow.status
+
+      console.log('Processed retry attempt', {
+        userId: row.user_id,
+        displayName: row.display_name,
+        initialAuditStatus: row.status,
+        attemptNumber,
+        maxAttemptsPerUser,
+        resultStatus: lastResult.status,
+        updatedAuditStatus: updatedAuditRow.status,
+        finalStatus,
+        ...(lastResult.status === 'success'
+          ? {
+              backfillReason: lastResult.backfillReason,
+              backfillTriggered: lastResult.backfillTriggered,
+              backfillJobStatus: lastResult.backfillJobStatus,
+              resumedFailedBackfillJob: lastResult.resumedFailedBackfillJob,
+              recomputedDistances: lastResult.recomputedDistances,
+            }
+          : {}),
+        ...(lastResult.status === 'rate_limited'
+          ? {
+              rateLimitedUntil: lastResult.rateLimitedUntil,
+            }
+          : {}),
+        ...(lastResult.status === 'failed'
+          ? {
+              error: lastResult.error,
+              backfillReason: lastResult.backfillReason ?? null,
+              backfillJobStatus: lastResult.backfillJobStatus ?? null,
+            }
+          : {}),
+      })
+
+      if (finalStatus === 'complete' || finalStatus === 'rate_limited') {
+        break
+      }
+
+      if (lastResult.status !== 'success') {
+        break
+      }
+    }
 
     console.log('Processed retry candidate', {
       userId: row.user_id,
       displayName: row.display_name,
-      auditStatus: row.status,
-      resultStatus: result.status,
-      ...(result.status === 'success'
-        ? {
-            backfillReason: result.backfillReason,
-            backfillTriggered: result.backfillTriggered,
-            backfillJobStatus: result.backfillJobStatus,
-            resumedFailedBackfillJob: result.resumedFailedBackfillJob,
-            recomputedDistances: result.recomputedDistances,
-          }
-        : {}),
-      ...(result.status === 'rate_limited'
-        ? {
-            rateLimitedUntil: result.rateLimitedUntil,
-          }
-        : {}),
-      ...(result.status === 'failed'
-        ? {
-            error: result.error,
-            backfillReason: result.backfillReason ?? null,
-            backfillJobStatus: result.backfillJobStatus ?? null,
-          }
-        : {}),
+      initialAuditStatus: row.status,
+      attemptsUsed,
+      maxAttemptsPerUser,
+      finalAuditStatus,
+      finalStatus,
+      rateLimitedUntil: finalRateLimitedUntil,
+      lastResultStatus: lastResult?.status ?? null,
     })
 
-    if (result.status === 'success') {
+    if (finalStatus === 'complete') {
       summary.succeeded += 1
       continue
     }
 
-    if (result.status === 'rate_limited') {
+    if (finalStatus === 'rate_limited') {
       summary.rateLimited += 1
       continue
     }
 
-    if (result.status === 'no_connection') {
+    if (finalStatus === 'no_strava_connection' || lastResult?.status === 'no_connection') {
       summary.noConnection += 1
       continue
     }
