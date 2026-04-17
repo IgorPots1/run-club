@@ -51,6 +51,7 @@ type StravaConnectionRow = {
 type BackfillJobRow = {
   user_id: string | null
   status: string | null
+  last_error: string | null
 }
 
 type RunUserRow = {
@@ -357,16 +358,16 @@ async function fetchStravaRunCountsForUsers(
 async function fetchBackfillJobStatusesForUsers(
   supabase: SupabaseClient,
   userIds: string[]
-): Promise<Map<string, string>> {
-  const backfillStatusesByUserId = new Map<string, string>()
+): Promise<Map<string, Pick<BackfillJobRow, 'status' | 'last_error'>>> {
+  const backfillStatesByUserId = new Map<string, Pick<BackfillJobRow, 'status' | 'last_error'>>()
 
   if (userIds.length === 0) {
-    return backfillStatusesByUserId
+    return backfillStatesByUserId
   }
 
   const { data, error } = await supabase
     .from('personal_record_backfill_jobs')
-    .select('user_id, status')
+    .select('user_id, status, last_error')
     .in('user_id', userIds)
 
   if (error) {
@@ -376,14 +377,17 @@ async function fetchBackfillJobStatusesForUsers(
   const rows = (data as BackfillJobRow[] | null) ?? []
 
   for (const row of rows) {
-    if (!row.user_id || !row.status) {
+    if (!row.user_id || backfillStatesByUserId.has(row.user_id)) {
       continue
     }
 
-    backfillStatusesByUserId.set(row.user_id, row.status)
+    backfillStatesByUserId.set(row.user_id, {
+      status: row.status,
+      last_error: row.last_error,
+    })
   }
 
-  return backfillStatusesByUserId
+  return backfillStatesByUserId
 }
 
 async function fetchDistanceSetsForUsers(
@@ -442,7 +446,9 @@ function deriveStatus(input: {
   hasStravaConnection: boolean
   isStravaRateLimited: boolean
   stravaRunsCount: number
+  hasBackfillJob: boolean
   backfillJobStatus: string | null
+  backfillLastError: string | null
   historicalDistances: number[]
   canonicalDistances: number[]
   missingDistances: number[]
@@ -460,7 +466,26 @@ function deriveStatus(input: {
     return 'needs_retry'
   }
 
-  if (input.stravaRunsCount === 0) {
+  const hasHistoricalOrCanonicalData = (
+    input.historicalDistances.length > 0
+    || input.canonicalDistances.length > 0
+  )
+
+  const hasRetryableBackfillBootstrapState = (
+    input.hasBackfillJob
+    && (
+      input.backfillJobStatus === 'pending'
+      || input.backfillJobStatus === 'running'
+      || input.backfillJobStatus === 'paused_rate_limited'
+      || input.backfillLastError === 'empty_first_historical_page'
+    )
+  )
+
+  if (input.stravaRunsCount === 0 && !hasHistoricalOrCanonicalData) {
+    if (hasRetryableBackfillBootstrapState) {
+      return 'backfill_missing'
+    }
+
     return 'no_runs'
   }
 
@@ -548,7 +573,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
 
     let connectionsByUserId = new Map<string, StravaConnectionRow>()
     let stravaRunCountsByUserId = new Map<string, number>()
-    let backfillStatusesByUserId = new Map<string, string>()
+    let backfillStatesByUserId = new Map<string, Pick<BackfillJobRow, 'status' | 'last_error'>>()
     let historicalByUserId = new Map<string, Set<number>>()
     let canonicalByUserId = new Map<string, Set<number>>()
     let batchError: string | null = null
@@ -564,7 +589,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
 
       connectionsByUserId = batchData[0]
       stravaRunCountsByUserId = batchData[1]
-      backfillStatusesByUserId = batchData[2]
+      backfillStatesByUserId = batchData[2]
       historicalByUserId = batchData[3]
       canonicalByUserId = batchData[4]
     } catch (error) {
@@ -582,7 +607,9 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
         const latestConnection = connectionsByUserId.get(profile.id) ?? null
         const hasStravaConnection = latestConnection !== null
         const isStravaRateLimited = hasActiveRateLimit(latestConnection?.rate_limited_until ?? null)
-        const backfillJobStatus = backfillStatusesByUserId.get(profile.id) ?? null
+        const latestBackfillState = backfillStatesByUserId.get(profile.id) ?? null
+        const backfillJobStatus = latestBackfillState?.status ?? null
+        const backfillLastError = latestBackfillState?.last_error ?? null
         const historicalDistances = toDistanceArray(historicalByUserId.get(profile.id) ?? new Set<number>())
         const canonicalDistances = toDistanceArray(canonicalByUserId.get(profile.id) ?? new Set<number>())
         const missingDistances = getMissingDistances(new Set(canonicalDistances))
@@ -602,7 +629,9 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
             hasStravaConnection,
             isStravaRateLimited,
             stravaRunsCount,
+            hasBackfillJob: latestBackfillState !== null,
             backfillJobStatus,
+            backfillLastError,
             historicalDistances,
             canonicalDistances,
             missingDistances,
