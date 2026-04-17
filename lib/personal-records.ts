@@ -290,9 +290,7 @@ export function extractStravaPersonalRecordCandidates(
   }
 
   const fullRunDurationSeconds = toPositiveInteger(payloadRecord?.moving_time ?? payloadRecord?.elapsed_time)
-  const fullRunMovingTimeSeconds = toPositiveInteger(payloadRecord?.moving_time_seconds)
   const fullRunActivityId = toPositiveInteger(payloadRecord?.id)
-  const fullRunDistanceMeters = payloadRecord?.distance ?? payloadRecord?.distance_meters
   const fullRunRecordDate =
     toIsoDateValue(payloadRecord?.start_date)
     ?? toIsoDateValue(payloadRecord?.start_date_local)
@@ -317,15 +315,22 @@ export function extractStravaPersonalRecordCandidates(
     })
   }
 
+  const candidates = SUPPORTED_PERSONAL_RECORD_DISTANCES
+    .map((distanceMeters) => candidatesByDistance.get(distanceMeters) ?? null)
+    .filter((candidate): candidate is PersonalRecordCandidate => candidate !== null)
+
+  const activityDistanceMeters = Number(payloadRecord?.distance ?? payloadRecord?.distance_meters)
+
   if (
-    !candidatesByDistance.has(42195)
-    && isDistanceWithinStravaFullRunFallbackWindow(fullRunDistanceMeters, 42195)
-    && fullRunMovingTimeSeconds
+    !candidates.some((candidate) => candidate.distance_meters === 42195)
+    && Number.isFinite(activityDistanceMeters)
+    && activityDistanceMeters > 40000
+    && fullRunDurationSeconds
   ) {
-    candidatesByDistance.set(42195, {
+    candidates.push({
       distance_meters: 42195,
-      duration_seconds: fullRunMovingTimeSeconds,
-      pace_seconds_per_km: Math.round(fullRunMovingTimeSeconds / 42.195),
+      duration_seconds: fullRunDurationSeconds,
+      pace_seconds_per_km: Math.round(fullRunDurationSeconds / 42.195),
       record_date: fullRunRecordDate,
       strava_activity_id: fullRunActivityId,
       source: 'strava_best_effort',
@@ -333,9 +338,7 @@ export function extractStravaPersonalRecordCandidates(
     })
   }
 
-  return SUPPORTED_PERSONAL_RECORD_DISTANCES
-    .map((distanceMeters) => candidatesByDistance.get(distanceMeters) ?? null)
-    .filter((candidate): candidate is PersonalRecordCandidate => candidate !== null)
+  return candidates
 }
 
 export function extractLocalFullRunPersonalRecordCandidate(rawRun: {
