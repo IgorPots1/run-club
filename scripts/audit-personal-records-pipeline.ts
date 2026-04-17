@@ -6,7 +6,7 @@ const EXCLUDED_USER_ID = '9c831c40-928d-4d0c-99f7-393b2b985290'
 const SUPPORTED_DISTANCES = [5000, 10000, 21097, 42195] as const
 
 type SupportedDistance = (typeof SUPPORTED_DISTANCES)[number]
-type AuditStatus =
+export type AuditStatus =
   | 'no_strava_connection'
   | 'needs_retry'
   | 'no_runs'
@@ -20,6 +20,13 @@ type ScriptArgs = {
   batchSize: number
   sourcePageSize: number
   help: boolean
+}
+
+type AuditPipelineOptions = {
+  batchSize?: number
+  sourcePageSize?: number
+  targetUserId?: string | null
+  logProgress?: boolean
 }
 
 type ProfileRow = {
@@ -51,7 +58,7 @@ type DistanceRow = {
   distance_meters: number | string | null
 }
 
-type AuditRow = {
+export type AuditRow = {
   user_id: string
   display_name: string
   has_strava_connection: boolean
@@ -195,7 +202,7 @@ function getMissingDistances(canonicalDistances: Set<number>) {
   return SUPPORTED_DISTANCES.filter((distanceMeters) => !canonicalDistances.has(distanceMeters))
 }
 
-function hasActiveRateLimit(rateLimitedUntil: string | null) {
+export function hasActiveRateLimit(rateLimitedUntil: string | null) {
   if (!rateLimitedUntil) {
     return false
   }
@@ -211,8 +218,29 @@ function hasActiveRateLimit(rateLimitedUntil: string | null) {
 async function fetchActiveProfileBatch(
   supabase: SupabaseClient,
   batchSize: number,
-  afterUserId: string | null
+  afterUserId: string | null,
+  targetUserId: string | null = null
 ) {
+  if (targetUserId) {
+    if (afterUserId) {
+      return []
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, app_access_status, first_name, last_name, name, nickname, email')
+      .eq('app_access_status', 'active')
+      .eq('id', targetUserId)
+      .neq('id', EXCLUDED_USER_ID)
+      .limit(1)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    return (data as ProfileRow[] | null) ?? []
+  }
+
   let query = supabase
     .from('profiles')
     .select('id, app_access_status, first_name, last_name, name, nickname, email')
@@ -417,13 +445,13 @@ function createEmptySummary(): Record<AuditStatus, number> {
   }
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2))
-
-  if (args.help) {
-    printUsage()
-    return
-  }
+export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions = {}) {
+  const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE
+  const sourcePageSize = options.sourcePageSize ?? DEFAULT_SOURCE_PAGE_SIZE
+  const targetUserId = typeof options.targetUserId === 'string' && options.targetUserId.trim()
+    ? options.targetUserId.trim()
+    : null
+  const logProgress = options.logProgress === true
 
   process.env.NEXT_PUBLIC_SUPABASE_URL ??= process.env.SUPABASE_URL
 
@@ -433,16 +461,24 @@ async function main() {
   let lastProcessedUserId: string | null = null
   let processedUsers = 0
 
-  console.log('Starting personal records pipeline audit', {
-    batchSize: args.batchSize,
-    sourcePageSize: args.sourcePageSize,
-    supportedDistances: [...SUPPORTED_DISTANCES],
-    excludedUserId: EXCLUDED_USER_ID,
-    mode: 'read_only',
-  })
+  if (logProgress) {
+    console.log('Starting personal records pipeline audit', {
+      batchSize,
+      sourcePageSize,
+      targetUserId,
+      supportedDistances: [...SUPPORTED_DISTANCES],
+      excludedUserId: EXCLUDED_USER_ID,
+      mode: 'read_only',
+    })
+  }
 
   for (;;) {
-    const profiles = await fetchActiveProfileBatch(supabase, args.batchSize, lastProcessedUserId)
+    const profiles = await fetchActiveProfileBatch(
+      supabase,
+      batchSize,
+      lastProcessedUserId,
+      targetUserId
+    )
 
     if (profiles.length === 0) {
       break
@@ -450,11 +486,13 @@ async function main() {
 
     const userIds = profiles.map((profile) => profile.id)
 
-    console.log('Loaded active user batch', {
-      userCount: profiles.length,
-      firstUserId: userIds[0],
-      lastUserId: userIds[userIds.length - 1],
-    })
+    if (logProgress) {
+      console.log('Loaded active user batch', {
+        userCount: profiles.length,
+        firstUserId: userIds[0],
+        lastUserId: userIds[userIds.length - 1],
+      })
+    }
 
     let connectionsByUserId = new Map<string, StravaConnectionRow>()
     let stravaRunCountsByUserId = new Map<string, number>()
@@ -465,9 +503,9 @@ async function main() {
     try {
       const batchData = await Promise.all([
         fetchLatestStravaConnectionsForUsers(supabase, userIds),
-        fetchStravaRunCountsForUsers(supabase, userIds, args.sourcePageSize),
-        fetchDistanceSetsForUsers(supabase, 'personal_record_sources', userIds, args.sourcePageSize),
-        fetchDistanceSetsForUsers(supabase, 'personal_records', userIds, args.sourcePageSize),
+        fetchStravaRunCountsForUsers(supabase, userIds, sourcePageSize),
+        fetchDistanceSetsForUsers(supabase, 'personal_record_sources', userIds, sourcePageSize),
+        fetchDistanceSetsForUsers(supabase, 'personal_records', userIds, sourcePageSize),
       ])
 
       connectionsByUserId = batchData[0]
@@ -537,15 +575,44 @@ async function main() {
       lastProcessedUserId = profile.id
     }
 
-    console.log('Batch audit complete', {
-      processedUsersSoFar: processedUsers,
-      lastProcessedUserId,
-    })
+    if (logProgress) {
+      console.log('Batch audit complete', {
+        processedUsersSoFar: processedUsers,
+        lastProcessedUserId,
+      })
+    }
   }
+
+  const summary = createEmptySummary()
+  for (const row of auditRows) {
+    summary[row.status] += 1
+  }
+
+  return {
+    auditRows,
+    summary,
+    lastProcessedUserId,
+    elapsedMs: Date.now() - startedAt,
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2))
+
+  if (args.help) {
+    printUsage()
+    return
+  }
+
+  const result = await auditPersonalRecordsPipeline({
+    batchSize: args.batchSize,
+    sourcePageSize: args.sourcePageSize,
+    logProgress: true,
+  })
 
   console.log('\nPer-user audit rows')
   console.table(
-    auditRows.map((row) => ({
+    result.auditRows.map((row) => ({
       ...row,
       historical_distances: formatDistanceArray(row.historical_distances),
       canonical_distances: formatDistanceArray(row.canonical_distances),
@@ -553,23 +620,18 @@ async function main() {
     }))
   )
 
-  const summary = createEmptySummary()
-  for (const row of auditRows) {
-    summary[row.status] += 1
-  }
-
   console.log('\nAggregate summary by status')
   console.table(
-    Object.entries(summary).map(([status, count]) => ({
+    Object.entries(result.summary).map(([status, count]) => ({
       status,
       count,
     }))
   )
 
   console.log('\nPersonal records pipeline audit finished', {
-    usersAudited: auditRows.length,
-    lastProcessedUserId,
-    elapsedMs: Date.now() - startedAt,
+    usersAudited: result.auditRows.length,
+    lastProcessedUserId: result.lastProcessedUserId,
+    elapsedMs: result.elapsedMs,
     mode: 'read_only',
   })
 }

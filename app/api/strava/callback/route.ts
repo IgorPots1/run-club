@@ -2,7 +2,7 @@ import { cookies } from 'next/headers'
 import { after, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-import { ensureHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
+import { runInitialPersonalRecordsSyncForUser } from '@/lib/personal-records/runInitialPersonalRecordsSyncForUser'
 import { exchangeStravaCodeForToken } from '@/lib/strava/strava-client'
 
 export async function GET(request: Request) {
@@ -175,11 +175,20 @@ export async function GET(request: Request) {
 
     after(async () => {
       try {
-        await ensureHistoricalPersonalRecordBackfillForUser(connectUserId)
-      } catch (backfillError) {
-        console.error('Failed to auto-start personal record backfill after Strava connect', {
+        const result = await runInitialPersonalRecordsSyncForUser(connectUserId)
+
+        if (result.status === 'failed') {
+          console.error('Failed to run personal records sync after Strava connect', {
+            userId: connectUserId,
+            error: result.error,
+            backfillReason: result.backfillReason ?? null,
+            backfillJobStatus: result.backfillJobStatus ?? null,
+          })
+        }
+      } catch (syncError) {
+        console.error('Failed to run personal records sync after Strava connect', {
           userId: connectUserId,
-          error: backfillError instanceof Error ? backfillError.message : 'unknown_error',
+          error: syncError instanceof Error ? syncError.message : 'unknown_error',
         })
       }
     })
