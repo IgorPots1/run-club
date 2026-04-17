@@ -2994,6 +2994,26 @@ export async function importHistoricalStravaActivityByIdForUser(
   }
 
   const activity = await fetchStravaActivityById(connection.access_token, normalizedActivityId)
+  const rawStravaPayload = toRawStravaPayload(activity)
+
+  if (!rawStravaPayload) {
+    throw new Error('Fetched Strava activity payload is not a valid object')
+  }
+
+  if (options.forceRefreshExistingRun && existingRun?.id && existingRun.user_id === normalizedUserId) {
+    const { error: payloadUpdateError } = await supabase
+      .from('runs')
+      .update({
+        raw_strava_payload: rawStravaPayload,
+        strava_synced_at: new Date().toISOString(),
+      })
+      .eq('id', existingRun.id)
+
+    if (payloadUpdateError) {
+      throw new Error(formatSupabaseError(payloadUpdateError))
+    }
+  }
+
   const result = await importStravaActivityForUser(normalizedUserId, activity, {
     updateExisting: true,
   })
