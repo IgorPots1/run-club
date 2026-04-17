@@ -3018,7 +3018,26 @@ export async function importHistoricalStravaActivityByIdForUser(
     updateExisting: true,
   })
 
-  return result.runId ?? null
+  const recoveredRunId = result.runId ?? null
+
+  // Recovery-only guarantee: always persist the full freshly fetched Strava payload
+  // onto the resolved run, even when an existing-run path was taken earlier.
+  if (options.forceRefreshExistingRun && recoveredRunId) {
+    const { error: finalPayloadUpdateError } = await supabase
+      .from('runs')
+      .update({
+        raw_strava_payload: rawStravaPayload,
+        strava_synced_at: new Date().toISOString(),
+      })
+      .eq('id', recoveredRunId)
+      .eq('user_id', normalizedUserId)
+
+    if (finalPayloadUpdateError) {
+      throw new Error(formatSupabaseError(finalPayloadUpdateError))
+    }
+  }
+
+  return recoveredRunId
 }
 
 export async function syncStravaRuns(
