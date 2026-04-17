@@ -24,6 +24,7 @@ export default function AdminStravaRecoveryButton() {
             error?: string
             message?: string
             imported?: number
+            updated?: number
             skipped?: number
             failed?: number
           }
@@ -36,7 +37,7 @@ export default function AdminStravaRecoveryButton() {
       setState('success')
       setMessage(
         data.message ||
-          `Готово: импортировано ${data.imported ?? 0}, обновлено/пропущено ${data.skipped ?? 0}, ошибок ${data.failed ?? 0}.`
+          `Готово: импортировано ${data.imported ?? 0}, обновлено ${data.updated ?? 0}, пропущено ${data.skipped ?? 0}, ошибок ${data.failed ?? 0}.`
       )
     } catch (error) {
       setState('error')

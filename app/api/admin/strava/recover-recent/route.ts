@@ -5,6 +5,7 @@ import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { syncStravaRuns } from '@/lib/strava/strava-sync'
 
 const RECOVERY_LOOKBACK_DAYS = 14
+const RECOVERY_SYNC_MODE = 'backfill'
 
 export async function POST() {
   const { user, error } = await getAuthenticatedUser()
@@ -51,6 +52,7 @@ export async function POST() {
 
   try {
     const result = await syncStravaRuns(user.id, {
+      mode: RECOVERY_SYNC_MODE,
       lookbackDays: RECOVERY_LOOKBACK_DAYS,
       ignoreCooldown: true,
     })
@@ -86,8 +88,10 @@ export async function POST() {
       entityType: 'strava_connection',
       entityId: user.id,
       payloadAfter: {
+        mode: RECOVERY_SYNC_MODE,
         lookbackDays: RECOVERY_LOOKBACK_DAYS,
         imported: result.imported,
+        updated: result.updated,
         skipped: result.skipped,
         failed: result.failed,
         totalRunsFetched: result.totalRunsFetched,
@@ -97,8 +101,10 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       message: 'Восстановление завершено',
+      mode: RECOVERY_SYNC_MODE,
       lookbackDays: RECOVERY_LOOKBACK_DAYS,
       imported: result.imported,
+      updated: result.updated,
       skipped: result.skipped,
       failed: result.failed,
       totalRunsFetched: result.totalRunsFetched,

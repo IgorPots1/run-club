@@ -151,6 +151,14 @@ type StravaImportResult = {
   newLevel?: number | null
 }
 
+type StravaActivityDropReason =
+  | 'unsupported_activity_type'
+  | 'unsupported_sport_type'
+  | 'invalid_distance'
+  | 'invalid_moving_time'
+  | 'missing_start_date'
+  | 'before_initial_sync_cutoff'
+
 type ImportStravaActivityOptions = {
   updateExisting?: boolean
   debugRunId?: string
@@ -1825,15 +1833,49 @@ function normalizeImportedRunName(rawName: string) {
   }
 }
 
-export function isValidStravaRun(activity: StravaActivitySummary) {
+function normalizeStravaActivityKind(value: string | null | undefined) {
+  const trimmedValue = typeof value === 'string' ? value.trim() : ''
+  return trimmedValue || null
+}
+
+function isAllowedStravaRunKind(value: string | null | undefined) {
+  const normalizedValue = normalizeStravaActivityKind(value)
   return (
-    ALLOWED_STRAVA_RUN_TYPES.includes(activity.type as StravaActivityType) &&
-    Number.isFinite(activity.distance) &&
-    activity.distance > 0 &&
-    Number.isFinite(activity.moving_time) &&
-    activity.moving_time > 0 &&
-    Boolean(activity.start_date)
+    normalizedValue !== null &&
+    ALLOWED_STRAVA_RUN_TYPES.includes(normalizedValue as StravaActivityType)
   )
+}
+
+function getInvalidStravaRunReason(
+  activity: Pick<StravaActivitySummary, 'type' | 'sport_type' | 'distance' | 'moving_time' | 'start_date'>
+): Exclude<StravaActivityDropReason, 'before_initial_sync_cutoff'> | null {
+  if (!isAllowedStravaRunKind(activity.type)) {
+    return 'unsupported_activity_type'
+  }
+
+  const normalizedSportType = normalizeStravaActivityKind(activity.sport_type)
+
+  if (normalizedSportType !== null && !isAllowedStravaRunKind(normalizedSportType)) {
+    return 'unsupported_sport_type'
+  }
+
+  if (!Number.isFinite(activity.distance) || activity.distance <= 0) {
+    return 'invalid_distance'
+  }
+
+  if (!Number.isFinite(activity.moving_time) || activity.moving_time <= 0) {
+    return 'invalid_moving_time'
+  }
+
+  if (!activity.start_date) {
+    return 'missing_start_date'
+  }
+
+  return null
+}
+
+export function isValidStravaRun(activity: StravaActivitySummary) {
+  return getInvalidStravaRunReason(activity) === null
 }
 
 function isOnOrAfterInitialSyncCutoff(startDate: string | null | undefined) {
@@ -1848,6 +1890,16 @@ function isOnOrAfterInitialSyncCutoff(startDate: string | null | undefined) {
   }
 
   return activityStartDateMs >= INITIAL_SYNC_CUTOFF_MS
+}
+
+function getStravaActivityDropReason(activity: StravaActivitySummary): StravaActivityDropReason | null {
+  const invalidRunReason = getInvalidStravaRunReason(activity)
+
+  if (invalidRunReason) {
+    return invalidRunReason
+  }
+
+  return isOnOrAfterInitialSyncCutoff(activity.start_date) ? null : 'before_initial_sync_cutoff'
 }
 
 function buildRunInsertPayload(userId: string, activity: StravaActivitySummary): StravaRunInsertPayload {
@@ -2919,12 +2971,21 @@ export async function syncStravaRuns(
     targetDebugRunId && options.allowTargetedDebugOwnerBypass
   )
   const sessionDebugId = `sync-${Date.now()}-${userId.slice(0, 8)}`
-  const syncMode: StravaSyncMode = options.mode ?? 'incremental'
   const lookbackDays =
     Number.isInteger(options.lookbackDays) && Number(options.lookbackDays) > 0
       ? Number(options.lookbackDays)
       : null
+  const requestedMode = options.mode ?? null
+  const syncMode: StravaSyncMode = lookbackDays ? 'backfill' : options.mode ?? 'incremental'
   let connection: StravaConnectionRow | null = null
+
+  if (lookbackDays && requestedMode === 'incremental') {
+    console.warn('[strava-sync] forcing_backfill_for_bounded_lookback', {
+      userId,
+      requestedMode,
+      lookbackDays,
+    })
+  }
 
   console.info('[strava-sync-debug] debug_context', {
     userId,
@@ -3026,6 +3087,7 @@ export async function syncStravaRuns(
       return {
         ok: true,
         imported: 0,
+        updated: 0,
         skipped: 0,
         failed: 0,
         totalRunsFetched: 0,
@@ -3073,6 +3135,7 @@ export async function syncStravaRuns(
       return {
         ok: true,
         imported: 0,
+        updated: 0,
         skipped: 0,
         failed: 0,
         totalRunsFetched: 0,
@@ -3125,6 +3188,7 @@ export async function syncStravaRuns(
       return {
         ok: true,
         imported: 0,
+        updated: 0,
         skipped: 0,
         failed: 0,
         totalRunsFetched: 0,
@@ -3184,6 +3248,7 @@ export async function syncStravaRuns(
     return {
       ok: true,
       imported: 0,
+      updated: 0,
       skipped: 0,
       failed: 0,
       totalRunsFetched: 0,
@@ -3300,15 +3365,50 @@ export async function syncStravaRuns(
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:activities_fetched', message: 'Fetched Strava activities list', data: { userId, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, firstFiveFetchedActivities: activities.slice(0, 5).map((activity) => ({ id: String(activity.id), type: activity.type ?? null })), targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
-  const runActivities = activities
-    .filter((activity) => isValidStravaRun(activity) && isOnOrAfterInitialSyncCutoff(activity.start_date))
-    .sort((left, right) => new Date(left.start_date).getTime() - new Date(right.start_date).getTime())
+  const runActivities: StravaActivitySummary[] = []
+  const droppedActivities: Array<{
+    activityId: string
+    type: string | null
+    sportType: string | null
+    reason: StravaActivityDropReason
+  }> = []
+
+  for (const activity of activities) {
+    const dropReason = getStravaActivityDropReason(activity)
+
+    if (dropReason) {
+      droppedActivities.push({
+        activityId: String(activity.id),
+        type: normalizeStravaActivityKind(activity.type),
+        sportType: normalizeStravaActivityKind(activity.sport_type),
+        reason: dropReason,
+      })
+      continue
+    }
+
+    runActivities.push(activity)
+  }
+
+  runActivities.sort(
+    (left, right) => new Date(left.start_date).getTime() - new Date(right.start_date).getTime()
+  )
+
+  for (const droppedActivity of droppedActivities) {
+    console.info('[strava-sync] activity_dropped', {
+      userId,
+      activityId: droppedActivity.activityId,
+      type: droppedActivity.type,
+      sportType: droppedActivity.sportType,
+      reason: droppedActivity.reason,
+    })
+  }
 
   // #region agent log
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H2', location: 'lib/strava/strava-sync.ts:syncStravaRuns:activities_filtered', message: 'Filtered Strava activities to valid runs', data: { userId, connectionId: connection.id, totalActivitiesFetched: activities.length, runActivitiesCount: runActivities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
   let imported = 0
+  let updated = 0
   let skipped = 0
   const errors: StravaSyncRowErrorDetail[] = []
   let xpGained = 0
@@ -3329,7 +3429,9 @@ export async function syncStravaRuns(
 
       if (result.status === 'imported') {
         imported += 1
-      } else if (result.status === 'skipped_existing' || result.status === 'updated') {
+      } else if (result.status === 'updated') {
+        updated += 1
+      } else if (result.status === 'skipped_existing' || result.status === 'skipped_invalid') {
         skipped += 1
       }
 
@@ -3412,7 +3514,7 @@ export async function syncStravaRuns(
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_touch_connection', message: 'Updated last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
-  const failed = runActivities.length - imported - skipped
+  const failed = runActivities.length - imported - updated - skipped
   const firstFailure = errors[0] ?? null
   const breakdown: XpBreakdownItem[] = []
 
@@ -3428,9 +3530,24 @@ export async function syncStravaRuns(
   fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:syncStravaRuns:summary', message: 'Completed Strava sync summary', data: { userId, athleteId: connection.strava_athlete_id, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, runActivitiesCount: runActivities.length, imported, skipped, failed, firstFailure, afterParamUsed: afterUnixSeconds, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
+  console.info('[strava-sync] sync_counts', {
+    userId,
+    mode: syncMode,
+    requestedMode,
+    lookbackDays,
+    afterUnixSeconds,
+    fetchedCount: activities.length,
+    droppedCount: droppedActivities.length,
+    importedCount: imported,
+    updatedCount: updated,
+    skippedCount: skipped,
+    failedCount: failed,
+  })
+
   return {
     ok: true,
     imported,
+    updated,
     skipped,
     failed,
     totalRunsFetched: runActivities.length,

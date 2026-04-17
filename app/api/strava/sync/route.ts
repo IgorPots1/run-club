@@ -104,6 +104,7 @@ export async function POST(request: Request) {
     console.info('[strava-sync-debug] sync_ok', {
       userId: user.id,
       imported: result.imported,
+      updated: result.updated,
       skipped: result.skipped,
       failed: result.failed,
       totalRunsFetched: result.totalRunsFetched,
@@ -145,6 +146,7 @@ export async function POST(request: Request) {
       ok: true,
       step: 'initial_sync_complete',
       imported: result.imported,
+      updated: result.updated,
       skipped: result.skipped,
       failed: result.failed,
       totalRunsFetched: result.totalRunsFetched,
