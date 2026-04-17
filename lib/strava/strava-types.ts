@@ -150,6 +150,7 @@ export type StravaInitialSyncResult =
   | {
       ok: true
       imported: number
+      updated: number
       skipped: number
       failed: number
       totalRunsFetched: number
