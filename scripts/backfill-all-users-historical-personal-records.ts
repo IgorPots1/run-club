@@ -1,15 +1,20 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import {
+  recomputePersonalRecordForUserDistance,
+  upsertPersonalRecordsForDistancesFromStravaPayload,
+} from '../lib/personal-records'
+import { StravaApiError } from '../lib/strava/strava-client'
+import { importHistoricalStravaActivityByIdForUser } from '../lib/strava/strava-sync'
 
 const DEFAULT_BATCH_SIZE = 20
 const DEFAULT_SOURCE_PAGE_SIZE = 500
-const DEFAULT_BASE_URL = 'http://localhost:3000'
+const RECOVERY_DISTANCES = [21097, 42195] as const
+const STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS = [15000, 30000, 60000]
 
 type Args = {
   batchSize: number
   sourcePageSize: number
   afterUserId: string | null
-  baseUrl: string
-  adminCookie: string | null
   help: boolean
 }
 
@@ -45,6 +50,10 @@ type Failure = {
   status: number | null
   error: string
 }
+
+type PersonalRecordSupabase = Parameters<
+  typeof upsertPersonalRecordsForDistancesFromStravaPayload
+>[0]['supabase']
 
 let cachedSupabaseAdminClient: SupabaseClient | null = null
 
@@ -96,8 +105,6 @@ function parseArgs(argv: string[]): Args {
     batchSize: DEFAULT_BATCH_SIZE,
     sourcePageSize: DEFAULT_SOURCE_PAGE_SIZE,
     afterUserId: null,
-    baseUrl: process.env.INTERNAL_API_BASE_URL?.trim() || DEFAULT_BASE_URL,
-    adminCookie: process.env.ADMIN_SESSION_COOKIE?.trim() || null,
     help: false,
   }
 
@@ -128,16 +135,6 @@ function parseArgs(argv: string[]): Args {
       continue
     }
 
-    if (argument.startsWith('--base-url=')) {
-      args.baseUrl = argument.slice('--base-url='.length).trim() || DEFAULT_BASE_URL
-      continue
-    }
-
-    if (argument.startsWith('--admin-cookie=')) {
-      args.adminCookie = argument.slice('--admin-cookie='.length).trim() || null
-      continue
-    }
-
     throw new Error(`Unknown argument: ${argument}`)
   }
 
@@ -146,19 +143,13 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage() {
   console.log(`
-Backfill historical personal records for all users by calling:
-  POST /api/admin/personal-records/recover-historical-activity
+Backfill historical personal records for all users via service-role recovery logic.
 
 Usage:
-  npx tsx --env-file=.env.local scripts/backfill-all-users-historical-personal-records.ts --admin-cookie="sb-...=..."
-  npx tsx --env-file=.env.local scripts/backfill-all-users-historical-personal-records.ts --batch-size=20 --after-user-id=<uuid> --admin-cookie="sb-...=..."
-
-Required auth:
-  --admin-cookie=<raw Cookie header value>
-  or ADMIN_SESSION_COOKIE env var
+  npx tsx --env-file=.env.local scripts/backfill-all-users-historical-personal-records.ts
+  npx tsx --env-file=.env.local scripts/backfill-all-users-historical-personal-records.ts --batch-size=20 --after-user-id=<uuid>
 
 Optional:
-  --base-url=http://localhost:3000
   --source-page-size=500
 
 Environment variables:
@@ -291,38 +282,104 @@ async function fetchUserStravaActivityIds(supabase: SupabaseClient, userId: stri
   return [...activityIds]
 }
 
-async function callRecoveryApi(params: {
-  baseUrl: string
-  adminCookie: string
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function recoverHistoricalActivityForUser(params: {
+  supabase: SupabaseClient
   userId: string
   activityId: number
 }) {
-  const response = await fetch(
-    `${params.baseUrl.replace(/\/$/, '')}/api/admin/personal-records/recover-historical-activity`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        cookie: params.adminCookie,
-      },
-      body: JSON.stringify({
-        userId: params.userId,
-        stravaActivityId: params.activityId,
-      }),
-    }
-  )
+  const totalAttempts = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS.length + 1
+  let recoveredRunId: string | null = null
 
-  let body: unknown = null
-  try {
-    body = await response.json()
-  } catch {
-    body = null
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      recoveredRunId = await importHistoricalStravaActivityByIdForUser(
+        params.userId,
+        params.activityId,
+        {
+          ignoreCooldown: true,
+          forceRefreshExistingRun: true,
+        }
+      )
+      break
+    } catch (error) {
+      const isRateLimitError = error instanceof StravaApiError && error.status === 429
+
+      if (!isRateLimitError) {
+        throw error
+      }
+
+      if (attempt >= totalAttempts) {
+        throw new Error('Strava activity fetch rate-limited after 3 retries')
+      }
+
+      const retryDelayMs = STRAVA_RECOVERY_FETCH_RETRY_DELAYS_MS[attempt - 1]
+      console.warn('Historical activity recovery hit Strava rate limit; retrying', {
+        userId: params.userId,
+        activityId: params.activityId,
+        attempt,
+        totalAttempts,
+        retryDelayMs,
+      })
+      await sleep(retryDelayMs)
+    }
+  }
+
+  if (!recoveredRunId) {
+    return {
+      ok: false,
+      error: 'historical_import_unavailable',
+    }
+  }
+
+  const { data: run, error: runError } = await params.supabase
+    .from('runs')
+    .select('id, created_at, raw_strava_payload, distance_meters, moving_time_seconds')
+    .eq('id', recoveredRunId)
+    .eq('user_id', params.userId)
+    .eq('external_source', 'strava')
+    .eq('external_id', String(params.activityId))
+    .maybeSingle()
+
+  if (runError) {
+    throw new Error(runError.message)
+  }
+
+  if (!run) {
+    return {
+      ok: false,
+      error: 'missing_run_after_recovery',
+    }
+  }
+
+  const personalRecordSupabase = params.supabase as PersonalRecordSupabase
+
+  await upsertPersonalRecordsForDistancesFromStravaPayload({
+    supabase: personalRecordSupabase,
+    userId: params.userId,
+    runId: run.id,
+    rawStravaPayload: run.raw_strava_payload,
+    distanceMeters: [...RECOVERY_DISTANCES],
+    fallbackRecordDate: run.created_at,
+    fallbackStravaActivityId: params.activityId,
+    fallbackDistanceMeters: run.distance_meters,
+    fallbackMovingTimeSeconds: run.moving_time_seconds,
+  })
+
+  for (const distanceMeters of RECOVERY_DISTANCES) {
+    await recomputePersonalRecordForUserDistance({
+      supabase: personalRecordSupabase,
+      userId: params.userId,
+      distanceMeters,
+    })
   }
 
   return {
-    ok: response.ok,
-    status: response.status,
-    body,
+    ok: true,
+    error: null,
   }
 }
 
@@ -334,12 +391,6 @@ async function main() {
     return
   }
 
-  if (!args.adminCookie) {
-    throw new Error(
-      'Missing admin auth cookie. Set --admin-cookie or ADMIN_SESSION_COOKIE.'
-    )
-  }
-
   const supabase = createSupabaseAdminClient()
   const startedAt = Date.now()
   const totals = createTotals()
@@ -347,7 +398,6 @@ async function main() {
   let lastProcessedUserId: string | null = args.afterUserId
 
   console.log('Starting all-users historical personal record recovery', {
-    baseUrl: args.baseUrl,
     batchSize: args.batchSize,
     sourcePageSize: args.sourcePageSize,
     resumeAfterUserId: args.afterUserId,
@@ -415,9 +465,8 @@ async function main() {
           })
 
           try {
-            const result = await callRecoveryApi({
-              baseUrl: args.baseUrl,
-              adminCookie: args.adminCookie,
+            const result = await recoverHistoricalActivityForUser({
+              supabase,
               userId,
               activityId,
             })
@@ -431,18 +480,14 @@ async function main() {
               failures.push({
                 userId,
                 activityId,
-                status: result.status,
-                error:
-                  typeof (result.body as { error?: unknown } | null)?.error === 'string'
-                    ? (result.body as { error: string }).error
-                    : `http_${result.status}`,
+                status: null,
+                error: result.error ?? 'recovery_failed',
               })
 
-              console.error('Recovery API returned non-2xx', {
+              console.error('Historical recovery returned unsuccessful result', {
                 userId,
                 activityId,
-                status: result.status,
-                body: result.body,
+                error: result.error,
               })
             }
           } catch (error) {
@@ -456,7 +501,7 @@ async function main() {
               error: message,
             })
 
-            console.error('Recovery API request failed', {
+            console.error('Historical recovery failed', {
               userId,
               activityId,
               error: message,
