@@ -375,30 +375,45 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (!prPayloadForUpsert || !hasMarathonCandidateFromPayload) {
+      const { data: marathonSourceForRun, error: marathonSourceLookupError } = await supabaseAdmin
+        .from('personal_record_sources')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('run_id', run.id)
+        .eq('distance_meters', 42195)
+        .maybeSingle()
+
+      if (marathonSourceLookupError) {
+        errors.push(`marathon_source_lookup_failed:${marathonSourceLookupError.message}`)
+      }
+
+      if (!marathonSourceForRun?.id) {
         const runDistanceMeters = Number(run.distance_meters ?? 0)
         const runMovingTimeSeconds = Math.round(Number(run.moving_time_seconds ?? 0))
 
-        if (Number.isFinite(runDistanceMeters) && runDistanceMeters > 40000 && runMovingTimeSeconds > 0) {
-          const { error: marathonFallbackError } = await supabaseAdmin.rpc(
-            'upsert_personal_record_if_better',
-            {
-              p_user_id: userId,
-              p_distance_meters: 42195,
-              p_duration_seconds: runMovingTimeSeconds,
-              p_pace_seconds_per_km: runMovingTimeSeconds / (42195 / 1000),
-              p_run_id: run.id,
-              p_strava_activity_id: stravaActivityId,
-              p_record_date: run.created_at ?? null,
-              p_source: 'strava_best_effort',
-              p_metadata: { recovery_fallback: 'run_table' },
-            }
-          )
+        console.log({
+          runDistanceMeters,
+          runMovingTimeSeconds,
+          hasMarathonCandidateFromPayload,
+          prPayloadForUpsert: !!prPayloadForUpsert,
+        })
 
-          if (marathonFallbackError) {
-            errors.push(
-              `marathon_fallback_upsert_failed:${marathonFallbackError.message}`
-            )
+        if (Number.isFinite(runDistanceMeters) && runDistanceMeters > 40000 && runMovingTimeSeconds > 0) {
+          const { error } = await supabaseAdmin.rpc('upsert_personal_record_if_better', {
+            p_user_id: userId,
+            p_distance_meters: 42195,
+            p_duration_seconds: runMovingTimeSeconds,
+            p_pace_seconds_per_km: runMovingTimeSeconds / (42195 / 1000),
+            p_run_id: run.id,
+            p_strava_activity_id: stravaActivityId,
+            p_record_date: run.created_at ?? null,
+            p_source: 'strava_best_effort',
+            p_metadata: { recovery_fallback: 'run_table' },
+          })
+
+          if (error) {
+            console.error('marathon fallback failed', error)
+            errors.push(`marathon_fallback_upsert_failed:${error.message}`)
           }
         }
       }
