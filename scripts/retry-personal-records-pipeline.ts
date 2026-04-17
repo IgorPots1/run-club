@@ -26,6 +26,7 @@ type Summary = {
   attempted: number
   succeeded: number
   failed: number
+  dataMissing: number
   noConnection: number
   rateLimited: number
   skippedRateLimited: number
@@ -116,6 +117,7 @@ function createSummary(): Summary {
     attempted: 0,
     succeeded: 0,
     failed: 0,
+    dataMissing: 0,
     noConnection: 0,
     rateLimited: 0,
     skippedRateLimited: 0,
@@ -162,6 +164,8 @@ async function main() {
   summary.retryCandidates = retryRows.length
 
   if (partialDataMissingRows.length > 0) {
+    summary.dataMissing += partialDataMissingRows.length
+
     console.log('Skipping users with valid missing-distance gaps', {
       skippedUsers: partialDataMissingRows.length,
       auditStatus: 'partial_data_missing',
@@ -259,7 +263,11 @@ async function main() {
           : {}),
       })
 
-      if (finalStatus === 'complete' || finalStatus === 'rate_limited') {
+      if (
+        finalStatus === 'complete'
+        || finalStatus === 'rate_limited'
+        || finalStatus === 'partial_data_missing'
+      ) {
         break
       }
 
@@ -290,6 +298,21 @@ async function main() {
 
     if (finalStatus === 'rate_limited') {
       summary.rateLimited += 1
+      continue
+    }
+
+    if (finalStatus === 'partial_data_missing') {
+      summary.dataMissing += 1
+
+      console.log('Not retrying user due to missing source data coverage', {
+        userId: row.user_id,
+        displayName: row.display_name,
+        auditStatus: finalAuditStatus,
+        auditStatusLabel: getAuditStatusLogLabel(finalAuditStatus),
+        finalStatus,
+        finalStatusLabel: getRetryLogLabel(finalStatus),
+        action: 'no_retry',
+      })
       continue
     }
 

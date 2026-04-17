@@ -686,6 +686,11 @@ async function main() {
       count,
     }))
   )
+  console.log('partial_data_missing users', {
+    count: result.summary.partial_data_missing,
+    status: 'partial_data_missing',
+    statusLabel: getAuditStatusLogLabel('partial_data_missing'),
+  })
 
   console.log('\nPersonal records pipeline audit finished', {
     usersAudited: result.auditRows.length,
