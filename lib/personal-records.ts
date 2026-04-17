@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAppEvent } from '@/lib/events/createAppEvent'
 import { buildPersonalRecordAchievedEvent } from '@/lib/events/returnTriggerEvents'
+import { recomputePersonalRecordForUserDistance as sharedRecomputePersonalRecordForUserDistance } from '@/lib/personal-records-recompute'
 import { processAppEventPushDeliveries } from '@/lib/push/appEventPush'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -1005,24 +1006,15 @@ export async function recomputePersonalRecordForUserDistance(params: {
   userId: string
   distanceMeters: SupportedPersonalRecordDistance
 }) {
-  const hasWinner = await recomputePersonalRecordWinner({
+  return sharedRecomputePersonalRecordForUserDistance({
     supabase: params.supabase,
     userId: params.userId,
     distanceMeters: params.distanceMeters,
+    hydrateHistoricalActivityByIdForUser: async (userId, stravaActivityId) => {
+      const { importHistoricalStravaActivityByIdForUser } = await import('@/lib/strava/strava-sync')
+      return importHistoricalStravaActivityByIdForUser(userId, stravaActivityId)
+    },
   })
-
-  if (hasWinner) {
-    await maybeHydrateCanonicalPersonalRecordRun({
-      supabase: params.supabase,
-      userId: params.userId,
-      distanceMeters: params.distanceMeters,
-    })
-  }
-
-  return {
-    updated: hasWinner,
-    deleted: !hasWinner,
-  }
 }
 
 function normalizePersonalRecordRow(row: PersonalRecordRow): PersonalRecordView | null {
