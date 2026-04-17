@@ -4,6 +4,7 @@ import {
   hasActiveRateLimit,
   type AuditStatus,
 } from './audit-personal-records-pipeline'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { runInitialPersonalRecordsSyncForUser } from '@/lib/personal-records/runInitialPersonalRecordsSyncForUser'
 
 const DEFAULT_BATCH_SIZE = 200
@@ -30,7 +31,15 @@ type Summary = {
   noConnection: number
   rateLimited: number
   skippedRateLimited: number
+  skippedRunning: number
 }
+
+type BackfillJobStateRow = {
+  status: string | null
+  last_error: string | null
+}
+
+let cachedSupabaseAdminClient: SupabaseClient | null = null
 
 function parsePositiveInteger(value: string, flagName: string) {
   const normalizedValue = Number(value)
@@ -40,6 +49,67 @@ function parsePositiveInteger(value: string, flagName: string) {
   }
 
   return normalizedValue
+}
+
+function getRequiredEnv(name: string) {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`)
+  }
+
+  return value
+}
+
+function getSupabaseUrl() {
+  return process.env.SUPABASE_URL ?? getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL')
+}
+
+function createSupabaseAdminClient() {
+  if (cachedSupabaseAdminClient) {
+    return cachedSupabaseAdminClient
+  }
+
+  cachedSupabaseAdminClient = createClient(
+    getSupabaseUrl(),
+    getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  )
+
+  return cachedSupabaseAdminClient
+}
+
+async function loadLatestBackfillJobState(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<BackfillJobStateRow | null> {
+  const { data, error } = await supabase
+    .from('personal_record_backfill_jobs')
+    .select('status, last_error')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return (data as BackfillJobStateRow | null) ?? null
+}
+
+function isRateLimitErrorMessage(value: string | null | undefined) {
+  if (!value) {
+    return false
+  }
+
+  const normalizedValue = value.toLowerCase()
+  return normalizedValue.includes('429') || normalizedValue.includes('rate_limit')
 }
 
 function parseArgs(argv: string[]): ScriptArgs {
@@ -121,6 +191,7 @@ function createSummary(): Summary {
     noConnection: 0,
     rateLimited: 0,
     skippedRateLimited: 0,
+    skippedRunning: 0,
   }
 }
 
@@ -133,6 +204,7 @@ async function main() {
   }
 
   process.env.NEXT_PUBLIC_SUPABASE_URL ??= process.env.SUPABASE_URL
+  const supabase = createSupabaseAdminClient()
 
   console.log('Starting personal records pipeline retry', {
     batchSize: args.batchSize,
@@ -175,17 +247,42 @@ async function main() {
   }
 
   for (const row of retryRows) {
-    if (hasActiveRateLimit(row.rate_limited_until)) {
+    const latestBackfillJobState = await loadLatestBackfillJobState(supabase, row.user_id)
+    const isBackfillRunning = latestBackfillJobState?.status === 'running'
+    const hasBackfillRateLimitError = isRateLimitErrorMessage(latestBackfillJobState?.last_error)
+
+    if (isBackfillRunning) {
+      summary.skippedRunning += 1
+
+      console.log('Skipping retry candidate', {
+        userId: row.user_id,
+        displayName: row.display_name,
+        auditStatus: row.status,
+        auditStatusLabel: getAuditStatusLogLabel(row.status),
+        attemptsUsed: 0,
+        finalStatus: row.status,
+        finalStatusLabel: getAuditStatusLogLabel(row.status),
+        backfillJobStatus: latestBackfillJobState?.status ?? null,
+        action: 'skipped_due_to_running',
+      })
+      continue
+    }
+
+    if (hasActiveRateLimit(row.rate_limited_until) || hasBackfillRateLimitError) {
       summary.skippedRateLimited += 1
 
-      console.log('Skipping user still in Strava cooldown window', {
+      console.log('Skipping retry candidate', {
         userId: row.user_id,
         displayName: row.display_name,
         auditStatus: row.status,
         auditStatusLabel: getAuditStatusLogLabel(row.status),
         attemptsUsed: 0,
         finalStatus: 'rate_limited',
+        finalStatusLabel: getRetryLogLabel('rate_limited'),
         rateLimitedUntil: row.rate_limited_until,
+        backfillJobStatus: latestBackfillJobState?.status ?? null,
+        backfillLastError: latestBackfillJobState?.last_error ?? null,
+        action: 'skipped_due_to_rate_limit',
       })
       continue
     }
@@ -224,7 +321,10 @@ async function main() {
 
       finalAuditStatus = updatedAuditRow.status
       finalRateLimitedUntil = updatedAuditRow.rate_limited_until
-      finalStatus = hasActiveRateLimit(updatedAuditRow.rate_limited_until)
+      const attemptRateLimited = hasActiveRateLimit(updatedAuditRow.rate_limited_until)
+        || lastResult.status === 'rate_limited'
+        || (lastResult.status === 'failed' && isRateLimitErrorMessage(lastResult.error))
+      finalStatus = attemptRateLimited
         ? 'rate_limited'
         : updatedAuditRow.status
 
