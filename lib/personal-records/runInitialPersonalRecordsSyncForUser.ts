@@ -4,7 +4,7 @@ import {
   SUPPORTED_PERSONAL_RECORD_DISTANCES,
   recomputePersonalRecordForUserDistance,
 } from '@/lib/personal-records-recompute'
-import { ensureHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
+import { runHistoricalPersonalRecordBackfillForUser } from '@/scripts/backfill-strava-personal-records.mjs'
 
 type StravaConnectionRow = {
   id: string
@@ -170,7 +170,7 @@ export async function runInitialPersonalRecordsSyncForUser(
     }
 
     const resumedFailedBackfillJob = await resetFailedBackfillJobToPending(supabase, normalizedUserId)
-    const backfillResult = await ensureHistoricalPersonalRecordBackfillForUser(
+    const backfillResult = await runHistoricalPersonalRecordBackfillForUser(
       normalizedUserId
     ) as BackfillEnsureResult
 
