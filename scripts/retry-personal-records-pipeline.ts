@@ -33,6 +33,7 @@ type Summary = {
   rateLimited: number
   skippedRateLimited: number
   skippedRunning: number
+  skippedPendingEmptyFirstPage: number
 }
 
 type BackfillJobStateRow = {
@@ -110,6 +111,13 @@ function isRateLimitErrorMessage(value: string | null | undefined) {
 
   const normalizedValue = value.toLowerCase()
   return normalizedValue.includes('429') || normalizedValue.includes('rate_limit')
+}
+
+function isPendingEmptyFirstHistoricalPage(jobState: BackfillJobStateRow | null) {
+  return (
+    jobState?.status === 'pending'
+    && jobState?.last_error === EMPTY_FIRST_HISTORICAL_PAGE_ERROR
+  )
 }
 
 function parseArgs(argv: string[]): ScriptArgs {
@@ -192,6 +200,7 @@ function createSummary(): Summary {
     rateLimited: 0,
     skippedRateLimited: 0,
     skippedRunning: 0,
+    skippedPendingEmptyFirstPage: 0,
   }
 }
 
@@ -283,6 +292,24 @@ async function main() {
         backfillJobStatus: latestBackfillJobState?.status ?? null,
         backfillLastError: latestBackfillJobState?.last_error ?? null,
         action: 'skipped_due_to_rate_limit',
+      })
+      continue
+    }
+
+    if (isPendingEmptyFirstHistoricalPage(latestBackfillJobState)) {
+      summary.skippedPendingEmptyFirstPage += 1
+
+      console.log('Skipping retry candidate', {
+        userId: row.user_id,
+        displayName: row.display_name,
+        auditStatus: row.status,
+        auditStatusLabel: getAuditStatusLogLabel(row.status),
+        attemptsUsed: 0,
+        finalStatus: row.status,
+        finalStatusLabel: getAuditStatusLogLabel(row.status),
+        backfillJobStatus: latestBackfillJobState?.status ?? null,
+        backfillLastError: latestBackfillJobState?.last_error ?? null,
+        action: 'skipped_due_to_pending_empty_first_page',
       })
       continue
     }
