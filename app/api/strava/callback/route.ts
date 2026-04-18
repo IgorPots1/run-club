@@ -4,6 +4,7 @@ import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { runInitialPersonalRecordsSyncForUser } from '@/lib/personal-records/runInitialPersonalRecordsSyncForUser'
 import { exchangeStravaCodeForToken } from '@/lib/strava/strava-client'
+import { syncStravaRuns } from '@/lib/strava/strava-sync'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
@@ -174,6 +175,10 @@ export async function GET(request: Request) {
     }
 
     after(async () => {
+      console.info('[strava-connect] post_connect_pr_sync_start', {
+        userId: connectUserId,
+      })
+
       try {
         const result = await runInitialPersonalRecordsSyncForUser(connectUserId)
 
@@ -184,9 +189,45 @@ export async function GET(request: Request) {
             backfillReason: result.backfillReason ?? null,
             backfillJobStatus: result.backfillJobStatus ?? null,
           })
+        } else {
+          console.info('[strava-connect] post_connect_pr_sync_done', {
+            userId: connectUserId,
+            status: result.status,
+          })
         }
       } catch (syncError) {
         console.error('Failed to run personal records sync after Strava connect', {
+          userId: connectUserId,
+          error: syncError instanceof Error ? syncError.message : 'unknown_error',
+        })
+      }
+
+      console.info('[strava-connect] post_connect_run_backfill_start', {
+        userId: connectUserId,
+        mode: 'backfill',
+        cutoff: '2026-01-01T00:00:00Z',
+      })
+
+      try {
+        const result = await syncStravaRuns(connectUserId, { mode: 'backfill' })
+
+        if (!result.ok) {
+          console.error('Failed to run Strava historical run backfill after connect', {
+            userId: connectUserId,
+            step: result.step,
+          })
+        } else {
+          console.info('[strava-connect] post_connect_run_backfill_done', {
+            userId: connectUserId,
+            imported: result.imported,
+            updated: result.updated,
+            skipped: result.skipped,
+            failed: result.failed,
+            totalRunsFetched: result.totalRunsFetched,
+          })
+        }
+      } catch (syncError) {
+        console.error('Failed to run Strava historical run backfill after connect', {
           userId: connectUserId,
           error: syncError instanceof Error ? syncError.message : 'unknown_error',
         })
