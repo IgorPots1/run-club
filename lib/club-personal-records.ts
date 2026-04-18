@@ -16,6 +16,7 @@ export type ClubPersonalRecordLeaderboardRow = {
   userId: string
   displayName: string
   avatarUrl: string | null
+  runId: string | null
   durationSeconds: number
   recordDate: string | null
 }

@@ -180,7 +180,7 @@ function PodiumCard({
       </div>
       <div className="mt-5 flex items-end justify-between gap-3">
         <p className={`app-text-primary font-semibold ${featured ? 'text-3xl' : 'text-2xl'}`}>{row.totalXp} XP</p>
-        <p className="app-text-secondary text-xs uppercase tracking-[0.18em]">Weekly Race</p>
+          <p className="app-text-secondary text-xs uppercase tracking-[0.18em]">Гонка недели</p>
       </div>
     </Link>
   )
@@ -333,7 +333,7 @@ export default function RacePage() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border border-black/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-black/65 dark:border-white/10 dark:text-white/65">
-                    Weekly Race
+                    Гонка недели
                   </span>
                   {weekStatusMeta ? (
                     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${weekStatusMeta.badgeClass}`}>

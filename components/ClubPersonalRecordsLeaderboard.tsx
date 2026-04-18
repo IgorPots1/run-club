@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   CLUB_PERSONAL_RECORD_DISTANCE_LABELS,
@@ -63,6 +64,7 @@ function isLeaderboardResponse(value: unknown): value is ClubPersonalRecordLeade
       typeof candidate.userId === 'string' &&
       typeof candidate.displayName === 'string' &&
       (candidate.avatarUrl == null || typeof candidate.avatarUrl === 'string') &&
+      (candidate.runId == null || typeof candidate.runId === 'string') &&
       typeof candidate.durationSeconds === 'number' &&
       (candidate.recordDate == null || typeof candidate.recordDate === 'string')
     )
@@ -70,6 +72,7 @@ function isLeaderboardResponse(value: unknown): value is ClubPersonalRecordLeade
 }
 
 export default function ClubPersonalRecordsLeaderboard() {
+  const router = useRouter()
   const [selectedDistance, setSelectedDistance] = useState<ClubPersonalRecordDistance>(5000)
   const [rows, setRows] = useState<ClubPersonalRecordLeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -119,11 +122,11 @@ export default function ClubPersonalRecordsLeaderboard() {
   }, [selectedDistance])
 
   return (
-    <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+    <section className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="app-text-primary text-base font-semibold sm:text-lg">Личные рекорды</p>
-          <p className="app-text-secondary mt-1 text-sm">Рейтинг клуба по выбранной дистанции</p>
+          <p className="app-text-secondary mt-1 text-sm">По выбранной дистанции</p>
         </div>
       </div>
 
@@ -150,18 +153,16 @@ export default function ClubPersonalRecordsLeaderboard() {
       {loading ? (
         <div className="mt-3 space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="app-surface-muted flex items-center justify-between gap-2.5 rounded-xl px-2.5 py-2">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="skeleton-line h-6 w-8 rounded-lg" />
-                <div className="h-9 w-9 rounded-full bg-[var(--color-card-border)]/50" />
-                <div className="min-w-0 flex-1 space-y-2">
+            <div key={index} className="app-surface-muted rounded-xl px-3 py-2.5">
+              <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-x-2.5 gap-y-1.5">
+                <div className="skeleton-line row-span-2 h-5 w-8 rounded-lg" />
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-full bg-[var(--color-card-border)]/50" />
                   <div className="skeleton-line h-4 w-28" />
-                  <div className="skeleton-line h-3 w-16" />
                 </div>
-              </div>
-              <div className="space-y-2 text-right">
                 <div className="skeleton-line h-4 w-16" />
                 <div className="skeleton-line h-3 w-24" />
+                <div className="skeleton-line h-4 w-9" />
               </div>
             </div>
           ))}
@@ -172,45 +173,74 @@ export default function ClubPersonalRecordsLeaderboard() {
         <p className="app-text-secondary mt-3 text-sm">Пока ни у кого нет результата на этой дистанции.</p>
       ) : (
         <div className="mt-3 space-y-1.5">
-          {rows.map((row) => (
-            <div key={row.userId} className="app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-2.5 py-2">
-              <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2.5">
-                <div className="flex min-h-9 items-center">
-                  <span className="app-text-secondary inline-flex min-w-8 items-center justify-center text-sm font-semibold">
+          {rows.map((row) => {
+            const runHref = row.runId ? `/runs/${row.runId}` : null
+
+            return (
+              <div
+                key={row.userId}
+                role={runHref ? 'link' : undefined}
+                tabIndex={runHref ? 0 : undefined}
+                onClick={runHref ? () => router.push(runHref) : undefined}
+                onKeyDown={runHref ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    router.push(runHref)
+                  }
+                } : undefined}
+                className={`app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-3 py-2.5 ${
+                  runHref ? 'cursor-pointer transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/15' : ''
+                }`}
+              >
+                <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-x-2.5 gap-y-1">
+                  <span className="app-text-secondary row-span-2 inline-flex min-w-8 items-center justify-center text-sm font-semibold">
                     #{row.rank}
                   </span>
-                </div>
 
-                <Link href={`/users/${row.userId}`} className="flex min-w-0 items-center gap-2.5">
-                  {row.avatarUrl ? (
-                    <Image
-                      src={row.avatarUrl}
-                      alt=""
-                      width={36}
-                      height={36}
-                      className="h-9 w-9 rounded-full object-cover"
-                    />
+                  <Link
+                    href={`/users/${row.userId}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="flex min-w-0 items-center gap-2.5"
+                  >
+                    {row.avatarUrl ? (
+                      <Image
+                        src={row.avatarUrl}
+                        alt=""
+                        width={32}
+                        height={32}
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
+                        {(row.displayName[0] ?? '?').toUpperCase()}
+                      </span>
+                    )}
+
+                    <span className="app-text-primary truncate text-sm font-medium">{row.displayName}</span>
+                  </Link>
+
+                  {runHref ? (
+                    <Link
+                      href={runHref}
+                      onClick={(event) => event.stopPropagation()}
+                      className="app-text-primary shrink-0 text-[15px] font-semibold leading-tight tabular-nums"
+                    >
+                      {formatRecordTime(row.durationSeconds)}
+                    </Link>
                   ) : (
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
-                      {(row.displayName[0] ?? '?').toUpperCase()}
-                    </span>
+                    <p className="app-text-primary shrink-0 text-[15px] font-semibold leading-tight tabular-nums">
+                      {formatRecordTime(row.durationSeconds)}
+                    </p>
                   )}
 
-                  <div className="min-w-0">
-                    <p className="app-text-primary truncate text-sm font-medium">{row.displayName}</p>
-                    <p className="app-text-secondary truncate text-[11px]">{formatRecordDate(row.recordDate)}</p>
-                  </div>
-                </Link>
-
-                <div className="min-h-9 text-right">
-                  <p className="app-text-primary text-[15px] font-semibold leading-tight tabular-nums">{formatRecordTime(row.durationSeconds)}</p>
-                  <span className="app-text-secondary mt-0.5 inline-flex rounded-md border border-[var(--color-card-border)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
+                  <p className="app-text-secondary truncate text-[11px]">{formatRecordDate(row.recordDate)}</p>
+                  <span className="app-text-secondary inline-flex justify-self-end rounded-md border border-[var(--color-card-border)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
                     PR
                   </span>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </section>

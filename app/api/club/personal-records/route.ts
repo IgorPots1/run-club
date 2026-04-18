@@ -10,6 +10,7 @@ import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 type PersonalRecordLeaderboardQueryRow = {
   user_id: string
+  run_id: string | null
   duration_seconds: number
   record_date: string | null
 }
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
     const supabaseAdmin = createSupabaseAdminClient()
     const { data: recordRows, error: recordError } = await supabaseAdmin
       .from('personal_records')
-      .select('user_id, duration_seconds, record_date')
+      .select('user_id, run_id, duration_seconds, record_date')
       .eq('distance_meters', distance)
       .neq('user_id', CLUB_PERSONAL_RECORD_EXCLUDED_USER_ID)
       .order('duration_seconds', { ascending: true })
@@ -97,6 +98,7 @@ export async function GET(request: Request) {
           userId: row.user_id,
           displayName: getProfileDisplayName(profile, 'Бегун'),
           avatarUrl: profile?.avatar_url ?? null,
+          runId: row.run_id ?? null,
           durationSeconds: Number(row.duration_seconds),
           recordDate: row.record_date ?? null,
         }

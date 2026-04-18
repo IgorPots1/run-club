@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import InnerPageHeader from '@/components/InnerPageHeader'
-import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatAveragePace, formatDistanceKm } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -124,7 +123,6 @@ export default function ClubStatisticsPage() {
   const [clubStats, setClubStats] = useState<ClubStatsByPeriod | null>(null)
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
-  const [leaderboardError, setLeaderboardError] = useState('')
   const [statsError, setStatsError] = useState('')
 
   useEffect(() => {
@@ -161,7 +159,6 @@ export default function ClubStatisticsPage() {
       setClubStats(null)
       setLeaderboardLoading(false)
       setStatsLoading(false)
-      setLeaderboardError('')
       setStatsError('')
       return
     }
@@ -176,7 +173,6 @@ export default function ClubStatisticsPage() {
     let isMounted = true
 
     async function loadLeaderboardTabData() {
-      setLeaderboardError('')
       setStatsError('')
       setLeaderboardLoading(true)
       setStatsLoading(true)
@@ -258,7 +254,7 @@ export default function ClubStatisticsPage() {
 
         setLeaderboard(null)
         setClubStats(null)
-        setLeaderboardError('Не удалось загрузить рейтинг')
+        setStatsError('Не удалось загрузить статистику клуба')
       } finally {
         if (isMounted) {
           setLeaderboardLoading(false)
@@ -287,7 +283,6 @@ export default function ClubStatisticsPage() {
   const userDistanceKm = selectedClubStats?.userDistanceKm ?? 0
   const contributionPercent = totalDistanceKm > 0 ? (userDistanceKm / totalDistanceKm) * 100 : 0
   const hasActiveRaceWeek = Boolean(leaderboard?.week)
-  const currentUserId = user?.id ?? ''
   const statsPeriodLabel = statsPeriod === 'week' ? 'неделю' : 'месяц'
   const contributionPeriodLabel = statsPeriod === 'week' ? 'текущую неделю' : 'текущий месяц'
   const segmentBaseClass = 'flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium transition-colors'
@@ -307,17 +302,9 @@ export default function ClubStatisticsPage() {
       </div>
 
       <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
-        <WeeklyLeaderboard
-          leaderboard={leaderboard}
-          currentUserId={currentUserId}
-          loading={authLoading || leaderboardLoading}
-          error={leaderboardError}
-          href="/race"
-        />
-
-        {statsLoading ? (
+        {statsLoading || authLoading || leaderboardLoading ? (
           <>
-            <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+            <div className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
               <div className="skeleton-line h-4 w-28" />
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -338,7 +325,7 @@ export default function ClubStatisticsPage() {
                 </div>
               </div>
             </div>
-            <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+            <div className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
               <div className="skeleton-line h-4 w-24" />
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -379,36 +366,36 @@ export default function ClubStatisticsPage() {
               </button>
             </div>
 
-            <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+            <section className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
               <p className="app-text-primary text-base font-semibold sm:text-lg">Статистика клуба за {statsPeriodLabel}</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                <div className="app-surface-muted rounded-xl px-3 py-2">
                   <p className="app-text-secondary text-sm">Дистанция</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(selectedClubStats.totalDistanceKm)} км</p>
                 </div>
-                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                <div className="app-surface-muted rounded-xl px-3 py-2">
                   <p className="app-text-secondary text-sm">Тренировки</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{selectedClubStats.totalRuns}</p>
                 </div>
-                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                <div className="app-surface-muted rounded-xl px-3 py-2">
                   <p className="app-text-secondary text-sm">Средний темп</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{formatAveragePace(selectedClubStats.totalMovingTimeSeconds, selectedClubStats.totalDistanceKm)}</p>
                 </div>
-                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                <div className="app-surface-muted rounded-xl px-3 py-2">
                   <p className="app-text-secondary text-sm">Набор высоты</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{Math.round(selectedClubStats.totalElevationGainMeters)} м</p>
                 </div>
               </div>
             </section>
 
-            <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+            <section className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
               <p className="app-text-primary text-base font-semibold sm:text-lg">Твой вклад</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                <div className="app-surface-muted rounded-xl px-3 py-2">
                   <p className="app-text-secondary text-sm">Твоя дистанция</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(userDistanceKm)} км</p>
                 </div>
-                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                <div className="app-surface-muted rounded-xl px-3 py-2">
                   <p className="app-text-secondary text-sm">Доля клуба</p>
                   <p className="app-text-primary mt-1 text-lg font-semibold">{formatContributionPercent(contributionPercent)}</p>
                 </div>
@@ -418,14 +405,14 @@ export default function ClubStatisticsPage() {
               </p>
             </section>
           </>
-        ) : !leaderboardError && !statsError ? (
-          <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+        ) : !statsError ? (
+          <div className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
             <p className="app-text-secondary text-sm">Статистика недели появится, когда начнется текущая гонка.</p>
           </div>
         ) : null}
 
         {statsError ? (
-          <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+          <div className="app-card mb-3 rounded-2xl border p-3.5 shadow-sm">
             <p className="text-sm text-red-600">{statsError}</p>
           </div>
         ) : null}
