@@ -40,6 +40,8 @@ const INITIAL_SYNC_CUTOFF_UNIX_SECONDS = Math.floor(INITIAL_SYNC_CUTOFF_MS / 100
 const MAX_SYNC_ERROR_DETAILS = 10
 const RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE = 5
 const POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT = 5
+const BACKFILL_RUN_DETAIL_SERIES_BATCH_SIZE = 200
+const BACKFILL_POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT = 200
 const HEARTRATE_BACKFILL_WINDOW_DAYS = 45
 const HEARTRATE_BACKFILL_LOOKUP_LIMIT = 20
 const HEARTRATE_BACKFILL_BATCH_SIZE = 5
@@ -1810,9 +1812,14 @@ async function backfillMissingRunDetailSeriesForUser(
   userId: string,
   accessToken: string,
   debugRunId?: string,
-  connectionId?: string
+  connectionId?: string,
+  syncMode: StravaSyncMode = 'incremental'
 ) {
   const supabase = createSupabaseAdminClient()
+  const backfillBatchSize =
+    syncMode === 'backfill'
+      ? BACKFILL_RUN_DETAIL_SERIES_BATCH_SIZE
+      : RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE
 
   if (debugRunId) {
     const { data: targetRun, error: targetRunError } = await supabase
@@ -1901,7 +1908,7 @@ async function backfillMissingRunDetailSeriesForUser(
 
   console.info('Strava run detail series backfill scanning recent missing runs first', {
     userId,
-    batchSize: RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE,
+    batchSize: backfillBatchSize,
   })
 
   if (shouldDebugRunDetailSeries({ runId: RUN_DETAIL_SERIES_DEBUG_RUN_ID })) {
@@ -1937,7 +1944,7 @@ async function backfillMissingRunDetailSeriesForUser(
 
   const selectedRuns = debugRunId
     ? missingRuns.filter((run) => run.id === debugRunId).slice(0, 1)
-    : missingRuns.slice(0, RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE)
+    : missingRuns.slice(0, backfillBatchSize)
 
   if (selectedRuns.length === 0) {
     if (shouldDebugRunDetailSeries({ runId: debugRunId ?? RUN_DETAIL_SERIES_DEBUG_RUN_ID })) {
@@ -1997,7 +2004,23 @@ async function backfillMissingRunDetailSeriesForUser(
       fallback_reason: getMissingRunDetailSeriesReasons(existingSeriesRowsByRunId.get(run.id) ?? null),
     })
 
-    await syncRunSupplementalStravaDataForActivity(supabase, run.id, activityId, accessToken, undefined, connectionId)
+    try {
+      await syncRunSupplementalStravaDataForActivity(
+        supabase,
+        run.id,
+        activityId,
+        accessToken,
+        undefined,
+        connectionId
+      )
+    } catch (error) {
+      console.warn('Strava run detail series fallback sync failed', {
+        userId,
+        runId: run.id,
+        activityId,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      })
+    }
   }
 }
 
@@ -3977,7 +4000,13 @@ export async function syncStravaRuns(
   }
 
   if (targetDebugRunId) {
-    await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, targetDebugRunId, connection.id)
+    await backfillMissingRunDetailSeriesForUser(
+      userId,
+      connection.access_token,
+      targetDebugRunId,
+      connection.id,
+      syncMode
+    )
     await backfillMissingHeartratePointsForUser(userId, connection.access_token, connection.id)
   } else {
     const uniqueSupplementalCandidates = Array.from(
@@ -3987,16 +4016,20 @@ export async function syncStravaRuns(
           .map((candidate) => [candidate.runId, candidate] as const)
       ).values()
     )
+    const postImportSupplementalSyncLimit =
+      syncMode === 'backfill'
+        ? BACKFILL_POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT
+        : POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT
     const postImportSupplementalSyncTargets = uniqueSupplementalCandidates
-      .slice(0, POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
+      .slice(0, postImportSupplementalSyncLimit)
     const deferredSupplementalSyncTargets = uniqueSupplementalCandidates
-      .slice(POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
+      .slice(postImportSupplementalSyncLimit)
 
     if (deferredSupplementalSyncTargets.length > 0) {
       console.info('Strava post-import supplemental hydration deferred due to cap', {
         userId,
         deferredRuns: deferredSupplementalSyncTargets.length,
-        maxRuns: POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT,
+        maxRuns: postImportSupplementalSyncLimit,
         deferredRunIdsPreview: deferredSupplementalSyncTargets
           .slice(0, 10)
           .map((target) => target.runId),
@@ -4034,7 +4067,7 @@ export async function syncStravaRuns(
         userId,
         attemptedRuns: postImportSupplementalSyncTargets.length,
         succeededRuns: supplementalSyncSucceeded,
-        maxRuns: POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT,
+        maxRuns: postImportSupplementalSyncLimit,
       })
     }
 
@@ -4042,13 +4075,17 @@ export async function syncStravaRuns(
       console.info('Strava post-import supplemental fallback scan started', {
         userId,
         deferredRuns: deferredSupplementalSyncTargets.length,
-        batchSize: RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE,
+        batchSize:
+          syncMode === 'backfill'
+            ? BACKFILL_RUN_DETAIL_SERIES_BATCH_SIZE
+            : RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE,
       })
       await backfillMissingRunDetailSeriesForUser(
         userId,
         connection.access_token,
         undefined,
-        connection.id
+        connection.id,
+        syncMode
       )
     }
 
