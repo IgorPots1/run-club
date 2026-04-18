@@ -1459,6 +1459,48 @@ async function syncRunSupplementalStravaDataForActivity(
   return detailSeriesSynced || lapsSyncResult.synced || photosSynced
 }
 
+export async function hydrateRunSupplementalStravaDataForRun(params: {
+  userId: string
+  runId: string
+  stravaActivityId: number
+  ignoreCooldown?: boolean
+}) {
+  const normalizedUserId = params.userId.trim()
+  const normalizedRunId = params.runId.trim()
+  const normalizedActivityId = Math.round(Number(params.stravaActivityId))
+
+  if (!normalizedUserId || !normalizedRunId || !Number.isFinite(normalizedActivityId) || normalizedActivityId <= 0) {
+    return false
+  }
+
+  const connection = await getStravaConnectionForUser(normalizedUserId)
+
+  if (!connection) {
+    return false
+  }
+
+  if (!params.ignoreCooldown && hasActiveStravaRateLimitCooldown(connection)) {
+    console.warn('Strava supplemental sync skipped due to active cooldown', {
+      userId: normalizedUserId,
+      runId: normalizedRunId,
+      activityId: normalizedActivityId,
+      connectionId: connection.id,
+      rateLimitedUntil: connection.rate_limited_until,
+    })
+    return false
+  }
+
+  const supabase = createSupabaseAdminClient()
+  return syncRunSupplementalStravaDataForActivity(
+    supabase,
+    normalizedRunId,
+    normalizedActivityId,
+    connection.access_token,
+    undefined,
+    connection.id
+  )
+}
+
 async function resolveExistingStravaRunIdForSupplementalSync(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   externalId: string
@@ -3001,6 +3043,22 @@ export async function importHistoricalStravaActivityByIdForUser(
   }
 
   if (!options.forceRefreshExistingRun && existingRun?.id && existingRun.user_id === normalizedUserId) {
+    try {
+      await hydrateRunSupplementalStravaDataForRun({
+        userId: normalizedUserId,
+        runId: existingRun.id,
+        stravaActivityId: normalizedActivityId,
+        ignoreCooldown: options.ignoreCooldown,
+      })
+    } catch (error) {
+      console.warn('Historical Strava recovery supplemental detail hydration failed', {
+        userId: normalizedUserId,
+        runId: existingRun.id,
+        activityId: normalizedActivityId,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      })
+    }
+
     return existingRun.id
   }
 

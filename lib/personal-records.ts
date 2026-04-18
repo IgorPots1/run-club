@@ -616,7 +616,10 @@ async function maybeHydrateCanonicalPersonalRecordRun(params: {
     const { importHistoricalStravaActivityByIdForUser } = await import('@/lib/strava/strava-sync')
     const importedRunId = await importHistoricalStravaActivityByIdForUser(
       params.userId,
-      stravaActivityId
+      stravaActivityId,
+      {
+        forceRefreshExistingRun: true,
+      }
     )
 
     if (!importedRunId) {
@@ -1040,7 +1043,9 @@ export async function recomputePersonalRecordForUserDistance(params: {
     distanceMeters: params.distanceMeters,
     hydrateHistoricalActivityByIdForUser: async (userId, stravaActivityId) => {
       const { importHistoricalStravaActivityByIdForUser } = await import('@/lib/strava/strava-sync')
-      return importHistoricalStravaActivityByIdForUser(userId, stravaActivityId)
+      return importHistoricalStravaActivityByIdForUser(userId, stravaActivityId, {
+        forceRefreshExistingRun: true,
+      })
     },
   })
 }

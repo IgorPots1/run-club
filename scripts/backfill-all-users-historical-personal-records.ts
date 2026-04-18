@@ -3,6 +3,7 @@ import {
   upsertPersonalRecordsForDistancesFromStravaPayload,
 } from '../lib/personal-records-backfill-shared'
 import { recomputePersonalRecordForUserDistance } from '../lib/personal-records-recompute'
+import { hydrateRunSupplementalStravaDataForRun } from '../lib/strava/strava-sync'
 
 const DEFAULT_BATCH_SIZE = 20
 const DEFAULT_SOURCE_PAGE_SIZE = 500
@@ -454,6 +455,22 @@ async function recoverHistoricalActivityForUser(params: {
       supabase: personalRecordSupabase,
       userId: params.userId,
       distanceMeters,
+    })
+  }
+
+  try {
+    await hydrateRunSupplementalStravaDataForRun({
+      userId: params.userId,
+      runId: run.id,
+      stravaActivityId: params.activityId,
+      ignoreCooldown: true,
+    })
+  } catch (error) {
+    console.warn('Historical recovery supplemental detail hydration failed', {
+      userId: params.userId,
+      runId: run.id,
+      activityId: params.activityId,
+      error: error instanceof Error ? error.message : 'unknown_error',
     })
   }
 

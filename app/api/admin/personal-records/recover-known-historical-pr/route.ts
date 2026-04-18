@@ -27,6 +27,7 @@ async function importHistoricalStravaActivityByIdForUserWithRetry(userId: string
     try {
       return await importHistoricalStravaActivityByIdForUser(userId, stravaActivityId, {
         ignoreCooldown: true,
+        forceRefreshExistingRun: true,
       })
     } catch (error) {
       const isRateLimitError = error instanceof StravaApiError && error.status === 429
