@@ -429,8 +429,10 @@ export function useRunDetailReturnState<TSnapshot>({
     const pendingRestore = pendingRestoreRef.current
 
     if (!hasAppliedRestoreRef.current) {
-      if (pendingRestore?.snapshot !== null) {
-        onRestoreSnapshotRef.current?.(pendingRestore.snapshot)
+      const snapshot = pendingRestore?.snapshot ?? null
+
+      if (snapshot !== null) {
+        onRestoreSnapshotRef.current?.(snapshot)
       }
 
       hasAppliedRestoreRef.current = true
