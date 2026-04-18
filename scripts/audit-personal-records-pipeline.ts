@@ -4,6 +4,7 @@ const DEFAULT_BATCH_SIZE = 200
 const DEFAULT_SOURCE_PAGE_SIZE = 1000
 const EXCLUDED_USER_ID = '9c831c40-928d-4d0c-99f7-393b2b985290'
 const SUPPORTED_DISTANCES = [5000, 10000, 21097, 42195] as const
+const NO_HISTORICAL_DATA_AVAILABLE_ERROR = 'no_historical_data_available'
 
 type SupportedDistance = (typeof SUPPORTED_DISTANCES)[number]
 export type AuditStatus =
@@ -490,9 +491,15 @@ function deriveStatus(input: {
     input.historicalDistances.length > 0
     || input.canonicalDistances.length > 0
   )
+  const hasTerminalNoHistoricalDataState = (
+    input.hasBackfillJob
+    && input.backfillJobStatus === 'completed'
+    && input.backfillLastError === NO_HISTORICAL_DATA_AVAILABLE_ERROR
+  )
 
   const hasRetryableBackfillBootstrapState = (
     input.hasBackfillJob
+    && !hasTerminalNoHistoricalDataState
     && (
       input.backfillJobStatus === 'pending'
       || input.backfillJobStatus === 'running'
@@ -504,6 +511,10 @@ function deriveStatus(input: {
       )
     )
   )
+
+  if (hasTerminalNoHistoricalDataState && !hasHistoricalOrCanonicalData) {
+    return 'complete'
+  }
 
   if (input.stravaRunsCount === 0 && !hasHistoricalOrCanonicalData) {
     if (hasRetryableBackfillBootstrapState) {
