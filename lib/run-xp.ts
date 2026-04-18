@@ -75,6 +75,7 @@ type CalculateRunXpOptions = {
   distanceKm: number
   elevationGainMeters?: number | null
   externalSource?: string | null
+  rawStravaPayload?: Record<string, unknown> | null
   excludeRunId?: string
   supabase?: ReturnType<typeof createSupabaseAdminClient>
 }
@@ -150,6 +151,7 @@ export async function calculateRunXp({
   distanceKm,
   elevationGainMeters,
   externalSource,
+  rawStravaPayload,
   excludeRunId,
   supabase = createSupabaseAdminClient(),
 }: CalculateRunXpOptions) {
@@ -240,6 +242,7 @@ export async function calculateRunXp({
     userId,
     timestamp: normalizedCreatedAt,
     excludeRunId,
+    rawStravaPayload,
     supabase,
   })
   const { xpGained } = applyDailyXpCap(rawXp, dailyXpUsage.totalXp)

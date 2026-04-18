@@ -2732,6 +2732,7 @@ export async function importStravaActivityForUser(
           distanceKm: payload.distance_km,
           elevationGainMeters: payload.elevation_gain_meters,
           externalSource: payload.external_source,
+          rawStravaPayload: payload.raw_strava_payload,
           excludeRunId: normalizedExistingRun.id,
           supabase,
         })
@@ -2759,6 +2760,7 @@ export async function importStravaActivityForUser(
       distanceKm: payload.distance_km,
       elevationGainMeters: payload.elevation_gain_meters,
       externalSource: payload.external_source,
+      rawStravaPayload: payload.raw_strava_payload,
       supabase,
     })
   }

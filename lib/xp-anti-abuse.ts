@@ -12,6 +12,7 @@ type LoadDailyXpUsageOptions = {
   userId: string
   timestamp: string
   excludeRunId?: string
+  rawStravaPayload?: Record<string, unknown> | null
   supabase?: ReturnType<typeof createSupabaseAdminClient>
 }
 
@@ -45,6 +46,199 @@ export function getUtcDayBounds(timestamp: string) {
   }
 }
 
+function isValidIanaTimeZone(value: string) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function getIanaTimeZoneFromStravaPayload(rawStravaPayload?: Record<string, unknown> | null) {
+  const timezoneRawValue = rawStravaPayload?.timezone
+  const timezoneValue = typeof timezoneRawValue === 'string' ? timezoneRawValue.trim() : ''
+
+  if (!timezoneValue) {
+    return null
+  }
+
+  const directCandidate = timezoneValue
+
+  if (isValidIanaTimeZone(directCandidate)) {
+    return directCandidate
+  }
+
+  const timezoneSuffixCandidate = timezoneValue.includes(')')
+    ? timezoneValue.split(')').at(-1)?.trim() ?? ''
+    : ''
+
+  if (timezoneSuffixCandidate && isValidIanaTimeZone(timezoneSuffixCandidate)) {
+    return timezoneSuffixCandidate
+  }
+
+  return null
+}
+
+function getNumericUtcOffsetMs(rawStravaPayload?: Record<string, unknown> | null) {
+  const utcOffsetRawValue = rawStravaPayload?.utc_offset
+  const numericUtcOffsetValue = Number(utcOffsetRawValue)
+
+  if (!Number.isFinite(numericUtcOffsetValue)) {
+    return null
+  }
+
+  // Strava utc_offset is expected in seconds. We accept millisecond-like values defensively.
+  const normalizedUtcOffsetMs = Math.abs(numericUtcOffsetValue) <= (24 * 60 * 60)
+    ? Math.round(numericUtcOffsetValue * 1000)
+    : Math.round(numericUtcOffsetValue)
+
+  const maxOffsetMs = 24 * 60 * 60 * 1000
+
+  if (Math.abs(normalizedUtcOffsetMs) > maxOffsetMs) {
+    return null
+  }
+
+  return normalizedUtcOffsetMs
+}
+
+function getDatePartsInTimeZone(date: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  })
+  const parts = formatter.formatToParts(date)
+  const partByType = new Map(parts.map((part) => [part.type, part.value]))
+  const year = Number(partByType.get('year'))
+  const month = Number(partByType.get('month'))
+  const day = Number(partByType.get('day'))
+  const hour = Number(partByType.get('hour'))
+  const minute = Number(partByType.get('minute'))
+  const second = Number(partByType.get('second'))
+
+  if (
+    !Number.isFinite(year)
+    || !Number.isFinite(month)
+    || !Number.isFinite(day)
+    || !Number.isFinite(hour)
+    || !Number.isFinite(minute)
+    || !Number.isFinite(second)
+  ) {
+    return null
+  }
+
+  return {
+    year: Math.round(year),
+    month: Math.round(month),
+    day: Math.round(day),
+    hour: Math.round(hour),
+    minute: Math.round(minute),
+    second: Math.round(second),
+  }
+}
+
+function getTimeZoneOffsetMsAtInstant(date: Date, timeZone: string) {
+  const parts = getDatePartsInTimeZone(date, timeZone)
+
+  if (!parts) {
+    return null
+  }
+
+  const asUtcMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  )
+
+  return asUtcMs - date.getTime()
+}
+
+function getUtcDateFromTimeZoneDateParts(dateParts: { year: number; month: number; day: number }, timeZone: string) {
+  const naiveUtcMs = Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, 0, 0, 0, 0)
+  const initialOffsetMs = getTimeZoneOffsetMsAtInstant(new Date(naiveUtcMs), timeZone)
+
+  if (initialOffsetMs === null) {
+    return null
+  }
+
+  let finalUtcMs = naiveUtcMs - initialOffsetMs
+  const correctedOffsetMs = getTimeZoneOffsetMsAtInstant(new Date(finalUtcMs), timeZone)
+
+  if (correctedOffsetMs === null) {
+    return null
+  }
+
+  finalUtcMs = naiveUtcMs - correctedOffsetMs
+  return new Date(finalUtcMs)
+}
+
+export function getStravaAwareDayBounds(
+  timestamp: string,
+  rawStravaPayload?: Record<string, unknown> | null
+) {
+  const date = new Date(timestamp)
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('invalid_xp_timestamp')
+  }
+
+  const ianaTimeZone = getIanaTimeZoneFromStravaPayload(rawStravaPayload)
+
+  if (ianaTimeZone) {
+    const localDateParts = getDatePartsInTimeZone(date, ianaTimeZone)
+
+    if (localDateParts) {
+      const nextDayAnchor = new Date(Date.UTC(localDateParts.year, localDateParts.month - 1, localDateParts.day, 12, 0, 0, 0))
+      nextDayAnchor.setUTCDate(nextDayAnchor.getUTCDate() + 1)
+      const nextDayDateParts = {
+        year: nextDayAnchor.getUTCFullYear(),
+        month: nextDayAnchor.getUTCMonth() + 1,
+        day: nextDayAnchor.getUTCDate(),
+      }
+      const startDate = getUtcDateFromTimeZoneDateParts(localDateParts, ianaTimeZone)
+      const endDate = getUtcDateFromTimeZoneDateParts(nextDayDateParts, ianaTimeZone)
+
+      if (startDate && endDate && endDate.getTime() > startDate.getTime()) {
+        return {
+          startIso: startDate.toISOString(),
+          endIso: endDate.toISOString(),
+        }
+      }
+    }
+  }
+
+  const utcOffsetMs = getNumericUtcOffsetMs(rawStravaPayload)
+
+  if (utcOffsetMs !== null) {
+    const shiftedDate = new Date(date.getTime() + utcOffsetMs)
+    const dayStartMs = Date.UTC(
+      shiftedDate.getUTCFullYear(),
+      shiftedDate.getUTCMonth(),
+      shiftedDate.getUTCDate(),
+      0,
+      0,
+      0,
+      0
+    ) - utcOffsetMs
+
+    return {
+      startIso: new Date(dayStartMs).toISOString(),
+      endIso: new Date(dayStartMs + (24 * 60 * 60 * 1000)).toISOString(),
+    }
+  }
+
+  return getUtcDayBounds(timestamp)
+}
+
 export function applyDailyXpCap(rawXp: number, currentDailyXp: number) {
   const normalizedRawXp = Number.isFinite(rawXp) ? Math.max(0, Math.round(rawXp)) : 0
   const normalizedCurrentDailyXp = Number.isFinite(currentDailyXp)
@@ -63,9 +257,10 @@ export async function loadDailyXpUsage({
   userId,
   timestamp,
   excludeRunId,
+  rawStravaPayload,
   supabase = createSupabaseAdminClient(),
 }: LoadDailyXpUsageOptions) {
-  const { startIso, endIso } = getUtcDayBounds(timestamp)
+  const { startIso, endIso } = getStravaAwareDayBounds(timestamp, rawStravaPayload)
   const usageWindowEndIso = new Date(timestamp).toISOString()
   const boundedUsageWindowEndIso = usageWindowEndIso <= startIso
     ? startIso
