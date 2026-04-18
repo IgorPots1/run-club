@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { syncStravaRuns } from '../lib/strava/strava-sync'
 
+const INITIAL_SYNC_CUTOFF = '2026-01-01T00:00:00Z'
 const EXCLUDED_USER_IDS = [
   '7d2fa58b-d6bd-40fd-89b4-0d59d22734a6',
   '64806e86-39eb-472e-989f-903ab67f9999',
@@ -12,6 +13,7 @@ type Args = {
   userId: string | null
   limit: number | null
   dryRun: boolean
+  force: boolean
   help: boolean
 }
 
@@ -32,6 +34,7 @@ type ProfileRow = {
 type CandidateUser = {
   userId: string
   displayName: string
+  runsSinceCutoff: number
 }
 
 type UserRepairStatus = 'completed' | 'rate_limited' | 'failed'
@@ -79,6 +82,7 @@ function parseArgs(argv: string[]): Args {
     userId: null,
     limit: null,
     dryRun: false,
+    force: false,
     help: false,
   }
 
@@ -107,6 +111,16 @@ function parseArgs(argv: string[]): Args {
       continue
     }
 
+    if (argument === '--force' || argument === '--force=true') {
+      args.force = true
+      continue
+    }
+
+    if (argument === '--force=false') {
+      args.force = false
+      continue
+    }
+
     throw new Error(`Unknown argument: ${argument}`)
   }
 
@@ -122,15 +136,18 @@ Usage:
   NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --user-id=<uuid>
   NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --limit=100
   NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --dry-run
+  NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --force=true
 
 Flags:
   --user-id=<uuid>    Repair one candidate user
   --limit=<n>         Optional cap for candidate users
   --dry-run           Print candidate users without syncing
+  --force[=true|false] Ignore safe filter and process all candidates
 
 Candidate filter:
   strava_connections.status = connected
   strava_connections.last_synced_at is null
+  runs_since_cutoff = 0 (unless --force=true)
   excludes admin users and known excluded user ids
 
 Environment variables:
@@ -178,11 +195,61 @@ async function fetchProfilesMap(supabase: SupabaseClient, userIds: string[]) {
   return new Map(rows.map((row) => [row.id, row]))
 }
 
+async function fetchRunsSinceCutoffMap(
+  supabase: SupabaseClient,
+  userIds: string[]
+) {
+  const runsSinceCutoffByUserId = new Map<string, number>()
+  const pageSize = 1000
+
+  if (userIds.length === 0) {
+    return runsSinceCutoffByUserId
+  }
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('runs')
+      .select('id, user_id')
+      .in('user_id', userIds)
+      .eq('external_source', 'strava')
+      .gte('created_at', INITIAL_SYNC_CUTOFF)
+      .order('user_id', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const rows = (data as ConnectionRow[] | null) ?? []
+    if (rows.length === 0) {
+      break
+    }
+
+    for (const row of rows) {
+      if (!row.user_id) {
+        continue
+      }
+      runsSinceCutoffByUserId.set(
+        row.user_id,
+        (runsSinceCutoffByUserId.get(row.user_id) ?? 0) + 1
+      )
+    }
+
+    if (rows.length < pageSize) {
+      break
+    }
+  }
+
+  return runsSinceCutoffByUserId
+}
+
 async function fetchCandidateUsers(
   supabase: SupabaseClient,
   options: {
     userId: string | null
     limit: number | null
+    force: boolean
   }
 ) {
   const pageSize = 1000
@@ -226,15 +293,20 @@ async function fetchCandidateUsers(
 
   const candidateUserIds = [...candidateIds]
   const profilesMap = await fetchProfilesMap(supabase, candidateUserIds)
+  const runsSinceCutoffByUserId = await fetchRunsSinceCutoffMap(supabase, candidateUserIds)
   const filtered = candidateUserIds.filter((candidateUserId) => {
     const profile = profilesMap.get(candidateUserId)
     return profile?.role !== 'admin'
   })
 
-  const limited = options.limit ? filtered.slice(0, options.limit) : filtered
+  const safelyFiltered = options.force
+    ? filtered
+    : filtered.filter((candidateUserId) => (runsSinceCutoffByUserId.get(candidateUserId) ?? 0) === 0)
+  const limited = options.limit ? safelyFiltered.slice(0, options.limit) : safelyFiltered
   return limited.map((candidateUserId) => ({
     userId: candidateUserId,
     displayName: getDisplayName(profilesMap.get(candidateUserId) ?? null),
+    runsSinceCutoff: runsSinceCutoffByUserId.get(candidateUserId) ?? 0,
   })) satisfies CandidateUser[]
 }
 
@@ -283,12 +355,14 @@ async function main() {
   const candidates = await fetchCandidateUsers(supabase, {
     userId: args.userId,
     limit: args.limit,
+    force: args.force,
   })
 
   if (candidates.length === 0) {
     console.log('[repair-strava-historical-runs] no_candidates', {
       userId: args.userId,
       limit: args.limit,
+      force: args.force,
     })
     return
   }
@@ -298,7 +372,8 @@ async function main() {
     userId: args.userId,
     limit: args.limit,
     dryRun: args.dryRun,
-    cutoff: '2026-01-01T00:00:00Z',
+    force: args.force,
+    cutoff: INITIAL_SYNC_CUTOFF,
   })
 
   if (args.dryRun) {
@@ -306,6 +381,7 @@ async function main() {
       console.log('[repair-strava-historical-runs] candidate', {
         userId: candidate.userId,
         displayName: candidate.displayName,
+        runsSinceCutoff: candidate.runsSinceCutoff,
       })
     }
     console.log('[repair-strava-historical-runs] dry_run_complete', {

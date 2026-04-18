@@ -297,6 +297,15 @@ async function main() {
   const summary = createSummary()
   summary.auditedUsers = auditResult.auditRows.length
 
+  for (const row of auditResult.auditRows) {
+    console.log('Audit classification', {
+      userId: row.user_id,
+      runsSinceCutoff: row.runs_since_cutoff,
+      totalStravaRuns: row.strava_runs_count,
+      auditStatus: row.status,
+    })
+  }
+
   if (args.userId && auditResult.auditRows.length === 0) {
     throw new Error(`No active auditable user found for user_id=${args.userId}`)
   }

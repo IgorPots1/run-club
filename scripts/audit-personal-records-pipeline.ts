@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 const DEFAULT_BATCH_SIZE = 200
 const DEFAULT_SOURCE_PAGE_SIZE = 1000
 const EXCLUDED_USER_ID = '9c831c40-928d-4d0c-99f7-393b2b985290'
+const INITIAL_SYNC_CUTOFF = '2026-01-01T00:00:00Z'
 const SUPPORTED_DISTANCES = [5000, 10000, 21097, 42195] as const
 const NO_HISTORICAL_DATA_AVAILABLE_ERROR = 'no_historical_data_available'
 
@@ -75,6 +76,7 @@ export type AuditRow = {
   is_strava_rate_limited: boolean
   rate_limited_until: string | null
   strava_runs_count: number
+  runs_since_cutoff: number
   historical_distances: number[]
   canonical_distances: number[]
   missing_distances: number[]
@@ -358,6 +360,50 @@ async function fetchStravaRunCountsForUsers(
   return runCountsByUserId
 }
 
+async function fetchStravaRunCountsSinceCutoffForUsers(
+  supabase: SupabaseClient,
+  userIds: string[],
+  sourcePageSize: number
+): Promise<Map<string, number>> {
+  const runCountsByUserId = new Map<string, number>()
+
+  if (userIds.length === 0) {
+    return runCountsByUserId
+  }
+
+  for (let offset = 0; ; offset += sourcePageSize) {
+    const { data, error } = await supabase
+      .from('runs')
+      .select('id, user_id')
+      .in('user_id', userIds)
+      .eq('external_source', 'strava')
+      .gte('created_at', INITIAL_SYNC_CUTOFF)
+      .order('user_id', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + sourcePageSize - 1)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const rows = (data as RunUserRow[] | null) ?? []
+
+    for (const row of rows) {
+      if (!row.user_id) {
+        continue
+      }
+
+      runCountsByUserId.set(row.user_id, (runCountsByUserId.get(row.user_id) ?? 0) + 1)
+    }
+
+    if (rows.length < sourcePageSize) {
+      break
+    }
+  }
+
+  return runCountsByUserId
+}
+
 async function fetchBackfillJobStatusesForUsers(
   supabase: SupabaseClient,
   userIds: string[]
@@ -465,6 +511,7 @@ function deriveStatus(input: {
   hasStravaConnection: boolean
   isStravaRateLimited: boolean
   stravaRunsCount: number
+  runsSinceCutoff: number
   hasBackfillJob: boolean
   backfillJobStatus: string | null
   backfillLastError: string | null
@@ -525,7 +572,15 @@ function deriveStatus(input: {
   }
 
   if (input.historicalDistances.length === 0) {
-    return 'backfill_missing'
+    if (input.runsSinceCutoff === 0) {
+      return 'backfill_missing'
+    }
+
+    if (input.canonicalDistances.length === 0 || input.missingDistances.length > 0) {
+      return 'partial'
+    }
+
+    return 'complete'
   }
 
   if (input.canonicalDistances.length === 0) {
@@ -608,6 +663,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
 
     let connectionsByUserId = new Map<string, StravaConnectionRow>()
     let stravaRunCountsByUserId = new Map<string, number>()
+    let stravaRunCountsSinceCutoffByUserId = new Map<string, number>()
     let backfillStatesByUserId = new Map<
       string,
       Pick<
@@ -623,6 +679,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
       const batchData = await Promise.all([
         fetchLatestStravaConnectionsForUsers(supabase, userIds),
         fetchStravaRunCountsForUsers(supabase, userIds, sourcePageSize),
+        fetchStravaRunCountsSinceCutoffForUsers(supabase, userIds, sourcePageSize),
         fetchBackfillJobStatusesForUsers(supabase, userIds),
         fetchDistanceSetsForUsers(supabase, 'personal_record_sources', userIds, sourcePageSize),
         fetchDistanceSetsForUsers(supabase, 'personal_records', userIds, sourcePageSize),
@@ -630,9 +687,10 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
 
       connectionsByUserId = batchData[0]
       stravaRunCountsByUserId = batchData[1]
-      backfillStatesByUserId = batchData[2]
-      historicalByUserId = batchData[3]
-      canonicalByUserId = batchData[4]
+      stravaRunCountsSinceCutoffByUserId = batchData[2]
+      backfillStatesByUserId = batchData[3]
+      historicalByUserId = batchData[4]
+      canonicalByUserId = batchData[5]
     } catch (error) {
       batchError = error instanceof Error ? error.message : 'unknown_error'
     }
@@ -657,6 +715,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
         const canonicalDistances = toDistanceArray(canonicalByUserId.get(profile.id) ?? new Set<number>())
         const missingDistances = getMissingDistances(new Set(canonicalDistances))
         const stravaRunsCount = stravaRunCountsByUserId.get(profile.id) ?? 0
+        const runsSinceCutoff = stravaRunCountsSinceCutoffByUserId.get(profile.id) ?? 0
 
         auditRows.push({
           user_id: profile.id,
@@ -665,6 +724,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
           is_strava_rate_limited: isStravaRateLimited,
           rate_limited_until: latestConnection?.rate_limited_until ?? null,
           strava_runs_count: stravaRunsCount,
+          runs_since_cutoff: runsSinceCutoff,
           historical_distances: historicalDistances,
           canonical_distances: canonicalDistances,
           missing_distances: missingDistances,
@@ -672,6 +732,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
             hasStravaConnection,
             isStravaRateLimited,
             stravaRunsCount,
+            runsSinceCutoff,
             hasBackfillJob: latestBackfillState !== null,
             backfillJobStatus,
             backfillLastError,
@@ -694,6 +755,7 @@ export async function auditPersonalRecordsPipeline(options: AuditPipelineOptions
           is_strava_rate_limited: false,
           rate_limited_until: null,
           strava_runs_count: 0,
+          runs_since_cutoff: 0,
           historical_distances: [],
           canonical_distances: [],
           missing_distances: [...SUPPORTED_DISTANCES],
