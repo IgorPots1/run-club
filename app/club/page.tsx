@@ -4,17 +4,13 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
-import ChallengesSection from '@/components/ChallengesSection'
-import ClubPersonalRecordsLeaderboard from '@/components/ClubPersonalRecordsLeaderboard'
 import InnerPageHeader from '@/components/InnerPageHeader'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
 import { getBootstrapUser } from '@/lib/auth'
-import { loadChallengesOverview, type ChallengesOverview } from '@/lib/challenges'
 import { formatAveragePace, formatDistanceKm } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
 
-type ClubTab = 'challenges' | 'leaderboard'
 type ClubStatsPeriod = 'week' | 'month'
 
 type WeeklyRunRow = {
@@ -121,21 +117,15 @@ function isRunInRange(runCreatedAt: string | null | undefined, startsAt: string,
 
 export default function ClubPage() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<ClubTab>('challenges')
   const [statsPeriod, setStatsPeriod] = useState<ClubStatsPeriod>('week')
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const [challengesOverview, setChallengesOverview] = useState<ChallengesOverview | null>(null)
-  const [challengesLoading, setChallengesLoading] = useState(true)
-  const [challengesError, setChallengesError] = useState('')
   const [leaderboard, setLeaderboard] = useState<WeeklyXpLeaderboard | null>(null)
   const [clubStats, setClubStats] = useState<ClubStatsByPeriod | null>(null)
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [leaderboardError, setLeaderboardError] = useState('')
   const [statsError, setStatsError] = useState('')
-  const [hasLoadedChallengesTab, setHasLoadedChallengesTab] = useState(false)
-  const [hasLoadedLeaderboardTab, setHasLoadedLeaderboardTab] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -167,64 +157,18 @@ export default function ClubPage() {
 
   useEffect(() => {
     if (!user) {
-      setChallengesOverview(null)
-      setChallengesLoading(false)
-      setChallengesError('')
-      setHasLoadedChallengesTab(false)
       setLeaderboard(null)
       setClubStats(null)
       setLeaderboardLoading(false)
       setStatsLoading(false)
       setLeaderboardError('')
       setStatsError('')
-      setHasLoadedLeaderboardTab(false)
       return
     }
   }, [user])
 
   useEffect(() => {
-    if (activeTab !== 'challenges' || hasLoadedChallengesTab) {
-      return
-    }
-
-    let isMounted = true
-
-    async function loadChallengesTabData() {
-      setChallengesError('')
-      setChallengesLoading(true)
-
-      try {
-        const nextOverview = await loadChallengesOverview({ includeCompleted: false })
-
-        if (!isMounted) return
-
-        setChallengesOverview(nextOverview)
-      } catch {
-        if (!isMounted) return
-
-        setChallengesOverview(null)
-        setChallengesError('Не удалось загрузить челленджи')
-      } finally {
-        if (isMounted) {
-          setChallengesLoading(false)
-          setHasLoadedChallengesTab(true)
-        }
-      }
-    }
-
-    void loadChallengesTabData()
-
-    return () => {
-      isMounted = false
-    }
-  }, [activeTab, hasLoadedChallengesTab])
-
-  useEffect(() => {
     if (!user) {
-      return
-    }
-
-    if (activeTab !== 'leaderboard' || hasLoadedLeaderboardTab) {
       return
     }
 
@@ -319,7 +263,6 @@ export default function ClubPage() {
         if (isMounted) {
           setLeaderboardLoading(false)
           setStatsLoading(false)
-          setHasLoadedLeaderboardTab(true)
         }
       }
     }
@@ -329,7 +272,7 @@ export default function ClubPage() {
     return () => {
       isMounted = false
     }
-  }, [activeTab, hasLoadedLeaderboardTab, user])
+  }, [user])
 
   if (!authLoading && !user) {
     return (
@@ -361,170 +304,143 @@ export default function ClubPage() {
         <div aria-hidden="true" className="invisible">
           <InnerPageHeader title="Клуб" fallbackHref="/" />
         </div>
-
-        <div className="mt-3">
-          <div className="app-surface-muted mb-3 grid grid-cols-2 rounded-2xl p-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('challenges')}
-              className={`${segmentBaseClass} ${
-                activeTab === 'challenges'
-                  ? 'app-card app-text-primary shadow-sm'
-                  : 'app-text-secondary'
-              }`}
-            >
-              Челленджи
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('leaderboard')}
-              className={`${segmentBaseClass} ${
-                activeTab === 'leaderboard'
-                  ? 'app-card app-text-primary shadow-sm'
-                  : 'app-text-secondary'
-              }`}
-            >
-              Рейтинг
-            </button>
-          </div>
-        </div>
       </div>
 
-      {activeTab === 'challenges' ? (
-        <ChallengesSection
-          showTitle={false}
-          overview={challengesOverview}
-          loading={authLoading || challengesLoading}
-          error={challengesError}
+      <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
+        <WeeklyLeaderboard
+          leaderboard={leaderboard}
+          currentUserId={currentUserId}
+          loading={authLoading || leaderboardLoading}
+          error={leaderboardError}
+          href="/race"
         />
-      ) : (
-        <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
-          {statsLoading ? (
-            <>
-              <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
-                <div className="skeleton-line h-4 w-28" />
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <div className="skeleton-line h-4 w-20" />
-                    <div className="skeleton-line h-6 w-24" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="skeleton-line h-4 w-20" />
-                    <div className="skeleton-line h-6 w-20" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="skeleton-line h-4 w-24" />
-                    <div className="skeleton-line h-6 w-24" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="skeleton-line h-4 w-24" />
-                    <div className="skeleton-line h-6 w-24" />
-                  </div>
-                </div>
-              </div>
-              <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
-                <div className="skeleton-line h-4 w-24" />
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <div className="skeleton-line h-4 w-28" />
-                    <div className="skeleton-line h-6 w-24" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="skeleton-line h-4 w-24" />
-                    <div className="skeleton-line h-6 w-20" />
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : hasActiveRaceWeek && selectedClubStats ? (
-            <>
-              <div className="app-surface-muted mb-3 inline-grid grid-cols-2 rounded-2xl p-1">
-                <button
-                  type="button"
-                  onClick={() => setStatsPeriod('week')}
-                  className={`${segmentBaseClass} min-w-28 ${
-                    statsPeriod === 'week'
-                      ? 'app-card app-text-primary shadow-sm'
-                      : 'app-text-secondary'
-                  }`}
-                >
-                  Неделя
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatsPeriod('month')}
-                  className={`${segmentBaseClass} min-w-28 ${
-                    statsPeriod === 'month'
-                      ? 'app-card app-text-primary shadow-sm'
-                      : 'app-text-secondary'
-                  }`}
-                >
-                  Месяц
-                </button>
-              </div>
 
-              <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
-                <p className="app-text-primary text-base font-semibold sm:text-lg">Статистика клуба за {statsPeriodLabel}</p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
-                    <p className="app-text-secondary text-sm">Дистанция</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(selectedClubStats.totalDistanceKm)} км</p>
-                  </div>
-                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
-                    <p className="app-text-secondary text-sm">Тренировки</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{selectedClubStats.totalRuns}</p>
-                  </div>
-                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
-                    <p className="app-text-secondary text-sm">Средний темп</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatAveragePace(selectedClubStats.totalMovingTimeSeconds, selectedClubStats.totalDistanceKm)}</p>
-                  </div>
-                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
-                    <p className="app-text-secondary text-sm">Набор высоты</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{Math.round(selectedClubStats.totalElevationGainMeters)} м</p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
-                <p className="app-text-primary text-base font-semibold sm:text-lg">Твой вклад</p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
-                    <p className="app-text-secondary text-sm">Твоя дистанция</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(userDistanceKm)} км</p>
-                  </div>
-                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
-                    <p className="app-text-secondary text-sm">Доля клуба</p>
-                    <p className="app-text-primary mt-1 text-lg font-semibold">{formatContributionPercent(contributionPercent)}</p>
-                  </div>
-                </div>
-                <p className="app-text-secondary mt-3 text-sm">
-                  {formatDistanceKm(userDistanceKm)} из {formatDistanceKm(totalDistanceKm)} км за {contributionPeriodLabel}.
-                </p>
-              </section>
-            </>
-          ) : !leaderboardError && !statsError ? (
+        {statsLoading ? (
+          <>
             <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
-              <p className="app-text-secondary text-sm">Статистика недели появится, когда начнется текущая гонка.</p>
+              <div className="skeleton-line h-4 w-28" />
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <div className="skeleton-line h-4 w-20" />
+                  <div className="skeleton-line h-6 w-24" />
+                </div>
+                <div className="space-y-2">
+                  <div className="skeleton-line h-4 w-20" />
+                  <div className="skeleton-line h-6 w-20" />
+                </div>
+                <div className="space-y-2">
+                  <div className="skeleton-line h-4 w-24" />
+                  <div className="skeleton-line h-6 w-24" />
+                </div>
+                <div className="space-y-2">
+                  <div className="skeleton-line h-4 w-24" />
+                  <div className="skeleton-line h-6 w-24" />
+                </div>
+              </div>
             </div>
-          ) : null}
-
-          {statsError ? (
             <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
-              <p className="text-sm text-red-600">{statsError}</p>
+              <div className="skeleton-line h-4 w-24" />
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <div className="skeleton-line h-4 w-28" />
+                  <div className="skeleton-line h-6 w-24" />
+                </div>
+                <div className="space-y-2">
+                  <div className="skeleton-line h-4 w-24" />
+                  <div className="skeleton-line h-6 w-20" />
+                </div>
+              </div>
             </div>
-          ) : null}
+          </>
+        ) : hasActiveRaceWeek && selectedClubStats ? (
+          <>
+            <div className="app-surface-muted mb-3 inline-grid grid-cols-2 rounded-2xl p-1">
+              <button
+                type="button"
+                onClick={() => setStatsPeriod('week')}
+                className={`${segmentBaseClass} min-w-28 ${
+                  statsPeriod === 'week'
+                    ? 'app-card app-text-primary shadow-sm'
+                    : 'app-text-secondary'
+                }`}
+              >
+                Неделя
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatsPeriod('month')}
+                className={`${segmentBaseClass} min-w-28 ${
+                  statsPeriod === 'month'
+                    ? 'app-card app-text-primary shadow-sm'
+                    : 'app-text-secondary'
+                }`}
+              >
+                Месяц
+              </button>
+            </div>
 
-          <ClubPersonalRecordsLeaderboard />
+            <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+              <p className="app-text-primary text-base font-semibold sm:text-lg">Статистика клуба за {statsPeriodLabel}</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                  <p className="app-text-secondary text-sm">Дистанция</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(selectedClubStats.totalDistanceKm)} км</p>
+                </div>
+                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                  <p className="app-text-secondary text-sm">Тренировки</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{selectedClubStats.totalRuns}</p>
+                </div>
+                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                  <p className="app-text-secondary text-sm">Средний темп</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{formatAveragePace(selectedClubStats.totalMovingTimeSeconds, selectedClubStats.totalDistanceKm)}</p>
+                </div>
+                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                  <p className="app-text-secondary text-sm">Набор высоты</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{Math.round(selectedClubStats.totalElevationGainMeters)} м</p>
+                </div>
+              </div>
+            </section>
 
-          <WeeklyLeaderboard
-            leaderboard={leaderboard}
-            currentUserId={currentUserId}
-            loading={authLoading || leaderboardLoading}
-            error={leaderboardError}
-            href="/race"
-          />
-        </div>
-      )}
+            <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+              <p className="app-text-primary text-base font-semibold sm:text-lg">Твой вклад</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                  <p className="app-text-secondary text-sm">Твоя дистанция</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(userDistanceKm)} км</p>
+                </div>
+                <div className="app-surface-muted rounded-xl px-3 py-2.5">
+                  <p className="app-text-secondary text-sm">Доля клуба</p>
+                  <p className="app-text-primary mt-1 text-lg font-semibold">{formatContributionPercent(contributionPercent)}</p>
+                </div>
+              </div>
+              <p className="app-text-secondary mt-3 text-sm">
+                {formatDistanceKm(userDistanceKm)} из {formatDistanceKm(totalDistanceKm)} км за {contributionPeriodLabel}.
+              </p>
+            </section>
+          </>
+        ) : !leaderboardError && !statsError ? (
+          <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+            <p className="app-text-secondary text-sm">Статистика недели появится, когда начнется текущая гонка.</p>
+          </div>
+        ) : null}
+
+        {statsError ? (
+          <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+            <p className="text-sm text-red-600">{statsError}</p>
+          </div>
+        ) : null}
+
+        <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+          <p className="app-text-primary text-base font-semibold sm:text-lg">Личные рекорды</p>
+          <p className="app-text-secondary mt-1 text-sm">Открыть отдельный рейтинг клуба по дистанциям.</p>
+          <Link
+            href="/club/leaderboard"
+            className="app-surface-muted app-text-primary mt-3 inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+          >
+            Перейти к рекордам
+          </Link>
+        </section>
+      </div>
     </main>
   )
 }

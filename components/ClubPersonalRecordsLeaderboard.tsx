@@ -150,10 +150,10 @@ export default function ClubPersonalRecordsLeaderboard() {
       {loading ? (
         <div className="mt-3 space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="app-surface-muted flex items-center justify-between gap-3 rounded-xl px-3 py-3">
+            <div key={index} className="app-surface-muted flex items-center justify-between gap-2.5 rounded-xl px-2.5 py-2">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="skeleton-line h-7 w-7 rounded-lg" />
-                <div className="h-10 w-10 rounded-full bg-[var(--color-card-border)]/50" />
+                <div className="skeleton-line h-6 w-8 rounded-lg" />
+                <div className="h-9 w-9 rounded-full bg-[var(--color-card-border)]/50" />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="skeleton-line h-4 w-28" />
                   <div className="skeleton-line h-3 w-16" />
@@ -171,54 +171,46 @@ export default function ClubPersonalRecordsLeaderboard() {
       ) : rows.length === 0 ? (
         <p className="app-text-secondary mt-3 text-sm">Пока ни у кого нет результата на этой дистанции.</p>
       ) : (
-        <div className="mt-3">
-          <div className="app-text-secondary grid grid-cols-[auto,minmax(0,1fr),auto] gap-3 px-3 text-[11px] font-medium uppercase tracking-wide">
-            <span>Место</span>
-            <span>Участник</span>
-            <span className="text-right">Результат</span>
-          </div>
+        <div className="mt-3 space-y-1.5">
+          {rows.map((row) => (
+            <div key={row.userId} className="app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-2.5 py-2">
+              <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2.5">
+                <div className="flex min-h-9 items-center">
+                  <span className="app-text-secondary inline-flex min-w-8 items-center justify-center text-sm font-semibold">
+                    #{row.rank}
+                  </span>
+                </div>
 
-          <div className="mt-2 space-y-2">
-            {rows.map((row) => (
-              <div key={row.userId} className="app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-3 py-2.5">
-                <div className="grid grid-cols-[auto,minmax(0,1fr),auto] gap-3">
-                  <div className="flex min-h-10 items-center">
-                    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-[var(--color-card-border)] px-2 text-xs font-semibold">
-                      #{row.rank}
+                <Link href={`/users/${row.userId}`} className="flex min-w-0 items-center gap-2.5">
+                  {row.avatarUrl ? (
+                    <Image
+                      src={row.avatarUrl}
+                      alt=""
+                      width={36}
+                      height={36}
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
+                      {(row.displayName[0] ?? '?').toUpperCase()}
                     </span>
+                  )}
+
+                  <div className="min-w-0">
+                    <p className="app-text-primary truncate text-sm font-medium">{row.displayName}</p>
+                    <p className="app-text-secondary truncate text-[11px]">{formatRecordDate(row.recordDate)}</p>
                   </div>
+                </Link>
 
-                  <Link href={`/users/${row.userId}`} className="flex min-w-0 items-center gap-3">
-                    {row.avatarUrl ? (
-                      <Image
-                        src={row.avatarUrl}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-sm font-medium dark:bg-gray-700 dark:text-gray-100">
-                        {(row.displayName[0] ?? '?').toUpperCase()}
-                      </span>
-                    )}
-
-                    <div className="min-w-0">
-                      <p className="app-text-primary truncate text-sm font-medium">{row.displayName}</p>
-                      <p className="app-text-secondary text-xs">{formatRecordDate(row.recordDate)}</p>
-                    </div>
-                  </Link>
-
-                  <div className="min-h-10 text-right">
-                    <p className="app-text-primary text-base font-semibold tabular-nums">{formatRecordTime(row.durationSeconds)}</p>
-                    <span className="app-text-secondary inline-flex rounded-md border border-[var(--color-card-border)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
-                      PR
-                    </span>
-                  </div>
+                <div className="min-h-9 text-right">
+                  <p className="app-text-primary text-[15px] font-semibold leading-tight tabular-nums">{formatRecordTime(row.durationSeconds)}</p>
+                  <span className="app-text-secondary mt-0.5 inline-flex rounded-md border border-[var(--color-card-border)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
+                    PR
+                  </span>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
     </section>
