@@ -374,18 +374,20 @@ export async function POST(request: Request) {
       step,
     })
 
-    if (typeof importResult.runId === 'string' && importResult.runId.length > 0) {
+    const runId = importResult.runId
+
+    if (typeof runId === 'string' && runId.length > 0) {
       after(async () => {
         try {
           await hydrateRunSupplementalStravaDataForRun({
             userId: connection.user_id,
-            runId: importResult.runId,
+            runId,
             stravaActivityId: activityId,
           })
         } catch (error) {
           console.warn('[strava-webhook] supplemental_hydration_failed', {
             userId: connection.user_id,
-            runId: importResult.runId,
+            runId,
             activityId,
             error: error instanceof Error ? error.message : 'Unknown supplemental hydration error',
           })
