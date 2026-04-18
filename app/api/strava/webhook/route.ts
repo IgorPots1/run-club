@@ -1,6 +1,12 @@
 import { after, NextResponse } from 'next/server'
 import { fetchStravaActivityById, getStravaWebhookVerifyToken, StravaApiError } from '@/lib/strava/strava-client'
-import { getStravaConnectionForAthlete, importStravaActivityForUser, recordStravaRateLimitCooldown, syncStravaRuns } from '@/lib/strava/strava-sync'
+import {
+  getStravaConnectionForAthlete,
+  hydrateRunSupplementalStravaDataForRun,
+  importStravaActivityForUser,
+  recordStravaRateLimitCooldown,
+  syncStravaRuns,
+} from '@/lib/strava/strava-sync'
 import type { StravaWebhookEvent } from '@/lib/strava/strava-types'
 
 const STRAVA_WEBHOOK_FETCH_RETRY_DELAYS_MS = [1500, 3000]
@@ -357,15 +363,35 @@ export async function POST(request: Request) {
       userId: connection.user_id,
       step,
     })
-    await importStravaActivityForUser(connection.user_id, activity, {
+    const importResult = await importStravaActivityForUser(connection.user_id, activity, {
       updateExisting: true,
       accessToken: connection.access_token,
     })
     console.info('[strava-webhook-debug] import_run_success', {
       activityId,
       userId: connection.user_id,
+      runId: importResult.runId ?? null,
       step,
     })
+
+    if (typeof importResult.runId === 'string' && importResult.runId.length > 0) {
+      after(async () => {
+        try {
+          await hydrateRunSupplementalStravaDataForRun({
+            userId: connection.user_id,
+            runId: importResult.runId,
+            stravaActivityId: activityId,
+          })
+        } catch (error) {
+          console.warn('[strava-webhook] supplemental_hydration_failed', {
+            userId: connection.user_id,
+            runId: importResult.runId,
+            activityId,
+            error: error instanceof Error ? error.message : 'Unknown supplemental hydration error',
+          })
+        }
+      })
+    }
 
     return NextResponse.json({
       ok: true,

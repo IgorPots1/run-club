@@ -3696,7 +3696,9 @@ export async function syncStravaRuns(
     const POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT = 5
     const postImportSupplementalSyncTargets = Array.from(
       new Map(
-        postImportSupplementalSyncCandidates.map((candidate) => [candidate.runId, candidate] as const)
+        [...postImportSupplementalSyncCandidates]
+          .reverse()
+          .map((candidate) => [candidate.runId, candidate] as const)
       ).values()
     ).slice(0, POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
 
