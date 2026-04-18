@@ -66,6 +66,12 @@ export async function loadDailyXpUsage({
   supabase = createSupabaseAdminClient(),
 }: LoadDailyXpUsageOptions) {
   const { startIso, endIso } = getUtcDayBounds(timestamp)
+  const usageWindowEndIso = new Date(timestamp).toISOString()
+  const boundedUsageWindowEndIso = usageWindowEndIso <= startIso
+    ? startIso
+    : usageWindowEndIso >= endIso
+      ? endIso
+      : usageWindowEndIso
   let runXp = 0
   let challengeXp = 0
   let normalizedReceivedLikesCount = 0
@@ -76,7 +82,7 @@ export async function loadDailyXpUsage({
       .select('xp')
       .eq('user_id', userId)
       .gte('created_at', startIso)
-      .lt('created_at', endIso)
+      .lt('created_at', boundedUsageWindowEndIso)
 
     runXpQuery = runXpQuery.neq('id', excludeRunId)
 
@@ -91,14 +97,14 @@ export async function loadDailyXpUsage({
         .select('challenges!inner(xp_reward)')
         .eq('user_id', userId)
         .gte('completed_at', startIso)
-        .lt('completed_at', endIso),
+        .lt('completed_at', boundedUsageWindowEndIso),
       supabase
         .from('run_likes')
         .select('id', { count: 'exact', head: true })
         .eq('run_owner_user_id', userId)
         .gt('xp_awarded', 0)
         .gte('created_at', startIso)
-        .lt('created_at', endIso),
+        .lt('created_at', boundedUsageWindowEndIso),
     ])
 
     if (runError) {
@@ -138,7 +144,7 @@ export async function loadDailyXpUsage({
     const { data, error } = await supabase.rpc('get_daily_xp_usage', {
       p_user_id: userId,
       p_start: startIso,
-      p_end: endIso,
+      p_end: boundedUsageWindowEndIso,
     })
 
     if (error) {
