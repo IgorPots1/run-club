@@ -81,6 +81,27 @@ function mergeUniqueMixedFeedItems(existing: FeedItem[], incoming: FeedItem[]) {
   return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
 }
 
+function projectFeedItemForSnapshot(item: FeedItem): FeedItem {
+  if (item.kind !== 'run') {
+    return item
+  }
+
+  const {
+    map_polyline: _mapPolyline,
+    photos: _photos,
+    xpBreakdownRows: _xpBreakdownRows,
+    insight: _insight,
+    ...lightweightRunItem
+  } = item
+
+  return {
+    ...lightweightRunItem,
+    photos: [],
+    xpBreakdownRows: [],
+    insight: null,
+  }
+}
+
 function formatRaceDateLabel(dateValue: string | null) {
   if (!dateValue) {
     return 'Дата не указана'
@@ -447,7 +468,7 @@ export default function InfiniteWorkoutFeed({
     sourceKey: scrollRestorationKey ?? 'feed-disabled',
     getScrollElement: getActiveScrollContainer,
     getSnapshot: () => ({
-      items: itemsRef.current,
+      items: itemsRef.current.map(projectFeedItemForSnapshot),
       hasMore,
       nextOffset,
       savedAt: Date.now(),
