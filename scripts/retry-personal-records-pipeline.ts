@@ -10,6 +10,7 @@ import { runInitialPersonalRecordsSyncForUser } from '@/lib/personal-records/run
 const DEFAULT_BATCH_SIZE = 200
 const DEFAULT_SOURCE_PAGE_SIZE = 1000
 const RETRYABLE_STATUSES = ['needs_retry', 'backfill_missing', 'recompute_missing', 'partial'] as const
+const STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS = 15 * 60 * 1000
 const maxAttemptsPerUser = 3
 const EMPTY_FIRST_HISTORICAL_PAGE_ERROR = 'empty_first_historical_page'
 const NO_HISTORICAL_DATA_AVAILABLE_ERROR = 'no_historical_data_available'
@@ -48,6 +49,7 @@ type Summary = {
 type BackfillJobStateRow = {
   status: string | null
   last_error: string | null
+  updated_at: string | null
 }
 
 let cachedSupabaseAdminClient: SupabaseClient | null = null
@@ -111,7 +113,7 @@ async function loadLatestBackfillJobState(
 ): Promise<BackfillJobStateRow | null> {
   const { data, error } = await supabase
     .from('personal_record_backfill_jobs')
-    .select('status, last_error')
+    .select('status, last_error, updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(1)
@@ -145,6 +147,15 @@ function isCompletedNoHistoricalDataAvailable(jobState: BackfillJobStateRow | nu
     jobState?.status === 'completed'
     && jobState?.last_error === NO_HISTORICAL_DATA_AVAILABLE_ERROR
   )
+}
+
+function isStaleRunningBackfillJob(jobState: BackfillJobStateRow | null, now = Date.now()) {
+  if (jobState?.status !== 'running' || typeof jobState.updated_at !== 'string') {
+    return false
+  }
+
+  const updatedAt = new Date(jobState.updated_at).getTime()
+  return Number.isFinite(updatedAt) && updatedAt <= now - STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS
 }
 
 function parseArgs(argv: string[]): ScriptArgs {
@@ -343,9 +354,10 @@ async function main() {
   for (const row of selectedRows) {
     const latestBackfillJobState = await loadLatestBackfillJobState(supabase, row.user_id)
     const isBackfillRunning = latestBackfillJobState?.status === 'running'
+    const isStaleRunningBackfill = isStaleRunningBackfillJob(latestBackfillJobState)
     const hasBackfillRateLimitError = isRateLimitErrorMessage(latestBackfillJobState?.last_error)
 
-    if (isBackfillRunning) {
+    if (isBackfillRunning && !isStaleRunningBackfill) {
       summary.skippedRunning += 1
 
       console.log('Skipping retry candidate', {
@@ -357,9 +369,24 @@ async function main() {
         finalStatus: row.status,
         finalStatusLabel: getAuditStatusLogLabel(row.status),
         backfillJobStatus: latestBackfillJobState?.status ?? null,
+        backfillUpdatedAt: latestBackfillJobState?.updated_at ?? null,
+        staleRunningTimeoutMs: STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS,
         action: 'skipped_due_to_running',
       })
       continue
+    }
+
+    if (isBackfillRunning && isStaleRunningBackfill) {
+      console.log('Continuing retry candidate with stale running backfill job', {
+        userId: row.user_id,
+        displayName: row.display_name,
+        auditStatus: row.status,
+        auditStatusLabel: getAuditStatusLogLabel(row.status),
+        backfillJobStatus: latestBackfillJobState?.status ?? null,
+        backfillUpdatedAt: latestBackfillJobState?.updated_at ?? null,
+        staleRunningTimeoutMs: STALE_RUNNING_BACKFILL_JOB_TIMEOUT_MS,
+        action: 'stale_running_will_resume',
+      })
     }
 
     if (hasActiveRateLimit(row.rate_limited_until) || hasBackfillRateLimitError) {
