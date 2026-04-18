@@ -11,6 +11,7 @@ const DEFAULT_BATCH_SIZE = 200
 const DEFAULT_SOURCE_PAGE_SIZE = 1000
 const RETRYABLE_STATUSES = ['needs_retry', 'backfill_missing', 'recompute_missing', 'partial'] as const
 const maxAttemptsPerUser = 3
+const EMPTY_FIRST_HISTORICAL_PAGE_ERROR = 'empty_first_historical_page'
 
 type RetryableAuditStatus = (typeof RETRYABLE_STATUSES)[number]
 
@@ -296,6 +297,11 @@ async function main() {
     for (let attemptNumber = 1; attemptNumber <= maxAttemptsPerUser; attemptNumber += 1) {
       attemptsUsed = attemptNumber
       lastResult = await runInitialPersonalRecordsSyncForUser(row.user_id)
+      const latestBackfillJobStateAfterAttempt = await loadLatestBackfillJobState(supabase, row.user_id)
+      const endedWithEmptyFirstHistoricalPage = (
+        latestBackfillJobStateAfterAttempt?.status === 'pending'
+        && latestBackfillJobStateAfterAttempt?.last_error === EMPTY_FIRST_HISTORICAL_PAGE_ERROR
+      )
 
       const updatedAuditResult = await auditPersonalRecordsPipeline({
         batchSize: args.batchSize,
@@ -360,7 +366,22 @@ async function main() {
               backfillJobStatus: lastResult.backfillJobStatus ?? null,
             }
           : {}),
+        backfillJobStatus: latestBackfillJobStateAfterAttempt?.status ?? null,
+        backfillLastError: latestBackfillJobStateAfterAttempt?.last_error ?? null,
       })
+
+      if (endedWithEmptyFirstHistoricalPage) {
+        console.log('Stopping retries for user in this run', {
+          userId: row.user_id,
+          displayName: row.display_name,
+          attemptNumber,
+          maxAttemptsPerUser,
+          backfillJobStatus: latestBackfillJobStateAfterAttempt?.status ?? null,
+          backfillLastError: latestBackfillJobStateAfterAttempt?.last_error ?? null,
+          action: 'skipped_due_to_empty_first_page',
+        })
+        break
+      }
 
       if (
         finalStatus === 'complete'
