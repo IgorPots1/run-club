@@ -4,7 +4,10 @@ import InnerPageHeader from '@/components/InnerPageHeader'
 import { loadCurrentUserPersonalRecords, type PersonalRecordView } from '@/lib/personal-records'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import BackfillEnsureOnLoad from './BackfillEnsureOnLoad'
-import { loadHistoricalPersonalRecordBackfillStateForUser } from '@/lib/personal-records/runHistoricalPersonalRecordBackfillForUser.mjs'
+import {
+  EMPTY_FIRST_HISTORICAL_PAGE_ERROR,
+  loadHistoricalPersonalRecordBackfillStateForUser,
+} from '@/lib/personal-records/runHistoricalPersonalRecordBackfillForUser.mjs'
 
 const RECORD_CARDS = [
   { distanceMeters: 5000, label: '5 км' },
@@ -119,10 +122,12 @@ export default async function ActivityRecordsPage() {
   let backfillState: {
     connected: boolean
     jobStatus: 'missing' | 'pending' | 'paused_rate_limited' | 'running' | 'completed' | 'failed'
+    lastError: string | null
     cooldownActive: boolean
   } = {
     connected: false,
     jobStatus: 'missing',
+    lastError: null,
     cooldownActive: false,
   }
 
@@ -142,12 +147,16 @@ export default async function ActivityRecordsPage() {
   const hasAnyRecords = records.length > 0
   const shouldShowBackfillPrompt = !backfillState.connected
   const shouldShowBackfillStatus = backfillState.connected && backfillState.jobStatus !== 'completed'
+  const blockedByEmptyFirstPageBootstrap = (
+    backfillState.jobStatus === 'pending'
+    && backfillState.lastError === EMPTY_FIRST_HISTORICAL_PAGE_ERROR
+  )
   const shouldTriggerBackfill = backfillState.connected && !backfillState.cooldownActive && (
     backfillState.jobStatus === 'missing'
     || backfillState.jobStatus === 'pending'
     || backfillState.jobStatus === 'paused_rate_limited'
     || backfillState.jobStatus === 'running'
-  )
+  ) && !blockedByEmptyFirstPageBootstrap
 
   return (
     <main className="min-h-screen">

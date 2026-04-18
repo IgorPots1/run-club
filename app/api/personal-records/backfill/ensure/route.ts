@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   try {
     const result = await ensureHistoricalPersonalRecordBackfillForUser(user.id, {
       ignoreCooldown: force,
+      ignoreEmptyFirstPageBootstrap: force,
     })
 
     return NextResponse.json({

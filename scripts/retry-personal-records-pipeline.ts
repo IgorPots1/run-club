@@ -12,6 +12,12 @@ const DEFAULT_SOURCE_PAGE_SIZE = 1000
 const RETRYABLE_STATUSES = ['needs_retry', 'backfill_missing', 'recompute_missing', 'partial'] as const
 const maxAttemptsPerUser = 3
 const EMPTY_FIRST_HISTORICAL_PAGE_ERROR = 'empty_first_historical_page'
+const NO_HISTORICAL_DATA_AVAILABLE_ERROR = 'no_historical_data_available'
+const DEFAULT_VERIFIED_EXCLUDED_USER_IDS = [
+  '7d2fa58b-d6bd-40fd-89b4-0d59d22734a6',
+  '64806e86-39eb-472e-989f-903ab67f9999',
+  '2a1fbf47-3240-42f9-8db3-4a31badd357d',
+] as const
 
 type RetryableAuditStatus = (typeof RETRYABLE_STATUSES)[number]
 
@@ -19,6 +25,9 @@ type ScriptArgs = {
   batchSize: number
   sourcePageSize: number
   userId: string | null
+  maxUsers: number | null
+  previewOnly: boolean
+  excludeUserIds: string[]
   help: boolean
 }
 
@@ -51,6 +60,17 @@ function parsePositiveInteger(value: string, flagName: string) {
   }
 
   return normalizedValue
+}
+
+function parseCsvUserIds(value: string) {
+  const uniqueIds = new Set<string>()
+  for (const item of value.split(',')) {
+    const normalized = item.trim()
+    if (normalized) {
+      uniqueIds.add(normalized)
+    }
+  }
+  return [...uniqueIds]
 }
 
 function getRequiredEnv(name: string) {
@@ -120,11 +140,21 @@ function isPendingEmptyFirstHistoricalPage(jobState: BackfillJobStateRow | null)
   )
 }
 
+function isCompletedNoHistoricalDataAvailable(jobState: BackfillJobStateRow | null) {
+  return (
+    jobState?.status === 'completed'
+    && jobState?.last_error === NO_HISTORICAL_DATA_AVAILABLE_ERROR
+  )
+}
+
 function parseArgs(argv: string[]): ScriptArgs {
   const args: ScriptArgs = {
     batchSize: DEFAULT_BATCH_SIZE,
     sourcePageSize: DEFAULT_SOURCE_PAGE_SIZE,
     userId: null,
+    maxUsers: null,
+    previewOnly: false,
+    excludeUserIds: [...DEFAULT_VERIFIED_EXCLUDED_USER_IDS],
     help: false,
   }
 
@@ -152,6 +182,22 @@ function parseArgs(argv: string[]): ScriptArgs {
       continue
     }
 
+    if (argument.startsWith('--max-users=')) {
+      args.maxUsers = parsePositiveInteger(argument.slice('--max-users='.length), '--max-users')
+      continue
+    }
+
+    if (argument === '--preview-only') {
+      args.previewOnly = true
+      continue
+    }
+
+    if (argument.startsWith('--exclude-user-ids=')) {
+      const requestedExclusions = parseCsvUserIds(argument.slice('--exclude-user-ids='.length))
+      args.excludeUserIds = [...new Set([...args.excludeUserIds, ...requestedExclusions])]
+      continue
+    }
+
     throw new Error(`Unknown argument: ${argument}`)
   }
 
@@ -169,6 +215,9 @@ Usage:
 Optional:
   --batch-size=200
   --source-page-size=1000
+  --max-users=3
+  --preview-only
+  --exclude-user-ids=<uuid,uuid,...>
 
 Environment variables:
   NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL
@@ -219,6 +268,9 @@ async function main() {
     batchSize: args.batchSize,
     sourcePageSize: args.sourcePageSize,
     targetUserId: args.userId,
+    maxUsers: args.maxUsers,
+    previewOnly: args.previewOnly,
+    excludedUserIds: args.excludeUserIds,
     retryableStatuses: [...RETRYABLE_STATUSES],
     retryableStatusLabels: RETRYABLE_STATUSES.map((status) => getAuditStatusLogLabel(status)),
     maxAttemptsPerUser,
@@ -238,11 +290,44 @@ async function main() {
     throw new Error(`No active auditable user found for user_id=${args.userId}`)
   }
 
+  const excludedUserIds = new Set(args.excludeUserIds)
   const retryRows = auditResult.auditRows.filter((row) => isRetryableStatus(row.status))
+  const remainingRows = retryRows.filter((row) => !excludedUserIds.has(row.user_id))
+  const selectedRows = args.maxUsers
+    ? remainingRows.slice(0, args.maxUsers)
+    : remainingRows
   const partialDataMissingRows = auditResult.auditRows.filter(
     (row) => row.status === 'partial_data_missing'
   )
-  summary.retryCandidates = retryRows.length
+  summary.retryCandidates = selectedRows.length
+
+  console.log('Computed retry candidates', {
+    allRetryable: retryRows.length,
+    excludedByUserId: retryRows.length - remainingRows.length,
+    selectedForThisRun: selectedRows.length,
+    maxUsers: args.maxUsers,
+  })
+
+  if (selectedRows.length > 0) {
+    console.log('Selected users for this run')
+    for (const row of selectedRows) {
+      console.log(
+        `  user_id=${row.user_id} status=${row.status} status_label=${getAuditStatusLogLabel(row.status)} display_name="${row.display_name}"`
+      )
+    }
+  } else {
+    console.log('Selected users for this run: none')
+  }
+
+  if (args.previewOnly) {
+    console.log('Preview-only mode enabled; no retries executed.')
+    console.log('Personal records pipeline retry finished', {
+      ...summary,
+      targetUserId: args.userId,
+      auditedStatusSummary: auditResult.summary,
+    })
+    return
+  }
 
   if (partialDataMissingRows.length > 0) {
     summary.dataMissing += partialDataMissingRows.length
@@ -255,7 +340,7 @@ async function main() {
     })
   }
 
-  for (const row of retryRows) {
+  for (const row of selectedRows) {
     const latestBackfillJobState = await loadLatestBackfillJobState(supabase, row.user_id)
     const isBackfillRunning = latestBackfillJobState?.status === 'running'
     const hasBackfillRateLimitError = isRateLimitErrorMessage(latestBackfillJobState?.last_error)
@@ -310,6 +395,24 @@ async function main() {
         backfillJobStatus: latestBackfillJobState?.status ?? null,
         backfillLastError: latestBackfillJobState?.last_error ?? null,
         action: 'skipped_due_to_pending_empty_first_page',
+      })
+      continue
+    }
+
+    if (isCompletedNoHistoricalDataAvailable(latestBackfillJobState)) {
+      summary.skippedPendingEmptyFirstPage += 1
+
+      console.log('Skipping retry candidate', {
+        userId: row.user_id,
+        displayName: row.display_name,
+        auditStatus: row.status,
+        auditStatusLabel: getAuditStatusLogLabel(row.status),
+        attemptsUsed: 0,
+        finalStatus: row.status,
+        finalStatusLabel: getAuditStatusLogLabel(row.status),
+        backfillJobStatus: latestBackfillJobState?.status ?? null,
+        backfillLastError: latestBackfillJobState?.last_error ?? null,
+        action: 'skipped_due_to_no_historical_data_available',
       })
       continue
     }
@@ -406,6 +509,19 @@ async function main() {
           backfillJobStatus: latestBackfillJobStateAfterAttempt?.status ?? null,
           backfillLastError: latestBackfillJobStateAfterAttempt?.last_error ?? null,
           action: 'skipped_due_to_empty_first_page',
+        })
+        break
+      }
+
+      if (isCompletedNoHistoricalDataAvailable(latestBackfillJobStateAfterAttempt)) {
+        console.log('Stopping retries for user in this run', {
+          userId: row.user_id,
+          displayName: row.display_name,
+          attemptNumber,
+          maxAttemptsPerUser,
+          backfillJobStatus: latestBackfillJobStateAfterAttempt?.status ?? null,
+          backfillLastError: latestBackfillJobStateAfterAttempt?.last_error ?? null,
+          action: 'skipped_due_to_no_historical_data_available',
         })
         break
       }
