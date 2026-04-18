@@ -80,20 +80,22 @@ function isLeaderboardResponse(value: unknown): value is ClubPersonalRecordLeade
 }
 
 type ClubPersonalRecordsLeaderboardProps = {
+  initialDistance?: ClubPersonalRecordDistance
   initialRows?: ClubPersonalRecordLeaderboardRow[]
 }
 
 export default function ClubPersonalRecordsLeaderboard({
+  initialDistance = 5000,
   initialRows,
 }: ClubPersonalRecordsLeaderboardProps) {
   const router = useRouter()
-  const [selectedDistance, setSelectedDistance] = useState<ClubPersonalRecordDistance>(5000)
+  const [selectedDistance, setSelectedDistance] = useState<ClubPersonalRecordDistance>(initialDistance)
   const [rows, setRows] = useState<ClubPersonalRecordLeaderboardRow[]>(() => initialRows ?? [])
   const [loading, setLoading] = useState(() => initialRows == null)
   const [error, setError] = useState('')
   const rowsCacheRef = useRef(
     new Map<ClubPersonalRecordDistance, ClubPersonalRecordLeaderboardRow[]>(
-      initialRows == null ? [] : [[5000, initialRows]]
+      initialRows == null ? [] : [[initialDistance, initialRows]]
     )
   )
   const segmentBaseClass = 'flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium transition-colors'
@@ -166,7 +168,17 @@ export default function ClubPersonalRecordsLeaderboard({
             key={distance}
             type="button"
             aria-pressed={selectedDistance === distance}
-            onClick={() => setSelectedDistance(distance)}
+            onClick={() => {
+              const cachedRows = rowsCacheRef.current.get(distance)
+
+              if (cachedRows) {
+                setRows(cachedRows)
+                setError('')
+                setLoading(false)
+              }
+
+              setSelectedDistance(distance)
+            }}
             className={`${segmentBaseClass} ${
               selectedDistance === distance
                 ? 'app-card app-text-primary shadow-sm'

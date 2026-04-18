@@ -35,7 +35,7 @@ export default async function ClubLeaderboardPage() {
       </div>
 
       <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
-        <ClubPersonalRecordsLeaderboard initialRows={initialRows} />
+        <ClubPersonalRecordsLeaderboard initialDistance={5000} initialRows={initialRows} />
       </div>
     </main>
   )
