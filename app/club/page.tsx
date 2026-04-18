@@ -1,5 +1,6 @@
 'use client'
 
+import { ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -17,7 +18,7 @@ function ClubNavCard({ href, title, subtitle }: ClubNavCardProps) {
   return (
     <Link
       href={href}
-      className="app-card block rounded-2xl border px-4 py-3.5 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:ring-white/10"
+      className="app-card flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:ring-white/10"
     >
       <div className="min-w-0">
         <p className="app-text-primary truncate text-base font-semibold">{title}</p>
@@ -25,6 +26,7 @@ function ClubNavCard({ href, title, subtitle }: ClubNavCardProps) {
           <p className="app-text-secondary mt-0.5 truncate text-sm">{subtitle}</p>
         ) : null}
       </div>
+      <ChevronRight className="app-text-muted mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
     </Link>
   )
 }

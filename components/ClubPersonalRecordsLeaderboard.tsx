@@ -47,6 +47,14 @@ function formatRecordDate(value: string | null) {
   }).format(parsedDate)
 }
 
+function getRankLabel(rank: number) {
+  if (rank === 1) return '🥇'
+  if (rank === 2) return '🥈'
+  if (rank === 3) return '🥉'
+
+  return `#${rank}`
+}
+
 function isLeaderboardResponse(value: unknown): value is ClubPersonalRecordLeaderboardResponse {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { rows?: unknown }).rows)) {
     return false
@@ -153,16 +161,19 @@ export default function ClubPersonalRecordsLeaderboard() {
       {loading ? (
         <div className="mt-3 space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="app-surface-muted rounded-xl px-3 py-2.5">
-              <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-x-2.5 gap-y-1.5">
-                <div className="skeleton-line row-span-2 h-5 w-8 rounded-lg" />
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="h-8 w-8 rounded-full bg-[var(--color-card-border)]/50" />
-                  <div className="skeleton-line h-4 w-28" />
+            <div key={index} className="app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-3 py-2">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-full bg-[var(--color-card-border)]/50" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="skeleton-line h-4 w-28" />
+                    <div className="skeleton-line h-4 w-14" />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <div className="skeleton-line h-3 w-24" />
+                    <div className="skeleton-line h-4 w-9" />
+                  </div>
                 </div>
-                <div className="skeleton-line h-4 w-16" />
-                <div className="skeleton-line h-3 w-24" />
-                <div className="skeleton-line h-4 w-9" />
               </div>
             </div>
           ))}
@@ -175,6 +186,7 @@ export default function ClubPersonalRecordsLeaderboard() {
         <div className="mt-3 space-y-1.5">
           {rows.map((row) => {
             const runHref = row.runId ? `/runs/${row.runId}` : null
+            const rankLabel = getRankLabel(row.rank)
 
             return (
               <div
@@ -188,15 +200,11 @@ export default function ClubPersonalRecordsLeaderboard() {
                     router.push(runHref)
                   }
                 } : undefined}
-                className={`app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-3 py-2.5 ${
+                className={`app-surface-muted rounded-xl border border-[var(--color-card-border)]/60 px-3 py-2 ${
                   runHref ? 'cursor-pointer transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/15' : ''
                 }`}
               >
-                <div className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-x-2.5 gap-y-1">
-                  <span className="app-text-secondary row-span-2 inline-flex min-w-8 items-center justify-center text-sm font-semibold">
-                    #{row.rank}
-                  </span>
-
+                <div className="flex items-center gap-2.5">
                   <Link
                     href={`/users/${row.userId}`}
                     onClick={(event) => event.stopPropagation()}
@@ -216,27 +224,44 @@ export default function ClubPersonalRecordsLeaderboard() {
                       </span>
                     )}
 
-                    <span className="app-text-primary truncate text-sm font-medium">{row.displayName}</span>
+                    <span className="sr-only">Открыть профиль {row.displayName}</span>
                   </Link>
 
-                  {runHref ? (
-                    <Link
-                      href={runHref}
-                      onClick={(event) => event.stopPropagation()}
-                      className="app-text-primary shrink-0 text-[15px] font-semibold leading-tight tabular-nums"
-                    >
-                      {formatRecordTime(row.durationSeconds)}
-                    </Link>
-                  ) : (
-                    <p className="app-text-primary shrink-0 text-[15px] font-semibold leading-tight tabular-nums">
-                      {formatRecordTime(row.durationSeconds)}
-                    </p>
-                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <Link
+                        href={`/users/${row.userId}`}
+                        onClick={(event) => event.stopPropagation()}
+                        className="app-text-primary min-w-0 truncate text-sm font-semibold"
+                      >
+                        <span className="app-text-secondary mr-1.5 inline-flex min-w-7 items-center justify-start text-sm font-semibold">
+                          {rankLabel}
+                        </span>
+                        <span className="truncate">{row.displayName}</span>
+                      </Link>
 
-                  <p className="app-text-secondary truncate text-[11px]">{formatRecordDate(row.recordDate)}</p>
-                  <span className="app-text-secondary inline-flex justify-self-end rounded-md border border-[var(--color-card-border)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
-                    PR
-                  </span>
+                      {runHref ? (
+                        <Link
+                          href={runHref}
+                          onClick={(event) => event.stopPropagation()}
+                          className="app-text-primary shrink-0 text-[15px] font-semibold leading-tight tabular-nums"
+                        >
+                          {formatRecordTime(row.durationSeconds)}
+                        </Link>
+                      ) : (
+                        <p className="app-text-primary shrink-0 text-[15px] font-semibold leading-tight tabular-nums">
+                          {formatRecordTime(row.durationSeconds)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-0.5 flex items-center justify-between gap-3">
+                      <p className="app-text-secondary min-w-0 truncate text-[11px]">{formatRecordDate(row.recordDate)}</p>
+                      <span className="app-text-secondary inline-flex shrink-0 rounded-md border border-[var(--color-card-border)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide">
+                        PR
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )
