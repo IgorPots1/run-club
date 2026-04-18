@@ -1,10 +1,17 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { syncStravaRuns } from '../lib/strava/strava-sync'
 
+const EXCLUDED_USER_IDS = [
+  '7d2fa58b-d6bd-40fd-89b4-0d59d22734a6',
+  '64806e86-39eb-472e-989f-903ab67f9999',
+  '2a1fbf47-3240-42f9-8db3-4a31badd357d',
+  '9c831c40-928d-4d0c-99f7-393b2b985290',
+] as const
+
 type Args = {
-  userIds: string[]
-  allConnected: boolean
+  userId: string | null
   limit: number | null
+  dryRun: boolean
   help: boolean
 }
 
@@ -12,13 +19,37 @@ type ConnectionRow = {
   user_id: string | null
 }
 
+type ProfileRow = {
+  id: string
+  role: string | null
+  first_name: string | null
+  last_name: string | null
+  name: string | null
+  nickname: string | null
+  email: string | null
+}
+
+type CandidateUser = {
+  userId: string
+  displayName: string
+}
+
+type UserRepairStatus = 'completed' | 'rate_limited' | 'failed'
+
+type UserRepairResult = {
+  userId: string
+  displayName: string
+  imported: number
+  skipped: number
+  status: UserRepairStatus
+  reason: string | null
+}
+
 function getRequiredEnv(name: string) {
   const value = process.env[name]
-
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`)
   }
-
   return value
 }
 
@@ -37,19 +68,17 @@ function createSupabaseAdminClient() {
 
 function parsePositiveInteger(value: string, flagName: string) {
   const parsed = Number(value)
-
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`${flagName} must be a positive integer`)
   }
-
   return parsed
 }
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    userIds: [],
-    allConnected: false,
+    userId: null,
     limit: null,
+    dryRun: false,
     help: false,
   }
 
@@ -59,17 +88,12 @@ function parseArgs(argv: string[]): Args {
       continue
     }
 
-    if (argument === '--all-connected') {
-      args.allConnected = true
-      continue
-    }
-
     if (argument.startsWith('--user-id=')) {
       const userId = argument.slice('--user-id='.length).trim()
       if (!userId) {
         throw new Error('--user-id cannot be empty')
       }
-      args.userIds.push(userId)
+      args.userId = userId
       continue
     }
 
@@ -78,15 +102,12 @@ function parseArgs(argv: string[]): Args {
       continue
     }
 
+    if (argument === '--dry-run') {
+      args.dryRun = true
+      continue
+    }
+
     throw new Error(`Unknown argument: ${argument}`)
-  }
-
-  if (!args.help && !args.allConnected && args.userIds.length === 0) {
-    throw new Error('Provide at least one --user-id=<uuid> or --all-connected')
-  }
-
-  if (args.allConnected && args.userIds.length > 0) {
-    throw new Error('Use either --all-connected or --user-id, not both')
   }
 
   return args
@@ -94,18 +115,23 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage() {
   console.log(`
-One-time repair: run Strava historical backfill (from 2026-01-01 cutoff) for users
-who connected Strava before callback-based run backfill existed.
+One-time repair for missing Strava initial historical run backfill.
+Uses syncStravaRuns(mode=backfill) with cutoff 2026-01-01.
 
 Usage:
   NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --user-id=<uuid>
-  NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --all-connected
-  NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --all-connected --limit=100
+  NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --limit=100
+  NODE_OPTIONS=--conditions=react-server npx tsx --env-file=.env.local scripts/repair-strava-historical-runs-backfill.ts --dry-run
 
 Flags:
-  --user-id=<uuid>    Backfill one user (repeatable)
-  --all-connected     Backfill all users with strava_connections.status='connected'
-  --limit=<n>         Optional cap when using --all-connected
+  --user-id=<uuid>    Repair one candidate user
+  --limit=<n>         Optional cap for candidate users
+  --dry-run           Print candidate users without syncing
+
+Candidate filter:
+  strava_connections.status = connected
+  strava_connections.last_synced_at is null
+  excludes admin users and known excluded user ids
 
 Environment variables:
   NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL
@@ -113,18 +139,70 @@ Environment variables:
 `)
 }
 
-async function fetchConnectedUserIds(supabase: SupabaseClient, limit: number | null) {
-  const userIds = new Set<string>()
+function getDisplayName(profile: ProfileRow | null) {
+  if (!profile) {
+    return 'unknown'
+  }
+
+  const fullName = `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim()
+  if (fullName) {
+    return fullName
+  }
+  if (profile.name?.trim()) {
+    return profile.name.trim()
+  }
+  if (profile.nickname?.trim()) {
+    return profile.nickname.trim()
+  }
+  if (profile.email?.trim()) {
+    return profile.email.trim()
+  }
+  return 'unknown'
+}
+
+async function fetchProfilesMap(supabase: SupabaseClient, userIds: string[]) {
+  if (userIds.length === 0) {
+    return new Map<string, ProfileRow>()
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, role, first_name, last_name, name, nickname, email')
+    .in('id', userIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const rows = (data as ProfileRow[] | null) ?? []
+  return new Map(rows.map((row) => [row.id, row]))
+}
+
+async function fetchCandidateUsers(
+  supabase: SupabaseClient,
+  options: {
+    userId: string | null
+    limit: number | null
+  }
+) {
   const pageSize = 1000
+  const candidateIds = new Set<string>()
+  const excludedIds = new Set<string>(EXCLUDED_USER_IDS)
 
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('strava_connections')
       .select('user_id')
       .eq('status', 'connected')
+      .is('last_synced_at', null)
       .order('user_id', { ascending: true })
       .range(offset, offset + pageSize - 1)
 
+    if (options.userId) {
+      query = query.eq('user_id', options.userId)
+    }
+
+    const { data, error } = await query
     if (error) {
       throw new Error(error.message)
     }
@@ -135,17 +213,63 @@ async function fetchConnectedUserIds(supabase: SupabaseClient, limit: number | n
     }
 
     for (const row of rows) {
-      if (row.user_id) {
-        userIds.add(row.user_id)
+      if (!row.user_id || excludedIds.has(row.user_id)) {
+        continue
       }
+      candidateIds.add(row.user_id)
+    }
 
-      if (limit && userIds.size >= limit) {
-        return [...userIds]
-      }
+    if (options.userId) {
+      break
     }
   }
 
-  return [...userIds]
+  const candidateUserIds = [...candidateIds]
+  const profilesMap = await fetchProfilesMap(supabase, candidateUserIds)
+  const filtered = candidateUserIds.filter((candidateUserId) => {
+    const profile = profilesMap.get(candidateUserId)
+    return profile?.role !== 'admin'
+  })
+
+  const limited = options.limit ? filtered.slice(0, options.limit) : filtered
+  return limited.map((candidateUserId) => ({
+    userId: candidateUserId,
+    displayName: getDisplayName(profilesMap.get(candidateUserId) ?? null),
+  })) satisfies CandidateUser[]
+}
+
+async function runUserRepair(candidate: CandidateUser): Promise<UserRepairResult> {
+  try {
+    const result = await syncStravaRuns(candidate.userId, { mode: 'backfill' })
+    if (!result.ok) {
+      return {
+        userId: candidate.userId,
+        displayName: candidate.displayName,
+        imported: 0,
+        skipped: 0,
+        status: result.step === 'rate_limited' ? 'rate_limited' : 'failed',
+        reason: result.step,
+      }
+    }
+
+    return {
+      userId: candidate.userId,
+      displayName: candidate.displayName,
+      imported: result.imported,
+      skipped: result.skipped,
+      status: 'completed',
+      reason: null,
+    }
+  } catch (error) {
+    return {
+      userId: candidate.userId,
+      displayName: candidate.displayName,
+      imported: 0,
+      skipped: 0,
+      status: 'failed',
+      reason: error instanceof Error ? error.message : 'unknown_error',
+    }
+  }
 }
 
 async function main() {
@@ -156,66 +280,71 @@ async function main() {
   }
 
   const supabase = createSupabaseAdminClient()
-  const targetUserIds = args.allConnected
-    ? await fetchConnectedUserIds(supabase, args.limit)
-    : [...new Set(args.userIds)]
+  const candidates = await fetchCandidateUsers(supabase, {
+    userId: args.userId,
+    limit: args.limit,
+  })
 
-  if (targetUserIds.length === 0) {
-    console.log('No users to process.')
+  if (candidates.length === 0) {
+    console.log('[repair-strava-historical-runs] no_candidates', {
+      userId: args.userId,
+      limit: args.limit,
+    })
+    return
+  }
+
+  console.log('[repair-strava-historical-runs] start', {
+    candidates: candidates.length,
+    userId: args.userId,
+    limit: args.limit,
+    dryRun: args.dryRun,
+    cutoff: '2026-01-01T00:00:00Z',
+  })
+
+  if (args.dryRun) {
+    for (const candidate of candidates) {
+      console.log('[repair-strava-historical-runs] candidate', {
+        userId: candidate.userId,
+        displayName: candidate.displayName,
+      })
+    }
+    console.log('[repair-strava-historical-runs] dry_run_complete', {
+      candidates: candidates.length,
+    })
     return
   }
 
   const totals = {
     processed: 0,
-    ok: 0,
+    completed: 0,
+    rateLimited: 0,
     failed: 0,
     imported: 0,
-    updated: 0,
     skipped: 0,
-    runImportFailures: 0,
   }
 
-  console.log('[repair-strava-historical-runs] start', {
-    users: targetUserIds.length,
-    source: args.allConnected ? 'all_connected' : 'explicit_user_ids',
-  })
-
-  for (const userId of targetUserIds) {
+  for (const candidate of candidates) {
     totals.processed += 1
-    console.log('[repair-strava-historical-runs] user_start', { userId })
+    const result = await runUserRepair(candidate)
+    totals.imported += result.imported
+    totals.skipped += result.skipped
 
-    try {
-      const result = await syncStravaRuns(userId, { mode: 'backfill' })
-      if (!result.ok) {
-        totals.failed += 1
-        console.error('[repair-strava-historical-runs] user_failed', {
-          userId,
-          step: result.step,
-        })
-        continue
-      }
-
-      totals.ok += 1
-      totals.imported += result.imported
-      totals.updated += result.updated
-      totals.skipped += result.skipped
-      totals.runImportFailures += result.failed
-
-      console.log('[repair-strava-historical-runs] user_done', {
-        userId,
-        imported: result.imported,
-        updated: result.updated,
-        skipped: result.skipped,
-        failed: result.failed,
-        totalRunsFetched: result.totalRunsFetched,
-      })
-    } catch (error) {
+    if (result.status === 'completed') {
+      totals.completed += 1
+    } else if (result.status === 'rate_limited') {
+      totals.rateLimited += 1
+    } else {
       totals.failed += 1
-      console.error('[repair-strava-historical-runs] user_exception', {
-        userId,
-        error: error instanceof Error ? error.message : 'unknown_error',
-      })
     }
+
+    console.log('[repair-strava-historical-runs] user_result', {
+      userId: result.userId,
+      displayName: result.displayName,
+      imported: result.imported,
+      skipped: result.skipped,
+      status: result.status,
+      reason: result.reason,
+    })
   }
 
   console.log('[repair-strava-historical-runs] complete', totals)
