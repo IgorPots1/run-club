@@ -1,9 +1,25 @@
-'use client'
-
 import ClubPersonalRecordsLeaderboard from '@/components/ClubPersonalRecordsLeaderboard'
 import InnerPageHeader from '@/components/InnerPageHeader'
+import { redirect } from 'next/navigation'
+import type { ClubPersonalRecordLeaderboardRow } from '@/lib/club-personal-records'
+import { loadClubPersonalRecordLeaderboard } from '@/lib/club-personal-records-server'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 
-export default function ClubLeaderboardPage() {
+export default async function ClubLeaderboardPage() {
+  const { user, error } = await getAuthenticatedUser()
+
+  if (error || !user) {
+    redirect('/login')
+  }
+
+  let initialRows: ClubPersonalRecordLeaderboardRow[] | undefined
+
+  try {
+    initialRows = await loadClubPersonalRecordLeaderboard(5000)
+  } catch (loadError) {
+    console.error('[club] failed to load initial personal record leaderboard', loadError)
+  }
+
   return (
     <main className="min-h-screen">
       <div className="pointer-events-none fixed inset-x-0 top-0 z-30">
@@ -19,7 +35,7 @@ export default function ClubLeaderboardPage() {
       </div>
 
       <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
-        <ClubPersonalRecordsLeaderboard />
+        <ClubPersonalRecordsLeaderboard initialRows={initialRows} />
       </div>
     </main>
   )

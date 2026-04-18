@@ -24,6 +24,57 @@ type HydrateSummaryOnlyParams = {
   activityId: number
 }
 
+function resolveRequestUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') {
+    return input
+  }
+
+  if (input instanceof URL) {
+    return input.toString()
+  }
+
+  if (input instanceof Request) {
+    return input.url
+  }
+
+  return String(input)
+}
+
+function resolveHostname(url: string) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return null
+  }
+}
+
+function createScriptSafeDiagnosticFetch(): typeof fetch {
+  return async (input, init) => {
+    try {
+      return await globalThis.fetch(input, init)
+    } catch (error) {
+      const requestUrl = resolveRequestUrl(input)
+      const hostname = resolveHostname(requestUrl)
+      const method = init?.method ?? (input instanceof Request ? input.method : null)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorCause =
+        error instanceof Error && 'cause' in error
+          ? (error as Error & { cause?: unknown }).cause ?? null
+          : null
+
+      console.error('Script-safe Supabase fetch failed', {
+        requestUrl,
+        hostname,
+        method,
+        error: errorMessage,
+        cause: errorCause,
+      })
+
+      throw error
+    }
+  }
+}
+
 function hasDetailSeriesPoints(points: unknown) {
   return Array.isArray(points) && points.length > 0
 }
@@ -57,6 +108,9 @@ export function createScriptSafeSupabaseAdminClient() {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+    },
+    global: {
+      fetch: createScriptSafeDiagnosticFetch(),
     },
   })
 }

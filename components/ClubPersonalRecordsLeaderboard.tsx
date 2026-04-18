@@ -79,13 +79,23 @@ function isLeaderboardResponse(value: unknown): value is ClubPersonalRecordLeade
   })
 }
 
-export default function ClubPersonalRecordsLeaderboard() {
+type ClubPersonalRecordsLeaderboardProps = {
+  initialRows?: ClubPersonalRecordLeaderboardRow[]
+}
+
+export default function ClubPersonalRecordsLeaderboard({
+  initialRows,
+}: ClubPersonalRecordsLeaderboardProps) {
   const router = useRouter()
   const [selectedDistance, setSelectedDistance] = useState<ClubPersonalRecordDistance>(5000)
-  const [rows, setRows] = useState<ClubPersonalRecordLeaderboardRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [rows, setRows] = useState<ClubPersonalRecordLeaderboardRow[]>(() => initialRows ?? [])
+  const [loading, setLoading] = useState(() => initialRows == null)
   const [error, setError] = useState('')
-  const rowsCacheRef = useRef(new Map<ClubPersonalRecordDistance, ClubPersonalRecordLeaderboardRow[]>())
+  const rowsCacheRef = useRef(
+    new Map<ClubPersonalRecordDistance, ClubPersonalRecordLeaderboardRow[]>(
+      initialRows == null ? [] : [[5000, initialRows]]
+    )
+  )
   const segmentBaseClass = 'flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium transition-colors'
 
   useEffect(() => {
