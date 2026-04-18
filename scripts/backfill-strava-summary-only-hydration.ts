@@ -7,6 +7,7 @@ import {
 const STRAVA_EXTERNAL_SOURCE = 'strava'
 const DEFAULT_BATCH_SIZE = 200
 const SCAN_PAGE_SIZE = 500
+const RUN_ID_IN_QUERY_CHUNK_SIZE = 100
 
 type Args = {
   batchSize: number
@@ -64,6 +65,16 @@ function toPositiveInteger(value: unknown) {
   return Math.round(normalizedValue)
 }
 
+function chunkArray<T>(values: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = []
+
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize))
+  }
+
+  return chunks
+}
+
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     batchSize: DEFAULT_BATCH_SIZE,
@@ -101,6 +112,7 @@ async function fetchCandidateRuns(batchSize: number, userId: string | null) {
   const candidates: CandidateRun[] = []
 
   for (let offset = 0; candidates.length < batchSize; offset += SCAN_PAGE_SIZE) {
+    const runsQueryStage = 'runs query'
     let runsQuery = supabase
       .from('runs')
       .select('id, user_id, external_id, created_at')
@@ -114,10 +126,16 @@ async function fetchCandidateRuns(batchSize: number, userId: string | null) {
       runsQuery = runsQuery.eq('user_id', userId)
     }
 
+    console.info('Strava summary-only candidate scan stage', {
+      stage: runsQueryStage,
+      offset,
+      pageSize: SCAN_PAGE_SIZE,
+      userId,
+    })
     const { data: runsData, error: runsError } = await runsQuery
 
     if (runsError) {
-      throw new Error(runsError.message)
+      throw new Error(`[${runsQueryStage}] ${runsError.message}`)
     }
 
     const runs = (runsData as RunRow[] | null) ?? []
@@ -127,27 +145,57 @@ async function fetchCandidateRuns(batchSize: number, userId: string | null) {
     }
 
     const runIds = runs.map((run) => run.id)
-    const [{ data: detailRows, error: detailError }, { data: lapRows, error: lapError }] = await Promise.all([
-      supabase
-        .from('run_detail_series')
-        .select('run_id')
-        .in('run_id', runIds),
-      supabase
-        .from('run_laps')
-        .select('run_id')
-        .in('run_id', runIds),
-    ])
+    const runDetailSeriesQueryStage = 'run_detail_series query'
+    const runLapsQueryStage = 'run_laps query'
 
-    if (detailError) {
-      throw new Error(detailError.message)
+    console.info('Strava summary-only candidate scan stage', {
+      stage: runDetailSeriesQueryStage,
+      runIdCount: runIds.length,
+      offset,
+      userId,
+    })
+    console.info('Strava summary-only candidate scan stage', {
+      stage: runLapsQueryStage,
+      runIdCount: runIds.length,
+      offset,
+      userId,
+    })
+    const runIdChunks = chunkArray(runIds, RUN_ID_IN_QUERY_CHUNK_SIZE)
+    const detailRows: RunIdRow[] = []
+    const lapRows: RunIdRow[] = []
+
+    for (const runIdChunk of runIdChunks) {
+      const [{ data: detailChunkRows, error: detailError }, { data: lapChunkRows, error: lapError }] =
+        await Promise.all([
+          supabase
+            .from('run_detail_series')
+            .select('run_id')
+            .in('run_id', runIdChunk),
+          supabase
+            .from('run_laps')
+            .select('run_id')
+            .in('run_id', runIdChunk),
+        ])
+
+      if (detailError) {
+        throw new Error(`[${runDetailSeriesQueryStage}] ${detailError.message}`)
+      }
+
+      if (lapError) {
+        throw new Error(`[${runLapsQueryStage}] ${lapError.message}`)
+      }
+
+      if (detailChunkRows) {
+        detailRows.push(...(detailChunkRows as RunIdRow[]))
+      }
+
+      if (lapChunkRows) {
+        lapRows.push(...(lapChunkRows as RunIdRow[]))
+      }
     }
 
-    if (lapError) {
-      throw new Error(lapError.message)
-    }
-
-    const detailRunIds = new Set(((detailRows as RunIdRow[] | null) ?? []).map((row) => row.run_id))
-    const lapRunIds = new Set(((lapRows as RunIdRow[] | null) ?? []).map((row) => row.run_id))
+    const detailRunIds = new Set(detailRows.map((row) => row.run_id))
+    const lapRunIds = new Set(lapRows.map((row) => row.run_id))
 
     for (const run of runs) {
       const activityId = toPositiveInteger(run.external_id)
@@ -238,6 +286,7 @@ async function main() {
 
 main().catch((error) => {
   console.error('Strava summary-only supplemental hydration backfill failed', {
+    stage: error instanceof Error ? error.message.match(/^\[(.+?)\]/)?.[1] ?? null : null,
     error: error instanceof Error ? error.message : 'unknown_error',
   })
   process.exitCode = 1
