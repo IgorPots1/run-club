@@ -159,8 +159,8 @@ export default function ChallengesSection({
   error,
 }: ChallengesSectionProps) {
   const router = useRouter()
-  const [internalOverview, setInternalOverview] = useState<ChallengesOverview>(buildEmptyOverview)
-  const [internalLoading, setInternalLoading] = useState(true)
+  const [internalOverview, setInternalOverview] = useState<ChallengesOverview>(() => overview ?? buildEmptyOverview())
+  const [internalLoading, setInternalLoading] = useState(() => typeof overview === 'undefined')
   const [internalError, setInternalError] = useState('')
   const [activeExpanded, setActiveExpanded] = useState(true)
   const [upcomingExpanded, setUpcomingExpanded] = useState(false)
