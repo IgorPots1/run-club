@@ -3047,6 +3047,27 @@ export async function importHistoricalStravaActivityByIdForUser(
 
   const recoveredRunId = result.runId ?? null
 
+  if (recoveredRunId) {
+    try {
+      await syncRunSupplementalStravaDataForActivity(
+        supabase,
+        recoveredRunId,
+        normalizedActivityId,
+        connection.access_token,
+        undefined,
+        connection.id
+      )
+    } catch (error) {
+      console.warn('Historical Strava recovery supplemental detail hydration failed', {
+        userId: normalizedUserId,
+        runId: recoveredRunId,
+        activityId: normalizedActivityId,
+        connectionId: connection.id,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      })
+    }
+  }
+
   // Recovery-only guarantee: always persist the full freshly fetched Strava payload
   // onto the resolved run, even when an existing-run path was taken earlier.
   if (options.forceRefreshExistingRun && recoveredRunId) {
