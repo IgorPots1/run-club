@@ -31,12 +31,15 @@ import type {
 } from './strava-types'
 
 const STRAVA_EXTERNAL_SOURCE = 'strava'
+const STRAVA_RUN_DETAIL_SERIES_SOURCE = 'strava'
+const STRAVA_RUN_DETAIL_SERIES_NO_DETAIL_SOURCE = 'strava_no_detail_available'
 const FALLBACK_RUN_NAME = 'Бег'
 const INITIAL_SYNC_CUTOFF = '2026-01-01T00:00:00Z'
 const INITIAL_SYNC_CUTOFF_MS = new Date(INITIAL_SYNC_CUTOFF).getTime()
 const INITIAL_SYNC_CUTOFF_UNIX_SECONDS = Math.floor(INITIAL_SYNC_CUTOFF_MS / 1000)
 const MAX_SYNC_ERROR_DETAILS = 10
 const RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE = 5
+const POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT = 5
 const HEARTRATE_BACKFILL_WINDOW_DAYS = 45
 const HEARTRATE_BACKFILL_LOOKUP_LIMIT = 20
 const HEARTRATE_BACKFILL_BATCH_SIZE = 5
@@ -128,6 +131,7 @@ type ExistingRunDetailSeriesStatusRow = {
   heartrate_points: unknown | null
   cadence_points: unknown | null
   altitude_points: unknown | null
+  source: string | null
 }
 
 type MissingHeartrateBackfillRunRow = {
@@ -231,6 +235,60 @@ type RunLapsSyncResult = {
   httpStatus: number | null
 }
 
+type RunDetailSeriesSyncStatus =
+  | 'fetched_and_saved'
+  | 'already_hydrated'
+  | 'streams_unavailable'
+  | 'streams_empty'
+  | 'streams_rate_limited'
+  | 'streams_fetch_failed'
+
+type RunDetailSeriesSyncResult = {
+  synced: boolean
+  status: RunDetailSeriesSyncStatus
+  hasAnySeriesPoints: boolean
+  errorMessage: string | null
+  httpStatus: number | null
+}
+
+type RunPhotosSyncStatus =
+  | 'fetched_and_saved'
+  | 'no_photos_returned'
+  | 'fetched_but_not_saved'
+  | 'photos_fetch_failed'
+
+type RunPhotosSyncResult = {
+  synced: boolean
+  fetchedCount: number
+  savedCount: number
+  status: RunPhotosSyncStatus
+  errorMessage: string | null
+  httpStatus: number | null
+}
+
+type ExistingStravaRunSupplementalRow = {
+  id: string
+  external_source: string | null
+  external_id: string | null
+}
+
+function hasDetailSeriesPoints(points: unknown) {
+  return Array.isArray(points) && points.length > 0
+}
+
+function hasAnyRunDetailSeriesPoints(row: ExistingRunDetailSeriesStatusRow | null) {
+  if (!row) {
+    return false
+  }
+
+  return (
+    hasDetailSeriesPoints(row.pace_points) ||
+    hasDetailSeriesPoints(row.heartrate_points) ||
+    hasDetailSeriesPoints(row.cadence_points) ||
+    hasDetailSeriesPoints(row.altitude_points)
+  )
+}
+
 function getMissingRunDetailSeriesReasons(row: ExistingRunDetailSeriesStatusRow | null) {
   const reasons: Array<
     | 'missing_detail_series_row'
@@ -242,6 +300,10 @@ function getMissingRunDetailSeriesReasons(row: ExistingRunDetailSeriesStatusRow 
 
   if (!row) {
     reasons.push('missing_detail_series_row')
+    return reasons
+  }
+
+  if (row.source === STRAVA_RUN_DETAIL_SERIES_NO_DETAIL_SOURCE) {
     return reasons
   }
 
@@ -905,14 +967,14 @@ async function syncRunDetailSeriesForActivity(
   accessToken: string,
   debugRunId?: string,
   connectionId?: string
-): Promise<boolean> {
+): Promise<RunDetailSeriesSyncResult> {
   const shouldDebug =
     shouldDebugRunDetailSeries({ runId, activityId }) || matchesDebugRunId(runId, debugRunId)
 
   try {
     const { data: existingSeriesStatus, error: existingSeriesStatusError } = await supabase
       .from('run_detail_series')
-      .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points')
+      .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points, source')
       .eq('run_id', runId)
       .maybeSingle()
 
@@ -925,6 +987,7 @@ async function syncRunDetailSeriesForActivity(
     const shouldPopulateAllSeries = normalizedExistingSeriesStatus == null
     const shouldBackfillCadencePoints = missingReasons.includes('missing_cadence_points')
     const shouldBackfillAltitudePoints = missingReasons.includes('missing_altitude_points')
+    const hasExistingSeriesPoints = hasAnyRunDetailSeriesPoints(normalizedExistingSeriesStatus)
 
     if (missingReasons.length === 0) {
       if (shouldDebug) {
@@ -940,7 +1003,13 @@ async function syncRunDetailSeriesForActivity(
         reason: 'all_detail_series_fields_present',
       })
 
-      return false
+      return {
+        synced: false,
+        status: 'already_hydrated',
+        hasAnySeriesPoints: hasExistingSeriesPoints,
+        errorMessage: null,
+        httpStatus: null,
+      }
     }
 
     if (shouldDebug) {
@@ -1066,7 +1135,7 @@ async function syncRunDetailSeriesForActivity(
           ...(shouldPopulateAllSeries || shouldBackfillAltitudePoints ? {
             altitude_points: altitudePoints,
           } : {}),
-          source: STRAVA_EXTERNAL_SOURCE,
+          source: STRAVA_RUN_DETAIL_SERIES_SOURCE,
         },
         {
           onConflict: 'run_id',
@@ -1091,7 +1160,20 @@ async function syncRunDetailSeriesForActivity(
       })
     }
 
-    return true
+    const hasFetchedSeriesPoints =
+      pacePoints != null ||
+      heartratePoints != null ||
+      cadencePoints != null ||
+      altitudePoints != null
+    const hasAnySeriesPoints = hasExistingSeriesPoints || hasFetchedSeriesPoints
+
+    return {
+      synced: true,
+      status: hasAnySeriesPoints ? 'fetched_and_saved' : 'streams_empty',
+      hasAnySeriesPoints,
+      errorMessage: null,
+      httpStatus: null,
+    }
   } catch (caughtError) {
     if (isStravaNotFoundError(caughtError)) {
       console.info('Strava activity streams not ready yet', {
@@ -1104,7 +1186,13 @@ async function syncRunDetailSeriesForActivity(
         activityId,
         status: caughtError.status,
       })
-      return false
+      return {
+        synced: false,
+        status: 'streams_unavailable',
+        hasAnySeriesPoints: false,
+        errorMessage: caughtError.message,
+        httpStatus: caughtError.status,
+      }
     }
 
     if (caughtError instanceof StravaApiError && caughtError.status === 429) {
@@ -1120,7 +1208,13 @@ async function syncRunDetailSeriesForActivity(
         activityId,
         request: 'activities/{id}/streams',
       })
-      return false
+      return {
+        synced: false,
+        status: 'streams_rate_limited',
+        hasAnySeriesPoints: false,
+        errorMessage: caughtError.message,
+        httpStatus: caughtError.status,
+      }
     }
 
     if (shouldDebug) {
@@ -1143,7 +1237,13 @@ async function syncRunDetailSeriesForActivity(
       error: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
     })
 
-    return false
+    return {
+      synced: false,
+      status: 'streams_fetch_failed',
+      hasAnySeriesPoints: false,
+      errorMessage: caughtError instanceof Error ? caughtError.message : 'Unknown streams sync error',
+      httpStatus: caughtError instanceof StravaApiError ? caughtError.status : null,
+    }
   }
 }
 
@@ -1294,8 +1394,9 @@ async function syncRunPhotosForActivity(
   accessToken: string,
   debugRunId?: string,
   connectionId?: string
-) {
+): Promise<RunPhotosSyncResult> {
   const shouldDebug = shouldDebugRunDetailSeries({ runId, activityId })
+  let fetchedCount = 0
 
   try {
     console.log('[PHOTO_SYNC_START]', { runId, activityId })
@@ -1305,6 +1406,7 @@ async function syncRunPhotosForActivity(
     })
 
     const photos = await fetchStravaActivityPhotos(accessToken, activityId)
+    fetchedCount = Array.isArray(photos) ? photos.length : 0
     console.log('[PHOTO_SYNC_FETCHED]', { count: photos.length })
     const photoRows = buildRunPhotoUpsertPayloads(runId, photos)
     console.log('[PHOTO_SYNC_MAPPED]', { rows: photoRows.length })
@@ -1332,7 +1434,14 @@ async function syncRunPhotosForActivity(
         })
       }
 
-      return false
+      return {
+        synced: false,
+        fetchedCount,
+        savedCount: 0,
+        status: 'no_photos_returned',
+        errorMessage: null,
+        httpStatus: null,
+      }
     }
 
     const { error } = await supabase
@@ -1371,7 +1480,14 @@ async function syncRunPhotosForActivity(
       })
     }
 
-    return true
+    return {
+      synced: true,
+      fetchedCount,
+      savedCount: photoRows.length,
+      status: 'fetched_and_saved',
+      errorMessage: null,
+      httpStatus: null,
+    }
   } catch (caughtError) {
     if (caughtError instanceof StravaApiError && caughtError.status === 429) {
       if (connectionId) {
@@ -1386,7 +1502,14 @@ async function syncRunPhotosForActivity(
         activityId,
         request: 'activities/{id}/photos',
       })
-      return false
+      return {
+        synced: false,
+        fetchedCount,
+        savedCount: 0,
+        status: fetchedCount > 0 ? 'fetched_but_not_saved' : 'photos_fetch_failed',
+        errorMessage: caughtError.message,
+        httpStatus: caughtError.status,
+      }
     }
 
     console.warn('Strava run photos sync skipped', {
@@ -1403,8 +1526,148 @@ async function syncRunPhotosForActivity(
       })
     }
 
+    return {
+      synced: false,
+      fetchedCount,
+      savedCount: 0,
+      status: fetchedCount > 0 ? 'fetched_but_not_saved' : 'photos_fetch_failed',
+      errorMessage: caughtError instanceof Error ? caughtError.message : 'Unknown photo sync error',
+      httpStatus: caughtError instanceof StravaApiError ? caughtError.status : null,
+    }
+  }
+}
+
+async function ensureNoDetailSeriesPlaceholderForRun(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  runId: string
+  activityId: number
+  detailSeriesSyncResult: RunDetailSeriesSyncResult
+  lapsSyncResult: RunLapsSyncResult
+  photosSyncResult: RunPhotosSyncResult
+}) {
+  const {
+    supabase,
+    runId,
+    activityId,
+    detailSeriesSyncResult,
+    lapsSyncResult,
+    photosSyncResult,
+  } = params
+
+  const streamsUnavailable =
+    detailSeriesSyncResult.status === 'streams_unavailable' ||
+    detailSeriesSyncResult.status === 'streams_empty'
+  const noRicherSupplementalData =
+    !detailSeriesSyncResult.hasAnySeriesPoints &&
+    lapsSyncResult.status === 'no_laps_returned' &&
+    photosSyncResult.status === 'no_photos_returned'
+
+  if (!streamsUnavailable || !noRicherSupplementalData) {
     return false
   }
+
+  const { data: runRowData, error: runRowError } = await supabase
+    .from('runs')
+    .select('id, external_source, external_id')
+    .eq('id', runId)
+    .maybeSingle()
+
+  if (runRowError) {
+    console.warn('Strava no-detail placeholder hydration skipped due to run lookup failure', {
+      runId,
+      activityId,
+      error: runRowError.message,
+    })
+    return false
+  }
+
+  const runRow = (runRowData as ExistingStravaRunSupplementalRow | null) ?? null
+  const normalizedExternalId = Number(runRow?.external_id)
+  const validImportedStravaRun =
+    runRow?.external_source === STRAVA_EXTERNAL_SOURCE &&
+    Number.isFinite(normalizedExternalId) &&
+    normalizedExternalId > 0 &&
+    normalizedExternalId === activityId
+
+  if (!validImportedStravaRun) {
+    console.warn('Strava no-detail placeholder hydration skipped due to invalid run identity', {
+      runId,
+      activityId,
+      externalSource: runRow?.external_source ?? null,
+      externalId: runRow?.external_id ?? null,
+    })
+    return false
+  }
+
+  const { data: existingSeriesData, error: existingSeriesError } = await supabase
+    .from('run_detail_series')
+    .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points, source')
+    .eq('run_id', runId)
+    .maybeSingle()
+
+  if (existingSeriesError) {
+    console.warn('Strava no-detail placeholder hydration skipped due to existing-series lookup failure', {
+      runId,
+      activityId,
+      error: existingSeriesError.message,
+    })
+    return false
+  }
+
+  const existingSeries = (existingSeriesData as ExistingRunDetailSeriesStatusRow | null) ?? null
+
+  if (hasAnyRunDetailSeriesPoints(existingSeries)) {
+    console.info('Strava no-detail placeholder hydration skipped because detailed points exist', {
+      runId,
+      activityId,
+      existingSource: existingSeries?.source ?? null,
+    })
+    return false
+  }
+
+  if (existingSeries?.source === STRAVA_RUN_DETAIL_SERIES_NO_DETAIL_SOURCE) {
+    console.info('Strava no-detail placeholder hydration already present', {
+      runId,
+      activityId,
+    })
+    return true
+  }
+
+  const { error: placeholderUpsertError } = await supabase
+    .from('run_detail_series')
+    .upsert(
+      {
+        run_id: runId,
+        pace_points: null,
+        heartrate_points: null,
+        cadence_points: null,
+        altitude_points: null,
+        source: STRAVA_RUN_DETAIL_SERIES_NO_DETAIL_SOURCE,
+      },
+      {
+        onConflict: 'run_id',
+      }
+    )
+
+  if (placeholderUpsertError) {
+    console.warn('Strava no-detail placeholder hydration failed', {
+      runId,
+      activityId,
+      error: placeholderUpsertError.message,
+    })
+    return false
+  }
+
+  console.info('Strava supplemental hydration normalized run to no-detail placeholder', {
+    runId,
+    activityId,
+    detailSeriesStatus: detailSeriesSyncResult.status,
+    lapsStatus: lapsSyncResult.status,
+    photosStatus: photosSyncResult.status,
+    placeholderSource: STRAVA_RUN_DETAIL_SERIES_NO_DETAIL_SOURCE,
+  })
+
+  return true
 }
 
 function logDeferredHotPathSupplementalSync(params: {
@@ -1430,7 +1693,7 @@ async function syncRunSupplementalStravaDataForActivity(
   debugRunId?: string,
   connectionId?: string
 ) {
-  const detailSeriesSynced = await syncRunDetailSeriesForActivity(
+  const detailSeriesSyncResult = await syncRunDetailSeriesForActivity(
     supabase,
     runId,
     activityId,
@@ -1447,7 +1710,7 @@ async function syncRunSupplementalStravaDataForActivity(
     connectionId
   )
   console.log('[PHOTO_SYNC_CALL]', { runId, activityId })
-  const photosSynced = await syncRunPhotosForActivity(
+  const photosSyncResult = await syncRunPhotosForActivity(
     supabase,
     runId,
     activityId,
@@ -1456,7 +1719,31 @@ async function syncRunSupplementalStravaDataForActivity(
     connectionId
   )
 
-  return detailSeriesSynced || lapsSyncResult.synced || photosSynced
+  const placeholderHydrated = await ensureNoDetailSeriesPlaceholderForRun({
+    supabase,
+    runId,
+    activityId,
+    detailSeriesSyncResult,
+    lapsSyncResult,
+    photosSyncResult,
+  })
+
+  const realSupplementalHydrated =
+    detailSeriesSyncResult.status === 'fetched_and_saved' ||
+    lapsSyncResult.status === 'fetched_and_saved' ||
+    photosSyncResult.status === 'fetched_and_saved'
+
+  if (realSupplementalHydrated) {
+    console.info('Strava supplemental hydration stored detailed data', {
+      runId,
+      activityId,
+      detailSeriesStatus: detailSeriesSyncResult.status,
+      lapsStatus: lapsSyncResult.status,
+      photosStatus: photosSyncResult.status,
+    })
+  }
+
+  return realSupplementalHydrated || placeholderHydrated
 }
 
 export async function hydrateRunSupplementalStravaDataForRun(params: {
@@ -1627,7 +1914,7 @@ async function backfillMissingRunDetailSeriesForUser(
 
   const { data: existingSeriesRows, error: existingSeriesError } = await supabase
     .from('run_detail_series')
-    .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points')
+    .select('run_id, pace_points, heartrate_points, cadence_points, altitude_points, source')
     .in('run_id', candidateRuns.map((run) => run.id))
 
   if (existingSeriesError) {
@@ -3693,14 +3980,28 @@ export async function syncStravaRuns(
     await backfillMissingRunDetailSeriesForUser(userId, connection.access_token, targetDebugRunId, connection.id)
     await backfillMissingHeartratePointsForUser(userId, connection.access_token, connection.id)
   } else {
-    const POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT = 5
-    const postImportSupplementalSyncTargets = Array.from(
+    const uniqueSupplementalCandidates = Array.from(
       new Map(
         [...postImportSupplementalSyncCandidates]
           .reverse()
           .map((candidate) => [candidate.runId, candidate] as const)
       ).values()
-    ).slice(0, POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
+    )
+    const postImportSupplementalSyncTargets = uniqueSupplementalCandidates
+      .slice(0, POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
+    const deferredSupplementalSyncTargets = uniqueSupplementalCandidates
+      .slice(POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT)
+
+    if (deferredSupplementalSyncTargets.length > 0) {
+      console.info('Strava post-import supplemental hydration deferred due to cap', {
+        userId,
+        deferredRuns: deferredSupplementalSyncTargets.length,
+        maxRuns: POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT,
+        deferredRunIdsPreview: deferredSupplementalSyncTargets
+          .slice(0, 10)
+          .map((target) => target.runId),
+      })
+    }
 
     if (postImportSupplementalSyncTargets.length > 0) {
       const supabase = createSupabaseAdminClient()
@@ -3735,6 +4036,20 @@ export async function syncStravaRuns(
         succeededRuns: supplementalSyncSucceeded,
         maxRuns: POST_IMPORT_SUPPLEMENTAL_SYNC_LIMIT,
       })
+    }
+
+    if (deferredSupplementalSyncTargets.length > 0) {
+      console.info('Strava post-import supplemental fallback scan started', {
+        userId,
+        deferredRuns: deferredSupplementalSyncTargets.length,
+        batchSize: RUN_DETAIL_SERIES_BACKFILL_BATCH_SIZE,
+      })
+      await backfillMissingRunDetailSeriesForUser(
+        userId,
+        connection.access_token,
+        undefined,
+        connection.id
+      )
     }
 
     console.info('Strava supplemental backfill deferred after sync', {
