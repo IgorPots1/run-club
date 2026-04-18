@@ -67,6 +67,10 @@ function getReturnPendingStorageKey(sourceKey: string) {
   return `run-detail:return:${sourceKey}:pending-entry-id`
 }
 
+function getRestoreEntryKey(sourceKey: string, entryId: string) {
+  return `${sourceKey}:${entryId}`
+}
+
 function readScrollTop(scrollElement: ScrollContainer | null) {
   if (!scrollElement) {
     return 0
@@ -357,8 +361,13 @@ export function useRunDetailReturnState<TSnapshot>({
   const [hasRestoredSnapshot, setHasRestoredSnapshot] = useState(false)
   const [skipReason, setSkipReason] = useState<string | null>(enabled ? 'pending-check' : 'restoration-disabled')
   const pendingRestoreRef = useRef<RunDetailConsumedRestore<TSnapshot> | null>(null)
+  const restoreEntryKeyRef = useRef<string | null>(null)
+  const hasAppliedRestoreRef = useRef(false)
   const hasLoggedRestorePreparationRef = useRef(false)
   const hasLoggedRestoreCompletionRef = useRef(false)
+  const onRestoreSnapshotRef = useRef(onRestoreSnapshot)
+
+  onRestoreSnapshotRef.current = onRestoreSnapshot
 
   const resolveScrollElement = useCallback(() => {
     const scrollElement = scrollContainerRef?.current ?? getScrollElement?.() ?? (typeof window !== 'undefined' ? window : null)
@@ -379,40 +388,54 @@ export function useRunDetailReturnState<TSnapshot>({
 
     if (!enabled) {
       pendingRestoreRef.current = null
+      restoreEntryKeyRef.current = null
+      hasAppliedRestoreRef.current = false
+      hasLoggedRestorePreparationRef.current = false
+      hasLoggedRestoreCompletionRef.current = false
       setHasRestoredSnapshot(false)
       setSkipReason('restoration-disabled')
       return
     }
 
-    const nextRestore = consumeRunDetailReturnPayload<TSnapshot>(sourceKey, entryId)
-    pendingRestoreRef.current = nextRestore
-    setHasRestoredSnapshot(nextRestore.snapshot !== null)
-    setSkipReason(nextRestore.skipReason)
+    const restoreEntryKey = getRestoreEntryKey(sourceKey, entryId)
 
-    if (nextRestore.snapshot !== null && onRestoreSnapshot) {
-      onRestoreSnapshot(nextRestore.snapshot)
+    if (restoreEntryKeyRef.current !== restoreEntryKey) {
+      const nextRestore = consumeRunDetailReturnPayload<TSnapshot>(sourceKey, entryId)
+      pendingRestoreRef.current = nextRestore
+      restoreEntryKeyRef.current = restoreEntryKey
+      hasAppliedRestoreRef.current = false
+      hasLoggedRestorePreparationRef.current = false
+      hasLoggedRestoreCompletionRef.current = false
+      setHasRestoredSnapshot(nextRestore.snapshot !== null)
+      setSkipReason(nextRestore.skipReason)
+
+      if (nextRestore.shouldRestoreScroll) {
+        console.info(`[${debugLabel}] prepared restore`, {
+          sourceKey,
+          sourceHref: nextRestore.sourceHref,
+          scrollTop: nextRestore.scrollTop,
+          hasSnapshot: nextRestore.snapshot !== null,
+        })
+      } else {
+        console.info(`[${debugLabel}] restore skipped`, {
+          sourceKey,
+          reason: nextRestore.skipReason ?? 'no-pending-restore',
+        })
+      }
+
+      hasLoggedRestorePreparationRef.current = true
     }
 
-    if (hasLoggedRestorePreparationRef.current) {
-      return
-    }
+    const pendingRestore = pendingRestoreRef.current
 
-    if (nextRestore.shouldRestoreScroll) {
-      console.info(`[${debugLabel}] prepared restore`, {
-        sourceKey,
-        sourceHref: nextRestore.sourceHref,
-        scrollTop: nextRestore.scrollTop,
-        hasSnapshot: nextRestore.snapshot !== null,
-      })
-    } else {
-      console.info(`[${debugLabel}] restore skipped`, {
-        sourceKey,
-        reason: nextRestore.skipReason ?? 'no-pending-restore',
-      })
-    }
+    if (!hasAppliedRestoreRef.current) {
+      if (pendingRestore?.snapshot !== null) {
+        onRestoreSnapshotRef.current?.(pendingRestore.snapshot)
+      }
 
-    hasLoggedRestorePreparationRef.current = true
-  }, [debugLabel, enabled, onRestoreSnapshot, sourceKey])
+      hasAppliedRestoreRef.current = true
+    }
+  }, [debugLabel, enabled, sourceKey])
 
   useLayoutEffect(() => {
     if (!enabled || typeof window === 'undefined') {
@@ -431,12 +454,8 @@ export function useRunDetailReturnState<TSnapshot>({
       return
     }
 
-    const restoreScroll = () => {
-      writeScrollTop(scrollElement, pendingRestore.scrollTop)
-    }
-
     pendingRestore.shouldRestoreScroll = false
-    restoreScroll()
+    writeScrollTop(scrollElement, pendingRestore.scrollTop)
 
     if (!hasLoggedRestoreCompletionRef.current) {
       console.info(`[${debugLabel}] restored scroll`, {
@@ -444,12 +463,6 @@ export function useRunDetailReturnState<TSnapshot>({
         scrollTop: pendingRestore.scrollTop,
       })
       hasLoggedRestoreCompletionRef.current = true
-    }
-
-    const animationFrameId = window.requestAnimationFrame(restoreScroll)
-
-    return () => {
-      window.cancelAnimationFrame(animationFrameId)
     }
   }, [debugLabel, enabled, resolveScrollElement, restoreReady, sourceKey])
 
