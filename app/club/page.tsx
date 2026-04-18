@@ -347,6 +347,7 @@ export default function ClubPage() {
   const currentUserId = user?.id ?? ''
   const statsPeriodLabel = statsPeriod === 'week' ? 'неделю' : 'месяц'
   const contributionPeriodLabel = statsPeriod === 'week' ? 'текущую неделю' : 'текущий месяц'
+  const segmentBaseClass = 'flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium transition-colors'
 
   return (
     <main className="min-h-screen">
@@ -356,18 +357,20 @@ export default function ClubPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-xl px-4 pb-4 pt-4 md:p-4">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-3 md:p-4">
         <div aria-hidden="true" className="invisible">
           <InnerPageHeader title="Клуб" fallbackHref="/" />
         </div>
 
-        <div className="mt-4">
-          <div className="app-surface-muted mb-4 grid grid-cols-2 rounded-xl p-1">
+        <div className="mt-3">
+          <div className="app-surface-muted mb-3 grid grid-cols-2 rounded-2xl p-1">
             <button
               type="button"
               onClick={() => setActiveTab('challenges')}
-              className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-                activeTab === 'challenges' ? 'app-card shadow-sm' : 'app-text-secondary'
+              className={`${segmentBaseClass} ${
+                activeTab === 'challenges'
+                  ? 'app-card app-text-primary shadow-sm'
+                  : 'app-text-secondary'
               }`}
             >
               Челленджи
@@ -375,8 +378,10 @@ export default function ClubPage() {
             <button
               type="button"
               onClick={() => setActiveTab('leaderboard')}
-              className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-                activeTab === 'leaderboard' ? 'app-card shadow-sm' : 'app-text-secondary'
+              className={`${segmentBaseClass} ${
+                activeTab === 'leaderboard'
+                  ? 'app-card app-text-primary shadow-sm'
+                  : 'app-text-secondary'
               }`}
             >
               Рейтинг
@@ -396,7 +401,7 @@ export default function ClubPage() {
         <div className="mx-auto max-w-xl px-4 pb-4 md:px-4">
           {statsLoading ? (
             <>
-              <div className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+              <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
                 <div className="skeleton-line h-4 w-28" />
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -417,7 +422,7 @@ export default function ClubPage() {
                   </div>
                 </div>
               </div>
-              <div className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+              <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
                 <div className="skeleton-line h-4 w-24" />
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -433,12 +438,14 @@ export default function ClubPage() {
             </>
           ) : hasActiveRaceWeek && selectedClubStats ? (
             <>
-              <div className="app-surface-muted mb-4 inline-grid grid-cols-2 rounded-xl p-1">
+              <div className="app-surface-muted mb-3 inline-grid grid-cols-2 rounded-2xl p-1">
                 <button
                   type="button"
                   onClick={() => setStatsPeriod('week')}
-                  className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-                    statsPeriod === 'week' ? 'app-card shadow-sm' : 'app-text-secondary'
+                  className={`${segmentBaseClass} min-w-28 ${
+                    statsPeriod === 'week'
+                      ? 'app-card app-text-primary shadow-sm'
+                      : 'app-text-secondary'
                   }`}
                 >
                   Неделя
@@ -446,44 +453,46 @@ export default function ClubPage() {
                 <button
                   type="button"
                   onClick={() => setStatsPeriod('month')}
-                  className={`min-h-11 rounded-lg px-4 py-3 text-sm font-medium ${
-                    statsPeriod === 'month' ? 'app-card shadow-sm' : 'app-text-secondary'
+                  className={`${segmentBaseClass} min-w-28 ${
+                    statsPeriod === 'month'
+                      ? 'app-card app-text-primary shadow-sm'
+                      : 'app-text-secondary'
                   }`}
                 >
                   Месяц
                 </button>
               </div>
 
-              <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
-                <p className="app-text-primary text-lg font-semibold">Статистика клуба за {statsPeriodLabel}</p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div>
+              <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+                <p className="app-text-primary text-base font-semibold sm:text-lg">Статистика клуба за {statsPeriodLabel}</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
                     <p className="app-text-secondary text-sm">Дистанция</p>
                     <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(selectedClubStats.totalDistanceKm)} км</p>
                   </div>
-                  <div>
+                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
                     <p className="app-text-secondary text-sm">Тренировки</p>
                     <p className="app-text-primary mt-1 text-lg font-semibold">{selectedClubStats.totalRuns}</p>
                   </div>
-                  <div>
+                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
                     <p className="app-text-secondary text-sm">Средний темп</p>
                     <p className="app-text-primary mt-1 text-lg font-semibold">{formatAveragePace(selectedClubStats.totalMovingTimeSeconds, selectedClubStats.totalDistanceKm)}</p>
                   </div>
-                  <div>
+                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
                     <p className="app-text-secondary text-sm">Набор высоты</p>
                     <p className="app-text-primary mt-1 text-lg font-semibold">{Math.round(selectedClubStats.totalElevationGainMeters)} м</p>
                   </div>
                 </div>
               </section>
 
-              <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
-                <p className="app-text-primary text-lg font-semibold">Твой вклад</p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div>
+              <section className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
+                <p className="app-text-primary text-base font-semibold sm:text-lg">Твой вклад</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
                     <p className="app-text-secondary text-sm">Твоя дистанция</p>
                     <p className="app-text-primary mt-1 text-lg font-semibold">{formatDistanceKm(userDistanceKm)} км</p>
                   </div>
-                  <div>
+                  <div className="app-surface-muted rounded-xl px-3 py-2.5">
                     <p className="app-text-secondary text-sm">Доля клуба</p>
                     <p className="app-text-primary mt-1 text-lg font-semibold">{formatContributionPercent(contributionPercent)}</p>
                   </div>
@@ -494,13 +503,13 @@ export default function ClubPage() {
               </section>
             </>
           ) : !leaderboardError && !statsError ? (
-            <div className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+            <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
               <p className="app-text-secondary text-sm">Статистика недели появится, когда начнется текущая гонка.</p>
             </div>
           ) : null}
 
           {statsError ? (
-            <div className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
+            <div className="app-card mb-3 rounded-2xl border p-4 shadow-sm">
               <p className="text-sm text-red-600">{statsError}</p>
             </div>
           ) : null}
