@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CLUB_PERSONAL_RECORD_DISTANCE_LABELS,
   CLUB_PERSONAL_RECORD_DISTANCES,
@@ -85,10 +85,22 @@ export default function ClubPersonalRecordsLeaderboard() {
   const [rows, setRows] = useState<ClubPersonalRecordLeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const rowsCacheRef = useRef(new Map<ClubPersonalRecordDistance, ClubPersonalRecordLeaderboardRow[]>())
   const segmentBaseClass = 'flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium transition-colors'
 
   useEffect(() => {
     const abortController = new AbortController()
+    const cachedRows = rowsCacheRef.current.get(selectedDistance)
+
+    if (cachedRows) {
+      setRows(cachedRows)
+      setError('')
+      setLoading(false)
+
+      return () => {
+        abortController.abort()
+      }
+    }
 
     async function loadLeaderboard() {
       setLoading(true)
@@ -97,7 +109,6 @@ export default function ClubPersonalRecordsLeaderboard() {
       try {
         const response = await fetch(`/api/club/personal-records?distance=${selectedDistance}`, {
           credentials: 'include',
-          cache: 'no-store',
           signal: abortController.signal,
         })
         const payload = await response.json().catch(() => null) as unknown
@@ -106,6 +117,7 @@ export default function ClubPersonalRecordsLeaderboard() {
           throw new Error('invalid_personal_record_leaderboard_payload')
         }
 
+        rowsCacheRef.current.set(selectedDistance, payload.rows)
         setRows(payload.rows)
       } catch (loadError) {
         if (abortController.signal.aborted) {

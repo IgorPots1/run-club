@@ -189,7 +189,7 @@ export default function ChallengesSection({
           return
         }
 
-        const nextOverview = await loadChallengesOverview()
+        const nextOverview = await loadChallengesOverview({ includeCompleted: false })
 
         if (!isMounted) return
 

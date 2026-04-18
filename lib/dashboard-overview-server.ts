@@ -218,6 +218,34 @@ function getChallengeStatus(
   return isCompleted ? 'completed' : 'active'
 }
 
+function getChallengeWindowPhase(
+  periodType: DashboardActiveChallenge['period_type'],
+  periodStart: string | null,
+  periodEnd: string | null,
+  referenceTimestamp: number
+): 'active' | 'upcoming' | null {
+  if (periodType !== 'challenge') {
+    return 'active'
+  }
+
+  const startTimestamp = toTimestamp(periodStart)
+  const endTimestamp = toTimestamp(periodEnd)
+
+  if (startTimestamp === null || endTimestamp === null || endTimestamp <= startTimestamp) {
+    return null
+  }
+
+  if (referenceTimestamp < startTimestamp) {
+    return 'upcoming'
+  }
+
+  if (referenceTimestamp >= endTimestamp) {
+    return null
+  }
+
+  return 'active'
+}
+
 function stripInternalChallenge(challenge: ChallengeListItem): DashboardActiveChallenge {
   return {
     id: challenge.id,
@@ -268,31 +296,6 @@ export async function loadChallengesOverviewServer(
   const referenceAt = options?.referenceAt ?? new Date()
   const referenceAtIso = referenceAt.toISOString()
   const referenceTimestamp = referenceAt.getTime()
-  const runRows = options?.runRows ?? await (async () => {
-    const { data, error } = await supabaseAdmin
-      .from('runs')
-      .select('distance_km, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      throw error
-    }
-
-    return (data as RunRow[] | null) ?? []
-  })()
-  const normalizedRuns = runRows.flatMap((run) => {
-    const timestamp = toTimestamp(run.created_at)
-
-    if (timestamp === null) {
-      return []
-    }
-
-    return [{
-      distanceKm: toSafeNumber(run.distance_km),
-      timestamp,
-    } satisfies NormalizedRunRow]
-  })
 
   const [
     { data: challenges, error: challengesError },
@@ -355,6 +358,89 @@ export async function loadChallengesOverviewServer(
       }
     })
   )
+  const runRows = options?.runRows ?? await (async () => {
+    if (options?.includeCompleted === false) {
+      const activeChallengeStarts = resolvedPeriods.flatMap(({ challenge, resolvedPeriod }) => {
+        if (!resolvedPeriod?.is_eligible || !isSupportedPeriodType(challenge.period_type)) {
+          return []
+        }
+
+        const challengePhase = getChallengeWindowPhase(
+          challenge.period_type,
+          resolvedPeriod.period_start ?? null,
+          resolvedPeriod.period_end ?? null,
+          referenceTimestamp
+        )
+
+        if (challengePhase !== 'active') {
+          return []
+        }
+
+        return [resolvedPeriod.period_start ?? null]
+      })
+
+      if (activeChallengeStarts.length === 0) {
+        return []
+      }
+
+      const runsQuery = supabaseAdmin
+        .from('runs')
+        .select('distance_km, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (!activeChallengeStarts.some((periodStart) => periodStart === null)) {
+        const earliestPeriodStart = activeChallengeStarts
+          .reduce<string | null>((earliest, periodStart) => {
+            if (!periodStart) {
+              return earliest
+            }
+
+            if (!earliest || periodStart < earliest) {
+              return periodStart
+            }
+
+            return earliest
+          }, null)
+
+        if (earliestPeriodStart) {
+          runsQuery.gte('created_at', earliestPeriodStart)
+        }
+      }
+
+      const { data, error } = await runsQuery
+
+      if (error) {
+        throw error
+      }
+
+      return (data as RunRow[] | null) ?? []
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('runs')
+      .select('distance_km, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw error
+    }
+
+    return (data as RunRow[] | null) ?? []
+  })()
+  const normalizedRuns = runRows.flatMap((run) => {
+    const timestamp = toTimestamp(run.created_at)
+
+    if (timestamp === null) {
+      return []
+    }
+
+    return [{
+      distanceKm: toSafeNumber(run.distance_km),
+      timestamp,
+    } satisfies NormalizedRunRow]
+  })
   const windowTotalsCache = new Map<string, { distanceKm: number; runCount: number }>()
 
   const challengeItems = resolvedPeriods.flatMap(({ challenge, goalTarget, resolvedPeriod }) => {
