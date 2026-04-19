@@ -9575,7 +9575,7 @@ export default function ChatSection({
                     Boolean(editingMessageId) ||
                     pendingImages.length >= CHAT_MESSAGE_MAX_ATTACHMENTS
                   }
-                  className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base font-medium shadow-none"
+                  className="app-button-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border p-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Выбрать фото"
                 >
                   {uploadingImage ? '...' : '+'}
@@ -9618,7 +9618,7 @@ export default function ChatSection({
                       void startVoiceRecording()
                     }}
                     disabled={submitting || uploadingImage || uploadingVoice || isStartingVoiceRecording}
-                    className="app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full px-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+                    className="app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full p-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label="Начать запись голосового сообщения"
                   >
                     {isStartingVoiceRecording ? '...' : <MicIcon />}
@@ -9627,7 +9627,7 @@ export default function ChatSection({
                   <button
                     type="submit"
                     disabled={submitting || uploadingImage || uploadingVoice || !canSubmitMessage || isMessageTooLong}
-                    className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+                    className="app-button-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full p-0 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label="Отправить сообщение"
                   >
                     {submitting ? '...' : <PaperPlaneIcon />}
