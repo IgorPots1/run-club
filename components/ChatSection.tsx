@@ -9787,9 +9787,7 @@ export default function ChatSection({
               ref={composerWrapperRef}
               data-chat-composer-wrapper="true"
               data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
-              className={`shrink-0 pt-1 ${
-                isKeyboardOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
-              }`}
+              className="shrink-0 pt-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
             >
               {loading ? renderComposerPlaceholder() : renderComposer()}
             </div>
