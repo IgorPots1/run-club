@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 const SUPPORTED_DISTANCES = [5000, 10000, 21097, 42195] as const
 
 type SupportedDistance = (typeof SUPPORTED_DISTANCES)[number]
+type LooseSupabase = any
 
 type CanonicalRow = {
   id: string
@@ -44,7 +45,7 @@ function getSupabaseUrl() {
 }
 
 async function loadCanonical(
-  supabase: ReturnType<typeof createClient>,
+  supabase: LooseSupabase,
   userId: string,
   distanceMeters: SupportedDistance
 ) {
@@ -71,7 +72,7 @@ async function loadCanonical(
 }
 
 async function recomputeCanonical(
-  supabase: ReturnType<typeof createClient>,
+  supabase: LooseSupabase,
   userId: string,
   distanceMeters: SupportedDistance
 ) {
