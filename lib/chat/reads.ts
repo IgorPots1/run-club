@@ -130,18 +130,11 @@ export async function markThreadAsRead(threadId: string) {
   const latestMessageRow = (latestMessage as ChatMessageReadMarkerRow | null) ?? null
   const nextLastReadAt = latestMessageRow?.created_at ?? new Date().toISOString()
 
-  const { error: upsertError } = await supabase
-    .from('chat_thread_reads')
-    .upsert(
-      {
-        thread_id: threadId,
-        user_id: userId,
-        last_read_message_id: latestMessageRow?.id ?? null,
-        last_read_at: nextLastReadAt,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'thread_id,user_id' }
-    )
+  const { error: upsertError } = await supabase.rpc('mark_chat_thread_as_read', {
+    p_thread_id: threadId,
+    p_last_read_message_id: latestMessageRow?.id ?? null,
+    p_last_read_at: nextLastReadAt,
+  })
 
   if (upsertError) {
     throw upsertError
