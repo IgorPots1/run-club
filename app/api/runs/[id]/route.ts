@@ -186,7 +186,10 @@ export async function PATCH(
       externalSource: existingRun.external_source,
     })
 
-    if (existingRun.pr_needs_recompute && personalRecordResult.checked > 0) {
+    if (
+      existingRun.pr_needs_recompute
+      && (personalRecordResult.checked > 0 || personalRecordResult.deleted > 0)
+    ) {
       await clearRunPrNeedsRecompute(existingRun.id).catch((clearError) => {
         console.error('Failed to clear run PR recompute flag after local run update', {
           userId: user.id,

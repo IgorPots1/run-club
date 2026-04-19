@@ -3129,7 +3129,10 @@ export async function importStravaActivityForUser(
         fallbackMovingTimeSeconds: payload.moving_time_seconds,
       })
 
-      if (normalizedExistingRun.pr_needs_recompute && personalRecordResult.checked > 0) {
+      if (
+        normalizedExistingRun.pr_needs_recompute
+        && (personalRecordResult.checked > 0 || personalRecordResult.deleted > 0)
+      ) {
         await clearRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((clearError) => {
           console.warn('[strava-sync] clear_run_pr_needs_recompute_failed', {
             userId,
@@ -3328,7 +3331,10 @@ export async function importStravaActivityForUser(
       fallbackMovingTimeSeconds: payload.moving_time_seconds,
     })
 
-    if (normalizedExistingRun.pr_needs_recompute && personalRecordResult.checked > 0) {
+    if (
+      normalizedExistingRun.pr_needs_recompute
+      && (personalRecordResult.checked > 0 || personalRecordResult.deleted > 0)
+    ) {
       await clearRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((clearError) => {
         console.warn('[strava-sync] clear_run_pr_needs_recompute_failed', {
           userId,

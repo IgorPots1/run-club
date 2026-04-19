@@ -50,6 +50,13 @@ type PersonalRecordCandidate = {
   metadata: Record<string, unknown> | null
 }
 
+type RunLinkedPersonalRecordSourceRow = {
+  id: string
+  distance_meters: number | null
+  source_type: PersonalRecordCandidate['source'] | null
+  source_key: string | null
+}
+
 type PersonalRecordRow = {
   distance_meters: number
   duration_seconds: number
@@ -390,6 +397,147 @@ export function extractLocalFullRunPersonalRecordCandidate(rawRun: {
     metadata: externalSource && externalSource !== 'manual'
       ? { external_source: externalSource }
       : null,
+  }
+}
+
+function buildRunLinkedPersonalRecordSourceKey(params: {
+  runId: string
+  sourceType: PersonalRecordCandidate['source']
+  distanceMeters: SupportedPersonalRecordDistance
+}) {
+  if (params.sourceType === 'local_full_run') {
+    return `run:${params.runId}`
+  }
+
+  return `run:${params.runId}:distance:${params.distanceMeters}`
+}
+
+function buildRunLinkedPersonalRecordSourceIdentity(params: {
+  sourceType: PersonalRecordCandidate['source']
+  sourceKey: string
+}) {
+  return `${params.sourceType}:${params.sourceKey}`
+}
+
+async function reconcileRunLinkedPersonalRecordSources(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  runId?: string | null
+  sourceType: PersonalRecordCandidate['source']
+  candidates: PersonalRecordCandidate[]
+  scopeDistances: readonly SupportedPersonalRecordDistance[]
+}) {
+  const normalizedRunId = typeof params.runId === 'string' ? params.runId.trim() : ''
+
+  if (!normalizedRunId) {
+    return {
+      deleted: 0,
+      distancesToRecompute: [] as SupportedPersonalRecordDistance[],
+    }
+  }
+
+  const { data, error } = await params.supabase
+    .from('personal_record_sources')
+    .select('id, distance_meters, source_type, source_key')
+    .eq('user_id', params.userId)
+    .eq('run_id', normalizedRunId)
+    .eq('source_type', params.sourceType)
+    .in('distance_meters', [...params.scopeDistances])
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const existingRows = ((data ?? []) as RunLinkedPersonalRecordSourceRow[])
+    .flatMap((row) => {
+      const distanceMeters = toSupportedDistance(row.distance_meters)
+      const sourceKey = toNullableTrimmedString(row.source_key)
+
+      if (!distanceMeters || !sourceKey || row.source_type !== params.sourceType) {
+        return []
+      }
+
+      return [{
+        id: row.id,
+        distanceMeters,
+        sourceKey,
+      }]
+    })
+
+  const currentDistanceByIdentity = new Map<string, SupportedPersonalRecordDistance>()
+  for (const candidate of params.candidates) {
+    if (
+      candidate.source !== params.sourceType
+      || !params.scopeDistances.includes(candidate.distance_meters)
+    ) {
+      continue
+    }
+
+    const sourceKey = buildRunLinkedPersonalRecordSourceKey({
+      runId: normalizedRunId,
+      sourceType: candidate.source,
+      distanceMeters: candidate.distance_meters,
+    })
+    const identity = buildRunLinkedPersonalRecordSourceIdentity({
+      sourceType: candidate.source,
+      sourceKey,
+    })
+
+    currentDistanceByIdentity.set(identity, candidate.distance_meters)
+  }
+
+  const staleRowIds: string[] = []
+  const distancesToRecompute = new Set<SupportedPersonalRecordDistance>()
+
+  for (const existingRow of existingRows) {
+    const identity = buildRunLinkedPersonalRecordSourceIdentity({
+      sourceType: params.sourceType,
+      sourceKey: existingRow.sourceKey,
+    })
+    const currentDistance = currentDistanceByIdentity.get(identity)
+
+    if (currentDistance === undefined) {
+      staleRowIds.push(existingRow.id)
+      distancesToRecompute.add(existingRow.distanceMeters)
+      continue
+    }
+
+    if (currentDistance !== existingRow.distanceMeters) {
+      distancesToRecompute.add(existingRow.distanceMeters)
+    }
+  }
+
+  if (staleRowIds.length > 0) {
+    const { error: deleteError } = await params.supabase
+      .from('personal_record_sources')
+      .delete()
+      .eq('user_id', params.userId)
+      .eq('run_id', normalizedRunId)
+      .eq('source_type', params.sourceType)
+      .in('id', staleRowIds)
+
+    if (deleteError) {
+      throw new Error(deleteError.message)
+    }
+  }
+
+  return {
+    deleted: staleRowIds.length,
+    distancesToRecompute: [...distancesToRecompute],
+  }
+}
+
+async function recomputePersonalRecordDistances(params: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>
+  userId: string
+  distanceMeters: SupportedPersonalRecordDistance[]
+}) {
+  for (const distanceMeters of params.distanceMeters) {
+    await recomputePersonalRecordForUserDistance({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters,
+    })
   }
 }
 
@@ -844,11 +992,27 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
     fallbackRecordDate: params.fallbackRecordDate,
     fallbackStravaActivityId: params.fallbackStravaActivityId,
   })
+  const reconciliation = await reconcileRunLinkedPersonalRecordSources({
+    supabase: params.supabase,
+    userId: params.userId,
+    runId: params.runId,
+    sourceType: 'strava_best_effort',
+    candidates,
+    scopeDistances: SUPPORTED_PERSONAL_RECORD_DISTANCES,
+  })
 
   if (candidates.length === 0) {
+    await recomputePersonalRecordDistances({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: reconciliation.distancesToRecompute,
+    })
+
     return {
       checked: 0,
       updated: 0,
+      eventsCreated: 0,
+      deleted: reconciliation.deleted,
     }
   }
 
@@ -891,10 +1055,17 @@ export async function upsertPersonalRecordsFromStravaPayload(params: {
     }
   }
 
+  await recomputePersonalRecordDistances({
+    supabase: params.supabase,
+    userId: params.userId,
+    distanceMeters: reconciliation.distancesToRecompute,
+  })
+
   return {
     checked: candidates.length,
     updated,
     eventsCreated,
+    deleted: reconciliation.deleted,
   }
 }
 
@@ -917,12 +1088,27 @@ export async function upsertPersonalRecordsForDistancesFromStravaPayload(params:
     fallbackStravaActivityId: params.fallbackStravaActivityId,
   })
     .filter((candidate) => targetDistances.has(candidate.distance_meters))
+  const reconciliation = await reconcileRunLinkedPersonalRecordSources({
+    supabase: params.supabase,
+    userId: params.userId,
+    runId: params.runId,
+    sourceType: 'strava_best_effort',
+    candidates,
+    scopeDistances: params.distanceMeters,
+  })
 
   if (candidates.length === 0) {
+    await recomputePersonalRecordDistances({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: reconciliation.distancesToRecompute,
+    })
+
     return {
       checked: 0,
       updated: 0,
       eventsCreated: 0,
+      deleted: reconciliation.deleted,
     }
   }
 
@@ -965,10 +1151,17 @@ export async function upsertPersonalRecordsForDistancesFromStravaPayload(params:
     }
   }
 
+  await recomputePersonalRecordDistances({
+    supabase: params.supabase,
+    userId: params.userId,
+    distanceMeters: reconciliation.distancesToRecompute,
+  })
+
   return {
     checked: candidates.length,
     updated,
     eventsCreated,
+    deleted: reconciliation.deleted,
   }
 }
 
@@ -987,12 +1180,27 @@ export async function upsertPersonalRecordForLocalRunIfEligible(params: {
     created_at: params.createdAt,
     external_source: params.externalSource,
   })
+  const reconciliation = await reconcileRunLinkedPersonalRecordSources({
+    supabase: params.supabase,
+    userId: params.userId,
+    runId: params.runId,
+    sourceType: 'local_full_run',
+    candidates: candidate ? [candidate] : [],
+    scopeDistances: SUPPORTED_PERSONAL_RECORD_DISTANCES,
+  })
 
   if (!candidate) {
+    await recomputePersonalRecordDistances({
+      supabase: params.supabase,
+      userId: params.userId,
+      distanceMeters: reconciliation.distancesToRecompute,
+    })
+
     return {
       checked: 0,
       updated: 0,
       eventsCreated: 0,
+      deleted: reconciliation.deleted,
     }
   }
 
@@ -1025,10 +1233,17 @@ export async function upsertPersonalRecordForLocalRunIfEligible(params: {
     })
   }
 
+  await recomputePersonalRecordDistances({
+    supabase: params.supabase,
+    userId: params.userId,
+    distanceMeters: reconciliation.distancesToRecompute,
+  })
+
   return {
     checked: 1,
     updated: wasUpdated ? 1 : 0,
     eventsCreated: eventCreated ? 1 : 0,
+    deleted: reconciliation.deleted,
   }
 }
 
