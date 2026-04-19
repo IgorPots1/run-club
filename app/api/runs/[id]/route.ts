@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  markRunPrNeedsRecompute,
   recomputePersonalRecordForUserDistance,
   SUPPORTED_PERSONAL_RECORD_DISTANCES,
   upsertPersonalRecordForLocalRunIfEligible,
@@ -183,6 +184,14 @@ export async function PATCH(
       externalSource: existingRun.external_source,
     })
   } catch (personalRecordError) {
+    await markRunPrNeedsRecompute(existingRun.id).catch((markError) => {
+      console.error('Failed to mark run for PR recompute after local run update', {
+        userId: user.id,
+        runId: existingRun.id,
+        error: markError instanceof Error ? markError.message : 'unknown_error',
+      })
+    })
+
     console.error('Failed to update personal records after local run update', {
       userId: user.id,
       runId: existingRun.id,

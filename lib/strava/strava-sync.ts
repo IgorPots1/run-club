@@ -1,6 +1,9 @@
 import 'server-only'
 
-import { upsertPersonalRecordsFromStravaPayload } from '@/lib/personal-records'
+import {
+  markRunPrNeedsRecompute,
+  upsertPersonalRecordsFromStravaPayload,
+} from '@/lib/personal-records'
 import { reverseGeocode } from '@/lib/geocoding/mapbox'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import {
@@ -2945,6 +2948,16 @@ export async function importStravaActivityForUser(
               fallbackMovingTimeSeconds: payload.moving_time_seconds,
             })
           } catch (error) {
+            await markRunPrNeedsRecompute(resolvedRunId).catch((markError) => {
+              console.warn('[strava-sync] mark_run_pr_needs_recompute_failed', {
+                userId,
+                runId: resolvedRunId,
+                activityId: activityForImport.id,
+                path: 'insert_conflict_existing',
+                message: markError instanceof Error ? markError.message : 'unknown_error',
+              })
+            })
+
             console.warn('[strava-sync] personal_record_upsert_failed', {
               userId,
               runId: resolvedRunId,
@@ -3001,6 +3014,16 @@ export async function importStravaActivityForUser(
           fallbackMovingTimeSeconds: payload.moving_time_seconds,
         })
       } catch (error) {
+        await markRunPrNeedsRecompute(insertedRun.id).catch((markError) => {
+          console.warn('[strava-sync] mark_run_pr_needs_recompute_failed', {
+            userId,
+            runId: insertedRun.id,
+            activityId: activityForImport.id,
+            path: 'insert',
+            message: markError instanceof Error ? markError.message : 'unknown_error',
+          })
+        })
+
         console.warn('[strava-sync] personal_record_upsert_failed', {
           userId,
           runId: insertedRun.id,
@@ -3104,6 +3127,16 @@ export async function importStravaActivityForUser(
         fallbackMovingTimeSeconds: payload.moving_time_seconds,
       })
     } catch (error) {
+      await markRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((markError) => {
+        console.warn('[strava-sync] mark_run_pr_needs_recompute_failed', {
+          userId,
+          runId: existingRunIdForSupplementalSync,
+          activityId: activityForImport.id,
+          path: 'skipped_existing',
+          message: markError instanceof Error ? markError.message : 'unknown_error',
+        })
+      })
+
       console.warn('[strava-sync] personal_record_upsert_failed', {
         userId,
         runId: existingRunIdForSupplementalSync,
@@ -3281,6 +3314,16 @@ export async function importStravaActivityForUser(
       fallbackMovingTimeSeconds: payload.moving_time_seconds,
     })
   } catch (error) {
+    await markRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((markError) => {
+      console.warn('[strava-sync] mark_run_pr_needs_recompute_failed', {
+        userId,
+        runId: existingRunIdForSupplementalSync,
+        activityId: activityForImport.id,
+        path: 'update',
+        message: markError instanceof Error ? markError.message : 'unknown_error',
+      })
+    })
+
     console.warn('[strava-sync] personal_record_upsert_failed', {
       userId,
       runId: existingRunIdForSupplementalSync,

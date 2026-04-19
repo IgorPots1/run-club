@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { upsertPersonalRecordForLocalRunIfEligible } from '@/lib/personal-records'
+import {
+  markRunPrNeedsRecompute,
+  upsertPersonalRecordForLocalRunIfEligible,
+} from '@/lib/personal-records'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import { buildPersistedRunXpBreakdown, calculateRunXp } from '@/lib/run-xp'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -224,6 +227,14 @@ export async function POST(request: Request) {
       createdAt,
     })
   } catch (personalRecordError) {
+    await markRunPrNeedsRecompute(insertedRunId).catch((markError) => {
+      console.error('Failed to mark run for PR recompute after local run create', {
+        userId: user.id,
+        runId: insertedRunId,
+        error: markError instanceof Error ? markError.message : 'unknown_error',
+      })
+    })
+
     console.error('Failed to update personal records after local run create', {
       userId: user.id,
       runId: insertedRunId,
