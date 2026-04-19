@@ -75,12 +75,7 @@ async function recomputeCanonical(
   userId: string,
   distanceMeters: SupportedDistance
 ) {
-  const rpc = supabase.rpc as (
-    fn: 'recompute_personal_record_for_user_distance',
-    args: { p_user_id: string; p_distance_meters: SupportedDistance }
-  ) => Promise<{ error: { message: string } | null }>
-
-  const { error } = await rpc('recompute_personal_record_for_user_distance', {
+  const { error } = await (supabase as any).rpc('recompute_personal_record_for_user_distance', {
     p_user_id: userId,
     p_distance_meters: distanceMeters,
   })
