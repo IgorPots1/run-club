@@ -8,6 +8,8 @@ type SyncDebugDiagnostics = {
   runActivitiesCount: number
   imported: number
   failed: number
+  cursorAdvanced: boolean | null
+  heldBackIncrementalAfterParam: number | null
   firstFailure: { activityId: string; error: string; field?: string; value?: number | string | null } | null
 }
 
@@ -17,6 +19,8 @@ function buildDebugDiagnostics(source: {
     runActivitiesCount?: number
     imported?: number
     failed?: number
+    cursorAdvanced?: boolean
+    heldBackIncrementalAfterParam?: number | null
     firstFailure?: { activityId: string; error: string; field?: string; value?: number | string | null } | null
     targetedRunId?: string | null
     targetedActivityId?: number | null
@@ -36,6 +40,8 @@ function buildDebugDiagnostics(source: {
     runActivitiesCount: source.debug?.runActivitiesCount ?? 0,
     imported: source.debug?.imported ?? 0,
     failed: source.debug?.failed ?? 0,
+    cursorAdvanced: source.debug?.cursorAdvanced ?? null,
+    heldBackIncrementalAfterParam: source.debug?.heldBackIncrementalAfterParam ?? null,
     firstFailure: source.debug?.firstFailure ?? null,
   }
 }
@@ -185,6 +191,8 @@ export async function POST(request: Request) {
               runActivitiesCount: 0,
               imported: 0,
               failed: 0,
+              cursorAdvanced: null,
+              heldBackIncrementalAfterParam: null,
               firstFailure: {
                 activityId: 'n/a',
                 error: caughtError instanceof Error ? caughtError.message : 'Unknown sync error',

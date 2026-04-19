@@ -2529,12 +2529,15 @@ async function markStravaConnectionReconnectRequired(connectionId: string) {
   }
 }
 
-export async function touchStravaConnection(connectionId: string) {
+export async function touchStravaConnection(
+  connectionId: string,
+  lastSyncedAt: string = new Date().toISOString()
+) {
   const supabase = createSupabaseAdminClient()
   const { error } = await supabase
     .from('strava_connections')
     .update({
-      last_synced_at: new Date().toISOString(),
+      last_synced_at: lastSyncedAt,
     })
     .eq('id', connectionId)
 
@@ -3798,22 +3801,37 @@ export async function syncStravaRuns(
   const latestImportedRunTimestamp = latestImportedRun?.created_at
     ? Math.floor(new Date(latestImportedRun.created_at).getTime() / 1000)
     : null
+  const connectionLastSyncedAtTimestamp = connection.last_synced_at
+    ? Math.floor(new Date(connection.last_synced_at).getTime() / 1000)
+    : null
   const boundedLookbackUnixSeconds = lookbackDays
     ? Math.max(
         INITIAL_SYNC_CUTOFF_UNIX_SECONDS,
         Math.floor(Date.now() / 1000) - lookbackDays * 24 * 60 * 60
       )
     : null
+  const heldBackIncrementalAfterUnixSeconds =
+    syncMode === 'incremental' &&
+    connectionLastSyncedAtTimestamp !== null &&
+    Number.isFinite(connectionLastSyncedAtTimestamp) &&
+    (
+      latestImportedRunTimestamp === null ||
+      connectionLastSyncedAtTimestamp < latestImportedRunTimestamp
+    )
+      ? Math.max(INITIAL_SYNC_CUTOFF_UNIX_SECONDS, connectionLastSyncedAtTimestamp)
+      : null
   const afterUnixSeconds = boundedLookbackUnixSeconds ?? (
     syncMode === 'backfill'
       ? INITIAL_SYNC_CUTOFF_UNIX_SECONDS
-      : latestImportedRunTimestamp
-        ? Math.max(0, latestImportedRunTimestamp - 1)
-        : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+      : heldBackIncrementalAfterUnixSeconds ?? (
+          latestImportedRunTimestamp
+            ? Math.max(0, latestImportedRunTimestamp - 1)
+            : INITIAL_SYNC_CUTOFF_UNIX_SECONDS
+        )
   )
 
   // #region agent log
-  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_param', message: 'Computed Strava activities after parameter', data: { userId, connectionId: connection.id, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, afterParamUsed: afterUnixSeconds, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
+  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H1', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_param', message: 'Computed Strava activities after parameter', data: { userId, connectionId: connection.id, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, afterParamUsed: afterUnixSeconds, heldBackIncrementalAfterParam: heldBackIncrementalAfterUnixSeconds, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
   let activities: StravaActivitySummary[] = []
@@ -4098,18 +4116,23 @@ export async function syncStravaRuns(
     })
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:before_touch_connection', message: 'About to update last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
-  // #endregion
-
-  await touchStravaConnection(connection.id)
-
-  // #region agent log
-  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_touch_connection', message: 'Updated last_synced_at', data: { userId, connectionId: connection.id, imported, skipped, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
-  // #endregion
-
   const failed = runActivities.length - imported - updated - skipped
   const firstFailure = errors[0] ?? null
+  const cursorAdvanced = !(syncMode === 'incremental' && failed > 0)
+  const lastSyncedAtToPersist = cursorAdvanced
+    ? new Date().toISOString()
+    : new Date(afterUnixSeconds * 1000).toISOString()
+
+  // #region agent log
+  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:before_touch_connection', message: cursorAdvanced ? 'About to advance last_synced_at' : 'Holding back last_synced_at after partial failure', data: { userId, connectionId: connection.id, imported, updated, skipped, failed, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0, cursorAdvanced, lastSyncedAtToPersist, heldBackIncrementalAfterParam: heldBackIncrementalAfterUnixSeconds, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
+  // #endregion
+
+  await touchStravaConnection(connection.id, lastSyncedAtToPersist)
+
+  // #region agent log
+  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H5', location: 'lib/strava/strava-sync.ts:syncStravaRuns:after_touch_connection', message: cursorAdvanced ? 'Advanced last_synced_at' : 'Held back last_synced_at after partial failure', data: { userId, connectionId: connection.id, imported, updated, skipped, failed, filteredActivitiesCount: runActivities.length, importedIsZero: imported === 0, cursorAdvanced, lastSyncedAtToPersist, heldBackIncrementalAfterParam: heldBackIncrementalAfterUnixSeconds, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
+  // #endregion
+
   const breakdown: XpBreakdownItem[] = []
 
   if (workoutXpGained > 0) {
@@ -4121,7 +4144,7 @@ export async function syncStravaRuns(
   }
 
   // #region agent log
-  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:syncStravaRuns:summary', message: 'Completed Strava sync summary', data: { userId, athleteId: connection.strava_athlete_id, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, runActivitiesCount: runActivities.length, imported, skipped, failed, firstFailure, afterParamUsed: afterUnixSeconds, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
+  fetch('http://127.0.0.1:7626/ingest/46c1bc3f-1e85-492e-a842-c0160f231db0', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6c9984' }, body: JSON.stringify({ sessionId: '6c9984', runId: sessionDebugId, hypothesisId: 'H4', location: 'lib/strava/strava-sync.ts:syncStravaRuns:summary', message: 'Completed Strava sync summary', data: { userId, athleteId: connection.strava_athlete_id, connectionId: connection.id, totalActivitiesFetched: activities.length, firstFetchedActivityId: activities[0] ? String(activities[0].id) : null, firstFetchedActivityType: activities[0]?.type ?? null, runActivitiesCount: runActivities.length, imported, skipped, failed, firstFailure, afterParamUsed: afterUnixSeconds, heldBackIncrementalAfterParam: heldBackIncrementalAfterUnixSeconds, latestExistingStravaRunAt: latestImportedRun?.created_at ?? null, cursorAdvanced, targetDebugRunId: targetDebugRunId ?? null }, timestamp: Date.now() }) }).catch(() => {})
   // #endregion
 
   console.info('[strava-sync] sync_counts', {
@@ -4130,12 +4153,14 @@ export async function syncStravaRuns(
     requestedMode,
     lookbackDays,
     afterUnixSeconds,
+    heldBackIncrementalAfterUnixSeconds,
     fetchedCount: activities.length,
     droppedCount: droppedActivities.length,
     importedCount: imported,
     updatedCount: updated,
     skippedCount: skipped,
     failedCount: failed,
+    cursorAdvanced,
   })
 
   return {
@@ -4164,7 +4189,9 @@ export async function syncStravaRuns(
       failed,
       firstFailure,
       afterParamUsed: afterUnixSeconds,
+      heldBackIncrementalAfterParam: heldBackIncrementalAfterUnixSeconds,
       latestExistingStravaRunAt: latestImportedRun?.created_at ?? null,
+      cursorAdvanced,
     },
   }
 }

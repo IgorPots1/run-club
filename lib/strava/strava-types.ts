@@ -116,7 +116,9 @@ export type StravaSyncDebugInfo = {
     error: string
   } | null
   afterParamUsed: number | null
+  heldBackIncrementalAfterParam?: number | null
   latestExistingStravaRunAt: string | null
+  cursorAdvanced?: boolean
   targetedRunId?: string | null
   targetedActivityId?: number | null
   targetedSyncAttempted?: boolean
