@@ -1045,6 +1045,7 @@ const INITIAL_CHAT_MESSAGE_LIMIT = 30
 const OLDER_CHAT_BATCH_LIMIT = 10
 const MAX_RENDERED_CHAT_MESSAGES = 60
 const CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT = 120
+const CHAT_AUTO_FOLLOW_THRESHOLD_PX = 24
 const SHORT_THREAD_KEYBOARD_LAYOUT_THRESHOLD_PX = 24
 const SWIPE_REPLY_TRIGGER_PX = 80
 const SWIPE_REPLY_MAX_OFFSET_PX = 96
@@ -4676,7 +4677,7 @@ export default function ChatSection({
     setChatMentionDebugSnapshot({
       composerTop: composerRect?.top ?? null,
       composerLeft: composerRect?.left ?? null,
-      isNearBottom: distanceFromBottom <= 80,
+      isNearBottom: distanceFromBottom <= CHAT_AUTO_FOLLOW_THRESHOLD_PX,
       scrollTop: scrollContainer?.scrollTop ?? null,
       scrollHeight: scrollContainer?.scrollHeight ?? null,
       clientHeight: scrollContainer?.clientHeight ?? null,
@@ -4735,7 +4736,7 @@ export default function ChatSection({
       scrollTop: scrollContainer?.scrollTop ?? null,
       scrollHeight: scrollContainer?.scrollHeight ?? null,
       scrollClientHeight: scrollContainer?.clientHeight ?? null,
-      atBottom: distanceFromBottom === null ? null : distanceFromBottom <= 100,
+      atBottom: distanceFromBottom === null ? null : distanceFromBottom <= CHAT_AUTO_FOLLOW_THRESHOLD_PX,
       composerTop: composerRect?.top ?? null,
       composerBottom: composerRect?.bottom ?? null,
       composerHeight: composerRect?.height ?? null,
@@ -5604,7 +5605,7 @@ export default function ChatSection({
       textarea.scrollHeight > CHAT_COMPOSER_TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [])
 
-  const isNearBottom = useCallback((thresholdPx = 100) => {
+  const isNearBottom = useCallback((thresholdPx = CHAT_AUTO_FOLLOW_THRESHOLD_PX) => {
     if (typeof window === 'undefined') {
       return false
     }
@@ -5917,7 +5918,7 @@ export default function ChatSection({
 
     const scrollContainer = scrollContainerRef.current
     const isCurrentlyNearBottom = scrollContainer
-      ? scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight) <= 80
+      ? scrollContainer.scrollHeight - (scrollContainer.scrollTop + scrollContainer.clientHeight) <= CHAT_AUTO_FOLLOW_THRESHOLD_PX
       : true
 
     if (!isCurrentlyNearBottom) {
@@ -5931,7 +5932,7 @@ export default function ChatSection({
 
       const currentScrollContainer = scrollContainerRef.current
       const isStillNearBottom = currentScrollContainer
-        ? currentScrollContainer.scrollHeight - (currentScrollContainer.scrollTop + currentScrollContainer.clientHeight) <= 80
+        ? currentScrollContainer.scrollHeight - (currentScrollContainer.scrollTop + currentScrollContainer.clientHeight) <= CHAT_AUTO_FOLLOW_THRESHOLD_PX
         : true
 
       if (!isStillNearBottom) {
@@ -7076,7 +7077,7 @@ export default function ChatSection({
         return
       }
 
-      if (isNearBottom(24)) {
+      if (isNearBottom(CHAT_AUTO_FOLLOW_THRESHOLD_PX)) {
         return
       }
 
