@@ -7,6 +7,8 @@ import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelFromXP } from '@/lib/xp'
 
+const MANUAL_RUN_DUPLICATE_WINDOW_SECONDS = 60
+
 type CreateRunRequestBody = {
   name?: string | null
   title?: string | null
@@ -19,6 +21,11 @@ type CreateRunRequestBody = {
   averagePaceSeconds?: number | null
   createdAt?: string | null
   shoeId?: string | null
+}
+
+type ManualRunCreateRpcResult = {
+  run_id?: string | null
+  was_created?: boolean | null
 }
 
 export async function GET() {
@@ -119,28 +126,26 @@ export async function POST(request: Request) {
     supabase: supabaseAdmin,
   })
 
-  const insertPayload = {
-    user_id: user.id,
-    name,
-    title,
-    distance_km: distanceKm,
-    distance_meters: distanceMeters,
-    duration_minutes: durationMinutes,
-    duration_seconds: durationSeconds,
-    moving_time_seconds: movingTimeSeconds,
-    elapsed_time_seconds: elapsedTimeSeconds,
-    average_pace_seconds: averagePaceSeconds,
-    created_at: createdAt,
-    xp: runXp.xp,
-    xp_breakdown: buildPersistedRunXpBreakdown(runXp),
-    shoe_id: shoeId,
-  }
-
-  const { data: insertedRun, error: insertError } = await supabaseAdmin
-    .from('runs')
-    .insert(insertPayload)
-    .select('id')
-    .single()
+  const { data: rpcRows, error: insertError } = await supabaseAdmin.rpc(
+    'create_manual_run_if_not_duplicate',
+    {
+      p_user_id: user.id,
+      p_name: name,
+      p_title: title,
+      p_distance_km: distanceKm,
+      p_distance_meters: distanceMeters,
+      p_duration_minutes: durationMinutes,
+      p_duration_seconds: durationSeconds,
+      p_moving_time_seconds: movingTimeSeconds,
+      p_elapsed_time_seconds: elapsedTimeSeconds,
+      p_average_pace_seconds: averagePaceSeconds,
+      p_created_at: createdAt,
+      p_xp: runXp.xp,
+      p_xp_breakdown: buildPersistedRunXpBreakdown(runXp),
+      p_shoe_id: shoeId,
+      p_duplicate_window_seconds: MANUAL_RUN_DUPLICATE_WINDOW_SECONDS,
+    }
+  )
 
   if (insertError) {
     return NextResponse.json(
@@ -153,6 +158,34 @@ export async function POST(request: Request) {
     )
   }
 
+  const insertedRun = ((rpcRows as ManualRunCreateRpcResult[] | null) ?? [])[0] ?? null
+  const insertedRunId = insertedRun?.run_id ?? null
+
+  if (!insertedRunId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        step: 'run_create_failed',
+        error: 'manual_run_create_rpc_empty',
+      },
+      { status: 500 }
+    )
+  }
+
+  if (insertedRun.was_created === false) {
+    return NextResponse.json({
+      ok: true,
+      run: {
+        id: insertedRunId,
+      },
+      shoeWearMessage: null,
+      xpGained: 0,
+      breakdown: [],
+      levelUp: false,
+      newLevel: null,
+    })
+  }
+
   let shoeWearTrigger: Awaited<ReturnType<typeof applyRunToShoe>> = null
 
   try {
@@ -162,7 +195,7 @@ export async function POST(request: Request) {
       distanceMeters,
     })
   } catch (shoeImpactError) {
-    await supabaseAdmin.from('runs').delete().eq('id', insertedRun.id).eq('user_id', user.id)
+    await supabaseAdmin.from('runs').delete().eq('id', insertedRunId).eq('user_id', user.id)
 
     return NextResponse.json(
       {
@@ -185,7 +218,7 @@ export async function POST(request: Request) {
     await upsertPersonalRecordForLocalRunIfEligible({
       supabase: supabaseAdmin,
       userId: user.id,
-      runId: insertedRun.id,
+      runId: insertedRunId,
       distanceMeters,
       movingTimeSeconds,
       createdAt,
@@ -193,7 +226,7 @@ export async function POST(request: Request) {
   } catch (personalRecordError) {
     console.error('Failed to update personal records after local run create', {
       userId: user.id,
-      runId: insertedRun.id,
+      runId: insertedRunId,
       error: personalRecordError instanceof Error ? personalRecordError.message : 'unknown_error',
     })
   }
@@ -202,7 +235,7 @@ export async function POST(request: Request) {
     {
       ok: true,
       run: {
-        id: insertedRun.id,
+        id: insertedRunId,
       },
       shoeWearMessage: shoeWearTrigger?.message ?? null,
       xpGained: runXp.xp,
