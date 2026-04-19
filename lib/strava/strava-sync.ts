@@ -1,6 +1,7 @@
 import 'server-only'
 
 import {
+  clearRunPrNeedsRecompute,
   markRunPrNeedsRecompute,
   upsertPersonalRecordsFromStravaPayload,
 } from '@/lib/personal-records'
@@ -114,6 +115,7 @@ type ExistingStravaRunRow = {
   distance_meters: number | null
   xp: number | null
   xp_breakdown: PersistedRunXpBreakdown | null
+  pr_needs_recompute: boolean
   name_manually_edited: boolean
   description_manually_edited: boolean
 }
@@ -2706,7 +2708,7 @@ export async function importStravaActivityForUser(
   const payload = buildRunInsertPayload(userId, activityForImport)
   const { data: existingRun, error: existingRunError } = await supabase
     .from('runs')
-    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, xp_breakdown, name_manually_edited, description_manually_edited')
+    .select('id, user_id, name, description, city, region, country, shoe_id, distance_meters, xp, xp_breakdown, pr_needs_recompute, name_manually_edited, description_manually_edited')
     .eq('external_source', STRAVA_EXTERNAL_SOURCE)
     .eq('external_id', payload.external_id)
     .maybeSingle()
@@ -3116,7 +3118,7 @@ export async function importStravaActivityForUser(
 
   if (!options.updateExisting && !requiresOwnerRepair) {
     try {
-      await upsertPersonalRecordsFromStravaPayload({
+      const personalRecordResult = await upsertPersonalRecordsFromStravaPayload({
         supabase,
         userId,
         runId: existingRunIdForSupplementalSync,
@@ -3126,6 +3128,18 @@ export async function importStravaActivityForUser(
         fallbackDistanceMeters: payload.distance_meters,
         fallbackMovingTimeSeconds: payload.moving_time_seconds,
       })
+
+      if (normalizedExistingRun.pr_needs_recompute && personalRecordResult.checked > 0) {
+        await clearRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((clearError) => {
+          console.warn('[strava-sync] clear_run_pr_needs_recompute_failed', {
+            userId,
+            runId: existingRunIdForSupplementalSync,
+            activityId: activityForImport.id,
+            path: 'skipped_existing',
+            message: clearError instanceof Error ? clearError.message : 'unknown_error',
+          })
+        })
+      }
     } catch (error) {
       await markRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((markError) => {
         console.warn('[strava-sync] mark_run_pr_needs_recompute_failed', {
@@ -3303,7 +3317,7 @@ export async function importStravaActivityForUser(
   })
 
   try {
-    await upsertPersonalRecordsFromStravaPayload({
+    const personalRecordResult = await upsertPersonalRecordsFromStravaPayload({
       supabase,
       userId,
       runId: existingRunIdForSupplementalSync,
@@ -3313,6 +3327,18 @@ export async function importStravaActivityForUser(
       fallbackDistanceMeters: payload.distance_meters,
       fallbackMovingTimeSeconds: payload.moving_time_seconds,
     })
+
+    if (normalizedExistingRun.pr_needs_recompute && personalRecordResult.checked > 0) {
+      await clearRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((clearError) => {
+        console.warn('[strava-sync] clear_run_pr_needs_recompute_failed', {
+          userId,
+          runId: existingRunIdForSupplementalSync,
+          activityId: activityForImport.id,
+          path: 'update',
+          message: clearError instanceof Error ? clearError.message : 'unknown_error',
+        })
+      })
+    }
   } catch (error) {
     await markRunPrNeedsRecompute(existingRunIdForSupplementalSync).catch((markError) => {
       console.warn('[strava-sync] mark_run_pr_needs_recompute_failed', {

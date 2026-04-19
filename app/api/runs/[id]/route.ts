@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  clearRunPrNeedsRecompute,
   markRunPrNeedsRecompute,
   recomputePersonalRecordForUserDistance,
   SUPPORTED_PERSONAL_RECORD_DISTANCES,
@@ -20,6 +21,7 @@ type RunMutationRow = {
   distance_meters: number | null
   moving_time_seconds: number | null
   external_source: string | null
+  pr_needs_recompute: boolean
   created_at: string
 }
 
@@ -38,7 +40,7 @@ async function loadOwnedRun(
   const supabaseAdmin = createSupabaseAdminClient()
   const result = await supabaseAdmin
     .from('runs')
-    .select('id, user_id, name, description, name_manually_edited, description_manually_edited, shoe_id, distance_meters, moving_time_seconds, external_source, created_at')
+    .select('id, user_id, name, description, name_manually_edited, description_manually_edited, shoe_id, distance_meters, moving_time_seconds, external_source, pr_needs_recompute, created_at')
     .eq('id', runId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -174,7 +176,7 @@ export async function PATCH(
   }
 
   try {
-    await upsertPersonalRecordForLocalRunIfEligible({
+    const personalRecordResult = await upsertPersonalRecordForLocalRunIfEligible({
       supabase: supabaseAdmin,
       userId: user.id,
       runId: existingRun.id,
@@ -183,6 +185,16 @@ export async function PATCH(
       createdAt: existingRun.created_at,
       externalSource: existingRun.external_source,
     })
+
+    if (existingRun.pr_needs_recompute && personalRecordResult.checked > 0) {
+      await clearRunPrNeedsRecompute(existingRun.id).catch((clearError) => {
+        console.error('Failed to clear run PR recompute flag after local run update', {
+          userId: user.id,
+          runId: existingRun.id,
+          error: clearError instanceof Error ? clearError.message : 'unknown_error',
+        })
+      })
+    }
   } catch (personalRecordError) {
     await markRunPrNeedsRecompute(existingRun.id).catch((markError) => {
       console.error('Failed to mark run for PR recompute after local run update', {

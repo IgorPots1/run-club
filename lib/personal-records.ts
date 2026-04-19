@@ -1070,6 +1070,26 @@ export async function markRunPrNeedsRecompute(runId: string) {
   }
 }
 
+export async function clearRunPrNeedsRecompute(runId: string) {
+  const normalizedRunId = typeof runId === 'string' ? runId.trim() : ''
+
+  if (!normalizedRunId) {
+    return
+  }
+
+  const supabase = createSupabaseAdminClient()
+  const { error } = await supabase
+    .from('runs')
+    .update({
+      pr_needs_recompute: false,
+    })
+    .eq('id', normalizedRunId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
 function normalizePersonalRecordRow(row: PersonalRecordRow): PersonalRecordView | null {
   const distanceMeters = toSupportedDistance(row.distance_meters)
   const durationSeconds = toPositiveInteger(row.duration_seconds)
