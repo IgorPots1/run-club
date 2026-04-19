@@ -201,9 +201,14 @@ export default function ActivityInboxClient({
                 )}
 
                 <div className="min-w-0 flex-1">
-                  {actorName ? (
-                    <p className="app-text-primary text-sm font-semibold leading-5">{actorName}</p>
-                  ) : null}
+                  <div className="flex items-start justify-between gap-2">
+                    {actorName ? (
+                      <p className="app-text-primary min-w-0 flex-1 text-sm font-semibold leading-5">{actorName}</p>
+                    ) : (
+                      <div />
+                    )}
+                    <p className="app-text-secondary shrink-0 text-xs leading-5">{formatRunDateTimeLabel(event.createdAt)}</p>
+                  </div>
                   <div className={`flex items-start gap-2 ${actorName ? 'mt-px' : ''}`}>
                     <p className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${event.isUnread ? 'font-medium' : ''}`}>
                       {title}
@@ -218,7 +223,6 @@ export default function ActivityInboxClient({
                   {event.body ? (
                     <p className="app-text-secondary mt-0.5 text-sm leading-5">{event.body}</p>
                   ) : null}
-                  <p className="app-text-secondary mt-1 text-xs">{formatRunDateTimeLabel(event.createdAt)}</p>
                 </div>
               </div>
             )
