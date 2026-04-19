@@ -57,6 +57,9 @@ type AppEventRow = {
   created_at: string
 }
 
+const APP_EVENT_SELECT =
+  'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
+
 function normalizeAppEventType(type: string) {
   return type.trim()
 }
@@ -104,6 +107,33 @@ function toAppEvent(row: AppEventRow): AppEvent {
   }
 }
 
+function isAppEventDedupeConflict(error: { code?: string | null; message?: string | null }) {
+  return (
+    error.code === '23505' ||
+    Boolean(error.message?.includes('duplicate key value')) ||
+    Boolean(error.message?.includes('app_events_dedupe_key'))
+  )
+}
+
+async function loadAppEventByDedupeKey(dedupeKey: string): Promise<AppEvent> {
+  const supabase = createSupabaseAdminClient()
+  const { data, error } = await supabase
+    .from('app_events')
+    .select(APP_EVENT_SELECT)
+    .eq('dedupe_key', dedupeKey)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  if (!data) {
+    throw new Error('app_event_dedupe_conflict_missing_row')
+  }
+
+  return toAppEvent(data as AppEventRow)
+}
+
 export async function createAppEvent(input: CreateAppEventInput): Promise<AppEvent> {
   const row = toInsertableAppEvent(input)
 
@@ -111,12 +141,14 @@ export async function createAppEvent(input: CreateAppEventInput): Promise<AppEve
   const { data, error } = await supabase
     .from('app_events')
     .insert(row)
-    .select(
-      'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
-    )
+    .select(APP_EVENT_SELECT)
     .single()
 
   if (error) {
+    if (row.dedupe_key && isAppEventDedupeConflict(error)) {
+      return loadAppEventByDedupeKey(row.dedupe_key)
+    }
+
     throw error
   }
 
@@ -128,19 +160,7 @@ export async function createAppEvents(inputs: CreateAppEventInput[]): Promise<Ap
     return []
   }
 
-  const supabase = createSupabaseAdminClient()
-  const { data, error } = await supabase
-    .from('app_events')
-    .insert(inputs.map(toInsertableAppEvent))
-    .select(
-      'id, type, actor_user_id, target_user_id, entity_type, entity_id, category, channel, priority, target_path, dedupe_key, payload, created_at'
-    )
-
-  if (error) {
-    throw error
-  }
-
-  return ((data as AppEventRow[] | null) ?? []).map(toAppEvent)
+  return Promise.all(inputs.map((input) => createAppEvent(input)))
 }
 
 // Example future usage for chat notifications fan-out:

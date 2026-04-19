@@ -92,6 +92,7 @@ export function buildRunLikeCreatedEvent(input: {
   actorUserId: string
   targetUserId: string
   runId: string
+  likeCreatedAt: string
   runTitle?: string | null
   xpAwarded?: number | null
 }): CreateAppEventInput {
@@ -105,6 +106,7 @@ export function buildRunLikeCreatedEvent(input: {
     channel: 'inbox',
     priority: 'normal',
     targetPath: `/runs/${input.runId}`,
+    dedupeKey: `run_like.created:${input.runId}:${input.actorUserId}:${input.likeCreatedAt}`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath: `/runs/${input.runId}`,
@@ -124,6 +126,7 @@ export function buildRaceEventLikedEvent(input: {
   actorUserId: string
   targetUserId: string
   raceEventId: string
+  likeCreatedAt: string
   raceName?: string | null
 }): CreateAppEventInput {
   return {
@@ -136,6 +139,7 @@ export function buildRaceEventLikedEvent(input: {
     channel: 'both',
     priority: 'normal',
     targetPath: `/races/${input.raceEventId}`,
+    dedupeKey: `race_event.liked:${input.raceEventId}:${input.actorUserId}:${input.likeCreatedAt}`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath: `/races/${input.raceEventId}`,
@@ -171,6 +175,7 @@ export function buildRunCommentCreatedEvent(input: {
     channel: 'inbox',
     priority: 'normal',
     targetPath,
+    dedupeKey: `run_comment.created:${input.commentId}`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath,
@@ -208,6 +213,7 @@ export function buildRunCommentReplyCreatedEvent(input: {
     channel: 'inbox',
     priority: 'normal',
     targetPath,
+    dedupeKey: `run_comment.reply_created:${input.commentId}`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath,
@@ -242,6 +248,7 @@ export function buildRaceEventCreatedEvent(input: {
     channel: null,
     priority: 'normal',
     targetPath: `/races/${input.raceEventId}`,
+    dedupeKey: `race_event.created:${input.raceEventId}`,
     payload: {
       v: EVENT_PAYLOAD_VERSION,
       targetPath: `/races/${input.raceEventId}`,

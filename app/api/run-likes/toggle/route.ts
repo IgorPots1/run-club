@@ -40,6 +40,7 @@ function isSelfRunLikeError(error: { code?: string | null; message?: string | nu
 async function emitRunLikeCreatedEvent(input: {
   actorUserId: string
   runId: string
+  likeCreatedAt: string
   xpAwarded: number
 }) {
   try {
@@ -65,6 +66,7 @@ async function emitRunLikeCreatedEvent(input: {
         actorUserId: input.actorUserId,
         targetUserId: run.user_id,
         runId: run.id,
+        likeCreatedAt: input.likeCreatedAt,
         runTitle: run.title ?? run.name,
         xpAwarded: input.xpAwarded,
       })
@@ -76,6 +78,22 @@ async function emitRunLikeCreatedEvent(input: {
       error: error instanceof Error ? error.message : 'unknown_error',
     })
   }
+}
+
+async function loadExistingRunLike(input: { runId: string; userId: string }) {
+  const supabaseAdmin = createSupabaseAdminClient()
+  const { data, error } = await supabaseAdmin
+    .from('run_likes')
+    .select('created_at, xp_awarded')
+    .eq('run_id', input.runId)
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return (data as RunLikeMutationRow | null) ?? null
 }
 
 export async function POST(request: Request) {
@@ -168,6 +186,24 @@ export async function POST(request: Request) {
 
     if (insertError) {
       if (isDuplicateRunLikeError(insertError)) {
+        const existingLike = await loadExistingRunLike({
+          runId,
+          userId: user.id,
+        })
+
+        if (existingLike?.created_at) {
+          const xpAwarded = Math.max(0, Math.round(Number(existingLike.xp_awarded ?? 0)))
+
+          after(async () => {
+            await emitRunLikeCreatedEvent({
+              actorUserId: user.id,
+              runId,
+              likeCreatedAt: existingLike.created_at,
+              xpAwarded,
+            })
+          })
+        }
+
         return NextResponse.json({
           ok: true,
         })
@@ -205,6 +241,7 @@ export async function POST(request: Request) {
       await emitRunLikeCreatedEvent({
         actorUserId: user.id,
         runId,
+        likeCreatedAt: insertedLike.created_at,
         xpAwarded,
       })
     })

@@ -13,6 +13,10 @@ type RaceEventLikeCountRow = {
   race_event_id: string
 }
 
+type RaceEventLikeMutationRow = {
+  created_at: string
+}
+
 type RaceEventOwnerRow = {
   id: string
   user_id: string | null
@@ -50,6 +54,7 @@ async function loadRaceEventLikeCount(
 async function emitRaceEventLikedNotification(input: {
   actorUserId: string
   raceEventId: string
+  likeCreatedAt: string
 }) {
   try {
     const supabaseAdmin = createSupabaseAdminClient()
@@ -74,6 +79,7 @@ async function emitRaceEventLikedNotification(input: {
         actorUserId: input.actorUserId,
         targetUserId: raceEvent.user_id,
         raceEventId: raceEvent.id,
+        likeCreatedAt: input.likeCreatedAt,
         raceName: raceEvent.name,
       })
     )
@@ -88,6 +94,22 @@ async function emitRaceEventLikedNotification(input: {
       error: error instanceof Error ? error.message : 'unknown_error',
     })
   }
+}
+
+async function loadExistingRaceEventLike(input: { raceEventId: string; userId: string }) {
+  const supabaseAdmin = createSupabaseAdminClient()
+  const { data, error } = await supabaseAdmin
+    .from('race_event_likes')
+    .select('created_at')
+    .eq('race_event_id', input.raceEventId)
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return (data as RaceEventLikeMutationRow | null) ?? null
 }
 
 export async function POST(request: Request) {
@@ -144,16 +166,32 @@ export async function POST(request: Request) {
     })
   }
 
-  const { error: insertError } = await supabaseAdmin
+  const { data: insertedLike, error: insertError } = await supabaseAdmin
     .from('race_event_likes')
     .insert({
       race_event_id: raceEventId,
       user_id: user.id,
     })
+    .select('created_at')
+    .single()
 
   if (insertError) {
     if (isDuplicateRaceEventLikeError(insertError)) {
+      const existingLike = await loadExistingRaceEventLike({
+        raceEventId,
+        userId: user.id,
+      })
       const likeCount = await loadRaceEventLikeCount(supabaseAdmin, raceEventId)
+
+      if (existingLike?.created_at) {
+        after(async () => {
+          await emitRaceEventLikedNotification({
+            actorUserId: user.id,
+            raceEventId,
+            likeCreatedAt: existingLike.created_at,
+          })
+        })
+      }
 
       return NextResponse.json({
         ok: true,
@@ -182,13 +220,17 @@ export async function POST(request: Request) {
   }
 
   const likeCount = await loadRaceEventLikeCount(supabaseAdmin, raceEventId)
+  const insertedRaceEventLike = (insertedLike as RaceEventLikeMutationRow | null) ?? null
 
-  after(async () => {
-    await emitRaceEventLikedNotification({
-      actorUserId: user.id,
-      raceEventId,
+  if (insertedRaceEventLike?.created_at) {
+    after(async () => {
+      await emitRaceEventLikedNotification({
+        actorUserId: user.id,
+        raceEventId,
+        likeCreatedAt: insertedRaceEventLike.created_at,
+      })
     })
-  })
+  }
 
   return NextResponse.json({
     ok: true,
