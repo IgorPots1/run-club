@@ -2758,6 +2758,46 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
+function PaperPlaneIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 11.5 20 4l-5.8 16-3.2-6.3L4 11.5Z" />
+      <path d="m11 13.7 4.2-4.2" />
+    </svg>
+  )
+}
+
+type MessageSendState = 'sending' | 'sent' | 'failed'
+
+function MessageSendStateIcon({
+  state,
+  className = 'h-3 w-3',
+}: {
+  state: MessageSendState
+  className?: string
+}) {
+  if (state === 'sent') {
+    return <CheckIcon className={className} />
+  }
+
+  if (state === 'sending') {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 8v4.5l3 1.7" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 8.5v5" />
+      <circle cx="12" cy="16.8" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 type TouchPointLike = {
   clientX: number
   clientY: number
@@ -3752,6 +3792,13 @@ function ChatMessageBodyComponent({
   )
   const isAttachmentFailureState = Boolean(hasServerBackedImageMessage && hasAttachmentFailures)
   const isMessageSendFailureState = Boolean(isFailedMessage && !isAttachmentFailureState)
+  const messageSendState: MessageSendState | null = isOwnMessage
+    ? isPendingMessage
+      ? 'sending'
+      : isMessageSendFailureState || isAttachmentFailureState
+        ? 'failed'
+        : 'sent'
+    : null
   const isUploadingImageMessage = Boolean(
     hasImageAttachments &&
     message.optimisticAttachmentUploadState === 'uploading'
@@ -3766,6 +3813,11 @@ function ChatMessageBodyComponent({
       ? 'Не удалось загрузить 1 фото'
       : `Не удалось загрузить ${attachmentProgress?.failedCount ?? 0} фото`
     : 'Не отправлено'
+  const messageSendStateLabel = messageSendState === 'sending'
+    ? pendingStatusLabel
+    : messageSendState === 'failed'
+      ? failedStatusLabel
+      : 'Отправлено'
   const shouldShowRetryButton = Boolean(
     onRetryFailedMessage &&
     (isMessageSendFailureState || (isAttachmentFailureState && !hasPendingAttachmentUploads))
@@ -3894,14 +3946,24 @@ function ChatMessageBodyComponent({
       ) : null}
       {!isImageOnlyMessage ? (
         <p className={`${isMessageSendFailureState || isAttachmentFailureState ? 'text-red-600' : 'app-text-secondary'} ${compactPreview ? 'mt-0.5 text-[11px]' : 'mt-1 text-[9px] opacity-60'} ${compactPreview ? '' : isOwnMessage ? 'text-right' : ''}`}>
-          {message.createdAtLabel}
-          {message.editedAt ? ' • изменено' : ''}
-          {isPendingMessage ? ` • ${pendingStatusLabel}` : ''}
-          {!isPendingMessage && (isMessageSendFailureState || isAttachmentFailureState) ? ` • ${failedStatusLabel}` : ''}
+          <span>{message.createdAtLabel}{message.editedAt ? ' • изменено' : ''}</span>
+          {messageSendState ? (
+            <span className="inline-flex items-center gap-1 align-middle">
+              <span aria-hidden="true">•</span>
+              <MessageSendStateIcon
+                state={messageSendState}
+                className={compactPreview ? 'h-3 w-3' : 'h-[11px] w-[11px]'}
+              />
+              <span>{messageSendStateLabel}</span>
+            </span>
+          ) : null}
         </p>
-      ) : isPendingMessage || isMessageSendFailureState || isAttachmentFailureState ? (
+      ) : messageSendState ? (
         <p className={`mt-1 text-[11px] ${isOwnMessage ? 'text-right' : ''} ${isMessageSendFailureState || isAttachmentFailureState ? 'text-red-600' : 'app-text-secondary opacity-70'}`}>
-          {isPendingMessage ? pendingStatusLabel : failedStatusLabel}
+          <span className="inline-flex items-center gap-1 align-middle">
+            <MessageSendStateIcon state={messageSendState} className="h-3 w-3" />
+            <span>{messageSendStateLabel}</span>
+          </span>
         </p>
       ) : null}
       {shouldShowRetryButton ? (
@@ -9565,8 +9627,9 @@ export default function ChatSection({
                     type="submit"
                     disabled={submitting || uploadingImage || uploadingVoice || !canSubmitMessage || isMessageTooLong}
                     className="app-button-primary flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Отправить сообщение"
                   >
-                    {submitting ? '...' : editingMessage ? 'OK' : '>'}
+                    {submitting ? '...' : <PaperPlaneIcon />}
                   </button>
                 )}
               </div>
