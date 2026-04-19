@@ -77,6 +77,26 @@ function formatGroupedRunLikeTitle(item: ActivityGroupedRunLikeInboxItem) {
   return `${firstActorName}, ${secondActorName} и еще ${item.actorCount - 2} чел. лайкнули вашу пробежку`
 }
 
+function formatGroupedRunLikeParts(item: ActivityGroupedRunLikeInboxItem) {
+  const [firstActorName = 'Кто-то', secondActorName = 'кто-то'] = item.actorPreviewNames
+
+  if (item.actorCount <= 1) {
+    return null
+  }
+
+  if (item.actorCount === 2) {
+    return {
+      actorText: `${firstActorName} и ${secondActorName}`,
+      actionText: 'лайкнули вашу пробежку',
+    }
+  }
+
+  return {
+    actorText: `${firstActorName}, ${secondActorName} и еще ${item.actorCount - 2} чел.`,
+    actionText: 'лайкнули вашу пробежку',
+  }
+}
+
 function isGroupedRunLikeInboxItem(event: ActivityInboxListItem): event is ActivityGroupedRunLikeInboxItem {
   return event.type === 'grouped_run_like'
 }
@@ -84,6 +104,18 @@ function isGroupedRunLikeInboxItem(event: ActivityInboxListItem): event is Activ
 function getInitialLabel(name: string | null | undefined) {
   const trimmed = name?.trim()
   return trimmed?.[0]?.toUpperCase() ?? 'R'
+}
+
+function getActionIcon(eventType: string) {
+  if (eventType.includes('like')) {
+    return '❤'
+  }
+
+  if (eventType.includes('comment') || eventType.includes('reply')) {
+    return '💬'
+  }
+
+  return null
 }
 
 export default function ActivityInboxClient({
@@ -152,10 +184,12 @@ export default function ActivityInboxClient({
               eventType = event.type
               title = event.title
             }
+            const groupedLikeParts = groupedRunLikeEvent ? formatGroupedRunLikeParts(groupedRunLikeEvent) : null
+            const actionIcon = getActionIcon(eventType)
             const cardContent = (
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-3">
                 {groupedRunLikeEvent ? (
-                  <div className="relative h-9 w-9 shrink-0">
+                  <div className="relative mt-0.5 h-9 w-9 shrink-0">
                     {[0, 1].map((index) => {
                       const previewAvatarUrl = groupedRunLikeEvent.actorPreviewAvatarUrls[index] ?? null
                       const previewName = groupedRunLikeEvent.actorPreviewNames[index] ?? null
@@ -186,7 +220,7 @@ export default function ActivityInboxClient({
                     })}
                   </div>
                 ) : (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
                     {actorAvatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -202,17 +236,35 @@ export default function ActivityInboxClient({
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    {actorName ? (
-                      <p className="app-text-primary min-w-0 flex-1 text-sm font-semibold leading-5">{actorName}</p>
-                    ) : (
-                      <div />
-                    )}
-                    <p className="app-text-secondary shrink-0 text-xs leading-5">{formatRunDateTimeLabel(event.createdAt)}</p>
+                    <div className="min-w-0 flex-1">
+                      {actorName ? (
+                        <p className="app-text-primary truncate text-sm font-semibold leading-5">{actorName}</p>
+                      ) : null}
+                    </div>
+                    <p className="app-text-secondary shrink-0 whitespace-nowrap text-xs leading-4">{formatRunDateTimeLabel(event.createdAt)}</p>
                   </div>
-                  <div className={`flex items-start gap-2 ${actorName ? 'mt-px' : ''}`}>
-                    <p className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${event.isUnread ? 'font-medium' : ''}`}>
-                      {title}
-                    </p>
+                  <div className={`flex items-start gap-1.5 ${actorName ? 'mt-0.5' : 'mt-0'}`}>
+                    {actionIcon ? (
+                      <span aria-hidden="true" className="app-text-secondary mt-[2px] shrink-0 text-[12px] leading-none">
+                        {actionIcon}
+                      </span>
+                    ) : (
+                      <span aria-hidden="true" className="w-[12px] shrink-0" />
+                    )}
+                    {groupedLikeParts ? (
+                      <p className="app-text-primary min-w-0 flex-1 line-clamp-2 text-sm leading-5">
+                        <span className="font-semibold">{groupedLikeParts.actorText}</span>{' '}
+                        <span className="font-normal">{groupedLikeParts.actionText}</span>
+                      </p>
+                    ) : (
+                      <p
+                        className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${
+                          groupedRunLikeEvent ? 'line-clamp-2' : ''
+                        } ${event.isUnread ? 'font-medium' : ''}`}
+                      >
+                        {title}
+                      </p>
+                    )}
                     <span
                       aria-hidden="true"
                       className={`mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 dark:bg-sky-400 ${
@@ -221,7 +273,7 @@ export default function ActivityInboxClient({
                     />
                   </div>
                   {event.body ? (
-                    <p className="app-text-secondary mt-0.5 text-sm leading-5">{event.body}</p>
+                    <p className="app-text-secondary mt-0.5 text-xs leading-4">{event.body}</p>
                   ) : null}
                 </div>
               </div>
@@ -233,7 +285,7 @@ export default function ActivityInboxClient({
                   key={event.id}
                   type="button"
                   onClick={() => handleOpenRunDetail(event.targetPath!)}
-                  className="app-card app-surface-muted block w-full rounded-xl border border-black/[0.05] p-3 text-left shadow-sm transition-transform transition-shadow hover:shadow-md active:scale-[0.99] dark:border-white/[0.08]"
+                  className="app-card app-surface-muted block w-full rounded-xl border border-black/[0.05] px-3.5 py-3 text-left shadow-sm transition-transform transition-shadow hover:shadow-md active:scale-[0.99] dark:border-white/[0.08]"
                 >
                   {cardContent}
                 </button>
@@ -245,7 +297,7 @@ export default function ActivityInboxClient({
                 <Link
                   key={event.id}
                   href={event.targetPath}
-                  className="app-card app-surface-muted block rounded-xl border border-black/[0.05] p-3 shadow-sm transition-transform transition-shadow hover:shadow-md active:scale-[0.99] dark:border-white/[0.08]"
+                  className="app-card app-surface-muted block rounded-xl border border-black/[0.05] px-3.5 py-3 shadow-sm transition-transform transition-shadow hover:shadow-md active:scale-[0.99] dark:border-white/[0.08]"
                 >
                   {cardContent}
                 </Link>
@@ -255,7 +307,7 @@ export default function ActivityInboxClient({
             return (
               <div
                 key={event.id}
-                className="app-card app-surface-muted rounded-xl border border-black/[0.05] p-3 shadow-sm dark:border-white/[0.08]"
+                className="app-card app-surface-muted rounded-xl border border-black/[0.05] px-3.5 py-3 shadow-sm dark:border-white/[0.08]"
               >
                 {cardContent}
               </div>
