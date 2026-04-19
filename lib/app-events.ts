@@ -58,6 +58,7 @@ export type InboxEventItem = {
   isUnread: boolean
   targetPath: string | null
   entityId: string | null
+  actorUserId: string | null
   actorName: string | null
   actorAvatarUrl: string | null
   title: string
@@ -202,6 +203,7 @@ function buildInboxEventItem(
     isUnread: isInboxItemUnread(event.created_at, lastReadAt),
     targetPath: event.target_path ?? payload.targetPath,
     entityId: event.entity_id ?? null,
+    actorUserId: event.actor_user_id ?? null,
     actorName,
     actorAvatarUrl: actorProfile?.avatar_url ?? null,
     title: payload.preview.title ?? fallback.title,
@@ -220,6 +222,19 @@ function buildGroupedRunLikeInboxItem(
   items: Array<InboxEventItem & { type: 'run_like.created'; entityId: string }>
 ): GroupedRunLikeInboxItem {
   const newestItem = items[0]!
+  const uniqueActorItems: Array<InboxEventItem & { type: 'run_like.created'; entityId: string }> = []
+  const seenActorIds = new Set<string>()
+
+  for (const item of items) {
+    const actorKey = item.actorUserId ? `user:${item.actorUserId}` : `event:${item.id}`
+
+    if (seenActorIds.has(actorKey)) {
+      continue
+    }
+
+    seenActorIds.add(actorKey)
+    uniqueActorItems.push(item)
+  }
 
   return {
     id: `grouped-run-like:${newestItem.id}`,
@@ -229,12 +244,12 @@ function buildGroupedRunLikeInboxItem(
     isUnread: newestItem.isUnread,
     targetPath: newestItem.targetPath,
     entityId: newestItem.entityId,
-    actorCount: items.length,
-    actorPreviewNames: items
+    actorCount: uniqueActorItems.length,
+    actorPreviewNames: uniqueActorItems
       .map((item) => item.actorName?.trim() ?? '')
       .filter(Boolean)
       .slice(0, 2),
-    actorPreviewAvatarUrls: items
+    actorPreviewAvatarUrls: uniqueActorItems
       .map((item) => item.actorAvatarUrl?.trim() ?? '')
       .filter(Boolean)
       .slice(0, 2),
@@ -245,8 +260,14 @@ function buildGroupedRunLikeInboxItem(
 
 function groupInboxItemsForDisplay(items: InboxEventItem[]): InboxListItem[] {
   const groupedItems: InboxListItem[] = []
+  const consumedRunLikeIndexes = new Set<number>()
+  const RUN_LIKE_GROUP_LOOKAHEAD = 40
 
   for (let index = 0; index < items.length; index += 1) {
+    if (consumedRunLikeIndexes.has(index)) {
+      continue
+    }
+
     const currentItem = items[index]
 
     if (!isGroupableRunLikeItem(currentItem)) {
@@ -255,22 +276,25 @@ function groupInboxItemsForDisplay(items: InboxEventItem[]): InboxListItem[] {
     }
 
     const runLikeGroup = [currentItem]
-    let nextIndex = index + 1
+    const lookaheadEnd = Math.min(items.length, index + RUN_LIKE_GROUP_LOOKAHEAD + 1)
 
-    while (nextIndex < items.length) {
+    for (let nextIndex = index + 1; nextIndex < lookaheadEnd; nextIndex += 1) {
+      if (consumedRunLikeIndexes.has(nextIndex)) {
+        continue
+      }
+
       const nextItem = items[nextIndex]
 
       if (!isGroupableRunLikeItem(nextItem) || nextItem.entityId !== currentItem.entityId) {
-        break
+        continue
       }
 
       runLikeGroup.push(nextItem)
-      nextIndex += 1
+      consumedRunLikeIndexes.add(nextIndex)
     }
 
     if (runLikeGroup.length >= 2) {
       groupedItems.push(buildGroupedRunLikeInboxItem(runLikeGroup))
-      index = nextIndex - 1
       continue
     }
 
@@ -280,7 +304,7 @@ function groupInboxItemsForDisplay(items: InboxEventItem[]): InboxListItem[] {
   return groupedItems
 }
 
-export async function loadInboxEventItems(userId: string, limit = 50): Promise<InboxListItem[]> {
+export async function loadInboxEventItems(userId: string, limit = 150): Promise<InboxListItem[]> {
   const supabaseAdmin = createSupabaseAdminClient()
   const lastReadAt = await getActivityInboxLastReadAt(userId, supabaseAdmin)
   const { data, error } = await supabaseAdmin
