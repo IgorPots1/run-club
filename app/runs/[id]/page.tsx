@@ -911,12 +911,14 @@ export default function RunDetailsPage() {
       currentRunIdRef.current === requestedRunId
 
     const timeoutId = window.setTimeout(() => {
-      void supabase
-        .from('run_detail_series')
-        .select('pace_points, heartrate_points, cadence_points, altitude_points')
-        .eq('run_id', requestedRunId)
-        .maybeSingle()
-        .then((seriesResult) => {
+      void (async () => {
+        try {
+          const seriesResult = await supabase
+            .from('run_detail_series')
+            .select('pace_points, heartrate_points, cadence_points, altitude_points')
+            .eq('run_id', requestedRunId)
+            .maybeSingle()
+
           if (!isCurrentDeferredRequest()) {
             return
           }
@@ -932,17 +934,16 @@ export default function RunDetailsPage() {
               }
 
           setRunSeries(normalizedRunSeries)
-        })
-        .catch(() => {
+        } catch {
           if (isCurrentDeferredRequest()) {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           }
-        })
-        .finally(() => {
+        } finally {
           if (isCurrentDeferredRequest()) {
             setDeferredChartsLoading(false)
           }
-        })
+        }
+      })()
     }, 0)
 
     return () => {
