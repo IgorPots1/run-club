@@ -82,13 +82,16 @@ body {
 
 @media (max-width: 767px) {
   html[data-chat-isolated-route='true'],
-  body[data-chat-isolated-route='true'] {
+  html:has([data-chat-isolated-route='true']),
+  body[data-chat-isolated-route='true'],
+  body:has([data-chat-isolated-route='true']) {
     height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
   }
 
-  body[data-chat-isolated-route='true'] .app-shell {
+  body[data-chat-isolated-route='true'] .app-shell,
+  body:has([data-chat-isolated-route='true']) .app-shell {
     min-height: var(--chat-app-height, 100svh);
     height: var(--chat-app-height, 100svh);
     overflow: hidden;

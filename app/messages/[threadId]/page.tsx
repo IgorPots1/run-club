@@ -411,14 +411,6 @@ export default function MessageThreadPage() {
       if (markReadTimeoutRef.current !== null) {
         window.clearTimeout(markReadTimeoutRef.current)
       }
-
-      if (typeof document !== 'undefined') {
-        delete document.documentElement.dataset.chatIsolatedRoute
-        delete document.body.dataset.chatIsolatedRoute
-        document.body.style.overflow = ''
-        document.documentElement.style.overflow = ''
-        document.documentElement.style.removeProperty('--chat-app-height')
-      }
     }
   }, [])
 

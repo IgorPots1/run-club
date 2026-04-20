@@ -306,7 +306,7 @@ export default function ChatMessageActions({
   }
 
   return (
-    <div className="chat-no-select fixed inset-0 z-50" data-chat-overlay-root="true">
+    <div className="chat-no-select fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Закрыть действия сообщения"
