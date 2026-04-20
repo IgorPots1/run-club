@@ -11,6 +11,7 @@ type FeedActionButtonProps = {
   active?: boolean
   disabled?: boolean
   actionDisabled?: boolean
+  disableTransitions?: boolean
 }
 
 export default function FeedActionButton({
@@ -22,6 +23,7 @@ export default function FeedActionButton({
   active = false,
   disabled = false,
   actionDisabled = false,
+  disableTransitions = false,
 }: FeedActionButtonProps) {
   const isActionBlocked = disabled || actionDisabled
 
@@ -50,7 +52,9 @@ export default function FeedActionButton({
         }}
         disabled={disabled}
         aria-disabled={isActionBlocked ? true : undefined}
-        className={`inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-2.5 transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-2.5 disabled:cursor-not-allowed disabled:opacity-60 ${
+          disableTransitions ? 'transition-none' : 'transition-colors active:scale-[0.98]'
+        } ${
           actionDisabled && !disabled ? 'cursor-not-allowed' : ''
         }`}
       >
@@ -65,7 +69,9 @@ export default function FeedActionButton({
           ;(onCountClick ?? onClick)()
         }}
         disabled={disabled}
-        className="inline-flex min-h-10 min-w-[2.25rem] items-center justify-center rounded-full px-2.5 text-sm font-semibold transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        className={`inline-flex min-h-10 min-w-[2.25rem] items-center justify-center rounded-full px-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+          disableTransitions ? 'transition-none' : 'transition-colors active:scale-[0.98]'
+        }`}
       >
         {count}
       </button>
