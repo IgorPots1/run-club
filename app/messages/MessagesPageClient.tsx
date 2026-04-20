@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import UnreadBadge from '@/components/chat/UnreadBadge'
+import InnerPageHeader from '@/components/InnerPageHeader'
 import {
   CHAT_UNREAD_UPDATED_EVENT,
   dispatchChatUnreadUpdated,
@@ -296,16 +297,6 @@ export default function MessagesPageClient({
   const [realtimeReady, setRealtimeReady] = useState(() => initialCacheSnapshot !== null)
 
   const isCoach = currentUserId === COACH_USER_ID
-
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return
-    }
-
-    delete document.documentElement.dataset.chatIsolatedRoute
-    delete document.body.dataset.chatIsolatedRoute
-    document.documentElement.style.removeProperty('--chat-app-height')
-  }, [])
 
   const applyUnreadCountsByThread = useCallback((nextUnreadCountsByThread: UnreadCountsByThread) => {
     lastUnreadFetchAtRef.current = Date.now()
@@ -1182,11 +1173,9 @@ export default function MessagesPageClient({
   }
 
   return (
-    <main className="min-h-full">
-      <div className="mx-auto max-w-xl px-4 pb-[calc(80px+env(safe-area-inset-bottom))] pt-4">
-        <div className="mb-4 px-1 pt-1">
-          <h1 className="app-text-primary text-[28px] font-semibold tracking-[-0.02em]">Сообщения</h1>
-        </div>
+    <main className="min-h-screen">
+      <div className="mx-auto max-w-xl px-4 pb-4 pt-4">
+        <InnerPageHeader title="Сообщения" />
 
         {error ? (
           <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
