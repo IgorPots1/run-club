@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import UnreadBadge from '@/components/chat/UnreadBadge'
-import InnerPageHeader from '@/components/InnerPageHeader'
 import { getBootstrapUser } from '@/lib/auth'
 import {
   CHAT_UNREAD_UPDATED_EVENT,
@@ -1181,7 +1180,11 @@ export default function MessagesPage() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-4 pb-4 pt-4">
-        <InnerPageHeader title="Сообщения" />
+        <header className="mb-4">
+          <div className="flex min-h-12 items-center justify-center">
+            <h1 className="app-text-primary text-base font-semibold">Сообщения</h1>
+          </div>
+        </header>
 
         {error ? (
           <section className="app-card mb-4 rounded-2xl border p-4 shadow-sm">
