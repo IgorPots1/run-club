@@ -60,6 +60,7 @@ type Props = {
   run: RunDetailsForCharts
   runSeries: RunDetailSeriesRow
   runLaps: RunLapRow[]
+  hideBreakdown?: boolean
 }
 
 const CADENCE_STEP_MULTIPLIER = 2
@@ -430,7 +431,7 @@ function hasGpsElevationSource(run: RunDetailsForCharts | null) {
   return run.external_source === 'strava' && hasStravaGpsData(run.raw_strava_payload)
 }
 
-export default function RunDetailCharts({ run, runSeries, runLaps }: Props) {
+export default function RunDetailCharts({ run, runSeries, runLaps, hideBreakdown = false }: Props) {
   const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
   const paceSeriesForChart = useMemo(
     () => mapSeriesPointsToElapsedMinutes(runSeries.pace_points, chartDurationSeconds),
@@ -499,6 +500,10 @@ export default function RunDetailCharts({ run, runSeries, runLaps }: Props) {
   const shouldRenderCadenceChart = (runSeries.cadence_points?.length ?? 0) > 1
   const shouldRenderAltitudeChart = canRenderElevationProfile && (runSeries.altitude_points?.length ?? 0) > 1
   const breakdownRows = useMemo(() => {
+    if (hideBreakdown) {
+      return [] as BreakdownRow[]
+    }
+
     if (runLaps.length > 0) {
       return runLaps
         .filter(
@@ -538,6 +543,7 @@ export default function RunDetailCharts({ run, runSeries, runLaps }: Props) {
     })
   }, [
     chartDurationSeconds,
+    hideBreakdown,
     heartRateSeriesForChart,
     paceSeriesForChart,
     run.distance_km,

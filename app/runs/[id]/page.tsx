@@ -345,6 +345,82 @@ function RunDetailChartsPlaceholder() {
   )
 }
 
+function RunLapsBreakdownSection({ runLaps }: { runLaps: RunLapRow[] }) {
+  const breakdownRows = runLaps
+    .filter(
+      (lap) =>
+        Number.isFinite(lap.lap_index) &&
+        Number.isFinite(lap.distance_meters) &&
+        (lap.distance_meters ?? 0) > 0 &&
+        Number.isFinite(lap.elapsed_time_seconds) &&
+        (lap.elapsed_time_seconds ?? 0) > 0
+    )
+    .map((lap) => {
+      const distanceMeters = Number(lap.distance_meters ?? 0)
+      const elapsedTimeSeconds = Number(lap.elapsed_time_seconds ?? 0)
+      const paceSecondsPerKm =
+        Number.isFinite(lap.pace_seconds_per_km) && (lap.pace_seconds_per_km ?? 0) > 0
+          ? Number(lap.pace_seconds_per_km)
+          : elapsedTimeSeconds / (distanceMeters / 1000)
+      const averageHeartrate =
+        Number.isFinite(lap.average_heartrate) && (lap.average_heartrate ?? 0) > 0
+          ? Number(lap.average_heartrate)
+          : null
+
+      return {
+        index: Math.round(lap.lap_index),
+        distanceLabel: `${(distanceMeters / 1000).toFixed(2)} км`,
+        durationLabel: formatDurationLabel(elapsedTimeSeconds),
+        paceLabel: Number.isFinite(paceSecondsPerKm) && paceSecondsPerKm > 0 ? formatPaceLabel(paceSecondsPerKm) : '—',
+        averageHeartrateLabel: averageHeartrate != null ? `${Math.round(averageHeartrate)}` : null,
+      }
+    })
+  const shouldShowBreakdownHeartRate = breakdownRows.some((row) => row.averageHeartrateLabel !== null)
+
+  if (breakdownRows.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="app-card rounded-2xl border p-4 shadow-sm">
+      <h2 className="app-text-primary text-base font-semibold">Разбивка</h2>
+      <div className="mt-3 overflow-hidden rounded-xl border">
+        <div
+          className={`grid gap-3 border-b px-3 py-2 text-xs font-medium app-text-secondary ${
+            shouldShowBreakdownHeartRate
+              ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+              : 'grid-cols-[56px_1fr_1fr_1fr]'
+          }`}
+        >
+          <span>№</span>
+          <span>Км</span>
+          <span>Время</span>
+          <span>Темп</span>
+          {shouldShowBreakdownHeartRate ? <span>Пульс</span> : null}
+        </div>
+        <div className="divide-y">
+          {breakdownRows.map((row) => (
+            <div
+              key={`${row.index}-${row.distanceLabel}-${row.durationLabel}`}
+              className={`grid gap-3 px-3 py-2.5 text-sm app-text-primary ${
+                shouldShowBreakdownHeartRate
+                  ? 'grid-cols-[56px_1fr_1fr_1fr_72px]'
+                  : 'grid-cols-[56px_1fr_1fr_1fr]'
+              }`}
+            >
+              <span className="font-medium">{row.index}</span>
+              <span>{row.distanceLabel}</span>
+              <span>{row.durationLabel}</span>
+              <span>{row.paceLabel}</span>
+              {shouldShowBreakdownHeartRate ? <span>{row.averageHeartrateLabel ?? '—'}</span> : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 const RunDetailCharts = dynamic(() => import('./RunDetailCharts'), {
   ssr: false,
   loading: () => <RunDetailChartsPlaceholder />,
@@ -364,6 +440,7 @@ export default function RunDetailsPage() {
   const [runPhotos, setRunPhotos] = useState<RunPhotoRow[]>([])
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
+  const [deferredChartsLoading, setDeferredChartsLoading] = useState(false)
   const [commentsLoading, setCommentsLoading] = useState(true)
   const [commentsError, setCommentsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
@@ -435,6 +512,7 @@ export default function RunDetailsPage() {
     setRunPhotos([])
     setAuthor(null)
     setAuthorLevel(1)
+    setDeferredChartsLoading(false)
     setAvailableShoes([])
     setFallbackAssignedShoe(null)
     replaceComments([])
@@ -659,6 +737,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
+            setDeferredChartsLoading(false)
           setCommentsLoading(false)
           setLoading(false)
         }
@@ -672,6 +751,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
+            setDeferredChartsLoading(false)
           setCommentsLoading(false)
           setLoading(false)
         }
@@ -685,6 +765,7 @@ export default function RunDetailsPage() {
       setRunPhotos([])
       setAuthor(null)
       setAuthorLevel(1)
+      setDeferredChartsLoading(false)
       replaceComments([])
       setCommentsLoading(true)
       setCommentsError('')
@@ -699,6 +780,7 @@ export default function RunDetailsPage() {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
             setRunPhotos([])
+            setDeferredChartsLoading(false)
             setCommentsLoading(false)
           }
           return
@@ -711,6 +793,7 @@ export default function RunDetailsPage() {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
             setRunPhotos([])
+            setDeferredChartsLoading(false)
             setCommentsLoading(false)
           }
           return
@@ -721,12 +804,7 @@ export default function RunDetailsPage() {
           .select('id, name, nickname, email, avatar_url')
           .eq('id', runData.user_id)
           .maybeSingle()
-        const secondaryDataPromise = Promise.all([
-          supabase
-            .from('run_detail_series')
-            .select('pace_points, heartrate_points, cadence_points, altitude_points')
-            .eq('run_id', runData.id)
-            .maybeSingle(),
+        const phaseOnePromise = Promise.all([
           supabase
             .from('run_laps')
             .select(
@@ -744,8 +822,10 @@ export default function RunDetailsPage() {
           loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
         ])
         const commentsPromise = loadRunComments(runData.id, user.id)
-
-        const profileResult = await profilePromise
+        const [profileResult, [lapsResult, photosResult, totalXpByUser]] = await Promise.all([
+          profilePromise,
+          phaseOnePromise,
+        ])
 
         if (!isCurrentRequest()) {
           return
@@ -753,36 +833,19 @@ export default function RunDetailsPage() {
 
         setRun(runData as RunDetailsRow)
         setAuthor((profileResult.data as ProfileRow | null) ?? null)
-        setLoading(false)
-
-        void secondaryDataPromise.then(([seriesResult, lapsResult, photosResult, totalXpByUser]) => {
-          if (!isCurrentRequest()) {
-            return
-          }
-
-          const normalizedRunSeries = seriesResult.error
-            ? EMPTY_RUN_DETAIL_SERIES
-            : {
-                exists: Boolean(seriesResult.data),
-                pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
-                heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
-                cadence_points: normalizeRunDetailSeriesPoints(seriesResult.data?.cadence_points),
-                altitude_points: normalizeRunDetailDistanceSeriesPoints(seriesResult.data?.altitude_points),
-              }
-
-          setRunSeries(normalizedRunSeries)
-          setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
-          setRunPhotos(
-            ((photosResult.data as Array<RunPhotoRow & { created_at?: string | null }> | null) ?? []).filter(
-              (photo): photo is RunPhotoRow =>
-                typeof photo.id === 'string' &&
-                typeof photo.public_url === 'string' &&
-                photo.public_url.trim().length > 0 &&
-                Number.isFinite(photo.sort_order)
-            )
+        setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
+        setRunPhotos(
+          ((photosResult.data as Array<RunPhotoRow & { created_at?: string | null }> | null) ?? []).filter(
+            (photo): photo is RunPhotoRow =>
+              typeof photo.id === 'string' &&
+              typeof photo.public_url === 'string' &&
+              photo.public_url.trim().length > 0 &&
+              Number.isFinite(photo.sort_order)
           )
-          setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
-        })
+        )
+        setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
+        setDeferredChartsLoading(true)
+        setLoading(false)
 
         void commentsPromise
           .then((runComments: RunCommentItem[]) => {
@@ -813,6 +876,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
+          setDeferredChartsLoading(false)
           replaceComments([])
           setCommentsLoading(false)
         }
@@ -829,6 +893,63 @@ export default function RunDetailsPage() {
       isMounted = false
     }
   }, [authLoading, reloadKey, replaceComments, runId, user])
+
+  useEffect(() => {
+    let isMounted = true
+
+    if (loading || !activeRun || deferredChartsLoading === false) {
+      return () => {
+        isMounted = false
+      }
+    }
+
+    const requestId = activeRunRequestIdRef.current
+    const requestedRunId = activeRun.id
+    const isCurrentDeferredRequest = () =>
+      isMounted &&
+      activeRunRequestIdRef.current === requestId &&
+      currentRunIdRef.current === requestedRunId
+
+    const timeoutId = window.setTimeout(() => {
+      void supabase
+        .from('run_detail_series')
+        .select('pace_points, heartrate_points, cadence_points, altitude_points')
+        .eq('run_id', requestedRunId)
+        .maybeSingle()
+        .then((seriesResult) => {
+          if (!isCurrentDeferredRequest()) {
+            return
+          }
+
+          const normalizedRunSeries = seriesResult.error
+            ? EMPTY_RUN_DETAIL_SERIES
+            : {
+                exists: Boolean(seriesResult.data),
+                pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
+                heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
+                cadence_points: normalizeRunDetailSeriesPoints(seriesResult.data?.cadence_points),
+                altitude_points: normalizeRunDetailDistanceSeriesPoints(seriesResult.data?.altitude_points),
+              }
+
+          setRunSeries(normalizedRunSeries)
+        })
+        .catch(() => {
+          if (isCurrentDeferredRequest()) {
+            setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+          }
+        })
+        .finally(() => {
+          if (isCurrentDeferredRequest()) {
+            setDeferredChartsLoading(false)
+          }
+        })
+    }, 0)
+
+    return () => {
+      isMounted = false
+      window.clearTimeout(timeoutId)
+    }
+  }, [activeRun, deferredChartsLoading, loading])
 
   useEffect(() => {
     if (isEditMode) {
@@ -963,7 +1084,6 @@ export default function RunDetailsPage() {
   const hasDeferredChartsContent = Boolean(
     activeRun &&
     (
-      runLaps.length > 0 ||
       (runSeries.pace_points?.length ?? 0) > 1 ||
       (runSeries.heartrate_points?.length ?? 0) > 1 ||
       (runSeries.cadence_points?.length ?? 0) > 1 ||
@@ -1740,12 +1860,17 @@ export default function RunDetailsPage() {
 
       {!isEditMode ? (
         <>
-          {hasDeferredChartsContent ? (
+          {runLaps.length > 0 ? <RunLapsBreakdownSection runLaps={runLaps} /> : null}
+
+          {deferredChartsLoading ? (
+            <RunDetailChartsPlaceholder />
+          ) : hasDeferredChartsContent ? (
             shouldMountCharts ? (
               <RunDetailCharts
                 run={activeRun}
                 runSeries={runSeries}
                 runLaps={runLaps}
+                hideBreakdown={runLaps.length > 0}
               />
             ) : (
               <RunDetailChartsPlaceholder />
