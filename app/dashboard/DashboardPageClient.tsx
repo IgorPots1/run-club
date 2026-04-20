@@ -4,7 +4,6 @@ import { Activity, Bell, Plus, Target, Trophy, User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import useSWR from 'swr'
 import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
@@ -17,7 +16,6 @@ import {
   loadRaceWeekUserBadge,
   loadRaceWeekUserResult,
   type RaceWeekResultRow,
-  type RaceWeekSummary,
 } from '@/lib/race-results-client'
 import {
   INBOX_UNREAD_UPDATED_EVENT,
@@ -25,13 +23,13 @@ import {
   loadInboxUnreadCount,
 } from '@/lib/app-events-client'
 import { loadDashboardOverview } from '@/lib/dashboard'
-import type { DashboardActiveChallenge, DashboardOverview } from '@/lib/dashboard-overview'
+import type { DashboardActiveChallenge } from '@/lib/dashboard-overview'
 import { formatDistanceKm } from '@/lib/format'
 import { getProfileDisplayName } from '@/lib/profiles'
 import { formatRaceWeekDateRange, getRaceBadgeLabel } from '@/lib/race-badges'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { loadWeeklyXpLeaderboard, type WeeklyXpLeaderboard } from '@/lib/weekly-xp'
-import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
+import { getRankTitleFromLevel } from '@/lib/xp'
 
 type DashboardInitialUser = {
   id: string
@@ -305,6 +303,31 @@ function DashboardSecondaryEmptyCard({
   )
 }
 
+function DashboardFeedPlaceholder() {
+  return (
+    <div className="space-y-4" role="status" aria-live="polite" aria-label="Загружаем ленту">
+      <div className="app-card rounded-xl border p-4 shadow-sm">
+        <div className="skeleton-line h-5 w-24" />
+        <div className="mt-3 skeleton-line h-4 w-40" />
+        <div className="mt-4 space-y-2">
+          <div className="skeleton-line h-4 w-full" />
+          <div className="skeleton-line h-4 w-5/6" />
+          <div className="skeleton-line h-4 w-2/3" />
+        </div>
+      </div>
+      <div className="app-card rounded-xl border p-4 shadow-sm">
+        <div className="skeleton-line h-5 w-28" />
+        <div className="mt-3 skeleton-line h-4 w-36" />
+        <div className="mt-4 space-y-2">
+          <div className="skeleton-line h-4 w-full" />
+          <div className="skeleton-line h-4 w-4/5" />
+          <div className="skeleton-line h-4 w-1/2" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardPageClient({
   initialUser,
   initialProfileSummary,
@@ -323,22 +346,46 @@ export default function DashboardPageClient({
   initialInboxUnreadCount: number
 }) {
   const pathname = usePathname()
-  const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
-  const [hasLoadedOverviewDetails] = useState(true)
+  const [shouldLoadRace, setShouldLoadRace] = useState(false)
+  const [shouldLoadChallenges, setShouldLoadChallenges] = useState(false)
+  const [shouldLoadFeed, setShouldLoadFeed] = useState(false)
+  const [challengeOverview, setChallengeOverview] = useState<{
+    activeChallenges: DashboardActiveChallenge[]
+    allChallengesCompleted: boolean
+  } | null>(null)
+  const [overviewLoading, setOverviewLoading] = useState(false)
   const [showXpModal, setShowXpModal] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(initialInboxUnreadCount)
   const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
+  const [weeklyRace, setWeeklyRace] = useState<WeeklyXpLeaderboard | null>(null)
+  const [weeklyRaceLoading, setWeeklyRaceLoading] = useState(false)
+  const [weeklyRaceError, setWeeklyRaceError] = useState('')
+  const [lastWeekResults, setLastWeekResults] = useState<LastWeekResultsCardData | null>(null)
+  const [lastWeekResultsLoading, setLastWeekResultsLoading] = useState(false)
   const inboxUnreadRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const isMountedRef = useRef(false)
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
+  const shouldShowLastWeekResultsCard = new Date().getDay() === 1
 
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      setShouldLoadSecondaryContent(true)
+    let raceFrameId = 0
+    let challengesFrameId = 0
+    let feedFrameId = 0
+
+    raceFrameId = window.requestAnimationFrame(() => {
+      setShouldLoadRace(true)
+      challengesFrameId = window.requestAnimationFrame(() => {
+        setShouldLoadChallenges(true)
+        feedFrameId = window.requestAnimationFrame(() => {
+          setShouldLoadFeed(true)
+        })
+      })
     })
 
     return () => {
-      window.cancelAnimationFrame(frameId)
+      window.cancelAnimationFrame(raceFrameId)
+      window.cancelAnimationFrame(challengesFrameId)
+      window.cancelAnimationFrame(feedFrameId)
     }
   }, [])
 
@@ -373,6 +420,100 @@ export default function DashboardPageClient({
       isMountedRef.current = false
     }
   }, [initialUser.id, refreshInboxUnreadCount])
+
+  const loadChallengesData = useCallback(async () => {
+    setOverviewLoading(true)
+
+    try {
+      const nextOverview = await loadDashboardOverview(initialUser.id)
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      setChallengeOverview({
+        activeChallenges: nextOverview.activeChallenges,
+        allChallengesCompleted: nextOverview.allChallengesCompleted,
+      })
+    } finally {
+      if (isMountedRef.current) {
+        setOverviewLoading(false)
+      }
+    }
+  }, [initialUser.id])
+
+  const loadRaceData = useCallback(async () => {
+    setWeeklyRaceLoading(true)
+    setWeeklyRaceError('')
+    setLastWeekResultsLoading(shouldShowLastWeekResultsCard)
+
+    try {
+      const [leaderboard, finalizedWeek] = await Promise.all([
+        loadWeeklyXpLeaderboard(initialUser.id),
+        loadLatestFinalizedRaceWeek(),
+      ])
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      setWeeklyRace(leaderboard)
+
+      if (!shouldShowLastWeekResultsCard || !finalizedWeek?.id) {
+        setLastWeekResults(null)
+        return
+      }
+
+      try {
+        const [userResult, badge] = await Promise.all([
+          loadRaceWeekUserResult(finalizedWeek.id, initialUser.id),
+          loadRaceWeekUserBadge(finalizedWeek.id, initialUser.id),
+        ])
+
+        if (!isMountedRef.current) {
+          return
+        }
+
+        setLastWeekResults({
+          weekId: finalizedWeek.id,
+          userResult,
+          badgeText: getRaceBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null),
+          weekRangeLabel: formatRaceWeekDateRange(finalizedWeek),
+        })
+      } catch {
+        if (isMountedRef.current) {
+          setLastWeekResults(null)
+        }
+      }
+    } catch {
+      if (isMountedRef.current) {
+        setWeeklyRace(null)
+        setLastWeekResults(null)
+        setWeeklyRaceError('Не удалось загрузить рейтинг')
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setWeeklyRaceLoading(false)
+        setLastWeekResultsLoading(false)
+      }
+    }
+  }, [initialUser.id, shouldShowLastWeekResultsCard])
+
+  useEffect(() => {
+    if (!shouldLoadChallenges) {
+      return
+    }
+
+    void loadChallengesData()
+  }, [loadChallengesData, shouldLoadChallenges])
+
+  useEffect(() => {
+    if (!shouldLoadRace) {
+      return
+    }
+
+    void loadRaceData()
+  }, [loadRaceData, shouldLoadRace])
 
   useEffect(() => {
     if (pathname === '/dashboard') {
@@ -414,83 +555,6 @@ export default function DashboardPageClient({
     }
   }, [refreshInboxUnreadCount])
 
-  const swrBaseOptions = useMemo(() => ({
-    revalidateOnFocus: false,
-    revalidateOnReconnect: true,
-    keepPreviousData: true,
-    dedupingInterval: 15000,
-    focusThrottleInterval: 15000,
-  }), [])
-  const overviewKey = shouldLoadSecondaryContent ? (['dashboard-overview', initialUser.id] as const) : null
-  const weeklyRaceKey = shouldLoadSecondaryContent ? (['weekly-race', initialUser.id] as const) : null
-  const latestFinalizedRaceWeekKey = shouldLoadSecondaryContent ? (['latest-finalized-race-week'] as const) : null
-  const initialOverview = useMemo<DashboardOverview>(() => ({
-    stats: initialStats,
-    profileSummary: initialProfileSummary,
-    activeChallenges: initialActiveChallenges,
-    allChallengesCompleted: initialAllChallengesCompleted,
-  }), [initialActiveChallenges, initialAllChallengesCompleted, initialProfileSummary, initialStats])
-
-  const {
-    data: overview,
-    error: overviewError,
-    isLoading: overviewLoading,
-    mutate: mutateOverview,
-  } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), {
-    ...swrBaseOptions,
-    fallbackData: initialOverview,
-  })
-
-  const {
-    data: weeklyRace,
-    error: weeklyRaceError,
-    isLoading: weeklyRaceLoading,
-    mutate: mutateWeeklyRace,
-  } = useSWR<WeeklyXpLeaderboard>(weeklyRaceKey, ([, userId]: readonly [string, string]) => loadWeeklyXpLeaderboard(userId), {
-    ...swrBaseOptions,
-  })
-
-  const {
-    data: latestFinalizedRaceWeek,
-    isLoading: latestFinalizedRaceWeekLoading,
-    mutate: mutateLatestFinalizedRaceWeek,
-  } = useSWR<RaceWeekSummary | null>(
-    latestFinalizedRaceWeekKey,
-    () => loadLatestFinalizedRaceWeek(),
-    {
-      ...swrBaseOptions,
-      dedupingInterval: 60000,
-      focusThrottleInterval: 60000,
-    }
-  )
-
-  const lastWeekResultsKey = shouldLoadSecondaryContent && latestFinalizedRaceWeek?.id
-    ? (['last-week-results', latestFinalizedRaceWeek.id, initialUser.id] as const)
-    : null
-
-  const {
-    data: lastWeekResults,
-    isLoading: lastWeekResultsLoading,
-    mutate: mutateLastWeekResults,
-  } = useSWR<LastWeekResultsCardData>(
-    lastWeekResultsKey,
-    ([, weekId, userId]: readonly [string, string, string]) =>
-      Promise.all([
-        loadRaceWeekUserResult(weekId, userId),
-        loadRaceWeekUserBadge(weekId, userId),
-      ]).then(([userResult, badge]) => ({
-        weekId,
-        userResult,
-        badgeText: getRaceBadgeLabel(badge?.badgeCode, badge?.sourceRank ?? userResult?.rank ?? null),
-        weekRangeLabel: latestFinalizedRaceWeek ? formatRaceWeekDateRange(latestFinalizedRaceWeek) : '',
-      })),
-    {
-      ...swrBaseOptions,
-      dedupingInterval: 60000,
-      focusThrottleInterval: 60000,
-    }
-  )
-
   const refreshDashboardData = useCallback(() => {
     if (refreshDashboardDataPromiseRef.current) {
       return refreshDashboardDataPromiseRef.current
@@ -498,10 +562,8 @@ export default function DashboardPageClient({
 
     const refreshPromise = (async () => {
       await Promise.all([
-        mutateOverview(),
-        mutateWeeklyRace(),
-        mutateLatestFinalizedRaceWeek(),
-        mutateLastWeekResults(),
+        shouldLoadChallenges ? loadChallengesData() : Promise.resolve(),
+        shouldLoadRace ? loadRaceData() : Promise.resolve(),
       ])
     })()
 
@@ -512,7 +574,7 @@ export default function DashboardPageClient({
         refreshDashboardDataPromiseRef.current = null
       }
     })
-  }, [mutateLastWeekResults, mutateLatestFinalizedRaceWeek, mutateOverview, mutateWeeklyRace])
+  }, [loadChallengesData, loadRaceData, shouldLoadChallenges, shouldLoadRace])
 
   useEffect(() => {
     function handleRunsUpdated() {
@@ -534,53 +596,34 @@ export default function DashboardPageClient({
     }
   }, [refreshDashboardData])
 
-  const stats = overview?.stats ?? initialStats
+  const stats = initialStats
   const activeChallenges = useMemo(
     () => prioritizeChallengesByIds(
-      (overview?.activeChallenges ?? initialActiveChallenges).filter((challenge) => !challenge.isCompleted),
+      (challengeOverview?.activeChallenges ?? initialActiveChallenges).filter((challenge) => !challenge.isCompleted),
       recentlyAffectedChallengeIds
     ),
-    [initialActiveChallenges, overview?.activeChallenges, recentlyAffectedChallengeIds]
+    [challengeOverview?.activeChallenges, initialActiveChallenges, recentlyAffectedChallengeIds]
   )
-  const allChallengesCompleted = overview?.allChallengesCompleted ?? initialAllChallengesCompleted
-  const levelProgress = hasLoadedOverviewDetails && stats
-    ? getLevelProgressFromXP(stats.totalXp)
-    : initialLevelProgress
+  const allChallengesCompleted = challengeOverview?.allChallengesCompleted ?? initialAllChallengesCompleted
+  const levelProgress = initialLevelProgress
   const profileName = getProfileDisplayName(
     {
-      name: overview?.profileSummary.name ?? initialProfileSummary.name,
-      nickname: overview?.profileSummary.nickname ?? initialProfileSummary.nickname,
-      email: overview?.profileSummary.email ?? initialProfileSummary.email ?? initialUser.email,
+      name: initialProfileSummary.name,
+      nickname: initialProfileSummary.nickname,
+      email: initialProfileSummary.email ?? initialUser.email,
     },
     'Бегун'
   )
-  const overviewStateError = !hasLoadedOverviewDetails && !stats
-    ? 'Не удалось загрузить прогресс'
-    : ''
+  const overviewStateError = ''
   const headerDisplayName = `Привет, ${profileName}`
   const headerLevelLabel = levelProgress
     ? `Уровень ${levelProgress.level}`
     : 'Загружаем прогресс...'
-  const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
-  const showChallengesPlaceholder = !shouldLoadSecondaryContent
-    || (
-      overview === initialOverview
-      && activeChallenges.length === 0
-      && !allChallengesCompleted
-    )
-  const weeklyLeaderboardLoading = !shouldLoadSecondaryContent || weeklyRaceLoading
-  const lastWeekResultsCard = latestFinalizedRaceWeek && lastWeekResults
-    ? {
-        weekId: latestFinalizedRaceWeek.id,
-        userResult: lastWeekResults.userResult,
-        badgeText: lastWeekResults.badgeText,
-        weekRangeLabel: lastWeekResults.weekRangeLabel,
-      }
-    : null
-  const shouldShowLastWeekResultsCard = new Date().getDay() === 1
-  const showLastWeekResultsPlaceholder = !shouldLoadSecondaryContent
-    || (shouldShowLastWeekResultsCard && latestFinalizedRaceWeekLoading)
-    || (shouldShowLastWeekResultsCard && Boolean(latestFinalizedRaceWeek?.id) && lastWeekResultsLoading)
+  const showOverviewSkeleton = false
+  const showChallengesPlaceholder = !shouldLoadChallenges || overviewLoading
+  const weeklyLeaderboardLoading = !shouldLoadRace || weeklyRaceLoading
+  const lastWeekResultsCard = lastWeekResults
+  const showLastWeekResultsPlaceholder = !shouldLoadRace || (shouldShowLastWeekResultsCard && lastWeekResultsLoading)
   const rawXpProgressPercent = levelProgress?.progressPercent
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
@@ -691,6 +734,88 @@ export default function DashboardPageClient({
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </Link>
           )}
+          {stats && levelProgress ? (
+            <button
+              type="button"
+              onClick={() => setShowXpModal(true)}
+              className={`app-card mb-4 block w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition-[transform,box-shadow] hover:shadow-md active:scale-[0.995] ${dashboardCardFocusRingClass}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
+                    <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                    <span>Уровень {levelProgress.level}</span>
+                  </p>
+                  <p className="app-text-secondary mt-1 text-sm">{currentRankTitle}</p>
+                </div>
+              </div>
+              <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
+                <div
+                  className="app-accent-bg h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                  style={{ width: `${xpProgressPercent}%` }}
+                />
+              </div>
+              <p className="app-text-primary mt-3 break-words text-lg font-semibold">
+                {stats.totalXp} / {levelProgress.nextLevelXP ?? 'Максимум'} XP
+              </p>
+              <p className="app-text-secondary mt-1 text-sm">
+                {levelProgress.nextLevelXP === null
+                  ? 'Максимальный уровень достигнут'
+                  : `До следующего уровня: ${levelProgress.xpToNextLevel} XP`}
+              </p>
+            </button>
+          ) : null}
+          <Link
+            href="/race"
+            className={`block rounded-xl ${dashboardCardFocusRingClass}`}
+            aria-label="Открыть гонку недели"
+          >
+            <WeeklyLeaderboard
+              leaderboard={weeklyRace ?? null}
+              currentUserId={initialUser.id}
+              loading={weeklyLeaderboardLoading}
+              error={shouldLoadRace ? weeklyRaceError : ''}
+              compact
+            />
+          </Link>
+          {shouldShowLastWeekResultsCard ? (
+            <section className="mb-4 min-h-[188px]">
+              {showLastWeekResultsPlaceholder ? (
+              <DashboardSecondaryCardPlaceholder title="Загружаем итоги прошлой недели" />
+            ) : lastWeekResultsCard ? (
+              <Link href={`/race/history/${lastWeekResultsCard.weekId}`} className={dashboardClickableCardClass}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="app-text-secondary text-sm font-medium">Итоги прошлой недели</p>
+                    {lastWeekResultsCard.weekRangeLabel ? (
+                      <p className="app-text-secondary mt-1 text-sm">{lastWeekResultsCard.weekRangeLabel}</p>
+                    ) : null}
+                    {lastWeekResultsCard.userResult ? (
+                      <>
+                        <p className="app-text-primary mt-3 text-2xl font-semibold tracking-tight">
+                          {lastWeekResultsCard.badgeText}
+                        </p>
+                        <p className="app-text-secondary mt-1 text-sm">
+                          {lastWeekResultsCard.userResult.totalXp} XP за неделю
+                        </p>
+                        {lastWeekResultsCard.userResult.raceBonusXp > 0 ? (
+                          <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${lastWeekResultsCard.userResult.raceBonusXp} XP`}</p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="app-text-secondary mt-3 text-sm">Ты не участвовал в прошлой неделе</p>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ) : (
+              <DashboardSecondaryEmptyCard
+                title="Итоги прошлой недели"
+                description="Итоги появятся после завершения недели гонки."
+              />
+              )}
+            </section>
+          ) : null}
           <section className="mb-4 min-h-[236px]">
             <div className="mb-3 flex items-center gap-2">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
@@ -736,98 +861,20 @@ export default function DashboardPageClient({
               </section>
             )}
           </section>
-          {stats && levelProgress ? (
-            <button
-              type="button"
-              onClick={() => setShowXpModal(true)}
-              className={`app-card mb-4 block w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition-[transform,box-shadow] hover:shadow-md active:scale-[0.995] ${dashboardCardFocusRingClass}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
-                    <Trophy className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                    <span>Уровень {levelProgress.level}</span>
-                  </p>
-                  <p className="app-text-secondary mt-1 text-sm">{currentRankTitle}</p>
-                </div>
-              </div>
-              <div className="app-progress-track mt-3 h-2 w-full overflow-hidden rounded-full">
-                <div
-                  className="app-accent-bg h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
-                  style={{ width: `${xpProgressPercent}%` }}
-                />
-              </div>
-              <p className="app-text-primary mt-3 break-words text-lg font-semibold">
-                {stats.totalXp} / {levelProgress.nextLevelXP ?? 'Максимум'} XP
-              </p>
-              <p className="app-text-secondary mt-1 text-sm">
-                {levelProgress.nextLevelXP === null
-                  ? 'Максимальный уровень достигнут'
-                  : `До следующего уровня: ${levelProgress.xpToNextLevel} XP`}
-              </p>
-            </button>
-          ) : null}
-          <Link
-            href="/race"
-            className={`block rounded-xl ${dashboardCardFocusRingClass}`}
-            aria-label="Открыть гонку недели"
-          >
-            <WeeklyLeaderboard
-              leaderboard={weeklyRace ?? null}
-              currentUserId={initialUser.id}
-              loading={weeklyLeaderboardLoading}
-              error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
-              compact
-            />
-          </Link>
-          {shouldShowLastWeekResultsCard ? (
-            <section className="mb-4 min-h-[188px]">
-              {showLastWeekResultsPlaceholder ? (
-              <DashboardSecondaryCardPlaceholder title="Загружаем итоги прошлой недели" />
-            ) : lastWeekResultsCard ? (
-              <Link href={`/race/history/${lastWeekResultsCard.weekId}`} className={dashboardClickableCardClass}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="app-text-secondary text-sm font-medium">Итоги прошлой недели</p>
-                    {lastWeekResultsCard.weekRangeLabel ? (
-                      <p className="app-text-secondary mt-1 text-sm">{lastWeekResultsCard.weekRangeLabel}</p>
-                    ) : null}
-                    {lastWeekResultsCard.userResult ? (
-                      <>
-                        <p className="app-text-primary mt-3 text-2xl font-semibold tracking-tight">
-                          {lastWeekResultsCard.badgeText}
-                        </p>
-                        <p className="app-text-secondary mt-1 text-sm">
-                          {lastWeekResultsCard.userResult.totalXp} XP за неделю
-                        </p>
-                        {lastWeekResultsCard.userResult.raceBonusXp > 0 ? (
-                          <p className="app-text-secondary mt-3 text-sm">{`Бонус недели +${lastWeekResultsCard.userResult.raceBonusXp} XP`}</p>
-                        ) : null}
-                      </>
-                    ) : (
-                      <p className="app-text-secondary mt-3 text-sm">Ты не участвовал в прошлой неделе</p>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            ) : (
-              <DashboardSecondaryEmptyCard
-                title="Итоги прошлой недели"
-                description="Итоги появятся после завершения недели гонки."
-              />
-              )}
-            </section>
-          ) : null}
           <section className="min-h-[284px]">
             <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
-            <InfiniteWorkoutFeed
-              currentUserId={initialUser.id}
-              enabled={shouldLoadSecondaryContent}
-              pageSize={10}
-              scrollRestorationKey="dashboard-feed"
-              emptyTitle="Пока нет тренировок"
-              showLevelSubtitle
-            />
+            {shouldLoadFeed ? (
+              <InfiniteWorkoutFeed
+                currentUserId={initialUser.id}
+                enabled={shouldLoadFeed}
+                pageSize={10}
+                scrollRestorationKey="dashboard-feed"
+                emptyTitle="Пока нет тренировок"
+                showLevelSubtitle
+              />
+            ) : (
+              <DashboardFeedPlaceholder />
+            )}
           </section>
         </div>
       </div>
