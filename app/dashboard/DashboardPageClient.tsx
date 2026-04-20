@@ -711,6 +711,7 @@ export default function DashboardPageClient({
   const xpProgressPercent = typeof rawXpProgressPercent === 'number' && Number.isFinite(rawXpProgressPercent)
     ? Math.min(Math.max(rawXpProgressPercent, 0), 100)
     : 0
+  const totalXp = stats?.totalXp ?? initialStats?.totalXp ?? 0
   const currentRankTitle = levelProgress ? getRankTitleFromLevel(levelProgress.level) : ''
   const featuredChallenge = activeChallenges[0] ?? null
   const hasMultipleActiveChallenges = activeChallenges.length > 1
@@ -959,7 +960,7 @@ export default function DashboardPageClient({
       </div>
       <LevelOverviewSheet
         open={showXpModal}
-        totalXp={stats?.totalXp ?? initialStats.totalXp}
+        totalXp={totalXp}
         onClose={() => setShowXpModal(false)}
       />
     </main>
