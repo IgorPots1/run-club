@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import ThemePersistence from "@/components/ThemePersistence";
 import UnreadBadgeSync from "@/components/chat/UnreadBadgeSync";
 import MobileTabBar from "../components/MobileTabBar";
 import Navbar from "../components/Navbar";
@@ -19,6 +20,24 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+const themeInitScript = `
+(() => {
+  const storageKey = 'theme'
+  const root = document.documentElement
+
+  try {
+    const storedTheme = window.localStorage.getItem(storageKey)
+    let nextTheme = storedTheme === 'dark' || storedTheme === 'light'
+      ? storedTheme
+      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+
+    root.classList.toggle('dark', nextTheme === 'dark')
+  } catch {
+    root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches)
+  }
+})()
+`
 
 export const metadata: Metadata = {
   title: "Run Club",
@@ -65,8 +84,12 @@ export default async function RootLayout({
 
   if (isBlockedRoute) {
     return (
-      <html lang="ru">
+      <html lang="ru" suppressHydrationWarning>
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        </head>
         <body className={`min-h-screen ${geistSans.variable} ${geistMono.variable} antialiased`}>
+          <ThemePersistence />
           {children}
         </body>
       </html>
@@ -108,8 +131,12 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-screen">
+        <ThemePersistence />
         <PwaRegister />
         <VoiceStreamLifecycle />
         <UnreadBadgeSync />

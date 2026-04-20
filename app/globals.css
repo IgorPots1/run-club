@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -23,6 +25,7 @@
   --bottom-nav-bg: rgba(255, 255, 255, 0.95);
   --bottom-nav-active: #111827;
   --bottom-nav-inactive: #6b7280;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -32,31 +35,30 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #081423;
-    --foreground: #ffffff;
-    --surface: #0f1b2d;
-    --surface-muted: #16263f;
-    --surface-subtle: #16263f;
-    --surface-interactive: #16263f;
-    --border-color: rgba(255, 255, 255, 0.12);
-    --text-primary: #ffffff;
-    --text-secondary: #b7c3d7;
-    --text-muted: #8ea0b8;
-    --accent-strong: #ffffff;
-    --progress-track: rgba(255, 255, 255, 0.12);
-    --chart-grid: rgba(255, 255, 255, 0.12);
-    --chart-tick: #8ea0b8;
-    --chart-cursor: #16263f;
-    --button-primary-bg: #ffffff;
-    --button-primary-text: #081423;
-    --like-inactive: rgba(255, 255, 255, 0.3);
-    --like-active: #ff4d6d;
-    --bottom-nav-bg: #081423;
-    --bottom-nav-active: #ffffff;
-    --bottom-nav-inactive: #7f90a8;
-  }
+:root.dark {
+  --background: #081423;
+  --foreground: #ffffff;
+  --surface: #0f1b2d;
+  --surface-muted: #16263f;
+  --surface-subtle: #16263f;
+  --surface-interactive: #16263f;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --text-primary: #ffffff;
+  --text-secondary: #b7c3d7;
+  --text-muted: #8ea0b8;
+  --accent-strong: #ffffff;
+  --progress-track: rgba(255, 255, 255, 0.12);
+  --chart-grid: rgba(255, 255, 255, 0.12);
+  --chart-tick: #8ea0b8;
+  --chart-cursor: #16263f;
+  --button-primary-bg: #ffffff;
+  --button-primary-text: #081423;
+  --like-inactive: rgba(255, 255, 255, 0.3);
+  --like-active: #ff4d6d;
+  --bottom-nav-bg: #081423;
+  --bottom-nav-active: #ffffff;
+  --bottom-nav-inactive: #7f90a8;
+  color-scheme: dark;
 }
 
 body {
