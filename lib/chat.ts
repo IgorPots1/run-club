@@ -123,8 +123,8 @@ export type ChatMessageItem = {
   optimisticAttachmentStates?: Array<'pending' | 'uploading' | 'uploaded' | 'attached' | 'failed'> | null
 }
 
-const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 15000
-const RECENT_CHAT_MESSAGES_CACHE_TTL_MS = 30000
+const RECENT_CHAT_MESSAGES_PREFETCH_TTL_MS = 60000
+const RECENT_CHAT_MESSAGES_CACHE_TTL_MS = 120000
 
 type RecentChatMessagesPrefetchEntry = {
   promise: Promise<ChatMessageItem[]>

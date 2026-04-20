@@ -45,6 +45,7 @@ import { supabase } from '@/lib/supabase'
 
 const MESSAGES_LIST_UNREAD_REFRESH_GUARD_MS = 4500
 const THREAD_REALTIME_UPDATE_DEBOUNCE_MS = 180
+const INITIAL_CHAT_MESSAGE_LIMIT = 30
 
 function logMessagesListLoad(event: string, detail?: Record<string, number | string | boolean>) {
   if (process.env.NODE_ENV === 'production') {
@@ -543,7 +544,7 @@ export default function MessagesPage() {
   }, [refreshUnreadCounts])
 
   function handlePrefetchThreadMessages(threadId: string) {
-    void prefetchRecentChatMessages(10, threadId)
+    void prefetchRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
   }
 
   const directThreadByStudentId = useMemo(
@@ -648,6 +649,16 @@ export default function MessagesPage() {
       }))
   }, [directThreads, unreadCountsByThread])
 
+  const initialVisibleThreadIds = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...commonChatItems.map((item) => item.id),
+        ...(coachChatItem ? [coachChatItem.id] : []),
+        ...activeDialogItems.map((item) => item.id),
+      ])
+    ).slice(0, 5)
+  }, [activeDialogItems, coachChatItem, commonChatItems])
+
   const knownThreadIdsSignature = useMemo(
     () =>
       [
@@ -669,6 +680,12 @@ export default function MessagesPage() {
       ),
     }
   }, [commonThreads, coachThread, directThreads])
+
+  useEffect(() => {
+    initialVisibleThreadIds.forEach((threadId) => {
+      void prefetchRecentChatMessages(INITIAL_CHAT_MESSAGE_LIMIT, threadId)
+    })
+  }, [initialVisibleThreadIds])
 
   useEffect(() => {
     return () => {
@@ -1097,6 +1114,7 @@ export default function MessagesPage() {
     }
 
     if (coachThread) {
+      handlePrefetchThreadMessages(coachThread.id)
       router.push(`/messages/${coachThread.id}`)
       return
     }
@@ -1106,6 +1124,7 @@ export default function MessagesPage() {
 
     try {
       const thread = await getOrCreateDirectCoachThread(currentUserId)
+      handlePrefetchThreadMessages(thread.id)
       router.push(`/messages/${thread.id}`)
     } catch {
       setError('Не удалось открыть чат с тренером')
@@ -1122,6 +1141,7 @@ export default function MessagesPage() {
     const existingThread = directThreadByStudentId[studentId]
 
     if (existingThread) {
+      handlePrefetchThreadMessages(existingThread.id)
       router.push(`/messages/${existingThread.id}`)
       return
     }
@@ -1149,6 +1169,7 @@ export default function MessagesPage() {
         ]
       })
 
+      handlePrefetchThreadMessages(thread.id)
       router.push(`/messages/${thread.id}`)
     } catch {
       setError('Не удалось открыть личный чат')
