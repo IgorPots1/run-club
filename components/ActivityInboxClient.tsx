@@ -188,53 +188,53 @@ export default function ActivityInboxClient({
             const actionIcon = getActionIcon(eventType)
             const cardContent = (
               <div className="flex items-start gap-3">
-                {groupedRunLikeEvent ? (
-                  <div className="relative mt-0.5 h-9 w-9 shrink-0">
-                    {[0, 1].map((index) => {
-                      const previewAvatarUrl = groupedRunLikeEvent.actorPreviewAvatarUrls[index] ?? null
-                      const previewName = groupedRunLikeEvent.actorPreviewNames[index] ?? null
+                <div className="w-12 min-w-12 flex items-start">
+                  {groupedRunLikeEvent ? (
+                    <div className="flex -space-x-2">
+                      {[0, 1].map((index) => {
+                        const previewAvatarUrl = groupedRunLikeEvent.actorPreviewAvatarUrls[index] ?? null
+                        const previewName = groupedRunLikeEvent.actorPreviewNames[index] ?? null
 
-                      if (!previewAvatarUrl && !previewName) {
-                        return null
-                      }
+                        if (!previewAvatarUrl && !previewName) {
+                          return null
+                        }
 
-                      return (
-                        <div
-                          key={`${groupedRunLikeEvent.id}-avatar-${index}`}
-                          className={`absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full border border-[color:var(--background)] bg-black/[0.05] text-[11px] font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80 ${
-                            index === 0 ? 'left-0 z-10' : 'left-3 z-0'
-                          }`}
-                        >
-                          {previewAvatarUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={previewAvatarUrl}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <span>{getInitialLabel(previewName)}</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
-                    {actorAvatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={actorAvatarUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span>{getEventBadgeLabel(actorName, eventType)}</span>
-                    )}
-                  </div>
-                )}
+                        return (
+                          <div
+                            key={`${groupedRunLikeEvent.id}-avatar-${index}`}
+                            className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-[color:var(--background)] bg-black/[0.05] text-[11px] font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80"
+                          >
+                            {previewAvatarUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={previewAvatarUrl}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span>{getInitialLabel(previewName)}</span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
+                      {actorAvatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={actorAvatarUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span>{getEventBadgeLabel(actorName, eventType)}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 flex flex-col gap-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       {actorName ? (
@@ -243,13 +243,13 @@ export default function ActivityInboxClient({
                     </div>
                     <p className="app-text-secondary shrink-0 whitespace-nowrap text-xs leading-4">{formatRunDateTimeLabel(event.createdAt)}</p>
                   </div>
-                  <div className={`flex items-start gap-1.5 ${actorName ? 'mt-0.5' : 'mt-0'}`}>
+                  <div className="flex items-start gap-1">
                     {actionIcon ? (
-                      <span aria-hidden="true" className="app-text-secondary mt-[2px] shrink-0 text-[12px] leading-none">
+                      <span aria-hidden="true" className="app-text-secondary inline-flex h-5 w-4 shrink-0 items-start justify-center text-[12px] leading-5">
                         {actionIcon}
                       </span>
                     ) : (
-                      <span aria-hidden="true" className="w-[12px] shrink-0" />
+                      <span aria-hidden="true" className="h-5 w-4 shrink-0" />
                     )}
                     {groupedLikeParts ? (
                       <p className="app-text-primary min-w-0 flex-1 line-clamp-2 text-sm leading-5">
@@ -273,7 +273,7 @@ export default function ActivityInboxClient({
                     />
                   </div>
                   {event.body ? (
-                    <p className="app-text-secondary mt-0.5 text-xs leading-4">{event.body}</p>
+                    <p className="app-text-secondary text-xs leading-4">{event.body}</p>
                   ) : null}
                 </div>
               </div>
