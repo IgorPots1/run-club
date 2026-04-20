@@ -173,6 +173,7 @@ function readScrollPosition(scrollContainer: Window | HTMLElement | null) {
 
 type RaceFeedCardProps = {
   item: FeedRaceEventItem
+  isRestoring?: boolean
   isLikeInFlight: boolean
   onCommentClick: (raceEventId: string) => void
   onOpenLikes: (raceEventId: string) => void
@@ -186,6 +187,7 @@ type RaceFeedCardProps = {
 
 function RaceFeedCard({
   item,
+  isRestoring = false,
   isLikeInFlight,
   onCommentClick,
   onOpenLikes,
@@ -206,7 +208,9 @@ function RaceFeedCard({
   return (
     <article
       data-feed-item-id={item.id}
-      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      className={`app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] ring-1 ring-black/5 dark:ring-white/10 ${
+        isRestoring ? '' : 'transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]'
+      }`}
       role="button"
       tabIndex={0}
       onMouseEnter={() => onPrefetchRaceEvent(item.raceEventId)}
@@ -296,6 +300,7 @@ function RaceFeedCard({
               count={item.raceEventLikeCount}
               active={item.raceEventLikedByViewer}
               actionDisabled={isLikeInFlight}
+              disableTransitions={isRestoring}
               onClick={() => onToggleLike(item.raceEventId)}
               onCountClick={() => onOpenLikes(item.raceEventId)}
               onInteractionStart={() => {
@@ -313,6 +318,7 @@ function RaceFeedCard({
             />
             <FeedActionButton
               count={item.commentsCount}
+              disableTransitions={isRestoring}
               onClick={() => onCommentClick(item.raceEventId)}
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />
@@ -325,6 +331,7 @@ function RaceFeedCard({
 
 type ChallengeFeedCardProps = {
   item: ChallengeFeedItem
+  isRestoring?: boolean
   onPrefetchProfile: (href: string) => void
   onOpenProfile: (href: string) => void
   onOpenChallenge: (targetPath: string) => void
@@ -332,6 +339,7 @@ type ChallengeFeedCardProps = {
 
 function ChallengeFeedCard({
   item,
+  isRestoring = false,
   onPrefetchProfile,
   onOpenProfile,
   onOpenChallenge,
@@ -344,7 +352,9 @@ function ChallengeFeedCard({
   return (
     <article
       data-feed-item-id={item.id}
-      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      className={`app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] ring-1 ring-black/5 dark:ring-white/10 ${
+        isRestoring ? '' : 'transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]'
+      }`}
       role="button"
       tabIndex={0}
       onClick={(event) => {
@@ -542,6 +552,28 @@ export default function InfiniteWorkoutFeed({
     return true
   }, [getScrollContainerViewportTop])
 
+  const measureScrollAnchorError = useCallback((
+    scrollContainer: Window | HTMLElement | null,
+    anchor: { itemId: string; offsetTop: number }
+  ) => {
+    const feedRoot = feedRootRef.current
+
+    if (!feedRoot) {
+      return null
+    }
+
+    const targetElement = Array.from(feedRoot.querySelectorAll<HTMLElement>('[data-feed-item-id]')).find(
+      (element) => element.getAttribute('data-feed-item-id') === anchor.itemId
+    )
+
+    if (!targetElement) {
+      return null
+    }
+
+    const viewportTop = getScrollContainerViewportTop(scrollContainer)
+    return (targetElement.getBoundingClientRect().top - viewportTop) - anchor.offsetTop
+  }, [getScrollContainerViewportTop])
+
   useEffect(() => {
     currentUserIdRef.current = currentUserId
   }, [currentUserId])
@@ -550,12 +582,13 @@ export default function InfiniteWorkoutFeed({
     itemsRef.current = items
   }, [items])
 
-  const { hasRestoredSnapshot, prepareForRunDetailNavigation } = useRunDetailReturnState<FeedRestoreSnapshot>({
+  const { hasRestoredSnapshot, isRestoring, prepareForRunDetailNavigation } = useRunDetailReturnState<FeedRestoreSnapshot>({
     enabled: Boolean(scrollRestorationKey),
     sourceKey: scrollRestorationKey ?? 'feed-disabled',
     getScrollElement: getActiveScrollContainer,
     getScrollAnchor,
     restoreScrollFromAnchor,
+    measureScrollAnchorError,
     getSnapshot: () => ({
       items: itemsRef.current.map(projectFeedItemForSnapshot),
       hasMore,
@@ -1461,6 +1494,7 @@ export default function InfiniteWorkoutFeed({
             item.kind === 'run' ? (
               <WorkoutFeedCard
                 key={item.id}
+                isRestoring={isRestoring}
                 feedItemId={item.id}
                 runId={item.id}
                 rawTitle={item.title}
@@ -1505,6 +1539,7 @@ export default function InfiniteWorkoutFeed({
               <RaceFeedCard
                 key={item.id}
                 item={item}
+                isRestoring={isRestoring}
                 isLikeInFlight={Boolean(likeInFlightByRaceEventId[item.raceEventId])}
                 onCommentClick={handleRaceEventCommentClick}
                 onOpenLikes={() => handleOpenRaceEventLikes(item)}
@@ -1523,6 +1558,7 @@ export default function InfiniteWorkoutFeed({
               <ChallengeFeedCard
                 key={item.id}
                 item={item}
+                isRestoring={isRestoring}
                 onPrefetchProfile={prefetchProfile}
                 onOpenProfile={navigateToProfile}
                 onOpenChallenge={navigateToChallenge}

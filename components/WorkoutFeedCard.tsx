@@ -26,6 +26,7 @@ type WorkoutFeedCardMediaSlide =
     }
 
 type WorkoutFeedCardProps = {
+  isRestoring?: boolean
   feedItemId?: string
   runId?: string
   rawTitle: string | null
@@ -133,6 +134,7 @@ const WorkoutFeedPhotoPreviewImage = memo(function WorkoutFeedPhotoPreviewImage(
 })
 
 function WorkoutFeedCard({
+  isRestoring = false,
   feedItemId,
   runId = '',
   rawTitle,
@@ -287,7 +289,9 @@ function WorkoutFeedCard({
   return (
     <div
       data-feed-item-id={feedItemId}
-      className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
+      className={`app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] ring-1 ring-black/5 dark:ring-white/10 ${
+        isRestoring ? '' : 'transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]'
+      }`}
       role="button"
       tabIndex={0}
       onMouseEnter={prefetchRunDetail}
@@ -449,7 +453,9 @@ function WorkoutFeedCard({
                   event.stopPropagation()
                   scrollToMediaSlide(index)
                 }}
-                className={`h-1.5 rounded-full transition-all ${
+                className={`h-1.5 rounded-full ${
+                  isRestoring ? 'transition-none' : 'transition-all'
+                } ${
                   index === currentMediaIndex ? 'w-4 bg-[var(--text-primary)]' : 'w-1.5 bg-black/20 dark:bg-white/25'
                 }`}
                 aria-label={`Открыть слайд ${index + 1}`}
@@ -535,6 +541,7 @@ function WorkoutFeedCard({
               active={isHeartActive}
               disabled={!runId}
               actionDisabled={isOwnRun || isLikeInFlight}
+              disableTransitions={isRestoring}
               onClick={() => onToggleLike(runId)}
               onCountClick={() => onOpenLikes?.()}
               onInteractionStart={() => {
@@ -549,6 +556,7 @@ function WorkoutFeedCard({
             <FeedActionButton
               count={commentsCount}
               disabled={!runId}
+              disableTransitions={isRestoring}
               onClick={() => onCommentClick?.(runId)}
               icon={<MessageCircle className="h-4 w-4" strokeWidth={1.9} />}
             />

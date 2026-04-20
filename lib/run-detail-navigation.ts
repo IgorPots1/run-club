@@ -54,11 +54,14 @@ type UseRunDetailReturnStateOptions<TSnapshot> = {
   getScrollElement?: () => ScrollContainer | null
   getScrollAnchor?: (scrollElement: ScrollContainer | null) => RunDetailScrollAnchor | null
   restoreScrollFromAnchor?: (scrollElement: ScrollContainer | null, anchor: RunDetailScrollAnchor) => boolean
+  measureScrollAnchorError?: (scrollElement: ScrollContainer | null, anchor: RunDetailScrollAnchor) => number | null
   getSnapshot?: () => TSnapshot
   onRestoreSnapshot?: (snapshot: TSnapshot) => void
   restoreReady?: boolean
   debugLabel?: string
 }
+
+const RESTORE_SCROLL_CORRECTION_THRESHOLD_PX = 1
 
 function isRelativeAppHref(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
@@ -383,12 +386,14 @@ export function useRunDetailReturnState<TSnapshot>({
   getScrollElement,
   getScrollAnchor,
   restoreScrollFromAnchor,
+  measureScrollAnchorError,
   getSnapshot,
   onRestoreSnapshot,
   restoreReady = true,
   debugLabel = 'RunDetailReturnState',
 }: UseRunDetailReturnStateOptions<TSnapshot>) {
   const [hasRestoredSnapshot, setHasRestoredSnapshot] = useState(false)
+  const [isRestoring, setIsRestoring] = useState(false)
   const [skipReason, setSkipReason] = useState<string | null>(enabled ? 'pending-check' : 'restoration-disabled')
   const pendingRestoreRef = useRef<RunDetailConsumedRestore<TSnapshot> | null>(null)
   const restoreEntryKeyRef = useRef<string | null>(null)
@@ -396,6 +401,7 @@ export function useRunDetailReturnState<TSnapshot>({
   const hasLoggedRestorePreparationRef = useRef(false)
   const hasLoggedRestoreCompletionRef = useRef(false)
   const onRestoreSnapshotRef = useRef(onRestoreSnapshot)
+  const restoreCleanupFrameRef = useRef<number | null>(null)
 
   useLayoutEffect(() => {
     onRestoreSnapshotRef.current = onRestoreSnapshot
@@ -419,11 +425,16 @@ export function useRunDetailReturnState<TSnapshot>({
     const entryId = ensureHistoryEntryId()
 
     if (!enabled) {
+      if (restoreCleanupFrameRef.current !== null) {
+        window.cancelAnimationFrame(restoreCleanupFrameRef.current)
+        restoreCleanupFrameRef.current = null
+      }
       pendingRestoreRef.current = null
       restoreEntryKeyRef.current = null
       hasAppliedRestoreRef.current = false
       hasLoggedRestorePreparationRef.current = false
       hasLoggedRestoreCompletionRef.current = false
+      setIsRestoring(false)
       return
     }
 
@@ -438,6 +449,7 @@ export function useRunDetailReturnState<TSnapshot>({
       hasLoggedRestoreCompletionRef.current = false
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasRestoredSnapshot(nextRestore.snapshot !== null)
+      setIsRestoring(nextRestore.shouldRestoreScroll)
       setSkipReason(nextRestore.skipReason)
 
       if (nextRestore.shouldRestoreScroll) {
@@ -488,6 +500,11 @@ export function useRunDetailReturnState<TSnapshot>({
       return
     }
 
+    if (restoreCleanupFrameRef.current !== null) {
+      window.cancelAnimationFrame(restoreCleanupFrameRef.current)
+      restoreCleanupFrameRef.current = null
+    }
+
     pendingRestore.shouldRestoreScroll = false
     const restoredWithAnchor = pendingRestore.scrollAnchor
       ? (restoreScrollFromAnchor?.(scrollElement, pendingRestore.scrollAnchor) ?? false)
@@ -495,20 +512,56 @@ export function useRunDetailReturnState<TSnapshot>({
 
     if (!restoredWithAnchor) {
       writeScrollTop(scrollElement, pendingRestore.scrollTop)
+      setIsRestoring(false)
+    } else {
+      restoreCleanupFrameRef.current = window.requestAnimationFrame(() => {
+        restoreCleanupFrameRef.current = null
+
+        const anchor = pendingRestore.scrollAnchor
+        const anchorError = anchor ? measureScrollAnchorError?.(scrollElement, anchor) ?? null : null
+        const shouldRunSecondPass = anchorError != null &&
+          Math.abs(anchorError) > RESTORE_SCROLL_CORRECTION_THRESHOLD_PX
+
+        if (shouldRunSecondPass && anchor) {
+          restoreScrollFromAnchor?.(scrollElement, anchor)
+        }
+
+        if (!hasLoggedRestoreCompletionRef.current) {
+          console.info(`[${debugLabel}] restored scroll`, {
+            sourceKey,
+            method: 'anchor',
+            scrollTop: pendingRestore.scrollTop,
+            scrollAnchor: pendingRestore.scrollAnchor,
+            secondPassApplied: shouldRunSecondPass,
+            anchorError,
+          })
+          hasLoggedRestoreCompletionRef.current = true
+        }
+
+        setIsRestoring(false)
+      })
     }
 
-    if (!hasLoggedRestoreCompletionRef.current) {
+    if (!restoredWithAnchor && !hasLoggedRestoreCompletionRef.current) {
       console.info(`[${debugLabel}] restored scroll`, {
         sourceKey,
-        method: restoredWithAnchor ? 'anchor' : 'scrollTop',
+        method: 'scrollTop',
         scrollTop: pendingRestore.scrollTop,
         scrollAnchor: pendingRestore.scrollAnchor,
       })
       hasLoggedRestoreCompletionRef.current = true
     }
+
+    return () => {
+      if (restoreCleanupFrameRef.current !== null) {
+        window.cancelAnimationFrame(restoreCleanupFrameRef.current)
+        restoreCleanupFrameRef.current = null
+      }
+    }
   }, [
     debugLabel,
     enabled,
+    measureScrollAnchorError,
     resolveScrollElement,
     restoreReady,
     restoreScrollFromAnchor,
@@ -558,6 +611,7 @@ export function useRunDetailReturnState<TSnapshot>({
 
   return {
     hasRestoredSnapshot: enabled ? hasRestoredSnapshot : false,
+    isRestoring: enabled ? isRestoring : false,
     skipReason: enabled ? skipReason : 'restoration-disabled',
     prepareForRunDetailNavigation,
   }
