@@ -112,6 +112,9 @@ export default async function RootLayout({
           <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         </head>
         <body className={`app-booting min-h-screen ${geistSans.variable} ${geistMono.variable} antialiased`}>
+          <div id="launch-screen" aria-hidden="true">
+            <img src="/images/xo-runners-splash.png" alt="launch" />
+          </div>
           <ThemePersistence />
           <AppLaunchScreen />
           {children}
@@ -161,6 +164,9 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="app-booting min-h-screen">
+        <div id="launch-screen" aria-hidden="true">
+          <img src="/images/xo-runners-splash.png" alt="launch" />
+        </div>
         <ThemePersistence />
         <PwaRegister />
         <VoiceStreamLifecycle />
