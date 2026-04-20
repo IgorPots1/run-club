@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
+import { Trophy } from 'lucide-react'
 import WorkoutDetailShell from '@/components/WorkoutDetailShell'
 import { dispatchInboxUnreadUpdated } from '@/lib/app-events-client'
 import { formatRunDateTimeLabel } from '@/lib/format'
@@ -96,10 +97,6 @@ function isGroupedRunLikeInboxItem(event: ActivityInboxListItem): event is Activ
 function getActionIcon(eventType: string) {
   if (eventType.includes('like')) {
     return '❤'
-  }
-
-  if (eventType === 'weekly_race.result') {
-    return '🏆'
   }
 
   if (eventType.includes('comment') || eventType.includes('reply')) {
@@ -218,6 +215,12 @@ export default function ActivityInboxClient({
                         src={actorAvatarUrl}
                         alt=""
                         className="h-full w-full object-cover"
+                      />
+                    ) : isWeeklyRaceResult ? (
+                      <Trophy
+                        aria-hidden="true"
+                        className="h-[17px] w-[17px] text-amber-600 dark:text-amber-400"
+                        strokeWidth={2}
                       />
                     ) : (
                       <span>{getEventBadgeLabel(actorName, eventType)}</span>
