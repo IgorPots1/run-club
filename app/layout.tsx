@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
-import AppLaunchScreen from "@/components/AppLaunchScreen";
 import ThemePersistence from "@/components/ThemePersistence";
 import UnreadBadgeSync from "@/components/chat/UnreadBadgeSync";
 import MobileTabBar from "../components/MobileTabBar";
@@ -113,7 +112,6 @@ export default async function RootLayout({
         </head>
         <body className={`app-booting min-h-screen ${geistSans.variable} ${geistMono.variable} antialiased`}>
           <ThemePersistence />
-          <AppLaunchScreen />
           {children}
         </body>
       </html>
@@ -165,7 +163,6 @@ export default async function RootLayout({
         <PwaRegister />
         <VoiceStreamLifecycle />
         <UnreadBadgeSync />
-        <AppLaunchScreen />
         <div
           className={`app-shell mx-auto min-h-screen max-w-xl overflow-x-hidden ${
             isRunDetailRoute ? "pb-0" : "pb-[calc(5.75rem+env(safe-area-inset-bottom))]"
