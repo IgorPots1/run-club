@@ -26,6 +26,7 @@ type WorkoutFeedCardMediaSlide =
     }
 
 type WorkoutFeedCardProps = {
+  feedItemId?: string
   runId?: string
   rawTitle: string | null
   shoeId?: string | null
@@ -132,6 +133,7 @@ const WorkoutFeedPhotoPreviewImage = memo(function WorkoutFeedPhotoPreviewImage(
 })
 
 function WorkoutFeedCard({
+  feedItemId,
   runId = '',
   rawTitle,
   shoeId = null,
@@ -284,6 +286,7 @@ function WorkoutFeedCard({
 
   return (
     <div
+      data-feed-item-id={feedItemId}
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
       role="button"
       tabIndex={0}

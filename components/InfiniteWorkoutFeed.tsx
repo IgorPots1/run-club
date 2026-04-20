@@ -86,19 +86,9 @@ function projectFeedItemForSnapshot(item: FeedItem): FeedItem {
     return item
   }
 
-  const {
-    map_polyline: _mapPolyline,
-    photos: _photos,
-    xpBreakdownRows: _xpBreakdownRows,
-    insight: _insight,
-    ...lightweightRunItem
-  } = item
-
   return {
-    ...lightweightRunItem,
-    photos: [],
+    ...item,
     xpBreakdownRows: [],
-    insight: null,
   }
 }
 
@@ -169,6 +159,18 @@ function formatFeedTimestamp(value: string) {
   })
 }
 
+function readScrollPosition(scrollContainer: Window | HTMLElement | null) {
+  if (!scrollContainer) {
+    return 0
+  }
+
+  if (scrollContainer instanceof HTMLElement) {
+    return scrollContainer.scrollTop
+  }
+
+  return scrollContainer.scrollY || scrollContainer.pageYOffset || 0
+}
+
 type RaceFeedCardProps = {
   item: FeedRaceEventItem
   isLikeInFlight: boolean
@@ -203,6 +205,7 @@ function RaceFeedCard({
 
   return (
     <article
+      data-feed-item-id={item.id}
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
       role="button"
       tabIndex={0}
@@ -340,6 +343,7 @@ function ChallengeFeedCard({
 
   return (
     <article
+      data-feed-item-id={item.id}
       className="app-card relative cursor-pointer overflow-hidden rounded-2xl px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow duration-200 ease-in-out hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:ring-white/10"
       role="button"
       tabIndex={0}
@@ -455,6 +459,89 @@ export default function InfiniteWorkoutFeed({
     return window
   }, [])
 
+  const getScrollContainerViewportTop = useCallback((scrollContainer: Window | HTMLElement | null) => {
+    if (scrollContainer instanceof HTMLElement) {
+      return scrollContainer.getBoundingClientRect().top
+    }
+
+    return 0
+  }, [])
+
+  const getScrollContainerViewportBottom = useCallback((scrollContainer: Window | HTMLElement | null) => {
+    if (scrollContainer instanceof HTMLElement) {
+      return scrollContainer.getBoundingClientRect().bottom
+    }
+
+    return window.innerHeight
+  }, [])
+
+  const getFirstVisibleFeedItemElement = useCallback((scrollContainer: Window | HTMLElement | null) => {
+    const feedRoot = feedRootRef.current
+
+    if (!feedRoot) {
+      return null
+    }
+
+    const viewportTop = getScrollContainerViewportTop(scrollContainer)
+    const viewportBottom = getScrollContainerViewportBottom(scrollContainer)
+    const itemElements = Array.from(feedRoot.querySelectorAll<HTMLElement>('[data-feed-item-id]'))
+
+    return itemElements.find((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.bottom > viewportTop && rect.top < viewportBottom
+    }) ?? null
+  }, [getScrollContainerViewportBottom, getScrollContainerViewportTop])
+
+  const getScrollAnchor = useCallback((scrollContainer: Window | HTMLElement | null) => {
+    const anchorElement = getFirstVisibleFeedItemElement(scrollContainer)
+
+    if (!anchorElement) {
+      return null
+    }
+
+    const itemId = anchorElement.getAttribute('data-feed-item-id')
+
+    if (!itemId) {
+      return null
+    }
+
+    return {
+      itemId,
+      offsetTop: anchorElement.getBoundingClientRect().top - getScrollContainerViewportTop(scrollContainer),
+    }
+  }, [getFirstVisibleFeedItemElement, getScrollContainerViewportTop])
+
+  const restoreScrollFromAnchor = useCallback((
+    scrollContainer: Window | HTMLElement | null,
+    anchor: { itemId: string; offsetTop: number }
+  ) => {
+    const feedRoot = feedRootRef.current
+
+    if (!feedRoot) {
+      return false
+    }
+
+    const targetElement = Array.from(feedRoot.querySelectorAll<HTMLElement>('[data-feed-item-id]')).find(
+      (element) => element.getAttribute('data-feed-item-id') === anchor.itemId
+    )
+
+    if (!targetElement) {
+      return false
+    }
+
+    const viewportTop = getScrollContainerViewportTop(scrollContainer)
+    const targetOffsetTop = targetElement.getBoundingClientRect().top - viewportTop
+    const nextScrollTop = readScrollPosition(scrollContainer) + (targetOffsetTop - anchor.offsetTop)
+
+    if (scrollContainer instanceof HTMLElement) {
+      scrollContainer.scrollTo({ top: nextScrollTop, behavior: 'auto' })
+      return true
+    }
+
+    window.scrollTo({ top: nextScrollTop, behavior: 'auto' })
+    return true
+  }, [getScrollContainerViewportTop])
+
   useEffect(() => {
     currentUserIdRef.current = currentUserId
   }, [currentUserId])
@@ -467,6 +554,8 @@ export default function InfiniteWorkoutFeed({
     enabled: Boolean(scrollRestorationKey),
     sourceKey: scrollRestorationKey ?? 'feed-disabled',
     getScrollElement: getActiveScrollContainer,
+    getScrollAnchor,
+    restoreScrollFromAnchor,
     getSnapshot: () => ({
       items: itemsRef.current.map(projectFeedItemForSnapshot),
       hasMore,
@@ -1372,6 +1461,7 @@ export default function InfiniteWorkoutFeed({
             item.kind === 'run' ? (
               <WorkoutFeedCard
                 key={item.id}
+                feedItemId={item.id}
                 runId={item.id}
                 rawTitle={item.title}
                 shoeId={item.shoe_id}

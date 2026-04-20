@@ -27,14 +27,21 @@ type RunDetailReturnPayload<TSnapshot> = {
   sourceKey: string
   sourceHref: string
   scrollTop: number
+  scrollAnchor: RunDetailScrollAnchor | null
   snapshot?: TSnapshot
   savedAt: number
+}
+
+type RunDetailScrollAnchor = {
+  itemId: string
+  offsetTop: number
 }
 
 type RunDetailConsumedRestore<TSnapshot> = {
   sourceHref: string | null
   snapshot: TSnapshot | null
   scrollTop: number
+  scrollAnchor: RunDetailScrollAnchor | null
   shouldRestoreScroll: boolean
   skipReason: string | null
 }
@@ -45,6 +52,8 @@ type UseRunDetailReturnStateOptions<TSnapshot> = {
   sourceHref?: string
   scrollContainerRef?: RefObject<HTMLElement | null>
   getScrollElement?: () => ScrollContainer | null
+  getScrollAnchor?: (scrollElement: ScrollContainer | null) => RunDetailScrollAnchor | null
+  restoreScrollFromAnchor?: (scrollElement: ScrollContainer | null, anchor: RunDetailScrollAnchor) => boolean
   getSnapshot?: () => TSnapshot
   onRestoreSnapshot?: (snapshot: TSnapshot) => void
   restoreReady?: boolean
@@ -57,6 +66,17 @@ function isRelativeAppHref(value: unknown): value is string {
 
 function isFreshTimestamp(value: unknown, maxAgeMs: number) {
   return Number.isFinite(value) && Date.now() - Number(value) <= maxAgeMs
+}
+
+function isValidScrollAnchor(value: unknown): value is RunDetailScrollAnchor {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const itemId = (value as RunDetailScrollAnchor).itemId
+  const offsetTop = (value as RunDetailScrollAnchor).offsetTop
+
+  return typeof itemId === 'string' && itemId.length > 0 && Number.isFinite(offsetTop)
 }
 
 function getReturnSnapshotStorageKey(sourceKey: string) {
@@ -176,6 +196,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
       sourceHref: null,
       snapshot: null,
       scrollTop: 0,
+      scrollAnchor: null,
       shouldRestoreScroll: false,
       skipReason: 'window-unavailable',
     }
@@ -193,6 +214,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
         sourceHref: null,
         snapshot: null,
         scrollTop: 0,
+        scrollAnchor: null,
         shouldRestoreScroll: false,
         skipReason: 'history-entry-mismatch',
       }
@@ -202,6 +224,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
       sourceHref: null,
       snapshot: null,
       scrollTop: 0,
+      scrollAnchor: null,
       shouldRestoreScroll: false,
       skipReason: 'no-pending-restore',
     }
@@ -217,6 +240,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
       sourceHref: null,
       snapshot: null,
       scrollTop: 0,
+      scrollAnchor: null,
       shouldRestoreScroll: false,
       skipReason: 'missing-snapshot',
     }
@@ -230,6 +254,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
         sourceHref: null,
         snapshot: null,
         scrollTop: 0,
+        scrollAnchor: null,
         shouldRestoreScroll: false,
         skipReason: 'snapshot-entry-mismatch',
       }
@@ -240,6 +265,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
         sourceHref: null,
         snapshot: null,
         scrollTop: 0,
+        scrollAnchor: null,
         shouldRestoreScroll: false,
         skipReason: 'invalid-source-href',
       }
@@ -249,6 +275,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
       sourceHref: parsedSnapshot.sourceHref,
       snapshot: parsedSnapshot.snapshot ?? null,
       scrollTop: Number.isFinite(parsedSnapshot.scrollTop) ? Number(parsedSnapshot.scrollTop) : 0,
+      scrollAnchor: isValidScrollAnchor(parsedSnapshot.scrollAnchor) ? parsedSnapshot.scrollAnchor : null,
       shouldRestoreScroll: true,
       skipReason: null,
     }
@@ -257,6 +284,7 @@ function consumeRunDetailReturnPayload<TSnapshot>(sourceKey: string, entryId: st
       sourceHref: null,
       snapshot: null,
       scrollTop: 0,
+      scrollAnchor: null,
       shouldRestoreScroll: false,
       skipReason: 'invalid-snapshot',
     }
@@ -353,6 +381,8 @@ export function useRunDetailReturnState<TSnapshot>({
   sourceHref,
   scrollContainerRef,
   getScrollElement,
+  getScrollAnchor,
+  restoreScrollFromAnchor,
   getSnapshot,
   onRestoreSnapshot,
   restoreReady = true,
@@ -367,7 +397,9 @@ export function useRunDetailReturnState<TSnapshot>({
   const hasLoggedRestoreCompletionRef = useRef(false)
   const onRestoreSnapshotRef = useRef(onRestoreSnapshot)
 
-  onRestoreSnapshotRef.current = onRestoreSnapshot
+  useLayoutEffect(() => {
+    onRestoreSnapshotRef.current = onRestoreSnapshot
+  }, [onRestoreSnapshot])
 
   const resolveScrollElement = useCallback(() => {
     const scrollElement = scrollContainerRef?.current ?? getScrollElement?.() ?? (typeof window !== 'undefined' ? window : null)
@@ -392,8 +424,6 @@ export function useRunDetailReturnState<TSnapshot>({
       hasAppliedRestoreRef.current = false
       hasLoggedRestorePreparationRef.current = false
       hasLoggedRestoreCompletionRef.current = false
-      setHasRestoredSnapshot(false)
-      setSkipReason('restoration-disabled')
       return
     }
 
@@ -406,6 +436,7 @@ export function useRunDetailReturnState<TSnapshot>({
       hasAppliedRestoreRef.current = false
       hasLoggedRestorePreparationRef.current = false
       hasLoggedRestoreCompletionRef.current = false
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasRestoredSnapshot(nextRestore.snapshot !== null)
       setSkipReason(nextRestore.skipReason)
 
@@ -414,6 +445,7 @@ export function useRunDetailReturnState<TSnapshot>({
           sourceKey,
           sourceHref: nextRestore.sourceHref,
           scrollTop: nextRestore.scrollTop,
+          scrollAnchor: nextRestore.scrollAnchor,
           hasSnapshot: nextRestore.snapshot !== null,
         })
       } else {
@@ -457,16 +489,31 @@ export function useRunDetailReturnState<TSnapshot>({
     }
 
     pendingRestore.shouldRestoreScroll = false
-    writeScrollTop(scrollElement, pendingRestore.scrollTop)
+    const restoredWithAnchor = pendingRestore.scrollAnchor
+      ? (restoreScrollFromAnchor?.(scrollElement, pendingRestore.scrollAnchor) ?? false)
+      : false
+
+    if (!restoredWithAnchor) {
+      writeScrollTop(scrollElement, pendingRestore.scrollTop)
+    }
 
     if (!hasLoggedRestoreCompletionRef.current) {
       console.info(`[${debugLabel}] restored scroll`, {
         sourceKey,
+        method: restoredWithAnchor ? 'anchor' : 'scrollTop',
         scrollTop: pendingRestore.scrollTop,
+        scrollAnchor: pendingRestore.scrollAnchor,
       })
       hasLoggedRestoreCompletionRef.current = true
     }
-  }, [debugLabel, enabled, resolveScrollElement, restoreReady, sourceKey])
+  }, [
+    debugLabel,
+    enabled,
+    resolveScrollElement,
+    restoreReady,
+    restoreScrollFromAnchor,
+    sourceKey,
+  ])
 
   const prepareForRunDetailNavigation = useCallback(() => {
     if (!enabled || typeof window === 'undefined') {
@@ -474,13 +521,16 @@ export function useRunDetailReturnState<TSnapshot>({
     }
 
     const entryId = ensureHistoryEntryId()
-    const scrollTop = readScrollTop(resolveScrollElement())
+    const scrollElement = resolveScrollElement()
+    const scrollTop = readScrollTop(scrollElement)
+    const scrollAnchor = getScrollAnchor?.(scrollElement) ?? null
     const snapshot = getSnapshot?.()
     const payload: RunDetailReturnPayload<TSnapshot> = {
       entryId,
       sourceKey,
       sourceHref: resolvedSourceHref,
       scrollTop,
+      scrollAnchor,
       snapshot,
       savedAt: Date.now(),
     }
@@ -493,13 +543,22 @@ export function useRunDetailReturnState<TSnapshot>({
       sourceKey,
       sourceHref: resolvedSourceHref,
       scrollTop,
+      scrollAnchor,
       hasSnapshot: snapshot !== undefined,
     })
-  }, [debugLabel, enabled, getSnapshot, resolveScrollElement, resolvedSourceHref, sourceKey])
+  }, [
+    debugLabel,
+    enabled,
+    getScrollAnchor,
+    getSnapshot,
+    resolveScrollElement,
+    resolvedSourceHref,
+    sourceKey,
+  ])
 
   return {
-    hasRestoredSnapshot,
-    skipReason,
+    hasRestoredSnapshot: enabled ? hasRestoredSnapshot : false,
+    skipReason: enabled ? skipReason : 'restoration-disabled',
     prepareForRunDetailNavigation,
   }
 }
