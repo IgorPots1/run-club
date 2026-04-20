@@ -86,6 +86,10 @@ function getActionIcon(eventType: string) {
     return '❤'
   }
 
+  if (eventType === 'weekly_race.result') {
+    return '🏆'
+  }
+
   if (eventType.includes('comment') || eventType.includes('reply')) {
     return '💬'
   }
@@ -95,6 +99,21 @@ function getActionIcon(eventType: string) {
 
 function ensureTrailingColon(text: string) {
   return `${text.replace(/[:\s]+$/u, '')}:`
+}
+
+function getWeeklyRaceResultText(title: string, body: string | null) {
+  const combined = `${title} ${body ?? ''}`
+  const rankMatch = combined.match(/Ты занял \d+ место/u)
+
+  if (rankMatch) {
+    return rankMatch[0]
+  }
+
+  if (title.includes('Ты занял')) {
+    return title.split('.')[0] ?? title
+  }
+
+  return 'Результаты гонки готовы'
 }
 
 export default function ActivityInboxClient({
@@ -166,10 +185,17 @@ export default function ActivityInboxClient({
             const groupedLikeActorText = groupedRunLikeEvent ? formatGroupedRunLikeActorText(groupedRunLikeEvent) : null
             const actionIcon = getActionIcon(eventType)
             const isGroupedRunLike = Boolean(groupedRunLikeEvent)
+            const isWeeklyRaceResult = eventType === 'weekly_race.result'
             const firstLineText = isGroupedRunLike
               ? `${ensureTrailingColon(title)} ${groupedLikeActorText}`
-              : title
-            const secondLineText = isGroupedRunLike ? null : event.body
+              : isWeeklyRaceResult
+                ? 'Гонка недели:'
+                : title
+            const secondLineText = isGroupedRunLike
+              ? null
+              : isWeeklyRaceResult
+                ? getWeeklyRaceResultText(title, event.body)
+                : event.body
             const cardContent = (
               <div className="flex items-start gap-3">
                 <div className="w-12 min-w-12 flex items-start">
