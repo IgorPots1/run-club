@@ -3,7 +3,6 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --launch-background: #000000;
   --background: #ffffff;
   --foreground: #171717;
   --surface: #ffffff;
@@ -79,15 +78,6 @@ html {
 
 body {
   overflow-x: hidden;
-}
-
-html.app-booting,
-body.app-booting {
-  background: var(--launch-background);
-}
-
-body.app-booting .app-shell {
-  background: var(--launch-background);
 }
 
 @media (max-width: 767px) {
