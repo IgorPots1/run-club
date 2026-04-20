@@ -3125,6 +3125,7 @@ function FullscreenImageViewer({
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black p-3"
+      data-chat-overlay-root="true"
       style={{ backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})` }}
       onClick={onClose}
     >
@@ -9164,6 +9165,32 @@ export default function ChatSection({
     }
   }, [])
 
+  const resetTransientChatOverlays = useCallback(() => {
+    clearLongPressTimeout()
+    activeReadersMessageIdRef.current = null
+    setSelectedMessage(null)
+    setSelectedMessageAnchorRect(null)
+    setIsActionSheetOpen(false)
+    setSelectedReactionDetails(null)
+    setSelectedMessageForReaders(null)
+    setIsReadersSheetOpen(false)
+    setMessageReaders([])
+    setIsLoadingMessageReaders(false)
+    setMessageReadersError('')
+    setSelectedViewerState(null)
+  }, [clearLongPressTimeout])
+
+  useEffect(() => {
+    return () => {
+      resetTransientChatOverlays()
+
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = ''
+        document.documentElement.style.overflow = ''
+      }
+    }
+  }, [resetTransientChatOverlays])
+
   const startLongPress = useCallback((message: ChatMessageItem) => {
     if (message.isOptimistic) {
       return
@@ -9802,7 +9829,10 @@ export default function ChatSection({
         />
       ) : null}
       {selectedReactionMessage && selectedReaction ? (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/20 p-3 sm:items-center">
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/20 p-3 sm:items-center"
+          data-chat-overlay-root="true"
+        >
           <button
             type="button"
             aria-label="Закрыть список реакций"
@@ -9926,7 +9956,10 @@ export default function ChatSection({
         </div>
       ) : null}
       {selectedMessageForReaders && isReadersSheetOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center md:p-4"
+          data-chat-overlay-root="true"
+        >
           <button
             type="button"
             aria-label="Закрыть список просмотров"

@@ -304,7 +304,15 @@ export default function MessagesPageClient({
 
     delete document.documentElement.dataset.chatIsolatedRoute
     delete document.body.dataset.chatIsolatedRoute
+    document.body.style.overflow = ''
+    document.documentElement.style.overflow = ''
     document.documentElement.style.removeProperty('--chat-app-height')
+    document
+      .querySelectorAll<HTMLElement>('[data-chat-overlay-root="true"]')
+      .forEach((overlay) => {
+        overlay.style.pointerEvents = 'none'
+        overlay.style.visibility = 'hidden'
+      })
   }, [])
 
   const applyUnreadCountsByThread = useCallback((nextUnreadCountsByThread: UnreadCountsByThread) => {
