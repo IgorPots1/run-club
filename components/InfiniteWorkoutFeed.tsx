@@ -64,6 +64,13 @@ type ChallengeFeedItem = Extract<FeedItem, { kind: 'challenge' }>
 type FeedRestoreSnapshot = {
   nextOffset: number
 }
+type FeedVisualSnapshot = {
+  items: FeedItem[]
+  hasMore: boolean
+  nextOffset: number
+}
+
+const feedVisualSnapshotStore = new Map<string, FeedVisualSnapshot>()
 
 type ActiveLikesTarget =
   | { type: 'run'; id: string }
@@ -394,6 +401,7 @@ export default function InfiniteWorkoutFeed({
   onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
+  const visualSnapshotKey = scrollRestorationKey ?? ''
   const feedQueryKey = useMemo(
     () => [currentUserId ?? 'anonymous', targetUserId ?? 'all', pageSize].join(':'),
     [currentUserId, pageSize, targetUserId]
@@ -577,19 +585,38 @@ export default function InfiniteWorkoutFeed({
     measureScrollAnchorError,
     getSnapshot: () => ({ nextOffset }),
     onRestoreSnapshot: (snapshot) => {
-      restoredSnapshotRef.current = snapshot
+      const visualSnapshot = visualSnapshotKey
+        ? feedVisualSnapshotStore.get(visualSnapshotKey) ?? null
+        : null
+
+      if (visualSnapshotKey) {
+        feedVisualSnapshotStore.delete(visualSnapshotKey)
+      }
+
       commentVisibilityByRunIdRef.current = {}
       likeInFlightRef.current = {}
       raceEventLikeInFlightRef.current = {}
-      itemsRef.current = []
-      setItems([])
-      setHasMore(true)
-      setNextOffset(0)
       setLikeInFlightByRunId({})
       setLikeInFlightByRaceEventId({})
       setActiveLikesTarget(null)
       setActiveXpRunId(null)
       setFeedError('')
+
+      if (visualSnapshot) {
+        restoredSnapshotRef.current = null
+        itemsRef.current = visualSnapshot.items
+        setItems(visualSnapshot.items)
+        setHasMore(visualSnapshot.hasMore)
+        setNextOffset(visualSnapshot.nextOffset)
+        setInitialLoading(false)
+        return
+      }
+
+      restoredSnapshotRef.current = snapshot
+      itemsRef.current = []
+      setItems([])
+      setHasMore(true)
+      setNextOffset(0)
       setInitialLoading(true)
     },
     restoreReady: !initialLoading && items.length > 0,
@@ -601,9 +628,17 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
+    if (visualSnapshotKey) {
+      feedVisualSnapshotStore.set(visualSnapshotKey, {
+        items: itemsRef.current,
+        hasMore,
+        nextOffset,
+      })
+    }
+
     prepareForRunDetailNavigation()
     router.push(href)
-  }, [prepareForRunDetailNavigation, router])
+  }, [hasMore, nextOffset, prepareForRunDetailNavigation, router, visualSnapshotKey])
 
   const prefetchHref = useCallback((href: string) => {
     if (!href || prefetchedHrefsRef.current.has(href)) {
