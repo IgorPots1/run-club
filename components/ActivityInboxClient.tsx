@@ -194,13 +194,19 @@ export default function ActivityInboxClient({
             const groupedLikeActorText = groupedRunLikeEvent ? formatGroupedRunLikeActorText(groupedRunLikeEvent) : null
             const actionIcon = getActionIcon(eventType)
             const isGroupedRunLike = Boolean(groupedRunLikeEvent)
+            const isSingleRunLike = eventType === 'run_like.created'
+            const isRunLike = isGroupedRunLike || isSingleRunLike
             const isWeeklyRaceResult = eventType === 'weekly_race.result'
+            const runLikeTitle = event.body?.trim() || title
+            const singleRunLikeActorText = actorName?.trim() || 'Кто-то'
             const firstLineText = isGroupedRunLike
-              ? `${ensureTrailingColon(title)} ${groupedLikeActorText}`
+              ? `${ensureTrailingColon(runLikeTitle)} ${groupedLikeActorText}`
+              : isSingleRunLike
+                ? `${ensureTrailingColon(runLikeTitle)} ${singleRunLikeActorText}`
               : isWeeklyRaceResult
                 ? 'Гонка недели:'
                 : title
-            const secondLineText = isGroupedRunLike
+            const secondLineText = isRunLike
               ? null
               : isWeeklyRaceResult
                 ? getWeeklyRaceResultText(title, event.body)
