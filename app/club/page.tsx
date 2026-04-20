@@ -46,10 +46,6 @@ export default function ClubPage() {
         if (!isMounted) return
 
         setUser(nextUser)
-
-        if (!nextUser) {
-          router.replace('/login')
-        }
       } finally {
         if (isMounted) {
           setAuthLoading(false)

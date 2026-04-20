@@ -750,7 +750,6 @@ export default function MessagesPage() {
         }
 
         if (!user) {
-          router.replace('/login')
           return
         }
 

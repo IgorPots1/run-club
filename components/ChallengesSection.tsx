@@ -185,7 +185,6 @@ export default function ChallengesSection({
         const user = await getBootstrapUser()
 
         if (!user) {
-          router.replace('/login')
           return
         }
 

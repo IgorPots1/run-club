@@ -157,10 +157,6 @@ export default function AccountPage() {
         const nextUser = await getBootstrapUser()
         setUser(nextUser)
         setEmail(nextUser?.email ?? '')
-
-        if (!nextUser) {
-          router.replace('/login')
-        }
       } finally {
         if (isMounted) {
           setLoading(false)

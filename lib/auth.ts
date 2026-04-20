@@ -29,12 +29,9 @@ function ensureBootstrapUserListener() {
 async function getSessionWithTimeout() {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
 
-  const timeoutPromise = new Promise<{ data: { session: null }; error: null }>((resolve) => {
+  const timeoutPromise = new Promise<{ timedOut: true }>((resolve) => {
     timeoutId = setTimeout(() => {
-      resolve({
-        data: { session: null },
-        error: null,
-      })
+      resolve({ timedOut: true })
     }, SESSION_BOOTSTRAP_TIMEOUT_MS)
   })
 
@@ -57,14 +54,23 @@ export async function getBootstrapUser(): Promise<User | null> {
   if (!bootstrapUserPromise) {
     bootstrapUserPromise = (async () => {
       try {
-        const { data } = await getSessionWithTimeout()
+        const sessionResult = await getSessionWithTimeout()
+        const { data } =
+          'timedOut' in sessionResult ? await supabase.auth.getSession() : sessionResult
         const user = data.session?.user ?? null
-        cachedBootstrapUser = user
-        cachedBootstrapUserExpiresAt = Date.now() + BOOTSTRAP_USER_CACHE_TTL_MS
+
+        if (user) {
+          cachedBootstrapUser = user
+          cachedBootstrapUserExpiresAt = Date.now() + BOOTSTRAP_USER_CACHE_TTL_MS
+        } else {
+          cachedBootstrapUser = null
+          cachedBootstrapUserExpiresAt = 0
+        }
+
         return user
       } catch {
         cachedBootstrapUser = null
-        cachedBootstrapUserExpiresAt = Date.now() + BOOTSTRAP_USER_CACHE_TTL_MS
+        cachedBootstrapUserExpiresAt = 0
         return null
       } finally {
         bootstrapUserPromise = null

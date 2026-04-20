@@ -135,10 +135,6 @@ export default function ClubStatisticsPage() {
         if (!isMounted) return
 
         setUser(nextUser)
-
-        if (!nextUser) {
-          router.replace('/login')
-        }
       } finally {
         if (isMounted) {
           setAuthLoading(false)

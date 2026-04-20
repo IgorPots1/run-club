@@ -209,10 +209,6 @@ export default function NotificationsPage() {
 
         const nextUser = await getBootstrapUser()
         setUser(nextUser)
-
-        if (!nextUser) {
-          router.replace('/login')
-        }
       } finally {
         if (isMounted) {
           setLoading(false)

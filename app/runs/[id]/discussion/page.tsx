@@ -259,7 +259,6 @@ export default function RunDiscussionPage() {
           setLoadingRun(false)
           setLoadingComments(false)
         }
-        router.replace('/login')
         return
       }
 

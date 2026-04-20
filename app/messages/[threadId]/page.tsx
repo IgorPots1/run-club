@@ -433,7 +433,6 @@ export default function MessageThreadPage() {
         }
 
         if (!user) {
-          router.replace('/login')
           return
         }
 
