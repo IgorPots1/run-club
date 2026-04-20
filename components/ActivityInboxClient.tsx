@@ -236,14 +236,17 @@ export default function ActivityInboxClient({
 
                 <div className="min-w-0 flex-1 flex flex-col gap-1">
                   <div className="flex items-start gap-1">
-                    {actionIcon ? (
-                      <span aria-hidden="true" className="app-text-secondary inline-flex h-5 w-4 shrink-0 items-start justify-center text-[12px] leading-5">
-                        {actionIcon}
+                    <p className="app-text-primary min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-tight">
+                      <span
+                        aria-hidden="true"
+                        className={`app-text-secondary mr-1 inline-block w-4 align-top text-center text-[12px] leading-tight ${
+                          actionIcon ? '' : 'opacity-0'
+                        }`}
+                      >
+                        {actionIcon ?? '•'}
                       </span>
-                    ) : (
-                      <span aria-hidden="true" className="h-5 w-4 shrink-0" />
-                    )}
-                    <p className="app-text-primary min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-5">{firstLineText}</p>
+                      <span>{firstLineText}</span>
+                    </p>
                   </div>
                   {secondLineText ? (
                     <p className={`app-text-primary min-w-0 text-sm leading-5 ${event.isUnread ? 'font-medium' : ''}`}>{secondLineText}</p>
