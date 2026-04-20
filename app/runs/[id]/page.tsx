@@ -660,6 +660,7 @@ export default function RunDetailsPage() {
   const [runPhotos, setRunPhotos] = useState<RunPhotoRow[]>([])
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
+  const [commentsLoading, setCommentsLoading] = useState(true)
   const [commentsError, setCommentsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
@@ -899,6 +900,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
+          setCommentsLoading(false)
           setLoading(false)
         }
         return
@@ -910,6 +912,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
+          setCommentsLoading(false)
           setLoading(false)
         }
         return
@@ -917,6 +920,13 @@ export default function RunDetailsPage() {
 
       setLoading(true)
       setError('')
+      setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+      setRunLaps([])
+      setRunPhotos([])
+      setAuthor(null)
+      setAuthorLevel(1)
+      replaceComments([])
+      setCommentsLoading(true)
       setCommentsError('')
 
       try {
@@ -929,6 +939,7 @@ export default function RunDetailsPage() {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
             setRunPhotos([])
+            setCommentsLoading(false)
           }
           return
         }
@@ -940,16 +951,17 @@ export default function RunDetailsPage() {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
             setRunPhotos([])
+            setCommentsLoading(false)
           }
           return
         }
 
-        const [profileResult, seriesResult, lapsResult, photosResult, totalXpByUser] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('id, name, nickname, email, avatar_url')
-            .eq('id', runData.user_id)
-            .maybeSingle(),
+        const profilePromise = supabase
+          .from('profiles')
+          .select('id, name, nickname, email, avatar_url')
+          .eq('id', runData.user_id)
+          .maybeSingle()
+        const secondaryDataPromise = Promise.all([
           supabase
             .from('run_detail_series')
             .select('pace_points, heartrate_points, cadence_points, altitude_points')
@@ -971,46 +983,69 @@ export default function RunDetailsPage() {
             .order('id', { ascending: true }),
           loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
         ])
+        const commentsPromise = loadRunComments(runData.id, user.id)
 
-        let runComments: RunCommentItem[] = []
-        let nextCommentsError = ''
-
-        try {
-          runComments = await loadRunComments(runData.id, user?.id ?? null)
-        } catch {
-          nextCommentsError = 'Не удалось загрузить комментарии'
-        }
+        const profileResult = await profilePromise
 
         if (!isMounted) {
           return
         }
 
-        const normalizedRunSeries = seriesResult.error
-          ? EMPTY_RUN_DETAIL_SERIES
-          : {
-              exists: Boolean(seriesResult.data),
-              pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
-              heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
-              cadence_points: normalizeRunDetailSeriesPoints(seriesResult.data?.cadence_points),
-              altitude_points: normalizeRunDetailDistanceSeriesPoints(seriesResult.data?.altitude_points),
+        setRun(runData as RunDetailsRow)
+        setAuthor((profileResult.data as ProfileRow | null) ?? null)
+        setLoading(false)
+
+        void secondaryDataPromise.then(([seriesResult, lapsResult, photosResult, totalXpByUser]) => {
+          if (!isMounted) {
+            return
+          }
+
+          const normalizedRunSeries = seriesResult.error
+            ? EMPTY_RUN_DETAIL_SERIES
+            : {
+                exists: Boolean(seriesResult.data),
+                pace_points: normalizeRunDetailSeriesPoints(seriesResult.data?.pace_points),
+                heartrate_points: normalizeRunDetailSeriesPoints(seriesResult.data?.heartrate_points),
+                cadence_points: normalizeRunDetailSeriesPoints(seriesResult.data?.cadence_points),
+                altitude_points: normalizeRunDetailDistanceSeriesPoints(seriesResult.data?.altitude_points),
+              }
+
+          setRunSeries(normalizedRunSeries)
+          setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
+          setRunPhotos(
+            ((photosResult.data as Array<RunPhotoRow & { created_at?: string | null }> | null) ?? []).filter(
+              (photo): photo is RunPhotoRow =>
+                typeof photo.id === 'string' &&
+                typeof photo.public_url === 'string' &&
+                photo.public_url.trim().length > 0 &&
+                Number.isFinite(photo.sort_order)
+            )
+          )
+          setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
+        })
+
+        void commentsPromise
+          .then((runComments: RunCommentItem[]) => {
+            if (!isMounted) {
+              return
             }
 
-        setRun(runData as RunDetailsRow)
-        setRunSeries(normalizedRunSeries)
-        setRunLaps(((lapsResult.data as RunLapRow[] | null) ?? []).filter((lap) => Number.isFinite(lap.lap_index)))
-        setRunPhotos(
-          ((photosResult.data as Array<RunPhotoRow & { created_at?: string | null }> | null) ?? []).filter(
-            (photo): photo is RunPhotoRow =>
-              typeof photo.id === 'string' &&
-              typeof photo.public_url === 'string' &&
-              photo.public_url.trim().length > 0 &&
-              Number.isFinite(photo.sort_order)
-          )
-        )
-        setAuthor((profileResult.data as ProfileRow | null) ?? null)
-        setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
-        replaceComments(runComments)
-        setCommentsError(nextCommentsError)
+            replaceComments(runComments)
+            setCommentsError('')
+          })
+          .catch(() => {
+            if (!isMounted) {
+              return
+            }
+
+            replaceComments([])
+            setCommentsError('Не удалось загрузить комментарии')
+          })
+          .finally(() => {
+            if (isMounted) {
+              setCommentsLoading(false)
+            }
+          })
       } catch {
         if (isMounted) {
           setError('Не удалось загрузить тренировку')
@@ -1019,6 +1054,7 @@ export default function RunDetailsPage() {
           setRunLaps([])
           setRunPhotos([])
           replaceComments([])
+          setCommentsLoading(false)
         }
       } finally {
         if (isMounted) {
@@ -2172,6 +2208,7 @@ export default function RunDetailsPage() {
           <RunCommentsSection
             comments={comments}
             currentUserId={user?.id ?? null}
+            loading={commentsLoading}
             error={commentsError}
             pendingLikeCommentIds={pendingLikeCommentIds}
             onSubmitComment={handleCommentSubmit}
