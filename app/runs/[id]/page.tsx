@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -725,6 +725,13 @@ export default function RunDetailsPage() {
   const descriptionRef = useRef<HTMLParagraphElement | null>(null)
   const previousIsEditModeRef = useRef(false)
   const shouldScrollToTopOnEditExitRef = useRef(true)
+  const previousRouteRunIdRef = useRef(runId)
+  const currentRunIdRef = useRef(runId)
+  const activeRunRequestIdRef = useRef(0)
+  currentRunIdRef.current = runId
+  const activeRun = run?.id === runId ? run : null
+  const activeSeededRun = seededRun?.runId === runId ? seededRun : null
+  const hasMismatchedRunState = Boolean(run && run.id !== runId)
   const handleAuthRequired = useMemo(
     () => () => {
       router.replace('/login')
@@ -745,21 +752,43 @@ export default function RunDetailsPage() {
     onAuthRequired: handleAuthRequired,
   })
 
-  useEffect(() => {
-    setSeededRun((currentValue) => {
-      if (currentValue?.runId === runId) {
-        return currentValue
-      }
+  useLayoutEffect(() => {
+    if (previousRouteRunIdRef.current === runId) {
+      return
+    }
 
-      return consumeSeededRunDetail(runId)
-    })
-  }, [runId])
+    previousRouteRunIdRef.current = runId
+    setSeededRun(consumeSeededRunDetail(runId))
+    setLoading(true)
+    setError('')
+    setRun(null)
+    setRunSeries(EMPTY_RUN_DETAIL_SERIES)
+    setRunLaps([])
+    setRunPhotos([])
+    setAuthor(null)
+    setAuthorLevel(1)
+    setAvailableShoes([])
+    setFallbackAssignedShoe(null)
+    replaceComments([])
+    setCommentsLoading(true)
+    setCommentsError('')
+    setDescriptionExpanded(false)
+    setIsDescriptionTruncated(false)
+    setIsEditMode(false)
+    setSaveError('')
+    setUploadPhotosError('')
+    setSelectedPhotoIndex(null)
+    setIsShoePickerOpen(false)
+    setRefreshingStravaSupplemental(false)
+    setStravaSupplementalError('')
+    setStravaSupplementalInfoMessage('')
+  }, [replaceComments, runId])
 
   useEffect(() => {
-    if (run?.id === runId || error) {
+    if (activeRun?.id === runId || error) {
       setSeededRun(null)
     }
-  }, [error, run?.id, runId])
+  }, [activeRun?.id, error, runId])
 
   async function handleCommentSubmit(comment: string) {
     if (!run) {
@@ -944,12 +973,20 @@ export default function RunDetailsPage() {
     let isMounted = true
 
     async function loadRunDetails() {
+      const requestId = activeRunRequestIdRef.current + 1
+      activeRunRequestIdRef.current = requestId
+      const requestedRunId = runId
+      const isCurrentRequest = () =>
+        isMounted &&
+        activeRunRequestIdRef.current === requestId &&
+        currentRunIdRef.current === requestedRunId
+
       if (authLoading) {
         return
       }
 
       if (!user) {
-        if (isMounted) {
+        if (isCurrentRequest()) {
           setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
@@ -960,9 +997,10 @@ export default function RunDetailsPage() {
         return
       }
 
-      if (!runId) {
-        if (isMounted) {
+      if (!requestedRunId) {
+        if (isCurrentRequest()) {
           setError('Тренировка не найдена')
+          setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
@@ -984,10 +1022,10 @@ export default function RunDetailsPage() {
       setCommentsError('')
 
       try {
-        const { data: runData, error: runError } = await loadRunDetailsRow(runId)
+        const { data: runData, error: runError } = await loadRunDetailsRow(requestedRunId)
 
         if (runError) {
-          if (isMounted) {
+          if (isCurrentRequest()) {
             setError('Не удалось загрузить тренировку')
             setRun(null)
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
@@ -999,7 +1037,7 @@ export default function RunDetailsPage() {
         }
 
         if (!runData) {
-          if (isMounted) {
+          if (isCurrentRequest()) {
             setError('Тренировка не найдена')
             setRun(null)
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
@@ -1041,7 +1079,7 @@ export default function RunDetailsPage() {
 
         const profileResult = await profilePromise
 
-        if (!isMounted) {
+        if (!isCurrentRequest()) {
           return
         }
 
@@ -1050,7 +1088,7 @@ export default function RunDetailsPage() {
         setLoading(false)
 
         void secondaryDataPromise.then(([seriesResult, lapsResult, photosResult, totalXpByUser]) => {
-          if (!isMounted) {
+          if (!isCurrentRequest()) {
             return
           }
 
@@ -1080,7 +1118,7 @@ export default function RunDetailsPage() {
 
         void commentsPromise
           .then((runComments: RunCommentItem[]) => {
-            if (!isMounted) {
+            if (!isCurrentRequest()) {
               return
             }
 
@@ -1088,7 +1126,7 @@ export default function RunDetailsPage() {
             setCommentsError('')
           })
           .catch(() => {
-            if (!isMounted) {
+            if (!isCurrentRequest()) {
               return
             }
 
@@ -1096,12 +1134,12 @@ export default function RunDetailsPage() {
             setCommentsError('Не удалось загрузить комментарии')
           })
           .finally(() => {
-            if (isMounted) {
+            if (isCurrentRequest()) {
               setCommentsLoading(false)
             }
           })
       } catch {
-        if (isMounted) {
+        if (isCurrentRequest()) {
           setError('Не удалось загрузить тренировку')
           setRun(null)
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
@@ -1111,7 +1149,7 @@ export default function RunDetailsPage() {
           setCommentsLoading(false)
         }
       } finally {
-        if (isMounted) {
+        if (isCurrentRequest()) {
           setLoading(false)
         }
       }
@@ -1130,13 +1168,13 @@ export default function RunDetailsPage() {
     }
 
     setDraft({
-      name: run?.name ?? run?.title ?? '',
-      description: run?.description ?? '',
-      shoeId: run?.shoe_id ?? '',
+      name: activeRun?.name ?? activeRun?.title ?? '',
+      description: activeRun?.description ?? '',
+      shoeId: activeRun?.shoe_id ?? '',
     })
-  }, [isEditMode, run?.description, run?.name, run?.shoe_id, run?.title])
+  }, [activeRun?.description, activeRun?.name, activeRun?.shoe_id, activeRun?.title, isEditMode])
 
-  const runDescription = useMemo(() => toNullableTrimmedText(run?.description), [run?.description])
+  const runDescription = useMemo(() => toNullableTrimmedText(activeRun?.description), [activeRun?.description])
 
   useEffect(() => {
     if (previousIsEditModeRef.current && !isEditMode && shouldScrollToTopOnEditExitRef.current) {
@@ -1201,7 +1239,7 @@ export default function RunDetailsPage() {
   useEffect(() => {
     let isMounted = true
 
-    if (!user || !run || user.id !== run.user_id) {
+    if (!user || !activeRun || user.id !== activeRun.user_id) {
       setAvailableShoes([])
       return () => {
         isMounted = false
@@ -1210,7 +1248,7 @@ export default function RunDetailsPage() {
 
     void loadUserShoeSelectionData({
       activeOnly: true,
-      includeShoeId: run.shoe_id ?? null,
+      includeShoeId: activeRun.shoe_id ?? null,
     })
       .then((selectionData) => {
         if (isMounted) {
@@ -1226,19 +1264,19 @@ export default function RunDetailsPage() {
     return () => {
       isMounted = false
     }
-  }, [run, user])
+  }, [activeRun, user])
 
   useEffect(() => {
     let isMounted = true
 
-    if (!run?.shoe_id || !user || user.id === run.user_id) {
+    if (!activeRun?.shoe_id || !user || user.id === activeRun.user_id) {
       setFallbackAssignedShoe(null)
       return () => {
         isMounted = false
       }
     }
 
-    void loadRunAssignedShoe(run.id)
+    void loadRunAssignedShoe(activeRun.id)
       .then((shoe) => {
         if (isMounted) {
           setFallbackAssignedShoe(shoe)
@@ -1253,9 +1291,9 @@ export default function RunDetailsPage() {
     return () => {
       isMounted = false
     }
-  }, [run, user])
+  }, [activeRun, user])
 
-  const chartDurationSeconds = useMemo(() => getChartDurationSeconds(run), [run])
+  const chartDurationSeconds = useMemo(() => getChartDurationSeconds(activeRun), [activeRun])
   const paceSeriesForChart = useMemo(
     () => mapSeriesPointsToElapsedMinutes(runSeries.pace_points, chartDurationSeconds),
     [chartDurationSeconds, runSeries.pace_points]
@@ -1317,7 +1355,7 @@ export default function RunDetailsPage() {
 
     return Math.floor(minAltitude - 6)
   }, [altitudeChartData])
-  const canRenderElevationProfile = useMemo(() => hasGpsElevationSource(run), [run])
+  const canRenderElevationProfile = useMemo(() => hasGpsElevationSource(activeRun), [activeRun])
   const shouldRenderPaceChart = (runSeries.pace_points?.length ?? 0) > 1
   const shouldRenderHeartRateChart = (runSeries.heartrate_points?.length ?? 0) > 1
   const shouldRenderCadenceChart = (runSeries.cadence_points?.length ?? 0) > 1
@@ -1358,13 +1396,13 @@ export default function RunDetailsPage() {
         value: point.value,
       })),
       totalDurationSeconds: chartDurationSeconds,
-      totalDistanceKm: run?.distance_km ?? null,
+      totalDistanceKm: activeRun?.distance_km ?? null,
     })
   }, [
+    activeRun?.distance_km,
     chartDurationSeconds,
     heartRateSeriesForChart.data,
     paceSeriesForChart.data,
-    run?.distance_km,
     runLaps,
   ])
   const shouldShowBreakdownHeartRate = breakdownRows.some(
@@ -1388,7 +1426,7 @@ export default function RunDetailsPage() {
     [breakdownRows]
   )
   const runLocationLabel = useMemo(() => {
-    const uniqueParts = [run?.city, run?.region, run?.country].reduce<string[]>((parts, value) => {
+    const uniqueParts = [activeRun?.city, activeRun?.region, activeRun?.country].reduce<string[]>((parts, value) => {
       const trimmedValue = toNullableTrimmedText(value)
 
       if (!trimmedValue || parts.includes(trimmedValue)) {
@@ -1399,44 +1437,44 @@ export default function RunDetailsPage() {
     }, [])
 
     return uniqueParts.length > 0 ? uniqueParts.join(', ') : null
-  }, [run?.city, run?.region, run?.country])
-  const isOwner = Boolean(user && run && user.id === run.user_id)
+  }, [activeRun?.city, activeRun?.country, activeRun?.region])
+  const isOwner = Boolean(user && activeRun && user.id === activeRun.user_id)
   const canRefreshStravaSupplemental = Boolean(
     isOwner &&
-    run?.external_source === 'strava' &&
-    typeof run?.external_id === 'string' &&
-    run.external_id.trim().length > 0
+    activeRun?.external_source === 'strava' &&
+    typeof activeRun?.external_id === 'string' &&
+    activeRun.external_id.trim().length > 0
   )
   const isMissingOfficialLaps = canRefreshStravaSupplemental && runLaps.length === 0
-  const currentEditableName = run?.name ?? run?.title ?? ''
+  const currentEditableName = activeRun?.name ?? activeRun?.title ?? ''
   const normalizedDraftName = toNullableTrimmedText(draft.name)
   const normalizedDraftDescription = toNullableTrimmedText(draft.description)
   const normalizedDraftShoeId = draft.shoeId || null
   const hasTitleChanged = normalizedDraftName !== toNullableTrimmedText(currentEditableName)
-  const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(run?.description)
-  const hasShoeChanged = normalizedDraftShoeId !== (run?.shoe_id ?? null)
+  const hasDescriptionChanged = normalizedDraftDescription !== toNullableTrimmedText(activeRun?.description)
+  const hasShoeChanged = normalizedDraftShoeId !== (activeRun?.shoe_id ?? null)
   const currentAssignedShoe =
-    availableShoes.find((shoe) => shoe.id === (run?.shoe_id ?? '')) ?? fallbackAssignedShoe
+    availableShoes.find((shoe) => shoe.id === (activeRun?.shoe_id ?? '')) ?? fallbackAssignedShoe
   const currentAssignedShoeLabel = currentAssignedShoe
     ? `${currentAssignedShoe.displayName}${currentAssignedShoe.nickname ? ` (${currentAssignedShoe.nickname})` : ''}${!currentAssignedShoe.isActive ? ' • архив' : ''}`
     : ''
   const selectedDraftShoe =
     availableShoes.find((shoe) => shoe.id === draft.shoeId) ??
-    (draft.shoeId && draft.shoeId === (run?.shoe_id ?? '') ? currentAssignedShoe : null)
+    (draft.shoeId && draft.shoeId === (activeRun?.shoe_id ?? '') ? currentAssignedShoe : null)
   const selectedDraftShoeLabel = selectedDraftShoe
     ? `${selectedDraftShoe.displayName}${selectedDraftShoe.nickname ? ` (${selectedDraftShoe.nickname})` : ''}${!selectedDraftShoe.isActive ? ' • архив' : ''}`
     : 'Без кроссовок'
   const hasPendingChanges = hasTitleChanged || hasDescriptionChanged || hasShoeChanged
 
   function handleEnterEditMode() {
-    if (!isOwner || !run) {
+    if (!isOwner || !activeRun) {
       return
     }
 
     setDraft({
-      name: run.name ?? run.title ?? '',
-      description: run.description ?? '',
-      shoeId: run.shoe_id ?? '',
+      name: activeRun.name ?? activeRun.title ?? '',
+      description: activeRun.description ?? '',
+      shoeId: activeRun.shoe_id ?? '',
     })
     setSaveError('')
     setUploadPhotosError('')
@@ -1447,9 +1485,9 @@ export default function RunDetailsPage() {
 
   function handleCancelEditMode() {
     setDraft({
-      name: run?.name ?? run?.title ?? '',
-      description: run?.description ?? '',
-      shoeId: run?.shoe_id ?? '',
+      name: activeRun?.name ?? activeRun?.title ?? '',
+      description: activeRun?.description ?? '',
+      shoeId: activeRun?.shoe_id ?? '',
     })
     setSaveError('')
     setUploadPhotosError('')
@@ -1459,7 +1497,7 @@ export default function RunDetailsPage() {
   }
 
   async function handleSaveEditMode() {
-    if (!user || !run || !isOwner || isSaving || !hasPendingChanges) {
+    if (!user || !activeRun || !isOwner || isSaving || !hasPendingChanges) {
       return
     }
 
@@ -1489,7 +1527,7 @@ export default function RunDetailsPage() {
     setSaveError('')
 
     try {
-      const { error: updateError } = await updateRun(run.id, updates)
+      const { error: updateError } = await updateRun(activeRun.id, updates)
 
       if (updateError) {
         setSaveError('Не удалось сохранить изменения')
@@ -1554,20 +1592,20 @@ export default function RunDetailsPage() {
   }
 
   const details = useMemo(() => {
-    if (!run) {
+    if (!activeRun) {
       return null
     }
 
-    const distanceKm = Number(run.distance_km ?? 0)
-    const totalDurationSeconds = getTotalDurationSeconds(run)
-    const movingTimeSeconds = Number.isFinite(run.moving_time_seconds) && (run.moving_time_seconds ?? 0) > 0
-      ? Math.round(run.moving_time_seconds ?? 0)
+    const distanceKm = Number(activeRun.distance_km ?? 0)
+    const totalDurationSeconds = getTotalDurationSeconds(activeRun)
+    const movingTimeSeconds = Number.isFinite(activeRun.moving_time_seconds) && (activeRun.moving_time_seconds ?? 0) > 0
+      ? Math.round(activeRun.moving_time_seconds ?? 0)
       : null
     const computedAveragePace = distanceKm > 0 && totalDurationSeconds > 0
       ? Math.round(totalDurationSeconds / distanceKm)
       : null
-    const averagePaceSeconds = Number.isFinite(run.average_pace_seconds) && (run.average_pace_seconds ?? 0) > 0
-      ? Math.round(run.average_pace_seconds ?? 0)
+    const averagePaceSeconds = Number.isFinite(activeRun.average_pace_seconds) && (activeRun.average_pace_seconds ?? 0) > 0
+      ? Math.round(activeRun.average_pace_seconds ?? 0)
       : computedAveragePace
     const distanceLabel = distanceKm > 0 ? `${formatDistanceKm(distanceKm)} км` : null
     const durationLabel = totalDurationSeconds > 0 ? formatDurationLabel(totalDurationSeconds) : null
@@ -1575,16 +1613,16 @@ export default function RunDetailsPage() {
       movingTimeSeconds && movingTimeSeconds > 0 ? formatDurationLabel(movingTimeSeconds) : null
     const paceLabel = averagePaceSeconds && averagePaceSeconds > 0 ? formatPaceLabel(averagePaceSeconds) : null
     const elevationLabel =
-      Number.isFinite(run.elevation_gain_meters) && (run.elevation_gain_meters ?? 0) > 0
-        ? `${Math.round(run.elevation_gain_meters ?? 0)} м`
+      Number.isFinite(activeRun.elevation_gain_meters) && (activeRun.elevation_gain_meters ?? 0) > 0
+        ? `${Math.round(activeRun.elevation_gain_meters ?? 0)} м`
         : null
     const heartRateLabel =
-      Number.isFinite(run.average_heartrate) && (run.average_heartrate ?? 0) > 0
-        ? `${Math.round(run.average_heartrate ?? 0)} уд/мин`
+      Number.isFinite(activeRun.average_heartrate) && (activeRun.average_heartrate ?? 0) > 0
+        ? `${Math.round(activeRun.average_heartrate ?? 0)} уд/мин`
         : null
     const caloriesLabel =
-      Number.isFinite(run.calories) && (run.calories ?? 0) > 0
-        ? `${Math.round(run.calories ?? 0)} ккал`
+      Number.isFinite(activeRun.calories) && (activeRun.calories ?? 0) > 0
+        ? `${Math.round(activeRun.calories ?? 0)} ккал`
         : null
 
     return {
@@ -1595,29 +1633,29 @@ export default function RunDetailsPage() {
       elevationLabel,
       heartRateLabel,
       caloriesLabel,
-      xpValue: Number.isFinite(run.xp) && (run.xp ?? 0) > 0
-        ? Math.round(run.xp ?? 0)
+      xpValue: Number.isFinite(activeRun.xp) && (activeRun.xp ?? 0) > 0
+        ? Math.round(activeRun.xp ?? 0)
         : Math.max(0, Math.round(50 + distanceKm * 10)),
-      mapPreviewUrl: run.map_polyline ? getStaticMapUrl(run.map_polyline) : null,
+      mapPreviewUrl: activeRun.map_polyline ? getStaticMapUrl(activeRun.map_polyline) : null,
     }
-  }, [run])
+  }, [activeRun])
   const seededDetails = useMemo(() => {
-    if (!seededRun) {
+    if (!activeSeededRun) {
       return null
     }
 
-    const distanceKm = Number(seededRun.distance_km ?? 0)
+    const distanceKm = Number(activeSeededRun.distance_km ?? 0)
 
     return {
       distanceLabel: distanceKm > 0 ? `${formatDistanceKm(distanceKm)} км` : null,
-      movingTimeLabel: toNullableTrimmedText(seededRun.movingTime),
-      paceLabel: formatSeededPaceLabel(seededRun.pace),
-      xpValue: Number.isFinite(seededRun.xp) && (seededRun.xp ?? 0) > 0
-        ? Math.round(seededRun.xp ?? 0)
+      movingTimeLabel: toNullableTrimmedText(activeSeededRun.movingTime),
+      paceLabel: formatSeededPaceLabel(activeSeededRun.pace),
+      xpValue: Number.isFinite(activeSeededRun.xp) && (activeSeededRun.xp ?? 0) > 0
+        ? Math.round(activeSeededRun.xp ?? 0)
         : null,
-      mapPreviewUrl: seededRun.map_polyline ? getStaticMapUrl(seededRun.map_polyline) : null,
+      mapPreviewUrl: activeSeededRun.map_polyline ? getStaticMapUrl(activeSeededRun.map_polyline) : null,
     }
-  }, [seededRun])
+  }, [activeSeededRun])
 
   const summaryMetricItems = useMemo(() => {
     if (!details) {
@@ -1645,24 +1683,29 @@ export default function RunDetailsPage() {
     ]
   }, [seededDetails])
   const seededRunLocationLabel = useMemo(
-    () => (seededRun ? buildSeededRunLocationLabel(seededRun) : null),
-    [seededRun]
+    () => (activeSeededRun ? buildSeededRunLocationLabel(activeSeededRun) : null),
+    [activeSeededRun]
   )
   const seededRunPhotos = useMemo<RunPhotoRow[]>(
-    () => (seededRun?.photos ?? []).map((photo, index) => ({
+    () => (activeSeededRun?.photos ?? []).map((photo, index) => ({
       id: photo.id,
       public_url: photo.public_url,
       thumbnail_url: photo.thumbnail_url,
       sort_order: index,
       created_at: null,
     })),
-    [seededRun]
+    [activeSeededRun]
   )
-  const shouldShowSeededDetail = Boolean(seededRun && !run && !error && (authLoading || loading))
+  const shouldShowSeededDetail = Boolean(
+    activeSeededRun &&
+    !activeRun &&
+    !error &&
+    (authLoading || loading || hasMismatchedRunState)
+  )
 
-  if (authLoading || loading) {
-    if (shouldShowSeededDetail && seededRun && seededDetails) {
-      const seededHasMedia = Boolean(seededRun.map_polyline?.trim()) || seededRunPhotos.length > 0
+  if (authLoading || loading || hasMismatchedRunState) {
+    if (shouldShowSeededDetail && activeSeededRun && seededDetails) {
+      const seededHasMedia = Boolean(activeSeededRun.map_polyline?.trim()) || seededRunPhotos.length > 0
 
       return (
         <WorkoutDetailShell
@@ -1676,7 +1719,7 @@ export default function RunDetailsPage() {
             {seededHasMedia ? (
               <section>
                 <WorkoutMediaCarousel
-                  mapPolyline={seededRun.map_polyline}
+                  mapPolyline={activeSeededRun.map_polyline}
                   mapPreviewUrl={seededDetails.mapPreviewUrl}
                   photos={seededRunPhotos}
                   allowSwipeMode="always"
@@ -1689,10 +1732,10 @@ export default function RunDetailsPage() {
             <section className="app-card rounded-2xl border p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  {seededRun.avatar_url ? (
+                  {activeSeededRun.avatar_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={seededRun.avatar_url}
+                      src={activeSeededRun.avatar_url}
                       alt=""
                       className="h-11 w-11 shrink-0 rounded-full object-cover"
                     />
@@ -1701,13 +1744,13 @@ export default function RunDetailsPage() {
                   )}
                   <div className="min-w-0">
                     <p className="app-text-primary break-words text-[15px] font-semibold">
-                      {seededRun.displayName.trim() || 'Бегун'}
+                      {activeSeededRun.displayName.trim() || 'Бегун'}
                     </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end">
                   <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
-                    {formatRunTimestampLabel(seededRun.created_at, null)}
+                    {formatRunTimestampLabel(activeSeededRun.created_at, null)}
                   </p>
                   {seededDetails.xpValue != null ? (
                     <p className="app-text-muted mt-1 text-right text-xs font-medium">
@@ -1719,7 +1762,7 @@ export default function RunDetailsPage() {
 
               <div className="mt-3">
                 <h1 className="app-text-primary min-w-0 break-words text-base font-semibold">
-                  {getSeededRunTitle(seededRun)}
+                  {getSeededRunTitle(activeSeededRun)}
                 </h1>
               </div>
 
@@ -1854,7 +1897,7 @@ export default function RunDetailsPage() {
     )
   }
 
-  if (!run || !details) {
+  if (!activeRun || !details) {
     return (
       <WorkoutDetailShell title="Тренировка" enableSourceRestore pinnedHeader>
       <div className="min-w-0 overflow-x-hidden app-card rounded-xl border p-4 shadow-sm">
@@ -1891,7 +1934,7 @@ export default function RunDetailsPage() {
 
   const detailScrollContentClassName =
     'pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-5 md:pt-5'
-  const hasMedia = Boolean(run.map_polyline?.trim()) || runPhotos.length > 0
+  const hasMedia = Boolean(activeRun.map_polyline?.trim()) || runPhotos.length > 0
 
   return (
     <WorkoutDetailShell
@@ -1932,7 +1975,7 @@ export default function RunDetailsPage() {
 
           {hasMedia ? (
             <WorkoutMediaCarousel
-              mapPolyline={run.map_polyline}
+              mapPolyline={activeRun.map_polyline}
               mapPreviewUrl={details.mapPreviewUrl}
               photos={runPhotos}
               allowSwipeMode="always"
@@ -2036,12 +2079,12 @@ export default function RunDetailsPage() {
               avatarUrl={author?.avatar_url ?? null}
               displayName={author?.nickname?.trim() || author?.name?.trim() || author?.email?.trim() || 'Бегун'}
               level={authorLevel}
-              href={`/users/${run.user_id}`}
+              href={`/users/${activeRun.user_id}`}
               size="md"
             />
             <div className="flex shrink-0 flex-col items-end">
               <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
-                {formatRunTimestampLabel(run.created_at, run.external_source)}
+                {formatRunTimestampLabel(activeRun.created_at, activeRun.external_source)}
               </p>
               <p className="app-text-muted mt-1 text-right text-xs font-medium">
                 +{details.xpValue} XP
@@ -2050,7 +2093,7 @@ export default function RunDetailsPage() {
           </div>
 
           <div className="mt-3">
-            <h1 className="app-text-primary min-w-0 break-words text-base font-semibold">{getRunTitle(run)}</h1>
+            <h1 className="app-text-primary min-w-0 break-words text-base font-semibold">{getRunTitle(activeRun)}</h1>
           </div>
 
           {runLocationLabel || currentAssignedShoeLabel ? (
