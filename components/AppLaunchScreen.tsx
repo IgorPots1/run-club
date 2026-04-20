@@ -89,12 +89,12 @@ export default function AppLaunchScreen() {
       }`}
     >
       <Image
-        src="/icon-source.png"
+        src="/images/xo-runners-splash.jpg"
         alt=""
-        width={320}
-        height={320}
+        width={360}
+        height={640}
         priority
-        className="h-auto w-[min(72vw,320px)] max-w-[320px] object-contain"
+        className="h-auto w-[75vw] max-w-[420px] object-contain"
       />
     </div>
   )
