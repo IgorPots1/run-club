@@ -26,15 +26,25 @@ const themeInitScript = `
   const storageKey = 'theme'
   const root = document.documentElement
 
+  const resolveTheme = (preference) => {
+    if (preference === 'light' || preference === 'dark') {
+      return preference
+    }
+
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+
   try {
-    const storedTheme = window.localStorage.getItem(storageKey)
-    let nextTheme = storedTheme === 'dark' || storedTheme === 'light'
-      ? storedTheme
-      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    const storedPreference = window.localStorage.getItem(storageKey)
+    const nextPreference =
+      storedPreference === 'light' || storedPreference === 'dark' || storedPreference === 'system'
+        ? storedPreference
+        : 'system'
+    const nextTheme = resolveTheme(nextPreference)
 
     root.classList.toggle('dark', nextTheme === 'dark')
   } catch {
-    root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches)
+    root.classList.toggle('dark', resolveTheme('system') === 'dark')
   }
 })()
 `

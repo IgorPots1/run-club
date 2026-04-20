@@ -431,6 +431,11 @@ function ProfilePageContent() {
                 href="/profile/notifications"
               />
               <HubRow
+                title="Тема"
+                description="Светлая, тёмная или как в системе"
+                href="/profile/appearance"
+              />
+              <HubRow
                 title="Strava"
                 description="Подключение и синхронизация"
                 href="/profile/strava"

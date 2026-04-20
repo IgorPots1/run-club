@@ -1,42 +1,22 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-const THEME_STORAGE_KEY = 'theme'
-
-type Theme = 'dark' | 'light'
-
-function resolveTheme(): Theme {
-  try {
-    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY)
-    if (storedTheme === 'dark' || storedTheme === 'light') {
-      return storedTheme
-    }
-  } catch {}
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('dark', theme === 'dark')
-}
-
-function persistTheme(theme: Theme) {
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme)
-  } catch {}
-}
+import {
+  applyTheme,
+  getThemePreference,
+  THEME_PREFERENCE_CHANGE_EVENT,
+  type ThemePreference,
+} from '@/lib/theme-client'
 
 export default function ThemePersistence() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>('system')
+
   useEffect(() => {
     const syncTheme = () => {
-      const nextTheme = resolveTheme()
-      applyTheme(nextTheme)
-      persistTheme(nextTheme)
-    }
-
-    const persistCurrentTheme = () => {
-      persistTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light')
+      const nextPreference = getThemePreference()
+      setThemePreference(nextPreference)
+      applyTheme(nextPreference)
     }
 
     const handleVisibilityChange = () => {
@@ -47,24 +27,43 @@ export default function ThemePersistence() {
 
     syncTheme()
 
-    const observer = new MutationObserver(() => {
-      persistCurrentTheme()
-    })
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-
     window.addEventListener('pageshow', syncTheme)
+    window.addEventListener('focus', syncTheme)
+    window.addEventListener(THEME_PREFERENCE_CHANGE_EVENT, syncTheme)
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
-      observer.disconnect()
       window.removeEventListener('pageshow', syncTheme)
+      window.removeEventListener('focus', syncTheme)
+      window.removeEventListener(THEME_PREFERENCE_CHANGE_EVENT, syncTheme)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
+
+  useEffect(() => {
+    if (themePreference !== 'system' || typeof window === 'undefined') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleSystemThemeChange = () => {
+      applyTheme(getThemePreference())
+    }
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleSystemThemeChange)
+    } else {
+      mediaQuery.addListener(handleSystemThemeChange)
+    }
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', handleSystemThemeChange)
+      } else {
+        mediaQuery.removeListener(handleSystemThemeChange)
+      }
+    }
+  }, [themePreference])
 
   return null
 }
