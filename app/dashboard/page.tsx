@@ -21,7 +21,7 @@ export default async function DashboardPage() {
     redirect('/onboarding')
   }
 
-  const overview = await loadDashboardOverviewServer(userId, { includeChallenges: false })
+  const overview = await loadDashboardOverviewServer(userId, { includeChallenges: true })
   const initialInboxUnreadCount = await getInboxUnreadCount(userId)
   const initialLevelProgress = getLevelProgressFromXP(overview.stats.totalXp)
 

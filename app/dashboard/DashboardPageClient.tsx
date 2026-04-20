@@ -328,10 +328,8 @@ export default function DashboardPageClient({
   const [showXpModal, setShowXpModal] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(initialInboxUnreadCount)
   const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
-  const hasInitialInboxUnreadCount = Number.isFinite(initialInboxUnreadCount)
   const inboxUnreadRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const isMountedRef = useRef(false)
-  const hasSkippedInitialPathnameInboxRefreshRef = useRef(false)
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
@@ -369,28 +367,18 @@ export default function DashboardPageClient({
   useEffect(() => {
     isMountedRef.current = true
 
-    if (!hasInitialInboxUnreadCount) {
-      void refreshInboxUnreadCount()
-    }
+    void refreshInboxUnreadCount()
 
     return () => {
       isMountedRef.current = false
     }
-  }, [hasInitialInboxUnreadCount, initialUser.id, refreshInboxUnreadCount])
+  }, [initialUser.id, refreshInboxUnreadCount])
 
   useEffect(() => {
-    if (!hasSkippedInitialPathnameInboxRefreshRef.current) {
-      hasSkippedInitialPathnameInboxRefreshRef.current = true
-
-      if (hasInitialInboxUnreadCount) {
-        return
-      }
-    }
-
     if (pathname === '/dashboard') {
       void refreshInboxUnreadCount()
     }
-  }, [hasInitialInboxUnreadCount, pathname, refreshInboxUnreadCount])
+  }, [pathname, refreshInboxUnreadCount])
 
   useEffect(() => {
     function handleWindowFocus() {
