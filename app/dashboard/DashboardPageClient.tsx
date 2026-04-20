@@ -3,7 +3,7 @@
 import { Activity, Bell, Plus, Target, Trophy, User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import ChallengeBadgeArtwork from '@/components/ChallengeBadgeArtwork'
 import UnreadBadge from '@/components/chat/UnreadBadge'
@@ -11,6 +11,7 @@ import InfiniteWorkoutFeed from '@/components/InfiniteWorkoutFeed'
 import LevelOverviewSheet from '@/components/LevelOverviewSheet'
 import UserIdentitySummary from '@/components/UserIdentitySummary'
 import WeeklyLeaderboard from '@/components/WeeklyLeaderboard'
+import { getBootstrapUser } from '@/lib/auth'
 import { loadRecentAffectedChallengeIds, prioritizeChallengesByIds } from '@/lib/challenge-ux'
 import {
   loadLatestFinalizedRaceWeek,
@@ -63,6 +64,16 @@ type LastWeekResultsCardData = {
   userResult: RaceWeekResultRow | null
   badgeText: string
   weekRangeLabel: string
+}
+
+type DashboardPageClientProps = {
+  initialUser?: DashboardInitialUser | null
+  initialProfileSummary?: DashboardInitialProfileSummary | null
+  initialStats?: DashboardInitialStats | null
+  initialLevelProgress?: DashboardInitialLevelProgress | null
+  initialActiveChallenges?: DashboardActiveChallenge[]
+  initialAllChallengesCompleted?: boolean
+  initialInboxUnreadCount?: number | null
 }
 
 const dashboardChallengeTypeLabels: Record<DashboardActiveChallenge['period_type'], string> = {
@@ -306,33 +317,72 @@ function DashboardSecondaryEmptyCard({
 }
 
 export default function DashboardPageClient({
-  initialUser,
-  initialProfileSummary,
-  initialStats,
-  initialLevelProgress,
-  initialActiveChallenges,
-  initialAllChallengesCompleted,
-  initialInboxUnreadCount,
-}: {
-  initialUser: DashboardInitialUser
-  initialProfileSummary: DashboardInitialProfileSummary
-  initialStats: DashboardInitialStats
-  initialLevelProgress: DashboardInitialLevelProgress
-  initialActiveChallenges: DashboardActiveChallenge[]
-  initialAllChallengesCompleted: boolean
-  initialInboxUnreadCount: number
-}) {
+  initialUser = null,
+  initialProfileSummary = null,
+  initialStats = null,
+  initialLevelProgress = null,
+  initialActiveChallenges = [],
+  initialAllChallengesCompleted = false,
+  initialInboxUnreadCount = null,
+}: DashboardPageClientProps) {
+  const router = useRouter()
   const pathname = usePathname()
+  const [user, setUser] = useState<DashboardInitialUser | null>(initialUser)
+  const [loadingUser, setLoadingUser] = useState(() => initialUser === null)
   const [shouldLoadSecondaryContent, setShouldLoadSecondaryContent] = useState(false)
   const [hasLoadedOverviewDetails] = useState(true)
   const [showXpModal, setShowXpModal] = useState(false)
-  const [inboxUnreadCount, setInboxUnreadCount] = useState(initialInboxUnreadCount)
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(() => initialInboxUnreadCount ?? 0)
   const [recentlyAffectedChallengeIds] = useState<string[]>(() => loadRecentAffectedChallengeIds())
-  const hasInitialInboxUnreadCount = Number.isFinite(initialInboxUnreadCount)
+  const userId = user?.id ?? null
+  const userEmail = user?.email ?? null
+  const hasInitialInboxUnreadCount =
+    typeof initialInboxUnreadCount === 'number' && Number.isFinite(initialInboxUnreadCount)
   const inboxUnreadRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const isMountedRef = useRef(false)
   const hasSkippedInitialPathnameInboxRefreshRef = useRef(false)
+  const hasCheckedOnboardingRef = useRef(false)
   const refreshDashboardDataPromiseRef = useRef<Promise<void> | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadUser() {
+      try {
+        const nextUser = await getBootstrapUser()
+
+        if (!isMounted) {
+          return
+        }
+
+        setUser(
+          nextUser
+            ? {
+                id: nextUser.id,
+                email: nextUser.email ?? null,
+              }
+            : null
+        )
+      } finally {
+        if (isMounted) {
+          setLoadingUser(false)
+        }
+      }
+    }
+
+    if (!initialUser) {
+      void loadUser()
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setLoadingUser(false)
+
+    return () => {
+      isMounted = false
+    }
+  }, [initialUser])
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -344,7 +394,43 @@ export default function DashboardPageClient({
     }
   }, [])
 
+  useEffect(() => {
+    if (!userId || pathname !== '/dashboard' || hasCheckedOnboardingRef.current) {
+      return
+    }
+
+    hasCheckedOnboardingRef.current = true
+
+    let cancelled = false
+    const frameId = window.requestAnimationFrame(() => {
+      void (async () => {
+        try {
+          const response = await fetch('/api/onboarding/first-session', {
+            cache: 'no-store',
+            credentials: 'include',
+          })
+          const payload = await response.json().catch(() => null) as { isFirstSession?: unknown } | null
+
+          if (!cancelled && response.ok && payload?.isFirstSession === true) {
+            router.replace('/onboarding')
+          }
+        } catch {
+          // Keep the dashboard interactive even if the follow-up onboarding check fails.
+        }
+      })()
+    })
+
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [pathname, router, userId])
+
   const refreshInboxUnreadCount = useCallback(() => {
+    if (!userId) {
+      return Promise.resolve()
+    }
+
     if (inboxUnreadRefreshPromiseRef.current) {
       return inboxUnreadRefreshPromiseRef.current
     }
@@ -364,10 +450,16 @@ export default function DashboardPageClient({
         inboxUnreadRefreshPromiseRef.current = null
       }
     })
-  }, [])
+  }, [userId])
 
   useEffect(() => {
     isMountedRef.current = true
+
+    if (!userId) {
+      return () => {
+        isMountedRef.current = false
+      }
+    }
 
     if (!hasInitialInboxUnreadCount) {
       void refreshInboxUnreadCount()
@@ -376,9 +468,13 @@ export default function DashboardPageClient({
     return () => {
       isMountedRef.current = false
     }
-  }, [hasInitialInboxUnreadCount, initialUser.id, refreshInboxUnreadCount])
+  }, [hasInitialInboxUnreadCount, refreshInboxUnreadCount, userId])
 
   useEffect(() => {
+    if (!userId) {
+      return
+    }
+
     if (!hasSkippedInitialPathnameInboxRefreshRef.current) {
       hasSkippedInitialPathnameInboxRefreshRef.current = true
 
@@ -390,9 +486,13 @@ export default function DashboardPageClient({
     if (pathname === '/dashboard') {
       void refreshInboxUnreadCount()
     }
-  }, [hasInitialInboxUnreadCount, pathname, refreshInboxUnreadCount])
+  }, [hasInitialInboxUnreadCount, pathname, refreshInboxUnreadCount, userId])
 
   useEffect(() => {
+    if (!userId) {
+      return
+    }
+
     function handleWindowFocus() {
       void refreshInboxUnreadCount()
     }
@@ -424,7 +524,7 @@ export default function DashboardPageClient({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('storage', handleStorage)
     }
-  }, [refreshInboxUnreadCount])
+  }, [refreshInboxUnreadCount, userId])
 
   const swrBaseOptions = useMemo(() => ({
     revalidateOnFocus: false,
@@ -433,15 +533,21 @@ export default function DashboardPageClient({
     dedupingInterval: 15000,
     focusThrottleInterval: 15000,
   }), [])
-  const overviewKey = shouldLoadSecondaryContent ? (['dashboard-overview', initialUser.id] as const) : null
-  const weeklyRaceKey = shouldLoadSecondaryContent ? (['weekly-race', initialUser.id] as const) : null
+  const overviewKey = shouldLoadSecondaryContent && userId ? (['dashboard-overview', userId] as const) : null
+  const weeklyRaceKey = shouldLoadSecondaryContent && userId ? (['weekly-race', userId] as const) : null
   const latestFinalizedRaceWeekKey = shouldLoadSecondaryContent ? (['latest-finalized-race-week'] as const) : null
-  const initialOverview = useMemo<DashboardOverview>(() => ({
-    stats: initialStats,
-    profileSummary: initialProfileSummary,
-    activeChallenges: initialActiveChallenges,
-    allChallengesCompleted: initialAllChallengesCompleted,
-  }), [initialActiveChallenges, initialAllChallengesCompleted, initialProfileSummary, initialStats])
+  const initialOverview = useMemo<DashboardOverview | null>(() => {
+    if (!initialStats || !initialProfileSummary) {
+      return null
+    }
+
+    return {
+      stats: initialStats,
+      profileSummary: initialProfileSummary,
+      activeChallenges: initialActiveChallenges,
+      allChallengesCompleted: initialAllChallengesCompleted,
+    }
+  }, [initialActiveChallenges, initialAllChallengesCompleted, initialProfileSummary, initialStats])
 
   const {
     data: overview,
@@ -450,7 +556,7 @@ export default function DashboardPageClient({
     mutate: mutateOverview,
   } = useSWR(overviewKey, ([, userId]: readonly [string, string]) => loadDashboardOverview(userId), {
     ...swrBaseOptions,
-    fallbackData: initialOverview,
+    fallbackData: initialOverview ?? undefined,
   })
 
   const {
@@ -476,8 +582,8 @@ export default function DashboardPageClient({
     }
   )
 
-  const lastWeekResultsKey = shouldLoadSecondaryContent && latestFinalizedRaceWeek?.id
-    ? (['last-week-results', latestFinalizedRaceWeek.id, initialUser.id] as const)
+  const lastWeekResultsKey = shouldLoadSecondaryContent && latestFinalizedRaceWeek?.id && userId
+    ? (['last-week-results', latestFinalizedRaceWeek.id, userId] as const)
     : null
 
   const {
@@ -560,9 +666,9 @@ export default function DashboardPageClient({
     : initialLevelProgress
   const profileName = getProfileDisplayName(
     {
-      name: overview?.profileSummary.name ?? initialProfileSummary.name,
-      nickname: overview?.profileSummary.nickname ?? initialProfileSummary.nickname,
-      email: overview?.profileSummary.email ?? initialProfileSummary.email ?? initialUser.email,
+      name: overview?.profileSummary.name ?? initialProfileSummary?.name ?? null,
+      nickname: overview?.profileSummary.nickname ?? initialProfileSummary?.nickname ?? null,
+      email: overview?.profileSummary.email ?? initialProfileSummary?.email ?? userEmail,
     },
     'Бегун'
   )
@@ -573,14 +679,20 @@ export default function DashboardPageClient({
   const headerLevelLabel = levelProgress
     ? `Уровень ${levelProgress.level}`
     : 'Загружаем прогресс...'
-  const showOverviewSkeleton = !stats && overviewLoading && !overview && !overviewError
-  const showChallengesPlaceholder = !shouldLoadSecondaryContent
+  const showOverviewSkeleton =
+    !stats && (
+      loadingUser
+      || (userId !== null && (!shouldLoadSecondaryContent || (overviewLoading && !overview && !overviewError)))
+    )
+  const showChallengesPlaceholder = loadingUser || !shouldLoadSecondaryContent
+    || (!initialOverview && !overview && !overviewError)
     || (
       overview === initialOverview
       && activeChallenges.length === 0
       && !allChallengesCompleted
+      && initialOverview !== null
     )
-  const weeklyLeaderboardLoading = !shouldLoadSecondaryContent || weeklyRaceLoading
+  const weeklyLeaderboardLoading = loadingUser || !userId || !shouldLoadSecondaryContent || weeklyRaceLoading
   const lastWeekResultsCard = latestFinalizedRaceWeek && lastWeekResults
     ? {
         weekId: latestFinalizedRaceWeek.id,
@@ -590,7 +702,9 @@ export default function DashboardPageClient({
       }
     : null
   const shouldShowLastWeekResultsCard = new Date().getDay() === 1
-  const showLastWeekResultsPlaceholder = !shouldLoadSecondaryContent
+  const showLastWeekResultsPlaceholder = loadingUser
+    || !userId
+    || !shouldLoadSecondaryContent
     || (shouldShowLastWeekResultsCard && latestFinalizedRaceWeekLoading)
     || (shouldShowLastWeekResultsCard && Boolean(latestFinalizedRaceWeek?.id) && lastWeekResultsLoading)
   const rawXpProgressPercent = levelProgress?.progressPercent
@@ -607,8 +721,8 @@ export default function DashboardPageClient({
         <div className="mb-6 flex items-start justify-between gap-2 sm:gap-3">
           <UserIdentitySummary
             className="flex-1"
-            loadingIdentity={false}
-            loadingLevel={false}
+            loadingIdentity={loadingUser}
+            loadingLevel={showOverviewSkeleton}
             displayName={headerDisplayName}
             levelLabel={headerLevelLabel}
           />
@@ -786,7 +900,7 @@ export default function DashboardPageClient({
           >
             <WeeklyLeaderboard
               leaderboard={weeklyRace ?? null}
-              currentUserId={initialUser.id}
+              currentUserId={userId ?? ''}
               loading={weeklyLeaderboardLoading}
               error={shouldLoadSecondaryContent && weeklyRaceError ? 'Не удалось загрузить рейтинг' : ''}
               compact
@@ -833,7 +947,7 @@ export default function DashboardPageClient({
           <section className="min-h-[284px]">
             <h2 className="app-text-primary mb-3 text-lg font-semibold">Лента</h2>
             <InfiniteWorkoutFeed
-              currentUserId={initialUser.id}
+              currentUserId={userId}
               enabled={shouldLoadSecondaryContent}
               pageSize={10}
               scrollRestorationKey="dashboard-feed"
