@@ -2,10 +2,16 @@
 
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
+import splashImage from '../ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png'
 
 const MIN_VISIBLE_MS = 500
 const MAX_VISIBLE_MS = 1800
 const FADE_OUT_MS = 200
+
+const clearBootBackground = () => {
+  document.documentElement.classList.remove('app-booting')
+  document.body.classList.remove('app-booting')
+}
 
 export default function AppLaunchScreen() {
   const [isVisible, setIsVisible] = useState(true)
@@ -36,11 +42,14 @@ export default function AppLaunchScreen() {
 
     setIsFadingOut(true)
     fadeOutTimerRef.current = window.setTimeout(() => {
+      clearBootBackground()
       setIsVisible(false)
     }, FADE_OUT_MS)
   }
 
   useEffect(() => {
+    document.documentElement.classList.add('app-booting')
+    document.body.classList.add('app-booting')
     bootStartedAtRef.current = performance.now()
     maxVisibleTimerRef.current = window.setTimeout(startExit, MAX_VISIBLE_MS)
 
@@ -74,6 +83,8 @@ export default function AppLaunchScreen() {
       if (shellReadyFrameTwoRef.current !== null) {
         window.cancelAnimationFrame(shellReadyFrameTwoRef.current)
       }
+
+      clearBootBackground()
     }
   }, [])
 
@@ -84,18 +95,20 @@ export default function AppLaunchScreen() {
   return (
     <div
       aria-hidden="true"
-      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[100] bg-black transition-opacity duration-200 ease-out ${
         isFadingOut ? 'opacity-0' : 'opacity-100'
       }`}
     >
-      <Image
-        src="/images/xo-runners-splash.jpg"
-        alt=""
-        width={360}
-        height={640}
-        priority
-        className="h-auto w-[75vw] max-w-[420px] object-contain"
-      />
+      <div className="flex h-full w-full items-center justify-center px-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+        <Image
+          src={splashImage}
+          alt=""
+          priority
+          unoptimized
+          sizes="(max-width: 768px) 80vw, 420px"
+          className="h-auto w-[80vw] max-w-[420px] object-contain select-none"
+        />
+      </div>
     </div>
   )
 }

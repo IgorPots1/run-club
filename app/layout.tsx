@@ -50,6 +50,17 @@ const themeInitScript = `
 })()
 `
 
+const bootBackgroundStyle = `
+html.app-booting,
+body.app-booting {
+  background: #000;
+}
+
+body.app-booting .app-shell {
+  background: #000;
+}
+`
+
 export const metadata: Metadata = {
   title: "Run Club",
   applicationName: "Run Club",
@@ -60,7 +71,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black",
     title: "Run Club",
   },
   icons: {
@@ -80,7 +91,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  themeColor: "#000000",
 };
 
 export default async function RootLayout({
@@ -95,11 +106,12 @@ export default async function RootLayout({
 
   if (isBlockedRoute) {
     return (
-      <html lang="ru" suppressHydrationWarning>
+      <html lang="ru" suppressHydrationWarning className="app-booting">
         <head>
+          <style dangerouslySetInnerHTML={{ __html: bootBackgroundStyle }} />
           <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         </head>
-        <body className={`min-h-screen ${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <body className={`app-booting min-h-screen ${geistSans.variable} ${geistMono.variable} antialiased`}>
           <ThemePersistence />
           <AppLaunchScreen />
           {children}
@@ -143,11 +155,12 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning className="app-booting">
       <head>
+        <style dangerouslySetInnerHTML={{ __html: bootBackgroundStyle }} />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="min-h-screen">
+      <body className="app-booting min-h-screen">
         <ThemePersistence />
         <PwaRegister />
         <VoiceStreamLifecycle />

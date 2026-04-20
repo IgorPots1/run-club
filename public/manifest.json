@@ -4,8 +4,8 @@
   "description": "Легкое клубное приложение для бега, челленджей и рейтинга.",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#f9fafb",
-  "theme_color": "#ffffff",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {
