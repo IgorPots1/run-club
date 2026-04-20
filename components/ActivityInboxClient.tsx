@@ -63,47 +63,22 @@ function getEventBadgeLabel(actorName: string | null, eventType: string) {
   return 'R'
 }
 
-function formatGroupedRunLikeTitle(item: ActivityGroupedRunLikeInboxItem) {
+function formatGroupedRunLikeActorText(item: ActivityGroupedRunLikeInboxItem) {
   const [firstActorName = 'Кто-то', secondActorName = 'кто-то'] = item.actorPreviewNames
 
   if (item.actorCount <= 1) {
-    return item.title
+    return firstActorName
   }
 
   if (item.actorCount === 2) {
-    return `${firstActorName} и ${secondActorName} лайкнули вашу пробежку`
+    return `${firstActorName} и ${secondActorName}`
   }
 
-  return `${firstActorName}, ${secondActorName} и еще ${item.actorCount - 2} чел. лайкнули вашу пробежку`
-}
-
-function formatGroupedRunLikeParts(item: ActivityGroupedRunLikeInboxItem) {
-  const [firstActorName = 'Кто-то', secondActorName = 'кто-то'] = item.actorPreviewNames
-
-  if (item.actorCount <= 1) {
-    return null
-  }
-
-  if (item.actorCount === 2) {
-    return {
-      actorText: `${firstActorName} и ${secondActorName}`,
-      actionText: 'лайкнули вашу пробежку',
-    }
-  }
-
-  return {
-    actorText: `${firstActorName}, ${secondActorName} и еще ${item.actorCount - 2} чел.`,
-    actionText: 'лайкнули вашу пробежку',
-  }
+  return `${firstActorName} и ещё ${item.actorCount - 1} чел.`
 }
 
 function isGroupedRunLikeInboxItem(event: ActivityInboxListItem): event is ActivityGroupedRunLikeInboxItem {
   return event.type === 'grouped_run_like'
-}
-
-function getInitialLabel(name: string | null | undefined) {
-  const trimmed = name?.trim()
-  return trimmed?.[0]?.toUpperCase() ?? 'R'
 }
 
 function getActionIcon(eventType: string) {
@@ -178,72 +153,41 @@ export default function ActivityInboxClient({
 
             if (isGroupedRunLikeInboxItem(event)) {
               groupedRunLikeEvent = event
-              actorName = null
+              actorName = event.actorPreviewNames[0] ?? null
               actorAvatarUrl = event.actorPreviewAvatarUrls[0] ?? null
               eventType = 'run_like.created'
-              title = formatGroupedRunLikeTitle(event)
+              title = event.title
             } else {
               actorName = event.actorName
               actorAvatarUrl = event.actorAvatarUrl
               eventType = event.type
               title = event.title
             }
-            const groupedLikeParts = groupedRunLikeEvent ? formatGroupedRunLikeParts(groupedRunLikeEvent) : null
+            const groupedLikeActorText = groupedRunLikeEvent ? formatGroupedRunLikeActorText(groupedRunLikeEvent) : null
             const actionIcon = getActionIcon(eventType)
-            const firstLineTitle = ensureTrailingColon(title)
-            const secondLineText = groupedLikeParts
-              ? `${groupedLikeParts.actorText} ${groupedLikeParts.actionText}`
-              : event.body ?? title
+            const isGroupedRunLike = Boolean(groupedRunLikeEvent)
+            const firstLineText = isGroupedRunLike
+              ? `${ensureTrailingColon(title)} ${groupedLikeActorText}`
+              : title
+            const secondLineText = isGroupedRunLike ? null : event.body
             const cardContent = (
               <div className="flex items-start gap-3">
                 <div className="w-12 min-w-12 flex items-start">
-                  {groupedRunLikeEvent ? (
-                    <div className="flex -space-x-2">
-                      {[0, 1].map((index) => {
-                        const previewAvatarUrl = groupedRunLikeEvent.actorPreviewAvatarUrls[index] ?? null
-                        const previewName = groupedRunLikeEvent.actorPreviewNames[index] ?? null
-
-                        if (!previewAvatarUrl && !previewName) {
-                          return null
-                        }
-
-                        return (
-                          <div
-                            key={`${groupedRunLikeEvent.id}-avatar-${index}`}
-                            className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-[color:var(--background)] bg-black/[0.05] text-[11px] font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80"
-                          >
-                            {previewAvatarUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={previewAvatarUrl}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span>{getInitialLabel(previewName)}</span>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
-                      {actorAvatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={actorAvatarUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span>{getEventBadgeLabel(actorName, eventType)}</span>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/[0.05] text-sm font-semibold text-black/70 dark:bg-white/[0.08] dark:text-white/80">
+                    {actorAvatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={actorAvatarUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span>{getEventBadgeLabel(actorName, eventType)}</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="min-w-0 flex-1 flex flex-col gap-1">
-                  <p className="app-text-primary truncate text-sm font-semibold leading-5">{firstLineTitle}</p>
                   <div className="flex items-start gap-1">
                     {actionIcon ? (
                       <span aria-hidden="true" className="app-text-secondary inline-flex h-5 w-4 shrink-0 items-start justify-center text-[12px] leading-5">
@@ -252,14 +196,11 @@ export default function ActivityInboxClient({
                     ) : (
                       <span aria-hidden="true" className="h-5 w-4 shrink-0" />
                     )}
-                    <p
-                      className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${
-                        groupedRunLikeEvent ? 'line-clamp-2' : 'line-clamp-1'
-                      } ${event.isUnread ? 'font-medium' : ''}`}
-                    >
-                      {secondLineText}
-                    </p>
+                    <p className="app-text-primary min-w-0 flex-1 truncate text-sm font-semibold leading-5">{firstLineText}</p>
                   </div>
+                  {secondLineText ? (
+                    <p className={`app-text-primary min-w-0 text-sm leading-5 ${event.isUnread ? 'font-medium' : ''}`}>{secondLineText}</p>
+                  ) : null}
                   <div className="flex items-center gap-1">
                     <p className="app-text-secondary text-xs leading-4">{formatRunDateTimeLabel(event.createdAt)}</p>
                     <span
