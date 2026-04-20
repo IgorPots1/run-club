@@ -74,7 +74,19 @@ function formatGroupedRunLikeActorText(item: ActivityGroupedRunLikeInboxItem) {
     return `${firstActorName} и ${secondActorName}`
   }
 
-  return `${firstActorName} и ещё ${item.actorCount - 1} чел.`
+  const restCount = item.actorCount - 1
+  const mod100 = restCount % 100
+  const mod10 = restCount % 10
+  const runnerWord =
+    mod100 >= 11 && mod100 <= 14
+      ? 'бегунов'
+      : mod10 === 1
+        ? 'бегун'
+        : mod10 >= 2 && mod10 <= 4
+          ? 'бегуна'
+          : 'бегунов'
+
+  return `${firstActorName} и ещё ${restCount} ${runnerWord}`
 }
 
 function isGroupedRunLikeInboxItem(event: ActivityInboxListItem): event is ActivityGroupedRunLikeInboxItem {
