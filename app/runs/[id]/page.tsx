@@ -23,6 +23,7 @@ import { loadTotalXpByUserIds } from '@/lib/dashboard'
 import { getBootstrapUser } from '@/lib/auth'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
+import { consumeSeededRunDetail, type SeededRunDetailPayload } from '@/lib/run-detail-navigation'
 import {
   loadRunComments,
   type RunCommentItem,
@@ -618,6 +619,10 @@ function getRunTitle(run: Pick<RunDetailsRow, 'name' | 'title'>) {
   return run.name?.trim() || run.title?.trim() || 'Тренировка'
 }
 
+function getSeededRunTitle(run: Pick<SeededRunDetailPayload, 'title'>) {
+  return run.title.trim() || 'Тренировка'
+}
+
 function toNullableTrimmedText(value: string | null | undefined) {
   if (typeof value !== 'string') {
     return null
@@ -644,6 +649,38 @@ function resolveWorkoutDetailScrollTarget(scrollContainer: HTMLDivElement | null
   }
 
   return window
+}
+
+function formatSeededPaceLabel(pace: string | number | null | undefined) {
+  if (typeof pace === 'number' && Number.isFinite(pace) && pace > 0) {
+    return formatPaceLabel(pace)
+  }
+
+  if (typeof pace !== 'string') {
+    return null
+  }
+
+  const trimmedPace = pace.trim()
+
+  if (!trimmedPace) {
+    return null
+  }
+
+  return trimmedPace.endsWith('/км') ? trimmedPace : `${trimmedPace} /км`
+}
+
+function buildSeededRunLocationLabel(run: Pick<SeededRunDetailPayload, 'city' | 'country'>) {
+  const uniqueParts = [run.city, run.country].reduce<string[]>((parts, value) => {
+    const trimmedValue = toNullableTrimmedText(value)
+
+    if (!trimmedValue || parts.includes(trimmedValue)) {
+      return parts
+    }
+
+    return [...parts, trimmedValue]
+  }, [])
+
+  return uniqueParts.length > 0 ? uniqueParts.join(', ') : null
 }
 
 export default function RunDetailsPage() {
@@ -682,6 +719,7 @@ export default function RunDetailsPage() {
   const [refreshingStravaSupplemental, setRefreshingStravaSupplemental] = useState(false)
   const [stravaSupplementalError, setStravaSupplementalError] = useState('')
   const [stravaSupplementalInfoMessage, setStravaSupplementalInfoMessage] = useState('')
+  const [seededRun, setSeededRun] = useState<SeededRunDetailPayload | null>(() => consumeSeededRunDetail(runId))
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const descriptionRef = useRef<HTMLParagraphElement | null>(null)
@@ -706,6 +744,22 @@ export default function RunDetailsPage() {
     currentUserId: user?.id ?? null,
     onAuthRequired: handleAuthRequired,
   })
+
+  useEffect(() => {
+    setSeededRun((currentValue) => {
+      if (currentValue?.runId === runId) {
+        return currentValue
+      }
+
+      return consumeSeededRunDetail(runId)
+    })
+  }, [runId])
+
+  useEffect(() => {
+    if (run?.id === runId || error) {
+      setSeededRun(null)
+    }
+  }, [error, run?.id, runId])
 
   async function handleCommentSubmit(comment: string) {
     if (!run) {
@@ -1547,6 +1601,23 @@ export default function RunDetailsPage() {
       mapPreviewUrl: run.map_polyline ? getStaticMapUrl(run.map_polyline) : null,
     }
   }, [run])
+  const seededDetails = useMemo(() => {
+    if (!seededRun) {
+      return null
+    }
+
+    const distanceKm = Number(seededRun.distance_km ?? 0)
+
+    return {
+      distanceLabel: distanceKm > 0 ? `${formatDistanceKm(distanceKm)} км` : null,
+      movingTimeLabel: toNullableTrimmedText(seededRun.movingTime),
+      paceLabel: formatSeededPaceLabel(seededRun.pace),
+      xpValue: Number.isFinite(seededRun.xp) && (seededRun.xp ?? 0) > 0
+        ? Math.round(seededRun.xp ?? 0)
+        : null,
+      mapPreviewUrl: seededRun.map_polyline ? getStaticMapUrl(seededRun.map_polyline) : null,
+    }
+  }, [seededRun])
 
   const summaryMetricItems = useMemo(() => {
     if (!details) {
@@ -1562,8 +1633,168 @@ export default function RunDetailsPage() {
       ...(details.caloriesLabel ? [{ label: 'Калории', value: details.caloriesLabel }] : []),
     ]
   }, [details])
+  const seededSummaryMetricItems = useMemo(() => {
+    if (!seededDetails) {
+      return []
+    }
+
+    return [
+      { label: 'Расстояние', value: seededDetails.distanceLabel ?? '—', prominent: true },
+      { label: 'Время', value: seededDetails.movingTimeLabel ?? '—' },
+      { label: 'Темп', value: seededDetails.paceLabel ?? '—' },
+    ]
+  }, [seededDetails])
+  const seededRunLocationLabel = useMemo(
+    () => (seededRun ? buildSeededRunLocationLabel(seededRun) : null),
+    [seededRun]
+  )
+  const seededRunPhotos = useMemo<RunPhotoRow[]>(
+    () => (seededRun?.photos ?? []).map((photo, index) => ({
+      id: photo.id,
+      public_url: photo.public_url,
+      thumbnail_url: photo.thumbnail_url,
+      sort_order: index,
+      created_at: null,
+    })),
+    [seededRun]
+  )
+  const shouldShowSeededDetail = Boolean(seededRun && !run && !error && (authLoading || loading))
 
   if (authLoading || loading) {
+    if (shouldShowSeededDetail && seededRun && seededDetails) {
+      const seededHasMedia = Boolean(seededRun.map_polyline?.trim()) || seededRunPhotos.length > 0
+
+      return (
+        <WorkoutDetailShell
+          title="Тренировка"
+          enableSourceRestore
+          pinnedHeader
+          scrollContainerRef={scrollContainerRef}
+          scrollContentClassName="pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-5 md:pt-5"
+        >
+          <div className="min-w-0 overflow-x-hidden space-y-4">
+            {seededHasMedia ? (
+              <section>
+                <WorkoutMediaCarousel
+                  mapPolyline={seededRun.map_polyline}
+                  mapPreviewUrl={seededDetails.mapPreviewUrl}
+                  photos={seededRunPhotos}
+                  allowSwipeMode="always"
+                  enableMapFallbackPreview
+                  onOpenPhoto={setSelectedPhotoIndex}
+                />
+              </section>
+            ) : null}
+
+            <section className="app-card rounded-2xl border p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  {seededRun.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={seededRun.avatar_url}
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-11 w-11 shrink-0 rounded-full bg-[var(--surface-muted)] ring-1 ring-black/5 dark:ring-white/10" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="app-text-primary break-words text-[15px] font-semibold">
+                      {seededRun.displayName.trim() || 'Бегун'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end">
+                  <p className="app-text-secondary max-w-[6.5rem] text-right text-xs sm:max-w-none sm:text-sm">
+                    {formatRunTimestampLabel(seededRun.created_at, null)}
+                  </p>
+                  {seededDetails.xpValue != null ? (
+                    <p className="app-text-muted mt-1 text-right text-xs font-medium">
+                      +{seededDetails.xpValue} XP
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <h1 className="app-text-primary min-w-0 break-words text-base font-semibold">
+                  {getSeededRunTitle(seededRun)}
+                </h1>
+              </div>
+
+              {seededRunLocationLabel ? (
+                <div className="mt-2 space-y-1">
+                  <p className="app-text-secondary text-sm leading-5">{seededRunLocationLabel}</p>
+                </div>
+              ) : null}
+
+              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
+                {seededSummaryMetricItems.map((metric) => (
+                  <div key={metric.label} className="grid content-start gap-1">
+                    <p className="app-text-secondary text-xs font-medium leading-tight">{metric.label}</p>
+                    <p
+                      className={`app-text-primary leading-tight ${
+                        metric.prominent ? 'text-2xl font-semibold tracking-tight' : 'text-xl font-semibold'
+                      }`}
+                    >
+                      {metric.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
+              <div className="skeleton-line h-6 w-28" />
+              <div className="mt-3 overflow-hidden rounded-xl border">
+                <div className="grid grid-cols-[56px_1fr_1fr_1fr] gap-3 border-b px-3 py-2">
+                  <div className="skeleton-line h-3 w-6" />
+                  <div className="skeleton-line h-3 w-12" />
+                  <div className="skeleton-line h-3 w-16" />
+                  <div className="skeleton-line h-3 w-14" />
+                </div>
+                <div className="space-y-3 px-3 py-3">
+                  <div className="grid grid-cols-[56px_1fr_1fr_1fr] gap-3">
+                    <div className="skeleton-line h-4 w-8" />
+                    <div className="skeleton-line h-4 w-12" />
+                    <div className="skeleton-line h-4 w-14" />
+                    <div className="skeleton-line h-4 w-14" />
+                  </div>
+                  <div className="grid grid-cols-[56px_1fr_1fr_1fr] gap-3">
+                    <div className="skeleton-line h-4 w-8" />
+                    <div className="skeleton-line h-4 w-12" />
+                    <div className="skeleton-line h-4 w-14" />
+                    <div className="skeleton-line h-4 w-14" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="app-card rounded-2xl border p-4 shadow-sm" aria-hidden="true">
+              <div className="skeleton-line h-6 w-20" />
+              <div className="mt-3 h-[220px] w-full rounded-xl skeleton-line" />
+            </section>
+
+            <RunCommentsSection
+              comments={comments}
+              currentUserId={user?.id ?? null}
+              loading
+              error=""
+              pendingLikeCommentIds={pendingLikeCommentIds}
+            />
+          </div>
+
+          <RunPhotoLightbox
+            key={selectedPhotoIndex ?? 'closed'}
+            photos={seededRunPhotos}
+            selectedIndex={selectedPhotoIndex}
+            onClose={() => setSelectedPhotoIndex(null)}
+          />
+        </WorkoutDetailShell>
+      )
+    }
+
     return (
       <WorkoutDetailShell title="Тренировка" enableSourceRestore pinnedHeader>
       <div className="min-w-0 overflow-x-hidden space-y-4">

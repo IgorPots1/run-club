@@ -10,6 +10,7 @@ import { buildWorkoutMedia, type WorkoutMediaPhoto } from '@/lib/buildWorkoutMed
 import type { FeedRunInsight } from '@/lib/dashboard'
 import { formatDistanceKm, formatRunTimestampLabel } from '@/lib/format'
 import { getStaticMapUrl } from '@/lib/getStaticMapUrl'
+import { saveSeededRunDetail, type SeededRunDetailPayload } from '@/lib/run-detail-navigation'
 import type { RunXpBreakdownRow } from '@/lib/run-xp-presentation'
 
 type WorkoutFeedCardMediaSlide =
@@ -61,6 +62,7 @@ type WorkoutFeedCardProps = {
   onNavigateToProfile?: (href: string) => void
   onPrefetchProfile?: (href: string) => void
   photos?: WorkoutMediaPhoto[]
+  seededRunDetailPayload?: SeededRunDetailPayload | null
   onOpenXpBreakdown?: () => void
 }
 
@@ -169,6 +171,7 @@ function WorkoutFeedCard({
   onNavigateToProfile,
   onPrefetchProfile,
   photos = [],
+  seededRunDetailPayload = null,
   onOpenXpBreakdown,
 }: WorkoutFeedCardProps) {
   const router = useRouter()
@@ -268,6 +271,10 @@ function WorkoutFeedCard({
   function openRunDetail() {
     if (!runId) {
       return
+    }
+
+    if (seededRunDetailPayload) {
+      saveSeededRunDetail(seededRunDetailPayload)
     }
 
     if (onNavigateToRun) {

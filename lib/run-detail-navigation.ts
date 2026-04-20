@@ -22,6 +22,31 @@ type RunDetailPendingSourceSnapshot = {
   savedAt: number
 }
 
+export type SeededRunDetailPhoto = {
+  id: string
+  public_url: string
+  thumbnail_url: string | null
+}
+
+export type SeededRunDetailPayload = {
+  runId: string
+  title: string
+  displayName: string
+  avatar_url: string | null
+  created_at: string
+  distance_km: number
+  pace: string | number | null
+  movingTime: string | null
+  city: string | null
+  country: string | null
+  map_polyline: string | null
+  photos: SeededRunDetailPhoto[]
+  likesCount: number
+  commentsCount: number
+  likedByMe: boolean
+  xp?: number | null
+}
+
 type RunDetailReturnPayload<TSnapshot> = {
   entryId: string
   sourceKey: string
@@ -62,6 +87,18 @@ type UseRunDetailReturnStateOptions<TSnapshot> = {
 }
 
 const RESTORE_SCROLL_CORRECTION_THRESHOLD_PX = 1
+const SEEDED_RUN_DETAIL_MAX_AGE_MS = 2 * 60 * 1000
+const seededRunDetailStore = new Map<string, { payload: SeededRunDetailPayload; savedAt: number }>()
+
+function pruneSeededRunDetailStore() {
+  const now = Date.now()
+
+  for (const [runId, entry] of seededRunDetailStore.entries()) {
+    if (now - entry.savedAt > SEEDED_RUN_DETAIL_MAX_AGE_MS) {
+      seededRunDetailStore.delete(runId)
+    }
+  }
+}
 
 function isRelativeAppHref(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
@@ -376,6 +413,34 @@ export function readRunDetailSource() {
   }
 
   return hydrateRunDetailSourceHistoryState()
+}
+
+export function saveSeededRunDetail(payload: SeededRunDetailPayload) {
+  if (!payload.runId) {
+    return
+  }
+
+  pruneSeededRunDetailStore()
+  seededRunDetailStore.set(payload.runId, {
+    payload,
+    savedAt: Date.now(),
+  })
+}
+
+export function consumeSeededRunDetail(runId: string) {
+  if (!runId) {
+    return null
+  }
+
+  pruneSeededRunDetailStore()
+  const entry = seededRunDetailStore.get(runId) ?? null
+
+  if (!entry) {
+    return null
+  }
+
+  seededRunDetailStore.delete(runId)
+  return entry.payload
 }
 
 export function useRunDetailReturnState<TSnapshot>({

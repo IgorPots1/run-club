@@ -38,6 +38,7 @@ import {
 } from '@/lib/run-likes'
 import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
+import type { SeededRunDetailPayload } from '@/lib/run-detail-navigation'
 import { useRunDetailReturnState } from '@/lib/run-detail-navigation'
 import { formatDistanceKm } from '@/lib/format'
 import { formatClock } from '@/lib/race-events'
@@ -78,6 +79,27 @@ type ActiveLikesTarget =
 
 function isRunFeedItem(item: FeedItem): item is RunFeedItem {
   return item.kind === 'run'
+}
+
+function buildSeededRunDetailPayload(item: FeedRunItem): SeededRunDetailPayload {
+  return {
+    runId: item.id,
+    title: item.title,
+    displayName: item.displayName,
+    avatar_url: item.avatar_url,
+    created_at: item.created_at,
+    distance_km: item.distance_km,
+    pace: item.pace,
+    movingTime: item.movingTime,
+    city: item.city ?? null,
+    country: item.country ?? null,
+    map_polyline: item.map_polyline ?? null,
+    photos: item.photos,
+    likesCount: item.likesCount,
+    commentsCount: item.commentsCount,
+    likedByMe: item.likedByMe,
+    xp: item.xp,
+  }
 }
 
 function mergeUniqueMixedFeedItems(existing: FeedItem[], incoming: FeedItem[]) {
@@ -1543,6 +1565,7 @@ export default function InfiniteWorkoutFeed({
                 profileHref={`/users/${item.user_id}`}
                 onNavigateToProfile={navigateToProfile}
                 onPrefetchProfile={prefetchProfile}
+                seededRunDetailPayload={buildSeededRunDetailPayload(item)}
                 onOpenXpBreakdown={() => setActiveXpRunId(item.id)}
               />
             ) : item.kind === 'race_event' ? (
