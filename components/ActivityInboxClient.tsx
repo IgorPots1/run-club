@@ -196,7 +196,7 @@ export default function ActivityInboxClient({
                     ) : (
                       <span aria-hidden="true" className="h-5 w-4 shrink-0" />
                     )}
-                    <p className="app-text-primary min-w-0 flex-1 truncate text-sm font-semibold leading-5">{firstLineText}</p>
+                    <p className="app-text-primary min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-5">{firstLineText}</p>
                   </div>
                   {secondLineText ? (
                     <p className={`app-text-primary min-w-0 text-sm leading-5 ${event.isUnread ? 'font-medium' : ''}`}>{secondLineText}</p>
