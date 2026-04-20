@@ -62,10 +62,7 @@ type RunFeedItem = Extract<FeedItem, { kind: 'run' }>
 type RaceEventFeedItem = Extract<FeedItem, { kind: 'race_event' }>
 type ChallengeFeedItem = Extract<FeedItem, { kind: 'challenge' }>
 type FeedRestoreSnapshot = {
-  items: FeedItem[]
-  hasMore: boolean
   nextOffset: number
-  savedAt: number
 }
 
 type ActiveLikesTarget =
@@ -79,17 +76,6 @@ function isRunFeedItem(item: FeedItem): item is RunFeedItem {
 function mergeUniqueMixedFeedItems(existing: FeedItem[], incoming: FeedItem[]) {
   const existingIds = new Set(existing.map((item) => item.id))
   return [...existing, ...incoming.filter((item) => !existingIds.has(item.id))]
-}
-
-function projectFeedItemForSnapshot(item: FeedItem): FeedItem {
-  if (item.kind !== 'run') {
-    return item
-  }
-
-  return {
-    ...item,
-    xpBreakdownRows: [],
-  }
 }
 
 function formatRaceDateLabel(dateValue: string | null) {
@@ -589,27 +575,22 @@ export default function InfiniteWorkoutFeed({
     getScrollAnchor,
     restoreScrollFromAnchor,
     measureScrollAnchorError,
-    getSnapshot: () => ({
-      items: itemsRef.current.map(projectFeedItemForSnapshot),
-      hasMore,
-      nextOffset,
-      savedAt: Date.now(),
-    }),
+    getSnapshot: () => ({ nextOffset }),
     onRestoreSnapshot: (snapshot) => {
       restoredSnapshotRef.current = snapshot
       commentVisibilityByRunIdRef.current = {}
       likeInFlightRef.current = {}
       raceEventLikeInFlightRef.current = {}
-      itemsRef.current = snapshot.items
-      setItems(snapshot.items)
-      setHasMore(snapshot.hasMore)
-      setNextOffset(snapshot.nextOffset)
+      itemsRef.current = []
+      setItems([])
+      setHasMore(true)
+      setNextOffset(0)
       setLikeInFlightByRunId({})
       setLikeInFlightByRaceEventId({})
       setActiveLikesTarget(null)
       setActiveXpRunId(null)
       setFeedError('')
-      setInitialLoading(false)
+      setInitialLoading(true)
     },
     restoreReady: !initialLoading && items.length > 0,
     debugLabel: 'InfiniteWorkoutFeed',
@@ -792,23 +773,29 @@ export default function InfiniteWorkoutFeed({
     syncRunCommentCount(runId)
   }, [syncRunCommentCount, updateRaceEventItem])
 
-  const loadFirstPage = useCallback(async () => {
+  const loadFirstPage = useCallback(async (restoreSnapshot: FeedRestoreSnapshot | null = null) => {
+    const requestedPageSize = Math.max(
+      pageSize,
+      restoreSnapshot && Number.isFinite(restoreSnapshot.nextOffset) && restoreSnapshot.nextOffset > 0
+        ? Math.round(restoreSnapshot.nextOffset)
+        : pageSize
+    )
+    const requestKey = [feedQueryKey, requestedPageSize].join(':')
+
     if (
       firstPageRequestPromiseRef.current &&
-      firstPageRequestKeyRef.current === feedQueryKey
+      firstPageRequestKeyRef.current === requestKey
     ) {
       return firstPageRequestPromiseRef.current
     }
 
     setInitialLoading(true)
     setFeedError('')
-
-    const requestKey = feedQueryKey
     firstPageRequestKeyRef.current = requestKey
 
     const requestPromise = (async () => {
       try {
-        const page = await loadFeedRuns(currentUserId, 0, pageSize, targetUserId)
+        const page = await loadFeedRuns(currentUserId, 0, requestedPageSize, targetUserId)
         const runIds = page.items
           .filter(isRunFeedItem)
           .map((item) => item.id)
@@ -840,6 +827,7 @@ export default function InfiniteWorkoutFeed({
         setNextOffset(0)
       } finally {
         if (firstPageRequestKeyRef.current === requestKey) {
+          restoredSnapshotRef.current = null
           setInitialLoading(false)
         }
       }
@@ -905,20 +893,7 @@ export default function InfiniteWorkoutFeed({
     }
 
     if (restoredSnapshotRef.current) {
-      commentVisibilityByRunIdRef.current = {}
-      likeInFlightRef.current = {}
-      raceEventLikeInFlightRef.current = {}
-      itemsRef.current = restoredSnapshotRef.current.items
-      setItems(restoredSnapshotRef.current.items)
-      setHasMore(restoredSnapshotRef.current.hasMore)
-      setNextOffset(restoredSnapshotRef.current.nextOffset)
-      setLikeInFlightByRunId({})
-      setLikeInFlightByRaceEventId({})
-      setActiveLikesTarget(null)
-      setActiveXpRunId(null)
-      setFeedError('')
-      setInitialLoading(false)
-      restoredSnapshotRef.current = null
+      void loadFirstPage(restoredSnapshotRef.current)
       return
     }
 
@@ -926,7 +901,7 @@ export default function InfiniteWorkoutFeed({
       return
     }
 
-    firstPageRequestKeyRef.current = feedQueryKey
+    firstPageRequestKeyRef.current = ''
     firstPageRequestPromiseRef.current = null
     commentVisibilityByRunIdRef.current = {}
     likeInFlightRef.current = {}
