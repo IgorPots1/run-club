@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import UnreadBadge from '@/components/chat/UnreadBadge'
 import {
@@ -297,22 +297,34 @@ export default function MessagesPageClient({
 
   const isCoach = currentUserId === COACH_USER_ID
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === 'undefined') {
       return
     }
 
-    delete document.documentElement.dataset.chatIsolatedRoute
-    delete document.body.dataset.chatIsolatedRoute
-    document.body.style.overflow = ''
-    document.documentElement.style.overflow = ''
-    document.documentElement.style.removeProperty('--chat-app-height')
-    document
-      .querySelectorAll<HTMLElement>('[data-chat-overlay-root="true"]')
-      .forEach((overlay) => {
-        overlay.style.pointerEvents = 'none'
-        overlay.style.visibility = 'hidden'
-      })
+    const forceResetChatLayoutState = () => {
+      document.documentElement.removeAttribute('data-chat-isolated-route')
+      document.body.removeAttribute('data-chat-isolated-route')
+      document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
+      document.body.style.pointerEvents = 'auto'
+      document.documentElement.style.pointerEvents = 'auto'
+      document.documentElement.style.removeProperty('--chat-app-height')
+      document.body.style.removeProperty('--chat-app-height')
+      document
+        .querySelectorAll<HTMLElement>('[data-chat-overlay-root="true"]')
+        .forEach((overlay) => {
+          overlay.style.pointerEvents = 'none'
+          overlay.style.visibility = 'hidden'
+          overlay.remove()
+        })
+    }
+
+    forceResetChatLayoutState()
+
+    if (document.documentElement.dataset.chatIsolatedRoute) {
+      forceResetChatLayoutState()
+    }
   }, [])
 
   const applyUnreadCountsByThread = useCallback((nextUnreadCountsByThread: UnreadCountsByThread) => {
