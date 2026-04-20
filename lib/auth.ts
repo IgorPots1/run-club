@@ -11,7 +11,6 @@ let authListenerInitialized = false
 function clearBootstrapUserCache() {
   cachedBootstrapUser = null
   cachedBootstrapUserExpiresAt = 0
-  bootstrapUserPromise = null
 }
 
 function ensureBootstrapUserListener() {
