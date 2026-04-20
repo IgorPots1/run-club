@@ -62,15 +62,15 @@
   color-scheme: dark;
 }
 
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
 html,
 body {
   min-height: 100%;
-  background: var(--launch-background);
-}
-
-body {
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 html {
@@ -88,33 +88,6 @@ body.app-booting {
 
 body.app-booting .app-shell {
   background: var(--launch-background);
-}
-
-#launch-screen {
-  position: fixed;
-  inset: 0;
-  background: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  opacity: 1;
-  transition: opacity 200ms ease;
-}
-
-#launch-screen.launch-screen--hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-#launch-screen img {
-  display: block;
-  width: 75vw;
-  max-width: 360px;
-  height: auto;
-  object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
 @media (max-width: 767px) {
