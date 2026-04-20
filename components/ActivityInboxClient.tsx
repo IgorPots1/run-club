@@ -118,6 +118,10 @@ function getActionIcon(eventType: string) {
   return null
 }
 
+function ensureTrailingColon(text: string) {
+  return `${text.replace(/[:\s]+$/u, '')}:`
+}
+
 export default function ActivityInboxClient({
   loadFailed,
   didMarkEventsAsRead,
@@ -186,6 +190,10 @@ export default function ActivityInboxClient({
             }
             const groupedLikeParts = groupedRunLikeEvent ? formatGroupedRunLikeParts(groupedRunLikeEvent) : null
             const actionIcon = getActionIcon(eventType)
+            const firstLineTitle = ensureTrailingColon(title)
+            const secondLineText = groupedLikeParts
+              ? `${groupedLikeParts.actorText} ${groupedLikeParts.actionText}`
+              : event.body ?? title
             const cardContent = (
               <div className="flex items-start gap-3">
                 <div className="w-12 min-w-12 flex items-start">
@@ -235,14 +243,7 @@ export default function ActivityInboxClient({
                 </div>
 
                 <div className="min-w-0 flex-1 flex flex-col gap-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      {actorName ? (
-                        <p className="app-text-primary truncate text-sm font-semibold leading-5">{actorName}</p>
-                      ) : null}
-                    </div>
-                    <p className="app-text-secondary shrink-0 whitespace-nowrap text-xs leading-4">{formatRunDateTimeLabel(event.createdAt)}</p>
-                  </div>
+                  <p className="app-text-primary truncate text-sm font-semibold leading-5">{firstLineTitle}</p>
                   <div className="flex items-start gap-1">
                     {actionIcon ? (
                       <span aria-hidden="true" className="app-text-secondary inline-flex h-5 w-4 shrink-0 items-start justify-center text-[12px] leading-5">
@@ -251,30 +252,23 @@ export default function ActivityInboxClient({
                     ) : (
                       <span aria-hidden="true" className="h-5 w-4 shrink-0" />
                     )}
-                    {groupedLikeParts ? (
-                      <p className="app-text-primary min-w-0 flex-1 line-clamp-2 text-sm leading-5">
-                        <span className="font-semibold">{groupedLikeParts.actorText}</span>{' '}
-                        <span className="font-normal">{groupedLikeParts.actionText}</span>
-                      </p>
-                    ) : (
-                      <p
-                        className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${
-                          groupedRunLikeEvent ? 'line-clamp-2' : ''
-                        } ${event.isUnread ? 'font-medium' : ''}`}
-                      >
-                        {title}
-                      </p>
-                    )}
+                    <p
+                      className={`app-text-primary min-w-0 flex-1 text-sm leading-5 ${
+                        groupedRunLikeEvent ? 'line-clamp-2' : 'line-clamp-1'
+                      } ${event.isUnread ? 'font-medium' : ''}`}
+                    >
+                      {secondLineText}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <p className="app-text-secondary text-xs leading-4">{formatRunDateTimeLabel(event.createdAt)}</p>
                     <span
                       aria-hidden="true"
-                      className={`mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 dark:bg-sky-400 ${
+                      className={`h-2 w-2 rounded-full bg-sky-500 dark:bg-sky-400 ${
                         event.isUnread ? 'opacity-100' : 'opacity-0'
                       }`}
                     />
                   </div>
-                  {event.body ? (
-                    <p className="app-text-secondary text-xs leading-4">{event.body}</p>
-                  ) : null}
                 </div>
               </div>
             )
