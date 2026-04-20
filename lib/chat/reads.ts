@@ -64,11 +64,11 @@ export async function getMessageReaders(messageId: string): Promise<ChatMessageR
   }))
 }
 
-async function requireCurrentUserId() {
+async function requireCurrentUserId(): Promise<string | null> {
   const user = await getBootstrapUser()
 
   if (!user) {
-    throw new Error('auth_required')
+    return null
   }
 
   return user.id
@@ -85,6 +85,13 @@ type ChatThreadReadRow = {
 
 export async function markThreadAsRead(threadId: string) {
   const userId = await requireCurrentUserId()
+
+  if (!userId) {
+    return {
+      clearedUnreadCount: 0,
+    }
+  }
+
   const { data: existingReadMarker, error: existingReadMarkerError } = await supabase
     .from('chat_thread_reads')
     .select('last_read_at')
@@ -147,6 +154,11 @@ export async function markThreadAsRead(threadId: string) {
 
 export async function getUnreadCountsByThread(): Promise<UnreadCountsByThread> {
   const userId = await requireCurrentUserId()
+
+  if (!userId) {
+    return {}
+  }
+
   const { data, error } = await supabase.rpc('get_unread_counts_by_thread', {
     p_user_id: userId,
   })
