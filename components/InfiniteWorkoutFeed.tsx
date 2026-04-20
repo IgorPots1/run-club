@@ -47,6 +47,7 @@ import { getLevelFromXP } from '@/lib/xp'
 type InfiniteWorkoutFeedProps = {
   currentUserId: string | null
   enabled?: boolean
+  fetchEnabled?: boolean
   targetUserId?: string | null
   pageSize?: number
   scrollRestorationKey?: string
@@ -413,6 +414,7 @@ function ChallengeFeedCard({
 export default function InfiniteWorkoutFeed({
   currentUserId,
   enabled = true,
+  fetchEnabled = enabled,
   targetUserId = null,
   pageSize = 10,
   scrollRestorationKey,
@@ -423,6 +425,7 @@ export default function InfiniteWorkoutFeed({
   onCommentClick,
 }: InfiniteWorkoutFeedProps) {
   const router = useRouter()
+  const canFetch = enabled && fetchEnabled
   const visualSnapshotKey = scrollRestorationKey ?? ''
   const feedQueryKey = useMemo(
     () => [currentUserId ?? 'anonymous', targetUserId ?? 'all', pageSize].join(':'),
@@ -902,7 +905,7 @@ export default function InfiniteWorkoutFeed({
   }, [currentUserId, feedQueryKey, mergeRunCommentVisibility, pageSize, targetUserId])
 
   const loadMoreRuns = useCallback(async () => {
-    if (initialLoading || loadingMore || !hasMore) return
+    if (!canFetch || initialLoading || loadingMore || !hasMore) return
 
     setLoadingMore(true)
     setFeedError('')
@@ -933,6 +936,7 @@ export default function InfiniteWorkoutFeed({
       setLoadingMore(false)
     }
   }, [
+    canFetch,
     currentUserId,
     getVisibleRunCommentCount,
     hasMore,
@@ -945,7 +949,7 @@ export default function InfiniteWorkoutFeed({
   ])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!canFetch) {
       return
     }
 
@@ -971,7 +975,7 @@ export default function InfiniteWorkoutFeed({
     setActiveLikesTarget(null)
     setActiveXpRunId(null)
     void loadFirstPage()
-  }, [enabled, feedQueryKey, hasRestoredSnapshot, loadFirstPage])
+  }, [canFetch, feedQueryKey, hasRestoredSnapshot, loadFirstPage])
 
   const navigateToRun = useCallback((runId: string) => {
     if (!runId) {
@@ -1018,7 +1022,7 @@ export default function InfiniteWorkoutFeed({
   }, [navigateFromFeed])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!canFetch) {
       return
     }
 
@@ -1039,7 +1043,7 @@ export default function InfiniteWorkoutFeed({
       window.removeEventListener(RUNS_UPDATED_EVENT, handleRunsUpdated)
       window.removeEventListener('storage', handleStorage)
     }
-  }, [enabled, loadFirstPage])
+  }, [canFetch, loadFirstPage])
 
   useEffect(() => {
     const target = loadMoreRef.current
@@ -1066,7 +1070,7 @@ export default function InfiniteWorkoutFeed({
   }, [hasMore, initialLoading, loadMoreRuns, loadingMore, items.length])
 
   useEffect(() => {
-    if (items.length === 0) {
+    if (!canFetch || items.length === 0) {
       return
     }
 
@@ -1082,10 +1086,10 @@ export default function InfiniteWorkoutFeed({
     return () => {
       unsubscribe()
     }
-  }, [applyRealtimeComment, items.length])
+  }, [applyRealtimeComment, canFetch, items.length])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!canFetch) {
       return
     }
 
@@ -1146,10 +1150,10 @@ export default function InfiniteWorkoutFeed({
     return () => {
       unsubscribe()
     }
-  }, [enabled, updateRunItem])
+  }, [canFetch, updateRunItem])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!canFetch) {
       return
     }
 
@@ -1210,7 +1214,7 @@ export default function InfiniteWorkoutFeed({
     return () => {
       unsubscribe()
     }
-  }, [enabled, updateRaceEventItem])
+  }, [canFetch, updateRaceEventItem])
 
   const handleLikeToggle = useCallback(async (runId: string) => {
     const activeUserId = currentUserIdRef.current

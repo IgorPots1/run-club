@@ -40,7 +40,7 @@ export default function FeedPage() {
         <h1 className="app-text-primary text-2xl font-bold mb-4">Лента</h1>
         <InfiniteWorkoutFeed
           currentUserId={currentUserId}
-          enabled={hasResolvedUser}
+          fetchEnabled={hasResolvedUser}
           pageSize={10}
           scrollRestorationKey="main-feed"
           emptyTitle="Лента пока пуста."
