@@ -3545,7 +3545,9 @@ function ChatImageAttachments({
   createdAtLabel,
   isOwnMessage,
   isImageOnlyMessage,
+  isMixedMessage,
   compactPreview,
+  showCreatedAtOverlay = true,
   onImageClick,
   onImageLoad,
 }: {
@@ -3555,7 +3557,9 @@ function ChatImageAttachments({
   createdAtLabel: string
   isOwnMessage: boolean
   isImageOnlyMessage: boolean
+  isMixedMessage?: boolean
   compactPreview: boolean
+  showCreatedAtOverlay?: boolean
   onImageClick?: (attachments: ChatMessageAttachment[], index: number) => void
   onImageLoad?: (message: ChatMessageItem, sortOrder: number, publicUrl: string) => void
 }) {
@@ -3633,7 +3637,11 @@ function ChatImageAttachments({
   }
 
   const wrapperClassName = `relative mt-1 block overflow-hidden rounded-2xl ${
-    compactPreview ? 'max-w-[62%]' : 'max-w-[72%]'
+    isMixedMessage
+      ? 'w-full max-w-full'
+      : compactPreview
+        ? 'max-w-[62%]'
+        : 'max-w-[72%]'
   } ${
     isImageOnlyMessage
       ? isOwnMessage
@@ -3698,13 +3706,17 @@ function ChatImageAttachments({
           }`,
           getImageAttachmentCardStyle(attachment, compactPreview)
         )}
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 via-black/15 to-transparent"
-        />
-        <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/38 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
-          {createdAtLabel}
-        </span>
+        {showCreatedAtOverlay ? (
+          <>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 via-black/15 to-transparent"
+            />
+            <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/38 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
+              {createdAtLabel}
+            </span>
+          </>
+        ) : null}
       </div>
     )
   }
@@ -3722,13 +3734,17 @@ function ChatImageAttachments({
           )
         )}
       </div>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-black/45 via-black/10 to-transparent"
-      />
-      <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/40 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
-        {createdAtLabel}
-      </span>
+      {showCreatedAtOverlay ? (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-black/45 via-black/10 to-transparent"
+          />
+          <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/40 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white backdrop-blur-[2px]">
+            {createdAtLabel}
+          </span>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -3767,6 +3783,7 @@ function ChatMessageBodyComponent({
   )
   const hasVoiceAttachment = message.messageType === 'voice'
   const hasImageAttachments = message.attachments.length > 0
+  const isMixedMessage = Boolean(hasImageAttachments && message.text)
   const isImageOnlyMessage = Boolean(hasImageAttachments && !message.text && !message.replyTo && !hasVoiceAttachment)
   // Guard matches text_pending_label_cleared: once the server has accepted the message
   // (optimisticServerMessageId set) the pending label must not render even if a deferred
@@ -3878,7 +3895,9 @@ function ChatMessageBodyComponent({
           createdAtLabel={message.createdAtLabel}
           isOwnMessage={isOwnMessage}
           isImageOnlyMessage={isImageOnlyMessage}
+          isMixedMessage={isMixedMessage}
           compactPreview={compactPreview}
+          showCreatedAtOverlay={!isMixedMessage}
           onImageClick={onImageClick}
           onImageLoad={onImageLoad}
         />
@@ -3927,9 +3946,17 @@ function ChatMessageBodyComponent({
       {message.text ? (
         <p
           className={`app-text-primary break-words whitespace-pre-wrap text-left text-sm ${
-            message.replyTo || hasImageAttachments || hasVoiceAttachment ? 'mt-1' : showSenderName ? 'mt-0.5' : ''
+            isMixedMessage
+              ? compactPreview
+                ? 'mt-1 text-[13px] leading-5'
+                : 'mt-1.5 text-[13px] leading-[1.32]'
+              : message.replyTo || hasImageAttachments || hasVoiceAttachment
+                ? 'mt-1'
+                : showSenderName
+                  ? 'mt-0.5'
+                  : ''
           } ${
-            compactPreview ? 'leading-5' : 'leading-[1.32]'
+            isMixedMessage ? '' : compactPreview ? 'leading-5' : 'leading-[1.32]'
           }`}
           style={
             compactPreview
@@ -4249,6 +4276,10 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onMessageContextMenu,
 }: ChatMessageRowProps) {
   const isOwnMessage = currentUserId === message.userId
+  const isMixedMessage = Boolean(
+    message.attachments.length > 0 &&
+    message.text
+  )
   const isImageOnlyMessage = Boolean(
     message.attachments.length > 0 &&
     !message.text &&
@@ -4316,7 +4347,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
               transform: isSwipeActive ? `translateX(${swipeOffsetX}px)` : 'translateX(0px)',
             }}
             className={`chat-no-select relative z-[2] min-w-0 w-full shadow-none transition-[transform,color,background-color,box-shadow] duration-150 ${
-              isImageOnlyMessage
+              isImageOnlyMessage || isMixedMessage
                 ? 'rounded-2xl bg-transparent px-0 py-0'
                 : `rounded-[18px] px-2.5 py-1 ${
                     isOwnMessage
