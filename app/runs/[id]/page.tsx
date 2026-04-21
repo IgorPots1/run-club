@@ -127,6 +127,14 @@ type QueryErrorLike = {
   message?: string | null
 }
 
+type CommentsReturnState = {
+  runId: string
+  commentId: string
+  scrollY: number
+}
+
+const COMMENTS_RETURN_STATE_STORAGE_KEY = 'comments_return_state'
+
 function isMissingOptionalRunColumnsError(error: QueryErrorLike | null | undefined) {
   if (!error) {
     return false
@@ -471,6 +479,8 @@ export default function RunDetailsPage() {
   const previousIsEditModeRef = useRef(false)
   const shouldScrollToTopOnEditExitRef = useRef(true)
   const previousRouteRunIdRef = useRef(runId)
+  const pendingCommentsReturnStateRef = useRef<CommentsReturnState | null>(null)
+  const hasAppliedCommentsReturnRestoreRef = useRef(false)
   const currentRunIdRef = useRef(runId)
   const activeRunRequestIdRef = useRef(0)
   currentRunIdRef.current = runId
@@ -535,6 +545,37 @@ export default function RunDetailsPage() {
       setSeededRun(null)
     }
   }, [activeRun?.id, error, runId])
+
+  useEffect(() => {
+    hasAppliedCommentsReturnRestoreRef.current = false
+    pendingCommentsReturnStateRef.current = null
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      const rawValue = window.sessionStorage.getItem(COMMENTS_RETURN_STATE_STORAGE_KEY)
+
+      if (!rawValue) {
+        return
+      }
+
+      const parsedValue = JSON.parse(rawValue) as Partial<CommentsReturnState>
+
+      if (parsedValue.runId !== runId || typeof parsedValue.commentId !== 'string') {
+        return
+      }
+
+      pendingCommentsReturnStateRef.current = {
+        runId: parsedValue.runId,
+        commentId: parsedValue.commentId,
+        scrollY: Number.isFinite(parsedValue.scrollY) ? Number(parsedValue.scrollY) : 0,
+      }
+    } catch {
+      pendingCommentsReturnStateRef.current = null
+    }
+  }, [runId])
 
   async function handleCommentSubmit(comment: string) {
     if (!run) {
@@ -979,6 +1020,48 @@ export default function RunDetailsPage() {
   useEffect(() => {
     setDescriptionExpanded(false)
   }, [runDescription])
+
+  useEffect(() => {
+    if (commentsLoading || hasAppliedCommentsReturnRestoreRef.current) {
+      return
+    }
+
+    const pendingReturnState = pendingCommentsReturnStateRef.current
+
+    if (!pendingReturnState || pendingReturnState.runId !== runId) {
+      return
+    }
+
+    hasAppliedCommentsReturnRestoreRef.current = true
+
+    const frameId = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(pendingReturnState.commentId)
+
+      if (targetElement) {
+        targetElement.scrollIntoView({ block: 'center' })
+      } else {
+        const scrollTarget = resolveWorkoutDetailScrollTarget(scrollContainerRef.current)
+
+        if (scrollTarget instanceof HTMLElement) {
+          scrollTarget.scrollTo({ top: pendingReturnState.scrollY, behavior: 'auto' })
+        } else {
+          window.scrollTo({ top: pendingReturnState.scrollY, behavior: 'auto' })
+        }
+      }
+
+      pendingCommentsReturnStateRef.current = null
+
+      try {
+        window.sessionStorage.removeItem(COMMENTS_RETURN_STATE_STORAGE_KEY)
+      } catch {
+        // Ignore storage cleanup failures after restore.
+      }
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [comments.length, commentsLoading, runId])
 
   useEffect(() => {
     if (!runDescription) {
@@ -1499,6 +1582,7 @@ export default function RunDetailsPage() {
 
             <RunCommentsSection
               comments={comments}
+            runId={runId}
               currentUserId={user?.id ?? null}
               loading
               error=""
@@ -1876,6 +1960,7 @@ export default function RunDetailsPage() {
 
           <RunCommentsSection
             comments={comments}
+            runId={runId}
             currentUserId={user?.id ?? null}
             loading={commentsLoading}
             error={commentsError}

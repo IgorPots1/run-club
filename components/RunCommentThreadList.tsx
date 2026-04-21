@@ -12,6 +12,7 @@ import {
 
 type RunCommentThreadListProps = {
   comments: RunCommentItem[]
+  runId?: string
   commentDomIdPrefix?: string
   currentUserId?: string | null
   replyComposerMode?: 'inline' | 'external'
@@ -24,6 +25,8 @@ type RunCommentThreadListProps = {
   onEditComment?: (commentId: string, comment: string) => Promise<void>
   onDeleteComment?: (commentId: string) => Promise<void>
 }
+
+const COMMENTS_RETURN_STATE_STORAGE_KEY = 'comments_return_state'
 
 function AvatarFallback() {
   return (
@@ -153,6 +156,7 @@ function InlineComposer({
 
 type CommentCardProps = {
   comment: RunCommentItem
+  runId?: string
   commentDomIdPrefix: string
   currentUserId?: string | null
   isReply?: boolean
@@ -179,6 +183,7 @@ type CommentCardProps = {
 
 function CommentCard({
   comment,
+  runId,
   commentDomIdPrefix,
   currentUserId = null,
   isReply = false,
@@ -224,13 +229,33 @@ function CommentCard({
     await onDelete()
   }
 
+  function handleAuthorClick() {
+    if (!runId || typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        COMMENTS_RETURN_STATE_STORAGE_KEY,
+        JSON.stringify({
+          runId,
+          commentId: comment.id,
+          scrollY: window.scrollY,
+        })
+      )
+    } catch {
+      // Ignore storage failures and continue navigation.
+    }
+  }
+
   return (
     <div
-      id={`${commentDomIdPrefix}-${comment.id}`}
+      id={comment.id}
+      data-comment-dom-id={`${commentDomIdPrefix}-${comment.id}`}
       className={isReply ? 'ml-7 border-l border-black/10 pl-3 sm:ml-13 sm:pl-4 dark:border-white/10' : ''}
     >
       <div className="flex items-start gap-3">
-        <Link href={`/users/${comment.userId}`} className="shrink-0">
+        <Link href={`/users/${comment.userId}`} onClick={handleAuthorClick} className="shrink-0">
           {showAvatarImage && avatarSrc ? (
             <Image
               src={avatarSrc}
@@ -254,6 +279,7 @@ function CommentCard({
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <Link
               href={`/users/${comment.userId}`}
+              onClick={handleAuthorClick}
               className="app-text-primary truncate text-[15px] font-semibold leading-5"
             >
               {comment.displayName}
@@ -364,6 +390,7 @@ function CommentCard({
 
 export default function RunCommentThreadList({
   comments,
+  runId,
   commentDomIdPrefix = 'comment',
   currentUserId = null,
   replyComposerMode = 'inline',
@@ -495,6 +522,7 @@ export default function RunCommentThreadList({
         <div key={thread.id} className="space-y-4">
           <CommentCard
             comment={thread}
+            runId={runId}
             commentDomIdPrefix={commentDomIdPrefix}
             currentUserId={currentUserId}
             isReplyTargetActive={replyComposerMode === 'external' && activeReplyTargetId === thread.id}
@@ -530,6 +558,7 @@ export default function RunCommentThreadList({
                 <CommentCard
                   key={reply.id}
                   comment={reply}
+                  runId={runId}
                   commentDomIdPrefix={commentDomIdPrefix}
                   currentUserId={currentUserId}
                   isReply

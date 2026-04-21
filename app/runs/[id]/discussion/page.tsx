@@ -145,6 +145,14 @@ function normalizeCommentTarget(value: string | null) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+type CommentsReturnState = {
+  runId: string
+  commentId: string
+  scrollY: number
+}
+
+const COMMENTS_RETURN_STATE_STORAGE_KEY = 'comments_return_state'
+
 export default function RunDiscussionPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -172,6 +180,9 @@ export default function RunDiscussionPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const hasHandledInitialCommentTargetRef = useRef(false)
+  const pendingCommentsReturnStateRef = useRef<CommentsReturnState | null>(null)
+  const hasRestoredCommentsReturnStateRef = useRef(false)
+  const skipNextAutoBottomScrollRef = useRef(false)
   const handleAuthRequired = useMemo(
     () => () => {
       router.replace('/login')
@@ -389,6 +400,38 @@ export default function RunDiscussionPage() {
   }
 
   useEffect(() => {
+    pendingCommentsReturnStateRef.current = null
+    hasRestoredCommentsReturnStateRef.current = false
+    skipNextAutoBottomScrollRef.current = false
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      const rawValue = window.sessionStorage.getItem(COMMENTS_RETURN_STATE_STORAGE_KEY)
+
+      if (!rawValue) {
+        return
+      }
+
+      const parsedValue = JSON.parse(rawValue) as Partial<CommentsReturnState>
+
+      if (parsedValue.runId !== runId || typeof parsedValue.commentId !== 'string') {
+        return
+      }
+
+      pendingCommentsReturnStateRef.current = {
+        runId: parsedValue.runId,
+        commentId: parsedValue.commentId,
+        scrollY: Number.isFinite(parsedValue.scrollY) ? Number(parsedValue.scrollY) : 0,
+      }
+    } catch {
+      pendingCommentsReturnStateRef.current = null
+    }
+  }, [runId])
+
+  useEffect(() => {
     const textarea = textareaRef.current
 
     if (!textarea) {
@@ -416,6 +459,56 @@ export default function RunDiscussionPage() {
   }, [highlightedCommentId])
 
   useEffect(() => {
+    if (loadingComments || hasRestoredCommentsReturnStateRef.current) {
+      return
+    }
+
+    const pendingReturnState = pendingCommentsReturnStateRef.current
+
+    if (!pendingReturnState || pendingReturnState.runId !== runId) {
+      return
+    }
+
+    hasRestoredCommentsReturnStateRef.current = true
+    hasHandledInitialCommentTargetRef.current = true
+    skipNextAutoBottomScrollRef.current = true
+
+    const frameId = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(pendingReturnState.commentId)
+
+      if (targetElement) {
+        targetElement.scrollIntoView({ block: 'center' })
+        setHighlightedCommentId(pendingReturnState.commentId)
+      } else if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({ top: pendingReturnState.scrollY, behavior: 'auto' })
+      } else {
+        window.scrollTo({ top: pendingReturnState.scrollY, behavior: 'auto' })
+      }
+
+      pendingCommentsReturnStateRef.current = null
+
+      try {
+        window.sessionStorage.removeItem(COMMENTS_RETURN_STATE_STORAGE_KEY)
+      } catch {
+        // Ignore storage cleanup failures after restore.
+      }
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [comments.length, loadingComments, runId])
+
+  useEffect(() => {
+    if (pendingCommentsReturnStateRef.current) {
+      return
+    }
+
+    if (skipNextAutoBottomScrollRef.current) {
+      skipNextAutoBottomScrollRef.current = false
+      return
+    }
+
     const frameId = window.requestAnimationFrame(() => {
       if (hasDeepLinkTarget && !hasHandledInitialCommentTargetRef.current) {
         return
@@ -430,6 +523,10 @@ export default function RunDiscussionPage() {
   }, [comments.length, hasDeepLinkTarget, loadingComments])
 
   useEffect(() => {
+    if (pendingCommentsReturnStateRef.current || hasRestoredCommentsReturnStateRef.current) {
+      return
+    }
+
     if (!hasDeepLinkTarget || loadingComments) {
       return
     }
@@ -446,7 +543,7 @@ export default function RunDiscussionPage() {
 
     const frameId = window.requestAnimationFrame(() => {
       for (const commentId of candidateCommentIds) {
-        const targetElement = document.getElementById(`run-comment-${commentId}`)
+        const targetElement = document.getElementById(commentId)
 
         if (!targetElement) {
           continue
@@ -705,6 +802,7 @@ export default function RunDiscussionPage() {
         ) : (
           <RunCommentThreadList
             comments={comments}
+            runId={runId}
             commentDomIdPrefix="run-comment"
             currentUserId={user?.id ?? null}
             highlightedCommentId={highlightedCommentId}

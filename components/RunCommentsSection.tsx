@@ -6,6 +6,7 @@ import { countVisibleRunComments, type RunCommentItem } from '@/lib/run-comments
 
 type RunCommentsSectionProps = {
   comments: RunCommentItem[]
+  runId?: string
   currentUserId?: string | null
   loading?: boolean
   error?: string
@@ -19,6 +20,7 @@ type RunCommentsSectionProps = {
 
 export default function RunCommentsSection({
   comments,
+  runId,
   currentUserId = null,
   loading = false,
   error = '',
@@ -119,6 +121,7 @@ export default function RunCommentsSection({
         <div>
           <RunCommentThreadList
             comments={comments}
+            runId={runId}
             currentUserId={currentUserId}
             pendingLikeCommentIds={pendingLikeCommentIds}
             onToggleLikeComment={onToggleLikeComment}
