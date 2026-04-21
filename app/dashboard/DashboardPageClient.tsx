@@ -691,7 +691,7 @@ export default function DashboardPageClient({
               <p className="app-text-secondary mt-3 text-sm">Данные появятся после первой тренировки</p>
             </Link>
           )}
-          <section className="mb-4 min-h-[236px]">
+          <section className={`mb-4 ${showChallengesPlaceholder ? 'min-h-[236px]' : ''}`}>
             <div className="mb-3 flex items-center gap-2">
               <p className="app-text-secondary flex items-center gap-2 text-sm font-medium">
                 <Target className="h-4 w-4 shrink-0" strokeWidth={1.9} />

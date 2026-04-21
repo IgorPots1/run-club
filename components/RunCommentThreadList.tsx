@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { Heart, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -229,18 +230,20 @@ function CommentCard({
       className={isReply ? 'ml-7 border-l border-black/10 pl-3 sm:ml-13 sm:pl-4 dark:border-white/10' : ''}
     >
       <div className="flex items-start gap-3">
-        {showAvatarImage && avatarSrc ? (
-          <Image
-            src={avatarSrc}
-            alt=""
-            width={40}
-            height={40}
-            className="h-10 w-10 shrink-0 rounded-full object-cover"
-            onError={() => setFailedAvatarUrl(avatarSrc)}
-          />
-        ) : (
-          <AvatarFallback />
-        )}
+        <Link href={`/users/${comment.userId}`} className="shrink-0">
+          {showAvatarImage && avatarSrc ? (
+            <Image
+              src={avatarSrc}
+              alt=""
+              width={40}
+              height={40}
+              className="h-10 w-10 shrink-0 rounded-full object-cover"
+              onError={() => setFailedAvatarUrl(avatarSrc)}
+            />
+          ) : (
+            <AvatarFallback />
+          )}
+        </Link>
         <div
           className={`min-w-0 flex-1 rounded-2xl pt-0.5 transition-colors ${
             isHighlighted
@@ -249,7 +252,12 @@ function CommentCard({
           }`}
         >
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <p className="app-text-primary truncate text-[15px] font-semibold leading-5">{comment.displayName}</p>
+            <Link
+              href={`/users/${comment.userId}`}
+              className="app-text-primary truncate text-[15px] font-semibold leading-5"
+            >
+              {comment.displayName}
+            </Link>
             {nicknameLabel ? (
               <p className="app-text-muted truncate text-[11px] opacity-80">{nicknameLabel}</p>
             ) : null}
