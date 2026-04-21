@@ -3640,8 +3640,12 @@ function ChatImageAttachments({
     return null
   }
 
+  const isSingleMixedMessage = Boolean(isMixedMessage && attachments.length === 1)
+
   const wrapperClassName = `relative mt-1 block overflow-hidden rounded-2xl ${
-    isMixedMessage
+    isSingleMixedMessage
+      ? 'w-full max-w-[260px]'
+      : isMixedMessage
       ? 'w-full max-w-full'
       : compactPreview
         ? 'max-w-[62%]'
@@ -3706,7 +3710,9 @@ function ChatImageAttachments({
           attachment,
           0,
           `relative block w-full overflow-hidden rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] ${
-            isMixedMessage
+            isSingleMixedMessage
+              ? 'max-h-[320px]'
+              : isMixedMessage
               ? compactPreview
                 ? 'max-h-44'
                 : 'max-h-96'
