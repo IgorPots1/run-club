@@ -288,6 +288,7 @@ type ThreadOpenDebugSource =
 const THREAD_OPEN_DEBUG_WINDOW_MS = 10000
 const CHAT_REMOTE_IMAGE_LOAD_ROOT_MARGIN_PX = 320
 const CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO = '1 / 1'
+const CHAT_MIXED_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO = '4 / 5'
 const MESSAGE_READERS_CACHE_TTL_MS = 25000
 const CHAT_MENTION_SUGGESTION_LIMIT = 10
 const CHAT_MENTION_QUERY_MAX_LENGTH = 50
@@ -1337,7 +1338,8 @@ function getOptimisticAttachmentProgress(
 
 function getImageAttachmentCardStyle(
   attachment: Pick<ChatMessageAttachment, 'width' | 'height'>,
-  _compactPreview: boolean
+  _compactPreview: boolean,
+  preferPortraitFallback = false
 ) {
   if (attachment.width && attachment.height) {
     return {
@@ -1346,7 +1348,9 @@ function getImageAttachmentCardStyle(
   }
 
   return {
-    aspectRatio: CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO,
+    aspectRatio: preferPortraitFallback
+      ? CHAT_MIXED_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO
+      : CHAT_IMAGE_ATTACHMENT_FALLBACK_ASPECT_RATIO,
   }
 }
 
@@ -3702,9 +3706,15 @@ function ChatImageAttachments({
           attachment,
           0,
           `relative block w-full overflow-hidden rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] ${
-            compactPreview ? 'max-h-40' : 'max-h-80'
+            isMixedMessage
+              ? compactPreview
+                ? 'max-h-48'
+                : 'max-h-[28rem]'
+              : compactPreview
+                ? 'max-h-40'
+                : 'max-h-80'
           }`,
-          getImageAttachmentCardStyle(attachment, compactPreview)
+          getImageAttachmentCardStyle(attachment, compactPreview, Boolean(isMixedMessage))
         )}
         {showCreatedAtOverlay ? (
           <>
