@@ -87,6 +87,7 @@ type UseRunDetailReturnStateOptions<TSnapshot> = {
 }
 
 const RESTORE_SCROLL_CORRECTION_THRESHOLD_PX = 1
+const RESTORE_LAYOUT_SETTLE_FRAMES = 2
 const SEEDED_RUN_DETAIL_MAX_AGE_MS = 2 * 60 * 1000
 const seededRunDetailStore = new Map<string, { payload: SeededRunDetailPayload; savedAt: number }>()
 
@@ -154,6 +155,41 @@ function writeScrollTop(scrollElement: ScrollContainer | null, scrollTop: number
   }
 
   scrollElement.scrollTo({ top: scrollTop, behavior: 'auto' })
+}
+
+function waitForAnimationFrames(frameCount: number, callback: () => void) {
+  if (typeof window === 'undefined') {
+    callback()
+    return null
+  }
+
+  let remainingFrames = Math.max(0, Math.floor(frameCount))
+  let frameId: number | null = null
+
+  if (remainingFrames === 0) {
+    callback()
+    return null
+  }
+
+  const scheduleNextFrame = () => {
+    frameId = window.requestAnimationFrame(() => {
+      remainingFrames -= 1
+
+      if (remainingFrames <= 0) {
+        callback()
+        return
+      }
+
+      scheduleNextFrame()
+    })
+  }
+
+  scheduleNextFrame()
+  return () => {
+    if (frameId !== null) {
+      window.cancelAnimationFrame(frameId)
+    }
+  }
 }
 
 function readPendingSourceFromStorage() {
@@ -467,6 +503,7 @@ export function useRunDetailReturnState<TSnapshot>({
   const hasLoggedRestoreCompletionRef = useRef(false)
   const onRestoreSnapshotRef = useRef(onRestoreSnapshot)
   const restoreCleanupFrameRef = useRef<number | null>(null)
+  const cancelScheduledRestoreRef = useRef<(() => void) | null>(null)
 
   useLayoutEffect(() => {
     onRestoreSnapshotRef.current = onRestoreSnapshot
@@ -490,6 +527,8 @@ export function useRunDetailReturnState<TSnapshot>({
     const entryId = ensureHistoryEntryId()
 
     if (!enabled) {
+      cancelScheduledRestoreRef.current?.()
+      cancelScheduledRestoreRef.current = null
       if (restoreCleanupFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreCleanupFrameRef.current)
         restoreCleanupFrameRef.current = null
@@ -569,16 +608,35 @@ export function useRunDetailReturnState<TSnapshot>({
       window.cancelAnimationFrame(restoreCleanupFrameRef.current)
       restoreCleanupFrameRef.current = null
     }
+    cancelScheduledRestoreRef.current?.()
+    cancelScheduledRestoreRef.current = null
 
     pendingRestore.shouldRestoreScroll = false
-    const restoredWithAnchor = pendingRestore.scrollAnchor
-      ? (restoreScrollFromAnchor?.(scrollElement, pendingRestore.scrollAnchor) ?? false)
-      : false
+    cancelScheduledRestoreRef.current = waitForAnimationFrames(RESTORE_LAYOUT_SETTLE_FRAMES, () => {
+      cancelScheduledRestoreRef.current = null
+      restoreCleanupFrameRef.current = null
 
-    if (!restoredWithAnchor) {
-      writeScrollTop(scrollElement, pendingRestore.scrollTop)
-      setIsRestoring(false)
-    } else {
+      const restoredWithAnchor = pendingRestore.scrollAnchor
+        ? (restoreScrollFromAnchor?.(scrollElement, pendingRestore.scrollAnchor) ?? false)
+        : false
+
+      if (!restoredWithAnchor) {
+        writeScrollTop(scrollElement, pendingRestore.scrollTop)
+        setIsRestoring(false)
+
+        if (!hasLoggedRestoreCompletionRef.current) {
+          console.info(`[${debugLabel}] restored scroll`, {
+            sourceKey,
+            method: 'scrollTop',
+            scrollTop: pendingRestore.scrollTop,
+            scrollAnchor: pendingRestore.scrollAnchor,
+          })
+          hasLoggedRestoreCompletionRef.current = true
+        }
+
+        return
+      }
+
       restoreCleanupFrameRef.current = window.requestAnimationFrame(() => {
         restoreCleanupFrameRef.current = null
 
@@ -605,19 +663,11 @@ export function useRunDetailReturnState<TSnapshot>({
 
         setIsRestoring(false)
       })
-    }
-
-    if (!restoredWithAnchor && !hasLoggedRestoreCompletionRef.current) {
-      console.info(`[${debugLabel}] restored scroll`, {
-        sourceKey,
-        method: 'scrollTop',
-        scrollTop: pendingRestore.scrollTop,
-        scrollAnchor: pendingRestore.scrollAnchor,
-      })
-      hasLoggedRestoreCompletionRef.current = true
-    }
+    })
 
     return () => {
+      cancelScheduledRestoreRef.current?.()
+      cancelScheduledRestoreRef.current = null
       if (restoreCleanupFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreCleanupFrameRef.current)
         restoreCleanupFrameRef.current = null
