@@ -3708,8 +3708,8 @@ function ChatImageAttachments({
           `relative block w-full overflow-hidden rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] ${
             isMixedMessage
               ? compactPreview
-                ? 'max-h-48'
-                : 'max-h-[28rem]'
+                ? 'max-h-44'
+                : 'max-h-96'
               : compactPreview
                 ? 'max-h-40'
                 : 'max-h-80'
@@ -3738,7 +3738,11 @@ function ChatImageAttachments({
           renderAttachmentMedia(
             attachment,
             index,
-            `relative aspect-square overflow-hidden rounded-[18px] bg-black/[0.04] dark:bg-white/[0.06] ${
+            `relative ${
+              isMixedMessage && attachments.length === 2
+                ? 'aspect-[5/6]'
+                : 'aspect-square'
+            } overflow-hidden rounded-[18px] bg-black/[0.04] dark:bg-white/[0.06] ${
               getGalleryTileClass(attachments.length, index)
             }`
           )
