@@ -115,6 +115,16 @@ function isAppEventDedupeConflict(error: { code?: string | null; message?: strin
   )
 }
 
+function normalizeCleanupEntityValue(value: string, fieldName: 'entity_type' | 'entity_id') {
+  const normalizedValue = value.trim()
+
+  if (!normalizedValue) {
+    throw new Error(`app_event_${fieldName}_required`)
+  }
+
+  return normalizedValue
+}
+
 async function loadAppEventByDedupeKey(dedupeKey: string): Promise<AppEvent> {
   const supabase = createSupabaseAdminClient()
   const { data, error } = await supabase
@@ -161,6 +171,21 @@ export async function createAppEvents(inputs: CreateAppEventInput[]): Promise<Ap
   }
 
   return Promise.all(inputs.map((input) => createAppEvent(input)))
+}
+
+export async function cleanupEntityAppEvents(
+  entityType: string,
+  entityId: string,
+  supabase = createSupabaseAdminClient()
+) {
+  const normalizedEntityType = normalizeCleanupEntityValue(entityType, 'entity_type')
+  const normalizedEntityId = normalizeCleanupEntityValue(entityId, 'entity_id')
+
+  return supabase
+    .from('app_events')
+    .delete()
+    .eq('entity_type', normalizedEntityType)
+    .eq('entity_id', normalizedEntityId)
 }
 
 // Example future usage for chat notifications fan-out:

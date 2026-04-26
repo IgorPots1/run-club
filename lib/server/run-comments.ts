@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { cleanupEntityAppEvents } from '@/lib/events/createAppEvent'
 import { RUN_COMMENT_PLACEHOLDER_TEXT } from '@/lib/run-comments-constants'
 
 const RUN_COMMENT_MUTATION_SELECT =
@@ -453,6 +454,16 @@ export async function softDeleteRunCommentRecord(params: {
 
   if (existingComment.user_id !== params.userId) {
     return failure(403, 'forbidden')
+  }
+
+  const { error: cleanupError } = await cleanupEntityAppEvents(
+    'run_comment',
+    existingComment.id,
+    params.supabaseAdmin
+  )
+
+  if (cleanupError) {
+    return failure(500, cleanupError.message)
   }
 
   if (existingComment.deleted_at) {

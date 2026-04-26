@@ -1,4 +1,5 @@
 import { after, NextResponse } from 'next/server'
+import { cleanupEntityAppEvents } from '@/lib/events/createAppEvent'
 import { deriveRaceEventStatus } from '@/lib/race-events'
 import { createRaceEventCompletedAppEvent } from '@/lib/server/race-event-completion-events'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
@@ -115,17 +116,6 @@ async function loadRaceEventById(
     .select(RACE_EVENT_SELECT)
     .eq('id', raceEventId)
     .maybeSingle()
-}
-
-async function deleteRaceEventAppEvents(
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
-  raceEventId: string
-) {
-  return supabaseAdmin
-    .from('app_events')
-    .delete()
-    .eq('entity_id', raceEventId)
-    .in('type', ['race_event.created', 'race_event.completed'])
 }
 
 async function loadLinkedRunIfOwned(
@@ -460,7 +450,11 @@ export async function DELETE(
     )
   }
 
-  const { error: deleteAppEventsError } = await deleteRaceEventAppEvents(supabaseAdmin, raceEventId)
+  const { error: deleteAppEventsError } = await cleanupEntityAppEvents(
+    'race_event',
+    raceEventId,
+    supabaseAdmin
+  )
 
   if (deleteAppEventsError) {
     return NextResponse.json(

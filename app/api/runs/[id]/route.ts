@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cleanupEntityAppEvents } from '@/lib/events/createAppEvent'
 import {
   clearRunPrNeedsRecompute,
   markRunPrNeedsRecompute,
@@ -50,6 +51,23 @@ async function loadOwnedRun(
     supabaseAdmin,
     data: (result.data as RunMutationRow | null) ?? null,
     error: result.error,
+  }
+}
+
+async function loadRunCommentIds(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  runId: string
+) {
+  const { data, error } = await supabaseAdmin
+    .from('run_comments')
+    .select('id')
+    .eq('run_id', runId)
+
+  return {
+    data: ((data ?? []) as Array<{ id: string | null }>)
+      .map((row) => row.id?.trim() ?? '')
+      .filter(Boolean),
+    error,
   }
 }
 
@@ -320,6 +338,52 @@ export async function DELETE(
         .filter((distance): distance is (typeof SUPPORTED_PERSONAL_RECORD_DISTANCES)[number] => distance !== null)
     )
   )
+
+  const { data: runCommentIds, error: runCommentIdsError } = await loadRunCommentIds(supabaseAdmin, existingRun.id)
+
+  if (runCommentIdsError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: runCommentIdsError.message,
+      },
+      { status: 500 }
+    )
+  }
+
+  const { error: deleteRunAppEventsError } = await cleanupEntityAppEvents(
+    'run',
+    existingRun.id,
+    supabaseAdmin
+  )
+
+  if (deleteRunAppEventsError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: deleteRunAppEventsError.message,
+      },
+      { status: 500 }
+    )
+  }
+
+  if (runCommentIds.length > 0) {
+    const { error: deleteRunCommentAppEventsError } = await supabaseAdmin
+      .from('app_events')
+      .delete()
+      .eq('entity_type', 'run_comment')
+      .in('entity_id', runCommentIds)
+
+    if (deleteRunCommentAppEventsError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: deleteRunCommentAppEventsError.message,
+        },
+        { status: 500 }
+      )
+    }
+  }
 
   const { error: deleteError } = await supabaseAdmin
     .from('runs')
