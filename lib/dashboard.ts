@@ -151,7 +151,16 @@ export type DashboardRunItem = {
 }
 
 export type FeedRunInsight = {
-  type: 'personal_record' | 'best_pace_7d' | 'longest_14d' | 'longest_30d' | 'faster_than_average_10'
+  type:
+    | 'personal_record'
+    | 'first_half_marathon'
+    | 'first_marathon'
+    | 'best_pace_7d'
+    | 'best_pace_30d'
+    | 'longest_14d'
+    | 'longest_30d'
+    | 'longest_90d'
+    | 'faster_than_average_10'
   label: string
 }
 
@@ -220,9 +229,13 @@ export type UserProfileSummary = {
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const TOTAL_XP_CACHE_TTL_MS = 60 * 1000
 const RUN_INSIGHT_MIN_DISTANCE_KM = 3
+const RUN_INSIGHT_HALF_MARATHON_DISTANCE_KM = 21.097
+const RUN_INSIGHT_MARATHON_DISTANCE_KM = 42.195
 const RUN_INSIGHT_BEST_PACE_WINDOW_DAYS = 7
+const RUN_INSIGHT_BEST_PACE_30D_WINDOW_DAYS = 30
 const RUN_INSIGHT_LONGEST_14D_WINDOW_DAYS = 14
 const RUN_INSIGHT_LONGEST_30D_WINDOW_DAYS = 30
+const RUN_INSIGHT_LONGEST_90D_WINDOW_DAYS = 90
 const RUN_INSIGHT_LONGEST_MIN_DISTANCE_KM = 5
 const RUN_INSIGHT_AVERAGE_RUN_COUNT = 10
 
@@ -399,6 +412,109 @@ function buildPersonalRecordInsight(
   }
 }
 
+function buildFirstDistanceMilestoneInsight(
+  currentRun: RunInsightHistoryRow,
+  userRuns: RunInsightHistoryRow[],
+  currentRunIndex: number
+): FeedRunInsight | null {
+  const currentDistanceKm = getPositiveDistanceKm(currentRun)
+
+  if (currentDistanceKm == null) {
+    return null
+  }
+
+  const previousRuns = userRuns.slice(currentRunIndex + 1)
+
+  if (currentDistanceKm >= RUN_INSIGHT_MARATHON_DISTANCE_KM) {
+    const hasPreviousMarathon = previousRuns.some((candidateRun) => {
+      const distanceKm = getPositiveDistanceKm(candidateRun)
+      return distanceKm != null && distanceKm >= RUN_INSIGHT_MARATHON_DISTANCE_KM
+    })
+
+    if (!hasPreviousMarathon) {
+      return {
+        type: 'first_marathon',
+        label: 'Первый марафон',
+      }
+    }
+  }
+
+  if (currentDistanceKm >= RUN_INSIGHT_HALF_MARATHON_DISTANCE_KM) {
+    const hasPreviousHalfMarathon = previousRuns.some((candidateRun) => {
+      const distanceKm = getPositiveDistanceKm(candidateRun)
+      return distanceKm != null && distanceKm >= RUN_INSIGHT_HALF_MARATHON_DISTANCE_KM
+    })
+
+    if (!hasPreviousHalfMarathon) {
+      return {
+        type: 'first_half_marathon',
+        label: 'Первый полумарафон',
+      }
+    }
+  }
+
+  return null
+}
+
+function buildBestPaceInsight(
+  currentPaceSeconds: number | null,
+  userRuns: RunInsightHistoryRow[],
+  currentRunIndex: number,
+  currentCreatedAtMs: number
+): FeedRunInsight | null {
+  if (currentPaceSeconds == null) {
+    return null
+  }
+
+  const previousComparableRunsIn7dWindow = getPreviousWindowRuns(
+    userRuns,
+    currentRunIndex,
+    currentCreatedAtMs,
+    RUN_INSIGHT_BEST_PACE_WINDOW_DAYS,
+    (candidateRun) => getComparablePaceSeconds(candidateRun) != null
+  )
+
+  if (previousComparableRunsIn7dWindow.length > 0) {
+    const bestPreviousPaceSecondsIn7dWindow = previousComparableRunsIn7dWindow.reduce((bestValue, candidateRun) => {
+      const paceSeconds = getComparablePaceSeconds(candidateRun)
+      return paceSeconds != null && paceSeconds < bestValue ? paceSeconds : bestValue
+    }, Number.POSITIVE_INFINITY)
+
+    if (currentPaceSeconds < bestPreviousPaceSecondsIn7dWindow) {
+      return {
+        type: 'best_pace_7d',
+        label: 'Лучший темп за 7 дней',
+      }
+    }
+  }
+
+  const previousComparableRunsIn30dWindow = getPreviousWindowRuns(
+    userRuns,
+    currentRunIndex,
+    currentCreatedAtMs,
+    RUN_INSIGHT_BEST_PACE_30D_WINDOW_DAYS,
+    (candidateRun) => getComparablePaceSeconds(candidateRun) != null
+  )
+
+  if (previousComparableRunsIn30dWindow.length === 0) {
+    return null
+  }
+
+  const bestPreviousPaceSecondsIn30dWindow = previousComparableRunsIn30dWindow.reduce((bestValue, candidateRun) => {
+    const paceSeconds = getComparablePaceSeconds(candidateRun)
+    return paceSeconds != null && paceSeconds < bestValue ? paceSeconds : bestValue
+  }, Number.POSITIVE_INFINITY)
+
+  if (currentPaceSeconds < bestPreviousPaceSecondsIn30dWindow) {
+    return {
+      type: 'best_pace_30d',
+      label: 'Лучший темп за 30 дней',
+    }
+  }
+
+  return null
+}
+
 async function loadCanonicalPersonalRecordDistanceByRunId(runIds: string[]) {
   const normalizedRunIds = Array.from(new Set(
     runIds
@@ -535,6 +651,30 @@ function buildLongestRunInsight(
     }
   }
 
+  const previousRuns90d = getPreviousWindowRuns(
+    userRuns,
+    currentRunIndex,
+    currentCreatedAtMs,
+    RUN_INSIGHT_LONGEST_90D_WINDOW_DAYS,
+    (candidateRun) => getPositiveDistanceKm(candidateRun) != null
+  )
+
+  if (previousRuns90d.length === 0) {
+    return null
+  }
+
+  const maxPreviousDistanceKm90d = previousRuns90d.reduce((bestValue, candidateRun) => {
+    const distanceKm = getPositiveDistanceKm(candidateRun)
+    return distanceKm != null && distanceKm > bestValue ? distanceKm : bestValue
+  }, 0)
+
+  if (currentDistanceKm > maxPreviousDistanceKm90d) {
+    return {
+      type: 'longest_90d',
+      label: 'Самая длинная за 90 дней',
+    }
+  }
+
   return null
 }
 
@@ -569,30 +709,26 @@ function buildRunInsight(
     return null
   }
 
+  const firstDistanceMilestoneInsight = buildFirstDistanceMilestoneInsight(
+    currentRun,
+    userRuns,
+    currentRunIndex
+  )
+
+  if (firstDistanceMilestoneInsight) {
+    return firstDistanceMilestoneInsight
+  }
+
   const currentPaceSeconds = getComparablePaceSeconds(currentRun)
+  const bestPaceInsight = buildBestPaceInsight(
+    currentPaceSeconds,
+    userRuns,
+    currentRunIndex,
+    currentCreatedAtMs
+  )
 
-  if (currentPaceSeconds != null) {
-    const previousComparableRunsInWindow = getPreviousWindowRuns(
-      userRuns,
-      currentRunIndex,
-      currentCreatedAtMs,
-      RUN_INSIGHT_BEST_PACE_WINDOW_DAYS,
-      (candidateRun) => getComparablePaceSeconds(candidateRun) != null
-    )
-
-    if (previousComparableRunsInWindow.length > 0) {
-      const bestPreviousPaceSeconds = previousComparableRunsInWindow.reduce((bestValue, candidateRun) => {
-        const paceSeconds = getComparablePaceSeconds(candidateRun)
-        return paceSeconds != null && paceSeconds < bestValue ? paceSeconds : bestValue
-      }, Number.POSITIVE_INFINITY)
-
-      if (currentPaceSeconds < bestPreviousPaceSeconds) {
-        return {
-          type: 'best_pace_7d',
-          label: 'Лучший темп за 7 дней',
-        }
-      }
-    }
+  if (bestPaceInsight) {
+    return bestPaceInsight
   }
 
   const longestRunInsight = buildLongestRunInsight(currentRun, userRuns, currentRunIndex, currentCreatedAtMs)
