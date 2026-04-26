@@ -37,7 +37,7 @@ const SHOULD_REVALIDATE_RACES_ON_FOCUS = !isNativeCapacitorApp()
 type RaceEventCardProps = {
   raceEvent: RaceEvent
   isPersonalRecord: boolean
-  candidateRuns: ActivityRunRow[]
+  candidateRuns: CandidateRunSuggestion[]
   selectedSuggestedRunId: string
   isMenuOpen: boolean
   isLinking: boolean
@@ -55,6 +55,15 @@ type RaceEventCardProps = {
 const DEFAULT_WORKOUT_NAME = 'Бег'
 const DEFAULT_RACE_EVENT_NAME = 'Новый старт'
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const MIN_CANDIDATE_DISTANCE_METERS = 500
+const MIN_CANDIDATE_DURATION_SECONDS = 300
+
+type CandidateRunSuggestionType = 'strict' | 'soft' | 'date_only'
+
+type CandidateRunSuggestion = {
+  run: ActivityRunRow
+  matchType: CandidateRunSuggestionType
+}
 
 function formatPreciseDistanceKm(value: number) {
   const fixed = value.toFixed(2)
@@ -121,31 +130,132 @@ function getDateOnlyTimestamp(dateValue: string) {
   return nextDate.getTime()
 }
 
-function getCandidateRunsForRaceDate(raceDate: string, runs: ActivityRunRow[]) {
+function getRunDistanceMeters(run: Pick<ActivityRunRow, 'distance_km'>) {
+  const distanceMeters = Math.round(Number(run.distance_km ?? 0) * 1000)
+  return Number.isFinite(distanceMeters) ? distanceMeters : 0
+}
+
+function getRunDurationSeconds(
+  run: Pick<ActivityRunRow, 'duration_seconds' | 'moving_time_seconds' | 'duration_minutes'>
+) {
+  if (Number.isFinite(run.duration_seconds)) {
+    return Math.round(Number(run.duration_seconds))
+  }
+
+  if (Number.isFinite(run.moving_time_seconds)) {
+    return Math.round(Number(run.moving_time_seconds))
+  }
+
+  if (Number.isFinite(run.duration_minutes)) {
+    return Math.round(Number(run.duration_minutes) * 60)
+  }
+
+  return null
+}
+
+function isJunkCandidateRun(run: ActivityRunRow) {
+  if (getRunDistanceMeters(run) < MIN_CANDIDATE_DISTANCE_METERS) {
+    return true
+  }
+
+  const durationSeconds = getRunDurationSeconds(run)
+  return durationSeconds != null && durationSeconds < MIN_CANDIDATE_DURATION_SECONDS
+}
+
+function compareCandidateSuggestionEntries(
+  left: { run: ActivityRunRow; runDateTimestamp: number; distanceDiffMeters: number | null },
+  right: { run: ActivityRunRow; runDateTimestamp: number; distanceDiffMeters: number | null },
+  raceDateTimestamp: number
+) {
+  const leftDateDiff = Math.abs(left.runDateTimestamp - raceDateTimestamp)
+  const rightDateDiff = Math.abs(right.runDateTimestamp - raceDateTimestamp)
+
+  if (leftDateDiff !== rightDateDiff) {
+    return leftDateDiff - rightDateDiff
+  }
+
+  if (left.distanceDiffMeters !== right.distanceDiffMeters) {
+    return (left.distanceDiffMeters ?? Number.POSITIVE_INFINITY) - (right.distanceDiffMeters ?? Number.POSITIVE_INFINITY)
+  }
+
+  return right.run.created_at.localeCompare(left.run.created_at)
+}
+
+function getCandidateRunsForRaceDate(
+  raceDate: string,
+  raceDistanceMeters: number | null | undefined,
+  runs: ActivityRunRow[]
+) {
   const raceDateTimestamp = getDateOnlyTimestamp(raceDate)
 
   if (raceDateTimestamp == null) {
-    return [] as ActivityRunRow[]
+    return [] as CandidateRunSuggestion[]
   }
 
-  return runs
+  const datedRuns = runs
     .map((run) => ({
       run,
       runDateTimestamp: getDateOnlyTimestamp(run.created_at),
+      distanceDiffMeters: Number.isFinite(raceDistanceMeters) && (raceDistanceMeters ?? 0) > 0
+        ? Math.abs(getRunDistanceMeters(run) - Number(raceDistanceMeters))
+        : null,
     }))
     .filter((entry) => entry.runDateTimestamp != null)
+    .filter((entry) => !isJunkCandidateRun(entry.run))
     .filter((entry) => Math.abs((entry.runDateTimestamp as number) - raceDateTimestamp) <= ONE_DAY_MS)
-    .sort((left, right) => {
-      const leftDiff = Math.abs((left.runDateTimestamp as number) - raceDateTimestamp)
-      const rightDiff = Math.abs((right.runDateTimestamp as number) - raceDateTimestamp)
 
-      if (leftDiff !== rightDiff) {
-        return leftDiff - rightDiff
-      }
+  if (!Number.isFinite(raceDistanceMeters) || (raceDistanceMeters ?? 0) <= 0) {
+    return datedRuns
+      .sort((left, right) => compareCandidateSuggestionEntries(
+        left as { run: ActivityRunRow; runDateTimestamp: number; distanceDiffMeters: number | null },
+        right as { run: ActivityRunRow; runDateTimestamp: number; distanceDiffMeters: number | null },
+        raceDateTimestamp
+      ))
+      .map((entry) => ({
+        run: entry.run,
+        matchType: 'date_only' as const,
+      }))
+  }
 
-      return right.run.created_at.localeCompare(left.run.created_at)
-    })
-    .map((entry) => entry.run)
+  const normalizedRaceDistanceMeters = Number(raceDistanceMeters)
+  const strictDistanceThresholdMeters = Math.min(normalizedRaceDistanceMeters * 0.1, 1500)
+  const softDistanceThresholdMeters = normalizedRaceDistanceMeters * 0.25
+  const sortableRuns = datedRuns as Array<{
+    run: ActivityRunRow
+    runDateTimestamp: number
+    distanceDiffMeters: number
+  }>
+
+  const strictRuns = sortableRuns
+    .filter((entry) => entry.distanceDiffMeters <= strictDistanceThresholdMeters)
+    .sort((left, right) => compareCandidateSuggestionEntries(left, right, raceDateTimestamp))
+
+  if (strictRuns.length > 0) {
+    return strictRuns.map((entry) => ({
+      run: entry.run,
+      matchType: 'strict' as const,
+    }))
+  }
+
+  return sortableRuns
+    .filter((entry) => entry.distanceDiffMeters <= softDistanceThresholdMeters)
+    .sort((left, right) => compareCandidateSuggestionEntries(left, right, raceDateTimestamp))
+    .map((entry) => ({
+      run: entry.run,
+      matchType: 'soft' as const,
+    }))
+}
+
+function getCandidateSuggestionTitle(candidateRuns: CandidateRunSuggestion[]) {
+  if (candidateRuns.length > 1) {
+    return 'Найдено несколько похожих тренировок'
+  }
+
+  if (candidateRuns[0]?.matchType === 'strict') {
+    return 'Похоже, это был забег — привязать?'
+  }
+
+  return 'Возможная тренировка рядом со стартом'
 }
 
 function getCandidateRunLabel(run: ActivityRunRow) {
@@ -208,6 +318,7 @@ function RaceEventCard({
   const targetTimeLabel = formatClock(raceEvent.target_time_seconds)
   const isUpcoming = isRaceEventUpcoming(raceEvent)
   const hasUpcomingSummary = Boolean(displayDistance || targetTimeLabel)
+  const candidateSuggestionTitle = getCandidateSuggestionTitle(candidateRuns)
 
   return (
     <div
@@ -295,22 +406,22 @@ function RaceEventCard({
           ) : null}
           {!raceEvent.linked_run_id && candidateRuns.length > 0 ? (
             <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-3 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
-              <p className="app-text-primary text-sm font-medium">Похоже, это был забег — привязать?</p>
+              <p className="app-text-primary text-sm font-medium">{candidateSuggestionTitle}</p>
               {candidateRuns.length > 1 ? (
                 <select
                   value={selectedSuggestedRunId}
                   onChange={(event) => onSelectSuggestedRun(raceEvent.id, event.target.value)}
                   className="app-input mt-3 min-h-11 w-full rounded-lg border px-3 py-2"
                 >
-                  {candidateRuns.map((run) => (
-                    <option key={run.id} value={run.id}>
-                      {getCandidateRunLabel(run)}
+                  {candidateRuns.map((candidateRun) => (
+                    <option key={candidateRun.run.id} value={candidateRun.run.id}>
+                      {getCandidateRunLabel(candidateRun.run)}
                     </option>
                   ))}
                 </select>
               ) : (
                 <p className="app-text-secondary mt-1 text-sm">
-                  {getCandidateRunLabel(candidateRuns[0])}
+                  {getCandidateRunLabel(candidateRuns[0].run)}
                 </p>
               )}
               <button
@@ -427,10 +538,28 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       label: getCandidateRunLabel(run),
     }))
   ), [runs])
+  const parsedFormDistance = useMemo(() => parseDistanceKmInput(distanceInput), [distanceInput])
   const formCandidateRuns = useMemo(
-    () => getCandidateRunsForRaceDate(raceEventDate, runs ?? []),
-    [raceEventDate, runs]
+    () => getCandidateRunsForRaceDate(raceEventDate, parsedFormDistance.value, runs ?? []),
+    [parsedFormDistance.value, raceEventDate, runs]
   )
+  const formCandidateSuggestionTitle = useMemo(
+    () => getCandidateSuggestionTitle(formCandidateRuns),
+    [formCandidateRuns]
+  )
+  const candidateRunsByRaceEventId = useMemo(() => {
+    const nextValue: Record<string, CandidateRunSuggestion[]> = {}
+
+    for (const raceEvent of raceEvents ?? []) {
+      nextValue[raceEvent.id] = getCandidateRunsForRaceDate(
+        raceEvent.race_date,
+        raceEvent.distance_meters,
+        runs ?? []
+      )
+    }
+
+    return nextValue
+  }, [raceEvents, runs])
   const upcomingRaceEvents = useMemo(() => (
     (raceEvents ?? [])
       .filter((raceEvent) => isRaceEventUpcoming(raceEvent))
@@ -487,13 +616,13 @@ export default function RacesManager({ userId }: RacesManagerProps) {
       return
     }
 
-    const bestCandidateRunId = formCandidateRuns[0]?.id ?? ''
+    const bestCandidateRunId = formCandidateRuns[0]?.run.id ?? ''
     setFormSuggestedRunId((currentValue) => {
       if (!bestCandidateRunId) {
         return ''
       }
 
-      if (currentValue && formCandidateRuns.some((run) => run.id === currentValue)) {
+      if (currentValue && formCandidateRuns.some((candidateRun) => candidateRun.run.id === currentValue)) {
         return currentValue
       }
 
@@ -510,22 +639,22 @@ export default function RacesManager({ userId }: RacesManagerProps) {
           continue
         }
 
-        const candidateRuns = getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])
+        const candidateRuns = candidateRunsByRaceEventId[raceEvent.id] ?? []
         const currentCandidateId = currentValue[raceEvent.id]
 
-        if (currentCandidateId && candidateRuns.some((run) => run.id === currentCandidateId)) {
+        if (currentCandidateId && candidateRuns.some((candidateRun) => candidateRun.run.id === currentCandidateId)) {
           nextValue[raceEvent.id] = currentCandidateId
           continue
         }
 
-        if (candidateRuns[0]?.id) {
-          nextValue[raceEvent.id] = candidateRuns[0].id
+        if (candidateRuns[0]?.run.id) {
+          nextValue[raceEvent.id] = candidateRuns[0].run.id
         }
       }
 
       return nextValue
     })
-  }, [raceEvents, runs])
+  }, [candidateRunsByRaceEventId, raceEvents])
 
   useEffect(() => {
     if (!openRaceEventMenuId) {
@@ -818,7 +947,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                         key={raceEvent.id}
                         raceEvent={raceEvent}
                         isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
-                        candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
+                        candidateRuns={candidateRunsByRaceEventId[raceEvent.id] ?? []}
                         selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
                         isMenuOpen={openRaceEventMenuId === raceEvent.id}
                         isLinking={linkingRaceEventId === raceEvent.id}
@@ -865,7 +994,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
                         key={raceEvent.id}
                         raceEvent={raceEvent}
                         isPersonalRecord={personalRecordRaceEventIds.has(raceEvent.id)}
-                        candidateRuns={getCandidateRunsForRaceDate(raceEvent.race_date, runs ?? [])}
+                        candidateRuns={candidateRunsByRaceEventId[raceEvent.id] ?? []}
                         selectedSuggestedRunId={suggestedRunIdsByRaceEvent[raceEvent.id] ?? ''}
                         isMenuOpen={openRaceEventMenuId === raceEvent.id}
                         isLinking={linkingRaceEventId === raceEvent.id}
@@ -912,6 +1041,7 @@ export default function RacesManager({ userId }: RacesManagerProps) {
         selectedLinkedRunId={selectedLinkedRunId}
         workoutOptions={workoutOptions}
         formCandidateRuns={formCandidateRuns}
+        formCandidateSuggestionTitle={formCandidateSuggestionTitle}
         formSuggestedRunId={formSuggestedRunId}
         formError={raceEventsError}
         getCandidateRunLabel={getCandidateRunLabel}

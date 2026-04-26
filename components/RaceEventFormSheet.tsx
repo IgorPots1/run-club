@@ -4,6 +4,10 @@ import type { FormEvent } from 'react'
 import { useEffect } from 'react'
 import type { ActivityRunRow } from '@/lib/activity'
 
+type CandidateFormRun = {
+  run: ActivityRunRow
+}
+
 const DISTANCE_PRESETS = [
   { label: '5 км', value: '5' },
   { label: '10 км', value: '10' },
@@ -23,7 +27,8 @@ type RaceEventFormSheetProps = {
   targetTimeInput: string
   selectedLinkedRunId: string
   workoutOptions: Array<{ id: string; label: string }>
-  formCandidateRuns: ActivityRunRow[]
+  formCandidateRuns: CandidateFormRun[]
+  formCandidateSuggestionTitle: string
   formSuggestedRunId: string
   formError: string
   getCandidateRunLabel: (run: ActivityRunRow) => string
@@ -50,6 +55,7 @@ export default function RaceEventFormSheet({
   selectedLinkedRunId,
   workoutOptions,
   formCandidateRuns,
+  formCandidateSuggestionTitle,
   formSuggestedRunId,
   formError,
   getCandidateRunLabel,
@@ -253,11 +259,11 @@ export default function RaceEventFormSheet({
 
             {!selectedLinkedRunId && formCandidateRuns.length > 0 ? (
               <div className="rounded-2xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
-                <p className="app-text-primary text-sm font-medium">Похоже, это был забег - привязать?</p>
+                <p className="app-text-primary text-sm font-medium">{formCandidateSuggestionTitle}</p>
                 <p className="app-text-secondary mt-1 text-sm">
                   {formCandidateRuns.length === 1
-                    ? getCandidateRunLabel(formCandidateRuns[0])
-                    : 'Найдено несколько тренировок рядом с датой старта.'}
+                    ? getCandidateRunLabel(formCandidateRuns[0].run)
+                    : 'Выберите подходящую тренировку вручную.'}
                 </p>
                 {formCandidateRuns.length > 1 ? (
                   <select
@@ -265,16 +271,16 @@ export default function RaceEventFormSheet({
                     onChange={(event) => onFormSuggestedRunIdChange(event.target.value)}
                     className="app-input mt-3 min-h-11 w-full rounded-xl border px-3 py-2"
                   >
-                    {formCandidateRuns.map((run) => (
-                      <option key={run.id} value={run.id}>
-                        {getCandidateRunLabel(run)}
+                    {formCandidateRuns.map((candidateRun) => (
+                      <option key={candidateRun.run.id} value={candidateRun.run.id}>
+                        {getCandidateRunLabel(candidateRun.run)}
                       </option>
                     ))}
                   </select>
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => onSelectedLinkedRunIdChange(formSuggestedRunId || formCandidateRuns[0]?.id || '')}
+                  onClick={() => onSelectedLinkedRunIdChange(formSuggestedRunId || formCandidateRuns[0]?.run.id || '')}
                   className="app-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium"
                 >
                   Привязать выбранную тренировку
