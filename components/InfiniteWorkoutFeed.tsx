@@ -36,7 +36,7 @@ import {
   subscribeToRunLikes,
   type RunLikeRealtimePayload,
 } from '@/lib/run-likes'
-import { RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
+import { readRunsUpdatedAt, RUNS_UPDATED_EVENT, RUNS_UPDATED_STORAGE_KEY } from '@/lib/runs-refresh'
 import { toggleRunLike } from '@/lib/run-likes'
 import type { SeededRunDetailPayload } from '@/lib/run-detail-navigation'
 import { useRunDetailReturnState } from '@/lib/run-detail-navigation'
@@ -70,6 +70,7 @@ type FeedVisualSnapshot = {
   items: FeedItem[]
   hasMore: boolean
   nextOffset: number
+  savedAt: number
 }
 
 const feedVisualSnapshotStore = new Map<string, FeedVisualSnapshot>()
@@ -619,6 +620,13 @@ export default function InfiniteWorkoutFeed({
       const visualSnapshot = visualSnapshotKey
         ? feedVisualSnapshotStore.get(visualSnapshotKey) ?? null
         : null
+      const runsUpdatedAt = readRunsUpdatedAt()
+      const hasNewerFeedMutation = Boolean(
+        visualSnapshot &&
+        Number.isFinite(visualSnapshot.savedAt) &&
+        runsUpdatedAt != null &&
+        runsUpdatedAt > visualSnapshot.savedAt
+      )
 
       if (visualSnapshotKey) {
         feedVisualSnapshotStore.delete(visualSnapshotKey)
@@ -633,7 +641,7 @@ export default function InfiniteWorkoutFeed({
       setActiveXpRunId(null)
       setFeedError('')
 
-      if (visualSnapshot) {
+      if (visualSnapshot && !hasNewerFeedMutation) {
         restoredSnapshotRef.current = null
         itemsRef.current = visualSnapshot.items
         setItems(visualSnapshot.items)
@@ -660,10 +668,12 @@ export default function InfiniteWorkoutFeed({
     }
 
     if (visualSnapshotKey) {
+      const savedAt = Date.now()
       feedVisualSnapshotStore.set(visualSnapshotKey, {
         items: itemsRef.current,
         hasMore,
         nextOffset,
+        savedAt,
       })
     }
 
