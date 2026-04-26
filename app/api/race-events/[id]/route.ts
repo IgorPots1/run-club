@@ -382,12 +382,17 @@ export async function PATCH(
   }
 
   const hadCompletionSignal = hasRaceCompletionSignal(existingRaceEvent) || wasLinked
-  const hasCompletionSignal = hasRaceCompletionSignal(data)
+  const hasCompletionSignal = hasRaceCompletionSignal(data) || isLinked
+  const shouldSyncCompletedAppEvent =
+    data.status !== 'cancelled' &&
+    (hadCompletionSignal || hasCompletionSignal || wasLinked || isLinked)
 
-  if ((!hadCompletionSignal && hasCompletionSignal) || (isLinked && !wasLinked)) {
+  if (shouldSyncCompletedAppEvent) {
     after(async () => {
       try {
-        await createRaceEventCompletedAppEvent(data)
+        await createRaceEventCompletedAppEvent(data, {
+          createIfMissing: isLinked,
+        })
       } catch (error) {
         console.error('Failed to create race_event.completed app event', {
           raceEventId: data.id,
