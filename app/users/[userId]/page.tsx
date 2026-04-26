@@ -17,7 +17,14 @@ import {
   type PersonalRecordView,
 } from '@/lib/personal-records'
 import { getProfileDisplayName } from '@/lib/profiles'
-import { deriveRaceEventStatus, formatClock, formatRaceDateLabel, getRaceEventDisplayDistanceLabel, type RaceEvent } from '@/lib/race-events'
+import {
+  deriveRaceEventStatus,
+  formatClock,
+  formatRaceDateLabel,
+  getRaceEventDisplayDistanceLabel,
+  getTodayDateValue,
+  type RaceEvent,
+} from '@/lib/race-events'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
@@ -59,6 +66,27 @@ type PublicRaceEventRow = Pick<
   | 'created_at'
   | 'linked_run'
 >
+
+const PUBLIC_PROFILE_RACE_EVENT_SELECT = `
+  id,
+  user_id,
+  name,
+  race_date,
+  linked_run_id,
+  distance_meters,
+  result_time_seconds,
+  target_time_seconds,
+  status,
+  created_at,
+  linked_run:runs!race_events_linked_run_id_fkey (
+    id,
+    name,
+    title,
+    distance_km,
+    moving_time_seconds,
+    created_at
+  )
+`
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
 
@@ -197,25 +225,56 @@ function compareRaceEventsByDateDesc(left: PublicRaceEventRow, right: PublicRace
   return right.race_date.localeCompare(left.race_date) || right.name.localeCompare(left.name)
 }
 
-function getPublicProfileStarts(raceEvents: PublicRaceEventRow[]) {
-  const upcoming = raceEvents
+function getUniqueRaceEvents(raceEvents: PublicRaceEventRow[]) {
+  const seenRaceEventIds = new Set<string>()
+
+  return raceEvents.filter((raceEvent) => {
+    if (seenRaceEventIds.has(raceEvent.id)) {
+      return false
+    }
+
+    seenRaceEventIds.add(raceEvent.id)
+    return true
+  })
+}
+
+function getPublicProfileStarts({
+  upcomingRaceEvents,
+  completedLinkedRaceEvents,
+  completedUnlinkedRaceEvents,
+}: {
+  upcomingRaceEvents: PublicRaceEventRow[]
+  completedLinkedRaceEvents: PublicRaceEventRow[]
+  completedUnlinkedRaceEvents: PublicRaceEventRow[]
+}) {
+  const upcoming = upcomingRaceEvents
     .filter((raceEvent) => deriveRaceEventStatus(raceEvent) === 'upcoming')
     .sort(compareRaceEventsByDateAsc)
     .slice(0, 2)
-  const completedLinked = raceEvents
+  const completedLinked = completedLinkedRaceEvents
     .filter((raceEvent) => deriveRaceEventStatus(raceEvent) === 'completed_linked')
     .sort(compareRaceEventsByDateDesc)
     .slice(0, 2)
-  const completedUnlinked = raceEvents
+  const completedUnlinked = completedUnlinkedRaceEvents
     .filter((raceEvent) => deriveRaceEventStatus(raceEvent) === 'completed_unlinked')
     .sort(compareRaceEventsByDateDesc)
     .slice(0, 2)
 
-  return [...upcoming, ...completedLinked, ...completedUnlinked].slice(0, 5)
+  return getUniqueRaceEvents([...upcoming, ...completedLinked, ...completedUnlinked]).slice(0, 5)
 }
 
 function getPersonalRecordRowClass(hasHref: boolean) {
   const baseClass = 'flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0'
+
+  if (!hasHref) {
+    return baseClass
+  }
+
+  return `${baseClass} -mx-2 rounded-xl px-2 transition-colors hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.06]`
+}
+
+function getProfileStartRowClass(hasHref: boolean) {
+  const baseClass = 'flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0'
 
   if (!hasHref) {
     return baseClass
@@ -276,6 +335,54 @@ function compareAchievementsByDateDesc(
   return right.id.localeCompare(left.id)
 }
 
+async function loadPublicProfileStartsPreview(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string
+) {
+  const todayDateValue = getTodayDateValue()
+
+  const [upcomingResult, completedLinkedResult, completedUnlinkedResult] = await Promise.all([
+    supabaseAdmin
+      .from('race_events')
+      .select(PUBLIC_PROFILE_RACE_EVENT_SELECT)
+      .eq('user_id', userId)
+      .is('linked_run_id', null)
+      .gte('race_date', todayDateValue)
+      .neq('status', 'cancelled')
+      .neq('status', 'completed_linked')
+      .neq('status', 'completed_unlinked')
+      .order('race_date', { ascending: true })
+      .limit(6),
+    supabaseAdmin
+      .from('race_events')
+      .select(PUBLIC_PROFILE_RACE_EVENT_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'completed_linked')
+      .order('race_date', { ascending: false })
+      .limit(6),
+    supabaseAdmin
+      .from('race_events')
+      .select(PUBLIC_PROFILE_RACE_EVENT_SELECT)
+      .eq('user_id', userId)
+      .is('linked_run_id', null)
+      .lt('race_date', todayDateValue)
+      .neq('status', 'cancelled')
+      .order('race_date', { ascending: false })
+      .limit(6),
+  ])
+
+  return {
+    data: getPublicProfileStarts({
+      upcomingRaceEvents: (upcomingResult.data as PublicRaceEventRow[] | null) ?? [],
+      completedLinkedRaceEvents: (completedLinkedResult.data as PublicRaceEventRow[] | null) ?? [],
+      completedUnlinkedRaceEvents: (completedUnlinkedResult.data as PublicRaceEventRow[] | null) ?? [],
+    }),
+    error: upcomingResult.error || completedLinkedResult.error || completedUnlinkedResult.error
+      ? 'Не удалось загрузить старты'
+      : null,
+  }
+}
+
 export default async function PublicUserProfilePage({ params }: PageProps) {
   const [{ user, error, supabase }, { userId }] = await Promise.all([getAuthenticatedUser(), params])
 
@@ -294,36 +401,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .from('runs')
       .select('distance_km, created_at, moving_time_seconds, elevation_gain_meters')
       .eq('user_id', userId),
-    supabaseAdmin
-      .from('race_events')
-      .select(`
-        id,
-        user_id,
-        name,
-        race_date,
-        linked_run_id,
-        distance_meters,
-        result_time_seconds,
-        target_time_seconds,
-        status,
-        created_at,
-        linked_run:runs!race_events_linked_run_id_fkey (
-          id,
-          name,
-          title,
-          distance_km,
-          moving_time_seconds,
-          created_at
-        )
-      `)
-      .eq('user_id', userId)
-      .neq('status', 'cancelled')
-      .order('race_date', { ascending: false })
-      .limit(12)
-      .then((result) => ({
-        data: (result.data as PublicRaceEventRow[] | null) ?? [],
-        error: result.error ? 'Не удалось загрузить старты' : null,
-      })),
+    loadPublicProfileStartsPreview(supabaseAdmin, userId),
     loadUserAchievements(userId)
       .then((data) => ({ data, error: null as string | null }))
       .catch(() => ({
@@ -345,7 +423,7 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const achievementsLoadError = achievementsResult.error
   const personalRecords = personalRecordsResult.data
   const personalRecordsLoadError = personalRecordsResult.error
-  const profileStarts = getPublicProfileStarts(raceEventsResult.data)
+  const profileStarts = raceEventsResult.data
   const profileStartsLoadError = raceEventsResult.error
   const personalRecordByDistance = new Map(personalRecords.map((record) => [record.distance_meters, record]))
   const sortedAchievements = [...recentAchievements].sort(compareAchievementsByDateDesc)
@@ -615,13 +693,15 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                 const content = (
                   <>
                     <div className="min-w-0">
-                      <p className="app-text-primary text-sm font-medium">{raceEvent.name}</p>
+                      <p className="app-text-primary line-clamp-2 break-words text-sm font-medium leading-5">
+                        {raceEvent.name}
+                      </p>
                       <p className="app-text-secondary mt-1 text-xs">
                         {formatRaceDateLabel(raceEvent.race_date)}
                         {distanceLabel ? ` • ${distanceLabel}` : ''}
                       </p>
                     </div>
-                    <div className="shrink-0 text-right">
+                    <div className="shrink-0 pl-2 text-right">
                       <p className="app-text-primary text-sm font-semibold">
                         {status === 'upcoming'
                           ? 'План'
@@ -632,11 +712,11 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
                 )
 
                 return href ? (
-                  <Link key={raceEvent.id} href={href} className={getPersonalRecordRowClass(true)}>
+                  <Link key={raceEvent.id} href={href} className={getProfileStartRowClass(true)}>
                     {content}
                   </Link>
                 ) : (
-                  <div key={raceEvent.id} className={getPersonalRecordRowClass(false)}>
+                  <div key={raceEvent.id} className={getProfileStartRowClass(false)}>
                     {content}
                   </div>
                 )
