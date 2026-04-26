@@ -258,7 +258,14 @@ function RaceFeedCard({
 
       <div className="mt-4 min-w-0">
         <div className="mt-1 flex items-start justify-between gap-3">
-          <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="app-text-primary min-w-0 break-words text-[17px] font-semibold leading-6 sm:text-[18px]">{item.raceName}</p>
+              <span className="inline-flex shrink-0 items-center rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold leading-none text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+                Старт
+              </span>
+            </div>
+          </div>
           <p className="app-text-secondary shrink-0 text-right text-sm">
             {formatRaceDateLabel(item.raceDate)}
           </p>
@@ -281,7 +288,7 @@ function RaceFeedCard({
           ) : null}
         </div>
       ) : (
-        <div className="mt-4 min-w-0 space-y-2.5">
+        <div className="mt-3.5 min-w-0 space-y-2">
           {resultLabel ? (
             <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
               <p className="app-text-primary text-[28px] font-semibold leading-none tracking-[-0.03em] sm:text-[32px]">
@@ -290,7 +297,6 @@ function RaceFeedCard({
               <p className="app-text-secondary pb-0.5 text-sm">Результат</p>
             </div>
           ) : null}
-          <p className="app-text-secondary break-words text-sm">{formatRaceDateLabel(item.raceDate)}</p>
           {distanceLabel ? (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               <span className="app-text-secondary">Дистанция</span>
@@ -301,11 +307,10 @@ function RaceFeedCard({
       )}
 
       {item.linkedRun ? (
-        <div className="mt-4 rounded-2xl border border-black/5 px-3 py-3 dark:border-white/10">
-          <p className="app-text-primary text-sm font-medium">Привязанная тренировка</p>
-          <p className="app-text-secondary mt-1 break-words text-sm">{linkedRunPreview ?? 'Тренировка'}</p>
+        <div className="mt-3 rounded-2xl border border-black/5 bg-black/[0.02] px-3.5 py-2.5 dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="app-text-primary break-words text-sm font-medium">{linkedRunPreview ?? 'Тренировка'}</p>
           {linkedRunPace ? (
-            <p className="app-text-secondary mt-1 break-words text-xs">{linkedRunPace}</p>
+            <p className="app-text-secondary mt-1 break-words text-sm">{linkedRunPace}</p>
           ) : null}
         </div>
       ) : null}
