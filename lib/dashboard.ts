@@ -77,6 +77,13 @@ type AppEventFeedRow = {
   created_at: string
 }
 
+type PersonalRecordAppEventRow = {
+  id: string
+  entity_id: string | null
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
 type FeedRaceEventCurrentRow = {
   id: string
   user_id: string
@@ -142,7 +149,7 @@ export type DashboardRunItem = {
 }
 
 export type FeedRunInsight = {
-  type: 'best_pace_7d' | 'longest_14d' | 'faster_than_average_10'
+  type: 'personal_record' | 'best_pace_7d' | 'longest_14d' | 'longest_30d' | 'faster_than_average_10'
   label: string
 }
 
@@ -212,7 +219,9 @@ const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const TOTAL_XP_CACHE_TTL_MS = 60 * 1000
 const RUN_INSIGHT_MIN_DISTANCE_KM = 3
 const RUN_INSIGHT_BEST_PACE_WINDOW_DAYS = 7
-const RUN_INSIGHT_LONGEST_WINDOW_DAYS = 14
+const RUN_INSIGHT_LONGEST_14D_WINDOW_DAYS = 14
+const RUN_INSIGHT_LONGEST_30D_WINDOW_DAYS = 30
+const RUN_INSIGHT_LONGEST_MIN_DISTANCE_KM = 5
 const RUN_INSIGHT_AVERAGE_RUN_COUNT = 10
 
 const profileCache = new Map<string, { value: ProfileRow | null; expiresAt: number }>()
@@ -357,11 +366,163 @@ function getPositiveDistanceKm(run: Pick<RunInsightHistoryRow, 'distance_km'>) {
   return Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : null
 }
 
+function getPersonalRecordDistanceLabel(distanceMeters: number) {
+  switch (distanceMeters) {
+    case 5000:
+      return '5 км'
+    case 10000:
+      return '10 км'
+    case 21097:
+      return '21.1 км'
+    case 42195:
+      return '42.2 км'
+    default:
+      return `${Math.round(distanceMeters)} м`
+  }
+}
+
+function getPersonalRecordDistanceMetersFromPayload(payload: Record<string, unknown> | null | undefined) {
+  const context = getContextRecord(payload)
+  const distanceMeters = parseFiniteNumber(context?.distanceMeters)
+  return Number.isFinite(distanceMeters) && (distanceMeters ?? 0) > 0
+    ? Math.round(Number(distanceMeters))
+    : null
+}
+
+function buildPersonalRecordInsight(
+  runId: string,
+  personalRecordEventsByRunId: Map<string, PersonalRecordAppEventRow[]>
+): FeedRunInsight | null {
+  const personalRecordEvents = personalRecordEventsByRunId.get(runId) ?? []
+
+  if (personalRecordEvents.length === 0) {
+    return null
+  }
+
+  const bestEvent = personalRecordEvents.reduce<PersonalRecordAppEventRow | null>((bestValue, event) => {
+    if (!bestValue) {
+      return event
+    }
+
+    const bestDistanceMeters = getPersonalRecordDistanceMetersFromPayload(bestValue.payload) ?? 0
+    const eventDistanceMeters = getPersonalRecordDistanceMetersFromPayload(event.payload) ?? 0
+
+    if (eventDistanceMeters !== bestDistanceMeters) {
+      return eventDistanceMeters > bestDistanceMeters ? event : bestValue
+    }
+
+    return event.created_at > bestValue.created_at ? event : bestValue
+  }, null)
+
+  const distanceMeters = getPersonalRecordDistanceMetersFromPayload(bestEvent?.payload)
+
+  return {
+    type: 'personal_record',
+    label: distanceMeters
+      ? `Новый рекорд ${getPersonalRecordDistanceLabel(distanceMeters)}`
+      : 'Новый рекорд',
+  }
+}
+
+function getPreviousWindowRuns<T extends RunInsightHistoryRow>(
+  userRuns: T[],
+  currentRunIndex: number,
+  currentCreatedAtMs: number,
+  windowDays: number,
+  predicate: (candidateRun: T) => boolean
+) {
+  const windowStartMs = currentCreatedAtMs - windowDays * 24 * 60 * 60 * 1000
+
+  return userRuns
+    .slice(currentRunIndex + 1)
+    .filter((candidateRun) => {
+      const createdAtMs = getRunCreatedAtMs(candidateRun)
+
+      return (
+        createdAtMs != null &&
+        createdAtMs >= windowStartMs &&
+        createdAtMs <= currentCreatedAtMs &&
+        predicate(candidateRun)
+      )
+    })
+}
+
+function buildLongestRunInsight(
+  currentRun: RunInsightHistoryRow,
+  userRuns: RunInsightHistoryRow[],
+  currentRunIndex: number,
+  currentCreatedAtMs: number
+): FeedRunInsight | null {
+  const currentDistanceKm = getPositiveDistanceKm(currentRun)
+
+  if (
+    currentDistanceKm == null
+    || currentDistanceKm < RUN_INSIGHT_LONGEST_MIN_DISTANCE_KM
+  ) {
+    return null
+  }
+
+  const previousRuns14d = getPreviousWindowRuns(
+    userRuns,
+    currentRunIndex,
+    currentCreatedAtMs,
+    RUN_INSIGHT_LONGEST_14D_WINDOW_DAYS,
+    (candidateRun) => getPositiveDistanceKm(candidateRun) != null
+  )
+
+  if (previousRuns14d.length > 0) {
+    const maxPreviousDistanceKm14d = previousRuns14d.reduce((bestValue, candidateRun) => {
+      const distanceKm = getPositiveDistanceKm(candidateRun)
+      return distanceKm != null && distanceKm > bestValue ? distanceKm : bestValue
+    }, 0)
+
+    if (currentDistanceKm > maxPreviousDistanceKm14d) {
+      return {
+        type: 'longest_14d',
+        label: 'Самая длинная за 14 дней',
+      }
+    }
+  }
+
+  const previousRuns30d = getPreviousWindowRuns(
+    userRuns,
+    currentRunIndex,
+    currentCreatedAtMs,
+    RUN_INSIGHT_LONGEST_30D_WINDOW_DAYS,
+    (candidateRun) => getPositiveDistanceKm(candidateRun) != null
+  )
+
+  if (previousRuns30d.length === 0) {
+    return null
+  }
+
+  const maxPreviousDistanceKm30d = previousRuns30d.reduce((bestValue, candidateRun) => {
+    const distanceKm = getPositiveDistanceKm(candidateRun)
+    return distanceKm != null && distanceKm > bestValue ? distanceKm : bestValue
+  }, 0)
+
+  if (currentDistanceKm > maxPreviousDistanceKm30d) {
+    return {
+      type: 'longest_30d',
+      label: 'Самая длинная за 30 дней',
+    }
+  }
+
+  return null
+}
+
 function buildRunInsight(
   run: RunRow,
   runsByUserId: Record<string, RunInsightHistoryRow[]>,
-  runIndexById: Record<string, number>
+  runIndexById: Record<string, number>,
+  personalRecordEventsByRunId: Map<string, PersonalRecordAppEventRow[]>
 ): FeedRunInsight | null {
+  const personalRecordInsight = buildPersonalRecordInsight(run.id, personalRecordEventsByRunId)
+
+  if (personalRecordInsight) {
+    return personalRecordInsight
+  }
+
   const userRuns = runsByUserId[run.user_id] ?? []
 
   if (userRuns.length < 2) {
@@ -384,27 +545,21 @@ function buildRunInsight(
   const currentPaceSeconds = getComparablePaceSeconds(currentRun)
 
   if (currentPaceSeconds != null) {
-    const bestPaceWindowStartMs =
-      currentCreatedAtMs - RUN_INSIGHT_BEST_PACE_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    const paceWindowRuns = userRuns.filter((candidateRun) => {
-      const createdAtMs = getRunCreatedAtMs(candidateRun)
-      const paceSeconds = getComparablePaceSeconds(candidateRun)
+    const previousComparableRunsInWindow = getPreviousWindowRuns(
+      userRuns,
+      currentRunIndex,
+      currentCreatedAtMs,
+      RUN_INSIGHT_BEST_PACE_WINDOW_DAYS,
+      (candidateRun) => getComparablePaceSeconds(candidateRun) != null
+    )
 
-      return (
-        createdAtMs != null &&
-        paceSeconds != null &&
-        createdAtMs >= bestPaceWindowStartMs &&
-        createdAtMs <= currentCreatedAtMs
-      )
-    })
-
-    if (paceWindowRuns.length >= 2) {
-      const bestPaceSeconds = paceWindowRuns.reduce((bestValue, candidateRun) => {
+    if (previousComparableRunsInWindow.length > 0) {
+      const bestPreviousPaceSeconds = previousComparableRunsInWindow.reduce((bestValue, candidateRun) => {
         const paceSeconds = getComparablePaceSeconds(candidateRun)
         return paceSeconds != null && paceSeconds < bestValue ? paceSeconds : bestValue
-      }, currentPaceSeconds)
+      }, Number.POSITIVE_INFINITY)
 
-      if (currentPaceSeconds <= bestPaceSeconds) {
+      if (currentPaceSeconds < bestPreviousPaceSeconds) {
         return {
           type: 'best_pace_7d',
           label: 'Лучший темп за 7 дней',
@@ -413,38 +568,10 @@ function buildRunInsight(
     }
   }
 
-  const currentDistanceKm = getPositiveDistanceKm(currentRun)
+  const longestRunInsight = buildLongestRunInsight(currentRun, userRuns, currentRunIndex, currentCreatedAtMs)
 
-  if (currentDistanceKm != null) {
-    const longestWindowStartMs = currentCreatedAtMs - RUN_INSIGHT_LONGEST_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    const distanceWindowRuns = userRuns.filter((candidateRun) => {
-      const createdAtMs = getRunCreatedAtMs(candidateRun)
-      const distanceKm = getPositiveDistanceKm(candidateRun)
-
-      return (
-        createdAtMs != null &&
-        distanceKm != null &&
-        createdAtMs >= longestWindowStartMs &&
-        createdAtMs <= currentCreatedAtMs
-      )
-    })
-
-    if (distanceWindowRuns.length >= 2) {
-      const maxDistanceKm = distanceWindowRuns.reduce((bestValue, candidateRun) => {
-        const distanceKm = getPositiveDistanceKm(candidateRun)
-        return distanceKm != null && distanceKm > bestValue ? distanceKm : bestValue
-      }, currentDistanceKm)
-      const maxDistanceCount = distanceWindowRuns.filter(
-        (candidateRun) => getPositiveDistanceKm(candidateRun) === maxDistanceKm
-      ).length
-
-      if (currentDistanceKm === maxDistanceKm && maxDistanceCount === 1) {
-        return {
-          type: 'longest_14d',
-          label: 'Самая длинная за 14 дней',
-        }
-      }
-    }
+  if (longestRunInsight) {
+    return longestRunInsight
   }
 
   if (currentPaceSeconds != null) {
@@ -754,6 +881,7 @@ export async function loadFeedRuns(
     currentRaceEventsResult,
     historicalRunsResult,
     linkedRaceEventsResult,
+    personalRecordEventsResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
@@ -807,6 +935,16 @@ export async function loadFeedRuns(
           .select('id, linked_run_id, name, race_date, result_time_seconds, target_time_seconds, status')
           .in('linked_run_id', runIds)
           .neq('status', 'cancelled'),
+    !currentUserId || runIds.length === 0
+      ? Promise.resolve({ data: [] as PersonalRecordAppEventRow[], error: null })
+      : supabase
+          .from('app_events')
+          .select('id, entity_id, payload, created_at')
+          .eq('type', 'personal_record.achieved')
+          .eq('target_user_id', currentUserId)
+          .in('entity_id', runIds)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
   ])
 
   const photosByRunId = ((photosResult.data as RunPhotoRow[] | null) ?? []).reduce<Record<string, FeedRunPhoto[]>>(
@@ -869,6 +1007,22 @@ export async function loadFeedRuns(
 
     linkedRaceEventByRunId.set(raceEvent.linked_run_id, raceEvent)
   }
+  const personalRecordEventsByRunId = ((personalRecordEventsResult.data as PersonalRecordAppEventRow[] | null) ?? []).reduce(
+    (accumulator, event) => {
+      const runId = event.entity_id?.trim()
+
+      if (!runId) {
+        return accumulator
+      }
+
+      const existingEvents = accumulator.get(runId) ?? []
+      existingEvents.push(event)
+      accumulator.set(runId, existingEvents)
+
+      return accumulator
+    },
+    new Map<string, PersonalRecordAppEventRow[]>()
+  )
   const activePageRuns = pageRuns.filter((run) => profileById[run.user_id]?.app_access_status === 'active')
   const activePageAppEvents = pageAppEvents.filter(
     (event) => event.actor_user_id && profileById[event.actor_user_id]?.app_access_status === 'active'
@@ -905,7 +1059,7 @@ export async function loadFeedRuns(
         commentsCount: 0,
         likedByMe: likesSummary.likedRunIds.has(run.id),
         photos: photosByRunId[run.id] ?? [],
-        insight: buildRunInsight(run, historicalRunsByUserId, historicalRunIndexById),
+        insight: buildRunInsight(run, historicalRunsByUserId, historicalRunIndexById, personalRecordEventsByRunId),
         linkedRaceEvent: linkedRaceEvent ? {
           id: linkedRaceEvent.id,
           name: linkedRaceEvent.name,
