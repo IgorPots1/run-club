@@ -7,6 +7,8 @@ import { loadRunLikesSummaryForRunIds } from './run-likes'
 import { getRunXpBreakdownRows, type RunXpBreakdownRow } from './run-xp-presentation'
 import { supabase } from './supabase'
 
+const FEED_PERSONAL_RECORD_INSIGHTS_API_PATH = '/api/feed/personal-record-insights'
+
 type ProfileRow = {
   id: string
   name: string | null
@@ -77,11 +79,11 @@ type AppEventFeedRow = {
   created_at: string
 }
 
-type PersonalRecordAppEventRow = {
-  id: string
-  entity_id: string | null
-  payload: Record<string, unknown> | null
-  created_at: string
+type PersonalRecordInsightResponse = {
+  items?: Array<{
+    runId?: string | null
+    distanceMeters?: number | null
+  }> | null
 }
 
 type FeedRaceEventCurrentRow = {
@@ -375,52 +377,77 @@ function getPersonalRecordDistanceLabel(distanceMeters: number) {
     case 21097:
       return '21.1 км'
     case 42195:
-      return '42.2 км'
+      return 'марафон'
     default:
       return `${Math.round(distanceMeters)} м`
   }
 }
 
-function getPersonalRecordDistanceMetersFromPayload(payload: Record<string, unknown> | null | undefined) {
-  const context = getContextRecord(payload)
-  const distanceMeters = parseFiniteNumber(context?.distanceMeters)
-  return Number.isFinite(distanceMeters) && (distanceMeters ?? 0) > 0
-    ? Math.round(Number(distanceMeters))
-    : null
-}
-
 function buildPersonalRecordInsight(
   runId: string,
-  personalRecordEventsByRunId: Map<string, PersonalRecordAppEventRow[]>
+  personalRecordDistanceByRunId: Map<string, number>
 ): FeedRunInsight | null {
-  const personalRecordEvents = personalRecordEventsByRunId.get(runId) ?? []
+  const distanceMeters = personalRecordDistanceByRunId.get(runId)
 
-  if (personalRecordEvents.length === 0) {
+  if (!Number.isFinite(distanceMeters) || (distanceMeters ?? 0) <= 0) {
     return null
   }
 
-  const bestEvent = personalRecordEvents.reduce<PersonalRecordAppEventRow | null>((bestValue, event) => {
-    if (!bestValue) {
-      return event
-    }
-
-    const bestDistanceMeters = getPersonalRecordDistanceMetersFromPayload(bestValue.payload) ?? 0
-    const eventDistanceMeters = getPersonalRecordDistanceMetersFromPayload(event.payload) ?? 0
-
-    if (eventDistanceMeters !== bestDistanceMeters) {
-      return eventDistanceMeters > bestDistanceMeters ? event : bestValue
-    }
-
-    return event.created_at > bestValue.created_at ? event : bestValue
-  }, null)
-
-  const distanceMeters = getPersonalRecordDistanceMetersFromPayload(bestEvent?.payload)
-
   return {
     type: 'personal_record',
-    label: distanceMeters
-      ? `Новый рекорд ${getPersonalRecordDistanceLabel(distanceMeters)}`
-      : 'Новый рекорд',
+    label: `Новый рекорд ${getPersonalRecordDistanceLabel(Math.round(Number(distanceMeters)))}`,
+  }
+}
+
+async function loadCanonicalPersonalRecordDistanceByRunId(runIds: string[]) {
+  const normalizedRunIds = Array.from(new Set(
+    runIds
+      .map((runId) => runId.trim())
+      .filter((runId) => runId.length > 0)
+  ))
+
+  if (normalizedRunIds.length === 0) {
+    return new Map<string, number>()
+  }
+
+  try {
+    const response = await fetch(FEED_PERSONAL_RECORD_INSIGHTS_API_PATH, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        runIds: normalizedRunIds,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`status_${response.status}`)
+    }
+
+    const payload = await response.json().catch(() => null) as PersonalRecordInsightResponse | null
+    const personalRecordDistanceByRunId = new Map<string, number>()
+
+    for (const item of payload?.items ?? []) {
+      const runId = typeof item?.runId === 'string' ? item.runId.trim() : ''
+      const distanceMeters = parseFiniteNumber(item?.distanceMeters)
+
+      if (!runId || !Number.isFinite(distanceMeters) || (distanceMeters ?? 0) <= 0) {
+        continue
+      }
+
+      const normalizedDistanceMeters = Math.round(Number(distanceMeters))
+      const previousDistanceMeters = personalRecordDistanceByRunId.get(runId) ?? 0
+
+      if (normalizedDistanceMeters > previousDistanceMeters) {
+        personalRecordDistanceByRunId.set(runId, normalizedDistanceMeters)
+      }
+    }
+
+    return personalRecordDistanceByRunId
+  } catch (error) {
+    console.error('[dashboard] failed to load canonical personal record insights', error)
+    return new Map<string, number>()
   }
 }
 
@@ -515,9 +542,9 @@ function buildRunInsight(
   run: RunRow,
   runsByUserId: Record<string, RunInsightHistoryRow[]>,
   runIndexById: Record<string, number>,
-  personalRecordEventsByRunId: Map<string, PersonalRecordAppEventRow[]>
+  personalRecordDistanceByRunId: Map<string, number>
 ): FeedRunInsight | null {
-  const personalRecordInsight = buildPersonalRecordInsight(run.id, personalRecordEventsByRunId)
+  const personalRecordInsight = buildPersonalRecordInsight(run.id, personalRecordDistanceByRunId)
 
   if (personalRecordInsight) {
     return personalRecordInsight
@@ -881,7 +908,7 @@ export async function loadFeedRuns(
     currentRaceEventsResult,
     historicalRunsResult,
     linkedRaceEventsResult,
-    personalRecordEventsResult,
+    personalRecordDistanceByRunId,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
@@ -935,16 +962,7 @@ export async function loadFeedRuns(
           .select('id, linked_run_id, name, race_date, result_time_seconds, target_time_seconds, status')
           .in('linked_run_id', runIds)
           .neq('status', 'cancelled'),
-    !currentUserId || runIds.length === 0
-      ? Promise.resolve({ data: [] as PersonalRecordAppEventRow[], error: null })
-      : supabase
-          .from('app_events')
-          .select('id, entity_id, payload, created_at')
-          .eq('type', 'personal_record.achieved')
-          .eq('target_user_id', currentUserId)
-          .in('entity_id', runIds)
-          .order('created_at', { ascending: false })
-          .order('id', { ascending: false }),
+    loadCanonicalPersonalRecordDistanceByRunId(runIds),
   ])
 
   const photosByRunId = ((photosResult.data as RunPhotoRow[] | null) ?? []).reduce<Record<string, FeedRunPhoto[]>>(
@@ -1007,22 +1025,6 @@ export async function loadFeedRuns(
 
     linkedRaceEventByRunId.set(raceEvent.linked_run_id, raceEvent)
   }
-  const personalRecordEventsByRunId = ((personalRecordEventsResult.data as PersonalRecordAppEventRow[] | null) ?? []).reduce(
-    (accumulator, event) => {
-      const runId = event.entity_id?.trim()
-
-      if (!runId) {
-        return accumulator
-      }
-
-      const existingEvents = accumulator.get(runId) ?? []
-      existingEvents.push(event)
-      accumulator.set(runId, existingEvents)
-
-      return accumulator
-    },
-    new Map<string, PersonalRecordAppEventRow[]>()
-  )
   const activePageRuns = pageRuns.filter((run) => profileById[run.user_id]?.app_access_status === 'active')
   const activePageAppEvents = pageAppEvents.filter(
     (event) => event.actor_user_id && profileById[event.actor_user_id]?.app_access_status === 'active'
@@ -1059,7 +1061,7 @@ export async function loadFeedRuns(
         commentsCount: 0,
         likedByMe: likesSummary.likedRunIds.has(run.id),
         photos: photosByRunId[run.id] ?? [],
-        insight: buildRunInsight(run, historicalRunsByUserId, historicalRunIndexById, personalRecordEventsByRunId),
+        insight: buildRunInsight(run, historicalRunsByUserId, historicalRunIndexById, personalRecordDistanceByRunId),
         linkedRaceEvent: linkedRaceEvent ? {
           id: linkedRaceEvent.id,
           name: linkedRaceEvent.name,
