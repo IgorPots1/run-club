@@ -298,6 +298,27 @@ async function loadCandidateRuns(params: {
   return ((data as RunMatchRow[] | null) ?? []).filter(isRunningActivity)
 }
 
+async function loadUnavailableRunIds(params: {
+  supabase: SupabaseAdminClient
+  userId: string
+}) {
+  const { data, error } = await params.supabase
+    .from('race_events')
+    .select('linked_run_id')
+    .eq('user_id', params.userId)
+    .not('linked_run_id', 'is', null)
+
+  if (error) {
+    throw error
+  }
+
+  return new Set(
+    ((data as Array<{ linked_run_id: string | null }> | null) ?? [])
+      .map((row) => row.linked_run_id)
+      .filter((linkedRunId): linkedRunId is string => typeof linkedRunId === 'string' && linkedRunId.length > 0)
+  )
+}
+
 async function emitCompletedEventForRaceEvent(supabase: SupabaseAdminClient, raceEventId: string) {
   const { data, error } = await supabase
     .from('race_events')
@@ -339,6 +360,10 @@ export async function matchRaceEventsForUser(params: {
   }
 
   try {
+    const unavailableRunIds = await loadUnavailableRunIds({
+      supabase,
+      userId: params.userId,
+    })
     const runs = await loadCandidateRuns({
       supabase,
       userId: params.userId,
@@ -354,7 +379,8 @@ export async function matchRaceEventsForUser(params: {
     stats.checked = raceEvents.length
 
     for (const raceEvent of raceEvents) {
-      const { candidate, ambiguous } = findClearMatchForRaceEvent(raceEvent, runs)
+      const availableRuns = runs.filter((run) => !unavailableRunIds.has(run.id))
+      const { candidate, ambiguous } = findClearMatchForRaceEvent(raceEvent, availableRuns)
 
       if (ambiguous) {
         stats.ambiguous += 1
@@ -390,6 +416,7 @@ export async function matchRaceEventsForUser(params: {
       stats.matched += 1
 
       if (dryRun) {
+        unavailableRunIds.add(candidate.run.id)
         continue
       }
 
@@ -414,6 +441,8 @@ export async function matchRaceEventsForUser(params: {
         stats.errors += 1
         continue
       }
+
+      unavailableRunIds.add(candidate.run.id)
 
       if (emitEvents) {
         try {

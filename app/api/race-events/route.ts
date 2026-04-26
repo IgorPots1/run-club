@@ -61,6 +61,29 @@ function getRunResultTimeSeconds(run: {
   return null
 }
 
+function buildLinkedRunConflictResponse() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'linked_run_already_linked_to_another_race_event',
+    },
+    { status: 409 }
+  )
+}
+
+function isLinkedRunUniqueViolation(error: {
+  code?: string | null
+  message?: string | null
+} | null | undefined) {
+  return (
+    error?.code === '23505' &&
+    (
+      error.message?.includes('race_events_linked_run_id_unique_idx') ||
+      error.message?.includes('linked_run_id')
+    )
+  )
+}
+
 async function loadLinkedRunIfOwned(supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>, userId: string, linkedRunId: string | null) {
   if (!linkedRunId) {
     return { exists: true }
@@ -78,6 +101,29 @@ async function loadLinkedRunIfOwned(supabaseAdmin: ReturnType<typeof createSupab
   }
 
   return { exists: Boolean(data), run: data ?? null }
+}
+
+async function loadLinkedRunConflict(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  linkedRunId: string | null
+) {
+  if (!linkedRunId) {
+    return { conflict: null }
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('race_events')
+    .select('id')
+    .eq('linked_run_id', linkedRunId)
+    .limit(1)
+
+  if (error) {
+    return { conflict: null, error }
+  }
+
+  return {
+    conflict: Array.isArray(data) ? (data[0] ?? null) : null,
+  }
 }
 
 export async function GET() {
@@ -180,6 +226,22 @@ export async function POST(request: Request) {
     )
   }
 
+  const linkedRunConflict = await loadLinkedRunConflict(supabaseAdmin, linkedRunId)
+
+  if ('error' in linkedRunConflict && linkedRunConflict.error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: linkedRunConflict.error.message,
+      },
+      { status: 500 }
+    )
+  }
+
+  if (linkedRunConflict.conflict) {
+    return buildLinkedRunConflictResponse()
+  }
+
   const derivedResultTimeSeconds = resultTimeSeconds ?? getRunResultTimeSeconds(linkedRunLookup.run)
 
   const { data, error: insertError } = await supabaseAdmin
@@ -201,6 +263,10 @@ export async function POST(request: Request) {
     .single()
 
   if (insertError) {
+    if (isLinkedRunUniqueViolation(insertError)) {
+      return buildLinkedRunConflictResponse()
+    }
+
     return NextResponse.json(
       {
         ok: false,
