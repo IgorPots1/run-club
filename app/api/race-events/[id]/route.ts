@@ -1,6 +1,6 @@
 import { after, NextResponse } from 'next/server'
-import { createAppEvent } from '@/lib/events/createAppEvent'
-import { buildRaceEventCompletedEvent } from '@/lib/events/returnTriggerEvents'
+import { deriveRaceEventStatus } from '@/lib/race-events'
+import { createRaceEventCompletedAppEvent } from '@/lib/server/race-event-completion-events'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -32,6 +32,11 @@ const RACE_EVENT_SELECT = `
   distance_meters,
   result_time_seconds,
   target_time_seconds,
+  status,
+  cancelled_at,
+  matched_at,
+  match_source,
+  match_confidence,
   created_at,
   linked_run:runs!race_events_linked_run_id_fkey (
     id,
@@ -39,9 +44,31 @@ const RACE_EVENT_SELECT = `
     title,
     distance_km,
     moving_time_seconds,
+    duration_seconds,
+    duration_minutes,
     created_at
   )
 `
+
+function getRunResultTimeSeconds(run: {
+  moving_time_seconds?: number | null
+  duration_seconds?: number | null
+  duration_minutes?: number | null
+} | null | undefined) {
+  if (Number.isFinite(run?.moving_time_seconds) && (run?.moving_time_seconds ?? 0) > 0) {
+    return Math.round(run?.moving_time_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run?.duration_seconds) && (run?.duration_seconds ?? 0) > 0) {
+    return Math.round(run?.duration_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run?.duration_minutes) && (run?.duration_minutes ?? 0) > 0) {
+    return Math.round(Number(run?.duration_minutes ?? 0) * 60)
+  }
+
+  return null
+}
 
 async function loadOwnedRaceEvent(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
@@ -78,7 +105,7 @@ async function loadLinkedRunIfOwned(
 
   const { data, error } = await supabaseAdmin
     .from('runs')
-    .select('id')
+    .select('id, moving_time_seconds, duration_seconds, duration_minutes')
     .eq('id', linkedRunId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -87,7 +114,7 @@ async function loadLinkedRunIfOwned(
     return { exists: false, error }
   }
 
-  return { exists: Boolean(data) }
+  return { exists: Boolean(data), run: data ?? null }
 }
 
 export async function GET(
@@ -243,6 +270,20 @@ export async function PATCH(
     )
   }
 
+  const wasLinked = Boolean(existingRaceEvent.linked_run_id)
+  const isLinked = Boolean(linkedRunId)
+  const derivedResultTimeSeconds = isLinked
+    ? (resultTimeSeconds ?? getRunResultTimeSeconds(linkedRunLookup.run))
+    : resultTimeSeconds
+  const nextStatus = isLinked
+    ? 'completed_linked'
+    : deriveRaceEventStatus({
+      status: null,
+      race_date: raceDate,
+      linked_run_id: null,
+    })
+  const nowIso = new Date().toISOString()
+
   const { data, error: updateError } = await supabaseAdmin
     .from('race_events')
     .update({
@@ -250,8 +291,12 @@ export async function PATCH(
       race_date: raceDate,
       linked_run_id: linkedRunId,
       distance_meters: distanceMeters,
-      result_time_seconds: resultTimeSeconds,
+      result_time_seconds: derivedResultTimeSeconds,
       target_time_seconds: targetTimeSeconds,
+      status: nextStatus,
+      matched_at: isLinked ? nowIso : null,
+      match_source: isLinked ? 'manual' : null,
+      match_confidence: isLinked ? 'manual' : null,
     })
     .eq('id', raceEventId)
     .eq('user_id', user.id)
@@ -268,33 +313,13 @@ export async function PATCH(
     )
   }
 
-  const hadCompletionSignal = hasRaceCompletionSignal(existingRaceEvent)
+  const hadCompletionSignal = hasRaceCompletionSignal(existingRaceEvent) || wasLinked
   const hasCompletionSignal = hasRaceCompletionSignal(data)
 
-  if (!hadCompletionSignal && hasCompletionSignal) {
+  if ((!hadCompletionSignal && hasCompletionSignal) || (isLinked && !wasLinked)) {
     after(async () => {
       try {
-        const linkedRun = Array.isArray(data.linked_run) ? (data.linked_run[0] ?? null) : (data.linked_run ?? null)
-
-        await createAppEvent(
-          buildRaceEventCompletedEvent({
-            actorUserId: user.id,
-            raceEventId: data.id,
-            raceName: data.name,
-            raceDate: data.race_date,
-            distanceMeters: data.distance_meters,
-            resultTimeSeconds: data.result_time_seconds,
-            targetTimeSeconds: data.target_time_seconds,
-            linkedRun: linkedRun ? {
-              id: linkedRun.id,
-              name: linkedRun.name,
-              title: linkedRun.title,
-              distanceKm: linkedRun.distance_km,
-              movingTimeSeconds: linkedRun.moving_time_seconds,
-              createdAt: linkedRun.created_at,
-            } : null,
-          })
-        )
+        await createRaceEventCompletedAppEvent(data)
       } catch (error) {
         console.error('Failed to create race_event.completed app event', {
           raceEventId: data.id,

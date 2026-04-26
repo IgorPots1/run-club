@@ -1,6 +1,7 @@
 import { after, NextResponse } from 'next/server'
 import { createAppEvent } from '@/lib/events/createAppEvent'
 import { buildRaceEventCreatedEvent } from '@/lib/events/returnTriggerEvents'
+import { createRaceEventCompletedAppEvent } from '@/lib/server/race-event-completion-events'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 
@@ -22,6 +23,11 @@ const RACE_EVENT_SELECT = `
   distance_meters,
   result_time_seconds,
   target_time_seconds,
+  status,
+  cancelled_at,
+  matched_at,
+  match_source,
+  match_confidence,
   created_at,
   linked_run:runs!race_events_linked_run_id_fkey (
     id,
@@ -29,9 +35,31 @@ const RACE_EVENT_SELECT = `
     title,
     distance_km,
     moving_time_seconds,
+    duration_seconds,
+    duration_minutes,
     created_at
   )
 `
+
+function getRunResultTimeSeconds(run: {
+  moving_time_seconds?: number | null
+  duration_seconds?: number | null
+  duration_minutes?: number | null
+} | null | undefined) {
+  if (Number.isFinite(run?.moving_time_seconds) && (run?.moving_time_seconds ?? 0) > 0) {
+    return Math.round(run?.moving_time_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run?.duration_seconds) && (run?.duration_seconds ?? 0) > 0) {
+    return Math.round(run?.duration_seconds ?? 0)
+  }
+
+  if (Number.isFinite(run?.duration_minutes) && (run?.duration_minutes ?? 0) > 0) {
+    return Math.round(Number(run?.duration_minutes ?? 0) * 60)
+  }
+
+  return null
+}
 
 async function loadLinkedRunIfOwned(supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>, userId: string, linkedRunId: string | null) {
   if (!linkedRunId) {
@@ -40,7 +68,7 @@ async function loadLinkedRunIfOwned(supabaseAdmin: ReturnType<typeof createSupab
 
   const { data, error } = await supabaseAdmin
     .from('runs')
-    .select('id')
+    .select('id, moving_time_seconds, duration_seconds, duration_minutes')
     .eq('id', linkedRunId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -49,7 +77,7 @@ async function loadLinkedRunIfOwned(supabaseAdmin: ReturnType<typeof createSupab
     return { exists: false, error }
   }
 
-  return { exists: Boolean(data) }
+  return { exists: Boolean(data), run: data ?? null }
 }
 
 export async function GET() {
@@ -152,6 +180,8 @@ export async function POST(request: Request) {
     )
   }
 
+  const derivedResultTimeSeconds = resultTimeSeconds ?? getRunResultTimeSeconds(linkedRunLookup.run)
+
   const { data, error: insertError } = await supabaseAdmin
     .from('race_events')
     .insert({
@@ -160,8 +190,12 @@ export async function POST(request: Request) {
       race_date: raceDate,
       linked_run_id: linkedRunId,
       distance_meters: distanceMeters,
-      result_time_seconds: resultTimeSeconds,
+      result_time_seconds: derivedResultTimeSeconds,
       target_time_seconds: targetTimeSeconds,
+      status: linkedRunId ? 'completed_linked' : (raceDate < new Date().toISOString().slice(0, 10) ? 'completed_unlinked' : 'upcoming'),
+      matched_at: linkedRunId ? new Date().toISOString() : null,
+      match_source: linkedRunId ? 'manual' : null,
+      match_confidence: linkedRunId ? 'manual' : null,
     })
     .select(RACE_EVENT_SELECT)
     .single()
@@ -196,6 +230,20 @@ export async function POST(request: Request) {
       })
     }
   })
+
+  if (linkedRunId) {
+    after(async () => {
+      try {
+        await createRaceEventCompletedAppEvent(data)
+      } catch (error) {
+        console.error('Failed to create race_event.completed app event', {
+          raceEventId: data.id,
+          actorUserId: user.id,
+          error: error instanceof Error ? error.message : 'unknown_error',
+        })
+      }
+    })
+  }
 
   return NextResponse.json(
     {

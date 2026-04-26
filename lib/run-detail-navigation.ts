@@ -45,6 +45,13 @@ export type SeededRunDetailPayload = {
   commentsCount: number
   likedByMe: boolean
   xp?: number | null
+  linkedRaceEvent?: {
+    id: string
+    name: string
+    raceDate: string
+    resultTimeSeconds: number | null
+    targetTimeSeconds: number | null
+  } | null
 }
 
 type RunDetailReturnPayload<TSnapshot> = {
@@ -538,6 +545,7 @@ export function useRunDetailReturnState<TSnapshot>({
       hasAppliedRestoreRef.current = false
       hasLoggedRestorePreparationRef.current = false
       hasLoggedRestoreCompletionRef.current = false
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsRestoring(false)
       return
     }
@@ -551,7 +559,6 @@ export function useRunDetailReturnState<TSnapshot>({
       hasAppliedRestoreRef.current = false
       hasLoggedRestorePreparationRef.current = false
       hasLoggedRestoreCompletionRef.current = false
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasRestoredSnapshot(nextRestore.snapshot !== null)
       setIsRestoring(nextRestore.shouldRestoreScroll)
       setSkipReason(nextRestore.skipReason)

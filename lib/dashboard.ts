@@ -39,6 +39,16 @@ type RunRow = {
   created_at: string
 }
 
+type RunLinkedRaceEventRow = {
+  id: string
+  linked_run_id: string | null
+  name: string
+  race_date: string
+  result_time_seconds: number | null
+  target_time_seconds: number | null
+  status?: string | null
+}
+
 type RunInsightHistoryRow = {
   id: string
   user_id: string
@@ -122,6 +132,13 @@ export type DashboardRunItem = {
   likedByMe: boolean
   photos: FeedRunPhoto[]
   insight: FeedRunInsight | null
+  linkedRaceEvent: {
+    id: string
+    name: string
+    raceDate: string
+    resultTimeSeconds: number | null
+    targetTimeSeconds: number | null
+  } | null
 }
 
 export type FeedRunInsight = {
@@ -736,6 +753,7 @@ export async function loadFeedRuns(
     photosResult,
     currentRaceEventsResult,
     historicalRunsResult,
+    linkedRaceEventsResult,
   ] = await Promise.all([
     loadProfilesByUserIds(userIds),
     loadRunLikesSummaryForRunIds(runIds, currentUserId),
@@ -782,6 +800,13 @@ export async function loadFeedRuns(
           .in('user_id', userIds)
           .order('created_at', { ascending: false })
           .order('id', { ascending: false }),
+    runIds.length === 0
+      ? Promise.resolve({ data: [] as RunLinkedRaceEventRow[], error: null })
+      : supabase
+          .from('race_events')
+          .select('id, linked_run_id, name, race_date, result_time_seconds, target_time_seconds, status')
+          .in('linked_run_id', runIds)
+          .neq('status', 'cancelled'),
   ])
 
   const photosByRunId = ((photosResult.data as RunPhotoRow[] | null) ?? []).reduce<Record<string, FeedRunPhoto[]>>(
@@ -836,6 +861,14 @@ export async function loadFeedRuns(
       userRuns.map((historicalRun, index) => [historicalRun.id, index] as const)
     )
   ) as Record<string, number>
+  const linkedRaceEventByRunId = new Map<string, RunLinkedRaceEventRow>()
+  for (const raceEvent of (linkedRaceEventsResult.data as RunLinkedRaceEventRow[] | null) ?? []) {
+    if (!raceEvent.linked_run_id || linkedRaceEventByRunId.has(raceEvent.linked_run_id)) {
+      continue
+    }
+
+    linkedRaceEventByRunId.set(raceEvent.linked_run_id, raceEvent)
+  }
   const activePageRuns = pageRuns.filter((run) => profileById[run.user_id]?.app_access_status === 'active')
   const activePageAppEvents = pageAppEvents.filter(
     (event) => event.actor_user_id && profileById[event.actor_user_id]?.app_access_status === 'active'
@@ -846,6 +879,7 @@ export async function loadFeedRuns(
       const mappedTitle = run.name?.trim() || run.title?.trim() || 'Тренировка'
       const resolvedDurationSeconds = resolveDurationSeconds(run)
       const xpBreakdownRows = getRunXpBreakdownRows(run, historicalRunsByUserId[run.user_id] ?? [])
+      const linkedRaceEvent = linkedRaceEventByRunId.get(run.id) ?? null
 
       return {
         kind: 'run',
@@ -872,6 +906,13 @@ export async function loadFeedRuns(
         likedByMe: likesSummary.likedRunIds.has(run.id),
         photos: photosByRunId[run.id] ?? [],
         insight: buildRunInsight(run, historicalRunsByUserId, historicalRunIndexById),
+        linkedRaceEvent: linkedRaceEvent ? {
+          id: linkedRaceEvent.id,
+          name: linkedRaceEvent.name,
+          raceDate: linkedRaceEvent.race_date,
+          resultTimeSeconds: linkedRaceEvent.result_time_seconds,
+          targetTimeSeconds: linkedRaceEvent.target_time_seconds,
+        } : null,
       }
     })
 

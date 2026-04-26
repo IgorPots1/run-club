@@ -6,6 +6,7 @@ import {
   SUPPORTED_PERSONAL_RECORD_DISTANCES,
   upsertPersonalRecordForLocalRunIfEligible,
 } from '@/lib/personal-records'
+import { matchRaceEventsForRun } from '@/lib/server/race-event-matching'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { removeRunFromShoe, updateRunShoeImpact } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -211,6 +212,20 @@ export async function PATCH(
       userId: user.id,
       runId: existingRun.id,
       error: personalRecordError instanceof Error ? personalRecordError.message : 'unknown_error',
+    })
+  }
+
+  try {
+    await matchRaceEventsForRun({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      runId: existingRun.id,
+    })
+  } catch (raceEventMatchError) {
+    console.error('Failed to match race events after local run update', {
+      userId: user.id,
+      runId: existingRun.id,
+      error: raceEventMatchError instanceof Error ? raceEventMatchError.message : 'unknown_error',
     })
   }
 

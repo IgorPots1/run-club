@@ -100,6 +100,7 @@ function buildSeededRunDetailPayload(item: FeedRunItem): SeededRunDetailPayload 
     commentsCount: item.commentsCount,
     likedByMe: item.likedByMe,
     xp: item.xp,
+    linkedRaceEvent: item.linkedRaceEvent,
   }
 }
 
@@ -1553,6 +1554,7 @@ export default function InfiniteWorkoutFeed({
                 commentsCount={item.commentsCount}
                 likedByMe={item.likedByMe}
                 insight={item.insight}
+                linkedRaceEvent={item.linkedRaceEvent}
                 isOwnRun={item.user_id === currentUserId}
                 isLikeInFlight={Boolean(likeInFlightByRunId[item.id])}
                 photos={item.photos}

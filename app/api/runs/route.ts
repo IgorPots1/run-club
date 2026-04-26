@@ -5,6 +5,7 @@ import {
 } from '@/lib/personal-records'
 import { loadProfileTotalXp } from '@/lib/profile-total-xp'
 import { buildPersistedRunXpBreakdown, calculateRunXp } from '@/lib/run-xp'
+import { matchRaceEventsForRun } from '@/lib/server/race-event-matching'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { applyRunToShoe } from '@/lib/run-shoe-impact'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
@@ -239,6 +240,20 @@ export async function POST(request: Request) {
       userId: user.id,
       runId: insertedRunId,
       error: personalRecordError instanceof Error ? personalRecordError.message : 'unknown_error',
+    })
+  }
+
+  try {
+    await matchRaceEventsForRun({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      runId: insertedRunId,
+    })
+  } catch (raceEventMatchError) {
+    console.error('Failed to match race events after local run create', {
+      userId: user.id,
+      runId: insertedRunId,
+      error: raceEventMatchError instanceof Error ? raceEventMatchError.message : 'unknown_error',
     })
   }
 

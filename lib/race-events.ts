@@ -16,11 +16,58 @@ export type RaceEvent = {
   distance_meters?: number | null
   result_time_seconds?: number | null
   target_time_seconds?: number | null
+  status?: RaceEventStatus | null
+  cancelled_at?: string | null
+  matched_at?: string | null
+  match_source?: RaceEventMatchSource | null
+  match_confidence?: RaceEventMatchConfidence | null
   created_at: string
   linked_run?: RaceEventLinkedRunSummary | null
 }
 
+export const RACE_EVENT_STATUSES = [
+  'upcoming',
+  'completed_linked',
+  'completed_unlinked',
+  'cancelled',
+] as const
+
+export type RaceEventStatus = typeof RACE_EVENT_STATUSES[number]
+export type RaceEventMatchSource = 'auto' | 'manual'
+export type RaceEventMatchConfidence = 'high' | 'medium' | 'manual'
+
 const PERSONAL_RECORD_DISTANCE_TOLERANCE = 0.02
+
+export function isRaceEventStatus(value: string | null | undefined): value is RaceEventStatus {
+  return RACE_EVENT_STATUSES.includes(value as RaceEventStatus)
+}
+
+export function getTodayDateValue(now = new Date()) {
+  return now.toISOString().slice(0, 10)
+}
+
+export function deriveRaceEventStatus(
+  raceEvent: Pick<RaceEvent, 'status' | 'race_date' | 'linked_run_id'>,
+  todayDateValue = getTodayDateValue()
+): RaceEventStatus {
+  if (raceEvent.status === 'cancelled') {
+    return 'cancelled'
+  }
+
+  if (raceEvent.linked_run_id) {
+    return 'completed_linked'
+  }
+
+  if (raceEvent.status === 'completed_unlinked' || raceEvent.status === 'completed_linked') {
+    return raceEvent.status
+  }
+
+  if (raceEvent.race_date < todayDateValue) {
+    return 'completed_unlinked'
+  }
+
+  return 'upcoming'
+}
 
 export function formatRaceDateLabel(dateValue: string) {
   const parsedDate = new Date(`${dateValue}T12:00:00`)
@@ -149,14 +196,8 @@ export function getRaceEventDisplayDistanceLabel(raceEvent: Pick<RaceEvent, 'lin
   return null
 }
 
-export function isRaceEventUpcoming(raceEvent: Pick<RaceEvent, 'race_date' | 'linked_run_id'>) {
-  const today = new Date().toISOString().slice(0, 10)
-
-  if (raceEvent.race_date > today) {
-    return true
-  }
-
-  return !raceEvent.linked_run_id
+export function isRaceEventUpcoming(raceEvent: Pick<RaceEvent, 'status' | 'race_date' | 'linked_run_id'>) {
+  return deriveRaceEventStatus(raceEvent) === 'upcoming'
 }
 
 function isRaceEventEligibleForPersonalRecord(raceEvent: Pick<RaceEvent, 'distance_meters' | 'result_time_seconds'>) {

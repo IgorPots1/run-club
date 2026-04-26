@@ -17,6 +17,8 @@ import {
   type PersonalRecordView,
 } from '@/lib/personal-records'
 import { getProfileDisplayName } from '@/lib/profiles'
+import { deriveRaceEventStatus, formatClock, formatRaceDateLabel, getRaceEventDisplayDistanceLabel, type RaceEvent } from '@/lib/race-events'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { getLevelProgressFromXP, getRankTitleFromLevel } from '@/lib/xp'
 
@@ -42,6 +44,21 @@ type PublicRunStatRow = {
   moving_time_seconds: number | null
   elevation_gain_meters?: number | null
 }
+
+type PublicRaceEventRow = Pick<
+  RaceEvent,
+  | 'id'
+  | 'user_id'
+  | 'name'
+  | 'race_date'
+  | 'linked_run_id'
+  | 'distance_meters'
+  | 'result_time_seconds'
+  | 'target_time_seconds'
+  | 'status'
+  | 'created_at'
+  | 'linked_run'
+>
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
 
@@ -172,6 +189,31 @@ function formatPersonalRecordDate(value: string | null) {
   }).format(date)
 }
 
+function compareRaceEventsByDateAsc(left: PublicRaceEventRow, right: PublicRaceEventRow) {
+  return left.race_date.localeCompare(right.race_date) || left.name.localeCompare(right.name)
+}
+
+function compareRaceEventsByDateDesc(left: PublicRaceEventRow, right: PublicRaceEventRow) {
+  return right.race_date.localeCompare(left.race_date) || right.name.localeCompare(left.name)
+}
+
+function getPublicProfileStarts(raceEvents: PublicRaceEventRow[]) {
+  const upcoming = raceEvents
+    .filter((raceEvent) => deriveRaceEventStatus(raceEvent) === 'upcoming')
+    .sort(compareRaceEventsByDateAsc)
+    .slice(0, 2)
+  const completedLinked = raceEvents
+    .filter((raceEvent) => deriveRaceEventStatus(raceEvent) === 'completed_linked')
+    .sort(compareRaceEventsByDateDesc)
+    .slice(0, 2)
+  const completedUnlinked = raceEvents
+    .filter((raceEvent) => deriveRaceEventStatus(raceEvent) === 'completed_unlinked')
+    .sort(compareRaceEventsByDateDesc)
+    .slice(0, 2)
+
+  return [...upcoming, ...completedLinked, ...completedUnlinked].slice(0, 5)
+}
+
 function getPersonalRecordRowClass(hasHref: boolean) {
   const baseClass = 'flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0'
 
@@ -241,7 +283,8 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
     redirect('/login')
   }
 
-  const [{ data: profile, error: profileError }, { data: runs, error: runsError }, achievementsResult, personalRecordsResult] = await Promise.all([
+  const supabaseAdmin = createSupabaseAdminClient()
+  const [{ data: profile, error: profileError }, { data: runs, error: runsError }, raceEventsResult, achievementsResult, personalRecordsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('id, name, nickname, avatar_url, club_joined_at, total_xp, app_access_status')
@@ -251,6 +294,36 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
       .from('runs')
       .select('distance_km, created_at, moving_time_seconds, elevation_gain_meters')
       .eq('user_id', userId),
+    supabaseAdmin
+      .from('race_events')
+      .select(`
+        id,
+        user_id,
+        name,
+        race_date,
+        linked_run_id,
+        distance_meters,
+        result_time_seconds,
+        target_time_seconds,
+        status,
+        created_at,
+        linked_run:runs!race_events_linked_run_id_fkey (
+          id,
+          name,
+          title,
+          distance_km,
+          moving_time_seconds,
+          created_at
+        )
+      `)
+      .eq('user_id', userId)
+      .neq('status', 'cancelled')
+      .order('race_date', { ascending: false })
+      .limit(12)
+      .then((result) => ({
+        data: (result.data as PublicRaceEventRow[] | null) ?? [],
+        error: result.error ? 'Не удалось загрузить старты' : null,
+      })),
     loadUserAchievements(userId)
       .then((data) => ({ data, error: null as string | null }))
       .catch(() => ({
@@ -272,6 +345,8 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
   const achievementsLoadError = achievementsResult.error
   const personalRecords = personalRecordsResult.data
   const personalRecordsLoadError = personalRecordsResult.error
+  const profileStarts = getPublicProfileStarts(raceEventsResult.data)
+  const profileStartsLoadError = raceEventsResult.error
   const personalRecordByDistance = new Map(personalRecords.map((record) => [record.distance_meters, record]))
   const sortedAchievements = [...recentAchievements].sort(compareAchievementsByDateDesc)
   const challengeAchievements = sortedAchievements.filter((achievement) => achievement.source_type === 'challenge')
@@ -511,6 +586,57 @@ export default async function PublicUserProfilePage({ params }: PageProps) {
 
                 return (
                   <div key={distanceMeters} className={getPersonalRecordRowClass(false)}>
+                    {content}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+        <section className="app-card rounded-3xl border p-4 shadow-sm sm:p-5">
+          <div className="min-w-0">
+            <h2 className="app-text-primary text-lg font-semibold">Старты</h2>
+            <p className="app-text-secondary mt-1 text-sm">Ближайшие планы и последние результаты.</p>
+          </div>
+
+          {profileStartsLoadError ? (
+            <p className="mt-4 text-sm text-red-600">{profileStartsLoadError}</p>
+          ) : profileStarts.length === 0 ? (
+            <div className="app-surface-muted mt-4 rounded-2xl border border-black/[0.06] px-4 py-4 text-center dark:border-white/[0.08]">
+              <p className="app-text-secondary text-sm">Пока нет стартов.</p>
+            </div>
+          ) : (
+            <div className="mt-4 divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+              {profileStarts.map((raceEvent) => {
+                const status = deriveRaceEventStatus(raceEvent)
+                const distanceLabel = getRaceEventDisplayDistanceLabel(raceEvent)?.label ?? null
+                const resultLabel = formatClock(raceEvent.result_time_seconds)
+                const href = raceEvent.linked_run_id ? `/runs/${raceEvent.linked_run_id}` : null
+                const content = (
+                  <>
+                    <div className="min-w-0">
+                      <p className="app-text-primary text-sm font-medium">{raceEvent.name}</p>
+                      <p className="app-text-secondary mt-1 text-xs">
+                        {formatRaceDateLabel(raceEvent.race_date)}
+                        {distanceLabel ? ` • ${distanceLabel}` : ''}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="app-text-primary text-sm font-semibold">
+                        {status === 'upcoming'
+                          ? 'План'
+                          : resultLabel ?? (status === 'completed_unlinked' ? 'результат не найден' : '—')}
+                      </p>
+                    </div>
+                  </>
+                )
+
+                return href ? (
+                  <Link key={raceEvent.id} href={href} className={getPersonalRecordRowClass(true)}>
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={raceEvent.id} className={getPersonalRecordRowClass(false)}>
                     {content}
                   </div>
                 )

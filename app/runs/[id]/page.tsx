@@ -19,6 +19,7 @@ import {
   loadRunComments,
   type RunCommentItem,
 } from '@/lib/run-comments'
+import { formatClock, formatRaceDateLabel } from '@/lib/race-events'
 import { dispatchRunsUpdatedEvent } from '@/lib/runs-refresh'
 import { useRunCommentsController } from '@/lib/use-run-comments-controller'
 import { updateRun, type UpdateRunInput } from '@/lib/runs'
@@ -107,6 +108,14 @@ type RunPhotoRow = {
 }
 
 type InsertedRunPhotoRow = RunPhotoRow
+
+type LinkedRaceEventRow = {
+  id: string
+  name: string
+  race_date: string
+  result_time_seconds: number | null
+  target_time_seconds: number | null
+}
 
 const EMPTY_RUN_DETAIL_SERIES: RunDetailSeriesRow = {
   exists: false,
@@ -446,6 +455,7 @@ export default function RunDetailsPage() {
   const [runSeries, setRunSeries] = useState<RunDetailSeriesRow>(EMPTY_RUN_DETAIL_SERIES)
   const [runLaps, setRunLaps] = useState<RunLapRow[]>([])
   const [runPhotos, setRunPhotos] = useState<RunPhotoRow[]>([])
+  const [linkedRaceEvent, setLinkedRaceEvent] = useState<LinkedRaceEventRow | null>(null)
   const [author, setAuthor] = useState<ProfileRow | null>(null)
   const [authorLevel, setAuthorLevel] = useState(1)
   const [deferredChartsLoading, setDeferredChartsLoading] = useState(false)
@@ -520,6 +530,7 @@ export default function RunDetailsPage() {
     setRunSeries(EMPTY_RUN_DETAIL_SERIES)
     setRunLaps([])
     setRunPhotos([])
+    setLinkedRaceEvent(null)
     setAuthor(null)
     setAuthorLevel(1)
     setDeferredChartsLoading(false)
@@ -774,7 +785,8 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
-            setDeferredChartsLoading(false)
+          setLinkedRaceEvent(null)
+          setDeferredChartsLoading(false)
           setCommentsLoading(false)
           setLoading(false)
         }
@@ -788,7 +800,8 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
-            setDeferredChartsLoading(false)
+          setLinkedRaceEvent(null)
+          setDeferredChartsLoading(false)
           setCommentsLoading(false)
           setLoading(false)
         }
@@ -800,6 +813,7 @@ export default function RunDetailsPage() {
       setRunSeries(EMPTY_RUN_DETAIL_SERIES)
       setRunLaps([])
       setRunPhotos([])
+      setLinkedRaceEvent(null)
       setAuthor(null)
       setAuthorLevel(1)
       setDeferredChartsLoading(false)
@@ -817,6 +831,7 @@ export default function RunDetailsPage() {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
             setRunPhotos([])
+            setLinkedRaceEvent(null)
             setDeferredChartsLoading(false)
             setCommentsLoading(false)
           }
@@ -830,6 +845,7 @@ export default function RunDetailsPage() {
             setRunSeries(EMPTY_RUN_DETAIL_SERIES)
             setRunLaps([])
             setRunPhotos([])
+            setLinkedRaceEvent(null)
             setDeferredChartsLoading(false)
             setCommentsLoading(false)
           }
@@ -856,10 +872,17 @@ export default function RunDetailsPage() {
             .order('sort_order', { ascending: true })
             .order('created_at', { ascending: true })
             .order('id', { ascending: true }),
+          supabase
+            .from('race_events')
+            .select('id, name, race_date, result_time_seconds, target_time_seconds')
+            .eq('linked_run_id', runData.id)
+            .neq('status', 'cancelled')
+            .order('race_date', { ascending: false })
+            .limit(1),
           loadTotalXpByUserIds([runData.user_id]).catch(() => ({} as Record<string, number>)),
         ])
         const commentsPromise = loadRunComments(runData.id, user.id)
-        const [profileResult, [lapsResult, photosResult, totalXpByUser]] = await Promise.all([
+        const [profileResult, [lapsResult, photosResult, linkedRaceEventsResult, totalXpByUser]] = await Promise.all([
           profilePromise,
           phaseOnePromise,
         ])
@@ -880,6 +903,7 @@ export default function RunDetailsPage() {
               Number.isFinite(photo.sort_order)
           )
         )
+        setLinkedRaceEvent(((linkedRaceEventsResult.data as LinkedRaceEventRow[] | null) ?? [])[0] ?? null)
         setAuthorLevel(getLevelFromXP(totalXpByUser[runData.user_id] ?? 0).level)
         setDeferredChartsLoading(true)
         setLoading(false)
@@ -913,6 +937,7 @@ export default function RunDetailsPage() {
           setRunSeries(EMPTY_RUN_DETAIL_SERIES)
           setRunLaps([])
           setRunPhotos([])
+          setLinkedRaceEvent(null)
           setDeferredChartsLoading(false)
           replaceComments([])
           setCommentsLoading(false)
@@ -1916,6 +1941,30 @@ export default function RunDetailsPage() {
               </div>
             ))}
           </div>
+
+          {linkedRaceEvent ? (
+            <div className="mt-4 rounded-2xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 dark:border-amber-300/20 dark:bg-amber-300/10">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-amber-800 dark:text-amber-100">
+                Старт
+              </p>
+              <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="app-text-primary break-words text-sm font-semibold">{linkedRaceEvent.name}</p>
+                  <p className="app-text-secondary mt-1 text-xs">{formatRaceDateLabel(linkedRaceEvent.race_date)}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="app-text-primary text-sm font-semibold">
+                    {formatClock(linkedRaceEvent.result_time_seconds) ?? details.movingTimeLabel ?? '—'}
+                  </p>
+                  {linkedRaceEvent.target_time_seconds != null ? (
+                    <p className="app-text-secondary mt-1 text-xs">
+                      Цель: {formatClock(linkedRaceEvent.target_time_seconds) ?? '—'}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {isMissingOfficialLaps ? (
             <div className="mt-4 rounded-xl border px-4 py-3">

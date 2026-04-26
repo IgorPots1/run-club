@@ -50,6 +50,10 @@ type WorkoutFeedCardProps = {
   commentsCount?: number
   likedByMe: boolean
   insight?: FeedRunInsight | null
+  linkedRaceEvent?: {
+    id: string
+    name: string
+  } | null
   isOwnRun?: boolean
   isLikeInFlight?: boolean
   onToggleLike: (runId: string) => void
@@ -159,6 +163,7 @@ function WorkoutFeedCard({
   commentsCount = 0,
   likedByMe,
   insight = null,
+  linkedRaceEvent = null,
   isOwnRun = false,
   isLikeInFlight = false,
   onToggleLike,
@@ -372,8 +377,17 @@ function WorkoutFeedCard({
         ) : null}
       </div>
 
-      {insight || locationLabel ? (
+      {insight || linkedRaceEvent || locationLabel ? (
         <div className="mt-2 space-y-1.5">
+          {linkedRaceEvent ? (
+            <div>
+              <span className="inline-flex max-w-full items-center rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold leading-none text-amber-800 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+                <span className="shrink-0">Старт</span>
+                <span className="mx-1.5 text-amber-600/70 dark:text-amber-100/50">•</span>
+                <span className="truncate">{linkedRaceEvent.name}</span>
+              </span>
+            </div>
+          ) : null}
           {insight ? (
             <div>
               <span className="app-text-secondary inline-flex max-w-full items-center rounded-full border border-black/[0.07] bg-black/[0.03] px-2.5 py-1 text-[11px] font-medium leading-none dark:border-white/[0.09] dark:bg-white/[0.04]">
