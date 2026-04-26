@@ -1044,7 +1044,16 @@ export async function loadFeedRuns(
     isPersonalRecord: personalRecordRaceEventIds.has(item.id),
   }))
 
+  const linkedRunIds = new Set(
+    raceEventItems.flatMap((item) => (
+      item.kind === 'race_event' && item.linkedRun?.id
+        ? [item.linkedRun.id]
+        : []
+    ))
+  )
+
   const combinedItems = [...runItems, ...raceEventItems, ...challengeItems]
+    .filter((item) => !(item.kind === 'run' && linkedRunIds.has(item.id)))
     .sort(compareFeedItemsByCreatedAt)
     .slice(0, limit)
 
