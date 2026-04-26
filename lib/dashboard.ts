@@ -727,7 +727,7 @@ export async function loadFeedRuns(
 
   const pageRuns = (runs as RunRow[] | null) ?? []
   const pageAppEvents = (appEvents as AppEventFeedRow[] | null) ?? []
-  const editableRaceEventIds = currentUserId
+  const currentRaceEventIds = currentUserId
     ? pageAppEvents
         .filter((event) => event.type !== 'challenge.completed')
         .filter((event) => event.actor_user_id === currentUserId && Boolean(event.entity_id))
@@ -768,7 +768,7 @@ export async function loadFeedRuns(
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: true })
           .order('id', { ascending: true }),
-    editableRaceEventIds.length === 0
+    currentRaceEventIds.length === 0
       ? Promise.resolve({ data: [] as FeedRaceEventCurrentRow[], error: null })
       : supabase
           .from('race_events')
@@ -790,7 +790,7 @@ export async function loadFeedRuns(
               created_at
             )
           `)
-          .in('id', editableRaceEventIds)
+          .in('id', currentRaceEventIds)
           .eq('user_id', currentUserId),
     userIds.length === 0
       ? Promise.resolve({ data: [] as RunInsightHistoryRow[], error: null })
@@ -936,6 +936,12 @@ export async function loadFeedRuns(
       || (typeof context?.raceDate === 'string' && context.raceDate.trim() ? context.raceDate.trim() : null)
     const linkedRunId = currentRaceEvent?.linked_run_id?.trim()
       || (typeof context?.linkedRunId === 'string' && context.linkedRunId.trim() ? context.linkedRunId.trim() : null)
+
+    // Linked completed starts should be represented by the run card only.
+    if (linkedRunId) {
+      return []
+    }
+
     const linkedRunName = currentLinkedRun?.name?.trim()
       || currentLinkedRun?.title?.trim()
       || (typeof context?.linkedRunName === 'string' && context.linkedRunName.trim() ? context.linkedRunName.trim() : null)
@@ -1044,16 +1050,7 @@ export async function loadFeedRuns(
     isPersonalRecord: personalRecordRaceEventIds.has(item.id),
   }))
 
-  const linkedRunIds = new Set(
-    raceEventItems.flatMap((item) => (
-      item.kind === 'race_event' && item.linkedRun?.id
-        ? [item.linkedRun.id]
-        : []
-    ))
-  )
-
   const combinedItems = [...runItems, ...raceEventItems, ...challengeItems]
-    .filter((item) => !(item.kind === 'run' && linkedRunIds.has(item.id)))
     .sort(compareFeedItemsByCreatedAt)
     .slice(0, limit)
 

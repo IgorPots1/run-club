@@ -117,6 +117,17 @@ async function loadRaceEventById(
     .maybeSingle()
 }
 
+async function deleteRaceEventAppEvents(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  raceEventId: string
+) {
+  return supabaseAdmin
+    .from('app_events')
+    .delete()
+    .eq('entity_id', raceEventId)
+    .in('type', ['race_event.created', 'race_event.completed'])
+}
+
 async function loadLinkedRunIfOwned(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   userId: string,
@@ -446,6 +457,18 @@ export async function DELETE(
         error: 'race_event_not_found',
       },
       { status: 404 }
+    )
+  }
+
+  const { error: deleteAppEventsError } = await deleteRaceEventAppEvents(supabaseAdmin, raceEventId)
+
+  if (deleteAppEventsError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: deleteAppEventsError.message,
+      },
+      { status: 500 }
     )
   }
 
