@@ -13,6 +13,15 @@ type PersonalRecordInsightRow = {
   distance_meters: number | null
 }
 
+type EligibleRunRow = {
+  id: string | null
+  user_id: string | null
+}
+
+type ActiveProfileRow = {
+  id: string | null
+}
+
 function normalizeRunIds(value: unknown) {
   if (!Array.isArray(value)) {
     return []
@@ -51,10 +60,79 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+
+  const { data: visibleRuns, error: visibleRunsError } = await supabaseAdmin
+    .from('runs')
+    .select('id, user_id')
+    .in('id', runIds)
+
+  if (visibleRunsError) {
+    console.error('[feed] failed to load visible runs for personal record insights', visibleRunsError)
+
+    return NextResponse.json(
+      {
+        error: 'personal_record_insights_load_failed',
+      },
+      { status: 500 }
+    )
+  }
+
+  const visibleRunRows = ((visibleRuns as EligibleRunRow[] | null) ?? []).flatMap((row) => {
+    const runId = typeof row.id === 'string' ? row.id.trim() : ''
+    const userId = typeof row.user_id === 'string' ? row.user_id.trim() : ''
+
+    return runId && userId
+      ? [{
+          id: runId,
+          userId,
+        }]
+      : []
+  })
+
+  if (visibleRunRows.length === 0) {
+    return NextResponse.json({
+      items: [],
+    })
+  }
+
+  const { data: activeProfiles, error: activeProfilesError } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .in('id', Array.from(new Set(visibleRunRows.map((row) => row.userId))))
+    .eq('app_access_status', 'active')
+
+  if (activeProfilesError) {
+    console.error('[feed] failed to load active profiles for personal record insights', activeProfilesError)
+
+    return NextResponse.json(
+      {
+        error: 'personal_record_insights_load_failed',
+      },
+      { status: 500 }
+    )
+  }
+
+  const activeUserIds = new Set(
+    ((activeProfiles as ActiveProfileRow[] | null) ?? []).flatMap((row) => {
+      const profileId = typeof row.id === 'string' ? row.id.trim() : ''
+      return profileId ? [profileId] : []
+    })
+  )
+
+  const eligibleRunIds = visibleRunRows.flatMap((row) => (
+    activeUserIds.has(row.userId) ? [row.id] : []
+  ))
+
+  if (eligibleRunIds.length === 0) {
+    return NextResponse.json({
+      items: [],
+    })
+  }
+
   const { data, error } = await supabaseAdmin
     .from('personal_records')
     .select('run_id, distance_meters')
-    .in('run_id', runIds)
+    .in('run_id', eligibleRunIds)
 
   if (error) {
     console.error('[feed] failed to load canonical personal record insights', error)
