@@ -132,6 +132,11 @@ export default function RegisterPage() {
         return
       }
 
+      if (!data.session) {
+        setSuccess('Аккаунт создан. Проверьте email, чтобы подтвердить регистрацию, затем войдите.')
+        return
+      }
+
       const { error: profileError } = await upsertProfile({
         id: data.user.id,
         email: data.user.email ?? normalizedEmail,
@@ -146,13 +151,8 @@ export default function RegisterPage() {
         return
       }
 
-      if (data.session) {
-        setRedirecting(true)
-        router.replace('/auth/continue')
-        return
-      }
-
-      setSuccess('Аккаунт создан. Войдите, чтобы продолжить.')
+      setRedirecting(true)
+      router.replace('/auth/continue')
     } catch {
       setError('Не удалось создать аккаунт. Попробуйте еще раз.')
     } finally {
