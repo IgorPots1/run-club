@@ -1,0 +1,14 @@
+---
+description: Verification, QA notes, and commit summary requirements
+alwaysApply: true
+---
+
+# QA and Commit Gates
+
+- After implementation, run `npm run lint` and `npm run build` unless explicitly skipped.
+- For UI changes, include manual mobile QA notes.
+- For feed, chat, push, realtime, race, or Strava changes, include regression risks.
+- Report changed files.
+- Report verification results.
+- Provide a concise git commit command.
+- Do not claim checks passed unless they actually ran.

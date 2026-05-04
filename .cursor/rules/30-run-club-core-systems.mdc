@@ -1,0 +1,15 @@
+---
+description: Guardrails for Run Club feed, chat, realtime, push, XP, races, Strava, and workouts
+globs: "app/**/feed/**,app/**/chat/**,app/**/race/**,app/**/races/**,app/**/workout/**,app/**/workouts/**,app/**/strava/**,app/api/**/feed/**,app/api/**/chat/**,app/api/**/push/**,app/api/**/race/**,app/api/**/races/**,app/api/**/strava/**,lib/**/feed/**,lib/**/chat/**,lib/**/realtime/**,lib/**/push/**,lib/**/xp/**,lib/**/achievement/**,lib/**/achievements/**,lib/**/race/**,lib/**/races/**,lib/**/strava/**,lib/**/workout/**,lib/**/workouts/**,**/*feed*.{ts,tsx},**/*chat*.{ts,tsx},**/*realtime*.{ts,tsx},**/*push*.{ts,tsx},**/*xp*.{ts,tsx},**/*achievement*.{ts,tsx},**/*race*.{ts,tsx},**/*strava*.{ts,tsx},**/*workout*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Run Club Core Systems
+
+- Treat feed, chat, push, XP, races, achievements, Strava sync, and workout detail as sensitive systems.
+- Do not refactor these systems broadly during small fixes.
+- Preserve existing event-driven flows and idempotency.
+- Preserve duplicate protection for Strava, race, and workout linking.
+- Preserve XP and achievement integrity.
+- Preserve realtime behavior unless the task explicitly targets it.
+- For bugs in these areas, start with audit-only before implementation.

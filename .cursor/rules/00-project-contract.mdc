@@ -1,0 +1,16 @@
+---
+description: Run Club project contract for safe, focused agent work
+alwaysApply: true
+---
+
+# Project Contract
+
+- Keep scope minimal and tied to the user request.
+- Do not introduce broad refactors unless explicitly requested.
+- Prefer simple, readable, production-safe code.
+- For risky tasks, start with audit/plan mode before implementation.
+- Do not change unrelated files.
+- Preserve existing UX behavior unless explicitly requested.
+- Always summarize changed files and provide a commit message.
+- Cursor prompts and implementation notes should stay in English.
+- User-facing UI should stay Russian unless explicitly requested otherwise.

@@ -1,0 +1,13 @@
+---
+description: iOS PWA and mobile UX guardrails for UI, layout, chat, feed, and navigation
+globs: "app/**/*.{tsx,css},components/**/*.{tsx,css},styles/**/*.css,app/**/chat/**,app/**/feed/**,app/**/workout/**,app/**/workouts/**,app/**/navigation/**,components/**/chat/**,components/**/feed/**,components/**/navigation/**,components/**/layout/**,**/*layout*.{tsx,css},**/*mobile*.{tsx,css},**/*nav*.{tsx,css},**/*sheet*.{tsx,css},**/*modal*.{tsx,css}"
+alwaysApply: false
+---
+
+# iOS PWA UX
+
+- Account for iOS PWA behavior in mobile UI work.
+- Check safe-area insets, dynamic viewport height, `visualViewport`, keyboard behavior, bottom nav overlap, scroll restore, and horizontal overflow.
+- Avoid fixed or sticky layout changes without considering iOS Safari and PWA mode.
+- Be extra careful with chat composer, feed scroll, modals, sheets, and mobile tab bar.
+- Keep mobile UI compact and Russian-language.

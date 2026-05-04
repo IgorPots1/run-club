@@ -1,0 +1,16 @@
+---
+description: Supabase database, RLS, auth, and data-access safety rules
+globs: "supabase/migrations/**,supabase/**,app/api/**,app/**/route.{ts,tsx},lib/**/supabase/**,lib/**/db/**,lib/**/auth/**,lib/**/admin/**,lib/**/realtime/**,lib/**/feed/**,lib/**/chat/**,lib/**/push/**,lib/**/xp/**,lib/**/race/**,**/*supabase*.{ts,tsx},**/*db*.{ts,tsx},**/*rls*.{ts,tsx},**/*auth*.{ts,tsx},**/*admin*.{ts,tsx},**/*realtime*.{ts,tsx},**/*feed*.{ts,tsx},**/*chat*.{ts,tsx},**/*push*.{ts,tsx},**/*xp*.{ts,tsx},**/*race*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Supabase DB and RLS
+
+- Any DB schema change must include a migration in `supabase/migrations`.
+- Never modify production DB directly as a substitute for migrations.
+- Preserve RLS safety and review policy impact before changing data access.
+- Never expose service role usage to client-side code.
+- Keep user visibility and `app_access_status` rules safe.
+- Consider indexes for new query patterns.
+- Update TypeScript types and services when schema changes.
+- Mention migration status and commit requirements in the final response.
